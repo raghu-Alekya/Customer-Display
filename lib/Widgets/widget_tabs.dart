@@ -2657,7 +2657,7 @@ bool _isSkuGenerated = false;
     print("🟩 [CASHBACK] START ---- _handleCashbackpayout() ----");
 
     if (_cashbackAmount.isEmpty ||
-        _cashbackAmount == "0" ||
+        _cashbackAmount == "0.00" ||
         double.tryParse(_cashbackAmount) == null) {
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(
@@ -2718,6 +2718,20 @@ bool _isSkuGenerated = false;
       (existingOrder["products"] as List? ?? [])
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
+      // 🚫 STOP Cashback if no products in cart
+      if (existingProducts.isEmpty) {
+        setState(() => _isCashbackLoading = false);
+
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+          const SnackBar(
+            content: Text("Add products to cart before applying cashback."),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        return;
+      }
 
       bool hasEbtProduct = existingProducts.any((p) {
         return p["is_ebt_eligible"] == true;
@@ -3458,7 +3472,7 @@ bool _isSkuGenerated = false;
     print("🟦 [PAYOUT] START ---- _handleAddPayout() ----");
 
     if (_payoutAmount.isEmpty ||
-        _payoutAmount == "0" ||
+        _payoutAmount == "0.00" ||
         double.tryParse(_payoutAmount) == null) {
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(

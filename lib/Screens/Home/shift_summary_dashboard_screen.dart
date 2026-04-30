@@ -1747,6 +1747,7 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
   void _showAddVendorPayoutDialog({VendorPayout? payment}) {
     showDialog(
       context: context,
+      barrierDismissible: false, // 🔒 prevents closing on outside tap
       builder: (BuildContext context) {
         return AddVendorPayoutDialog( //Build #1.0.74: updated code
           shiftId: widget.shiftId!,

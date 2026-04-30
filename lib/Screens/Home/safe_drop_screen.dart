@@ -190,6 +190,37 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
       });
     });
   }
+  bool _hasEnteredValues() {
+    return _denomControllers.values.any((controller) {
+      final value = double.tryParse(controller.text) ?? 0;
+      return value > 0;
+    });
+  }
+  Future<bool> _handleBack() async {
+    if (_hasEnteredValues()) {
+      bool shouldProceed = false;
+
+      await CustomDialog.showAreYouSure(
+        context,
+        description: "You have entered cash values. Do you want to discard and go back?",
+        confirmText: "Yes, Confirm",
+        cancelText: "No, Keep it",
+        confirm: () {
+          shouldProceed = true;
+          Navigator.of(context).pop();
+        },
+      );
+
+      if (shouldProceed) {
+        Navigator.of(context).maybePop(); // for back button
+      }
+
+      return shouldProceed;
+    } else {
+      Navigator.of(context).maybePop();
+      return true;
+    }
+  }
 
   //Build #1.0.74, Added: Fetch safe denominations from AssetDBHelper
   Future<void> _fetchSafeDenominations() async {
@@ -840,6 +871,7 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
                     if (sidebarPosition == SidebarPosition.left)
                       custom_widgets.NavigationBar(
                         selectedSidebarIndex: _selectedSidebarIndex,
+                        onWillNavigate: (_) => _handleBack(),
                         onSidebarItemSelected: (index) {
                           setState(() {
                             _selectedSidebarIndex = index;
@@ -874,7 +906,7 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
                                   SidebarPosition.bottom) ...[
                                 /// Back Button Row (inside parent container)
                                 InkWell(
-                                  onTap: () => Navigator.of(context).pop(),
+                                  onTap: _handleBack,
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 16, vertical: 8),
@@ -915,8 +947,7 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
                                   children: [
                                     /// Back button on top-left
                                     InkWell(
-                                      onTap: () =>
-                                          Navigator.of(context).pop(),
+                                      onTap: _handleBack,
                                       child: Container(
                                         padding:
                                         const EdgeInsets.symmetric(
@@ -987,6 +1018,7 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
                     if (sidebarPosition == SidebarPosition.right)
                       custom_widgets.NavigationBar(
                         selectedSidebarIndex: _selectedSidebarIndex,
+                        onWillNavigate: (_) => _handleBack(),
                         onSidebarItemSelected: (index) {
                           setState(() {
                             _selectedSidebarIndex = index;
@@ -1001,6 +1033,7 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
               if (sidebarPosition == SidebarPosition.bottom)
                 custom_widgets.NavigationBar(
                   selectedSidebarIndex: _selectedSidebarIndex,
+                  onWillNavigate: (_) => _handleBack(),
                   onSidebarItemSelected: (index) {
                     setState(() {
                       _selectedSidebarIndex = index;

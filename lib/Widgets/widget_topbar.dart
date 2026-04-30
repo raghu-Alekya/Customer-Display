@@ -12,6 +12,7 @@ import 'package:pinaka_pos/Widgets/weighing_scale_widget.dart';
 import 'package:pinaka_pos/Widgets/widget_variants_dialog.dart';
 import 'package:provider/provider.dart';
 
+import '../Blocs/Auth/logout_bloc.dart';
 import '../Blocs/Orders/order_bloc.dart';
 import '../Blocs/Search/product_search_bloc.dart';
 import '../Constants/text.dart';
@@ -24,9 +25,12 @@ import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/url_helper.dart';
 import '../Helper/api_response.dart';
 import '../Models/Search/product_search_model.dart';
+import '../Preferences/pinaka_preferences.dart';
 import '../Providers/Age/age_verification_provider.dart';
+import '../Repositories/Auth/logout_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
+import '../Screens/Auth/login_screen.dart';
 import '../Utilities/printer_settings.dart';
 import '../Utilities/svg_images_utility.dart';
 import 'ManualPriceDialog.dart';
@@ -542,7 +546,7 @@ class _TopBarState extends State<TopBar> {
       final result = await db.query(
         AppDBConst.userTable,
         where:
-            '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+        '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
         orderBy: '${AppDBConst.userId} DESC',
         limit: 1,
       );
@@ -552,8 +556,8 @@ class _TopBarState extends State<TopBar> {
       // ── 2. Call data-sync API ──────────────────────────────────────────────
       final url = Uri.parse(
         '${UrlHelper.baseUrl}'
-        '${UrlHelper.componentVersionUrl}'
-        'data-sync/get-data-changes?device_id=POS-003',
+            '${UrlHelper.componentVersionUrl}'
+            'data-sync/get-data-changes?device_id=POS-003',
       );
 
       final response = await http.get(
@@ -581,50 +585,62 @@ class _TopBarState extends State<TopBar> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Products are already up to date'),
-              backgroundColor: Colors.blue,
+              backgroundColor: Colors.green,
             ),
           );
         }
         return;
       }
 
+      // ── 2-B. Extract last event_version from the changes list ──────────────
+      int? lastEventVersion;
+      for (final change in changes) {
+        final dynamic rawVersion = change['event_version'];
+        if (rawVersion == null) continue;
+        final int? version = rawVersion is int
+            ? rawVersion
+            : int.tryParse(rawVersion.toString());
+        if (version != null &&
+            (lastEventVersion == null || version > lastEventVersion)) {
+          lastEventVersion = version;
+        }
+      }
+      if (kDebugMode) {
+        print('📌 Last event_version from changes: $lastEventVersion');
+      }
+
       // ── 3. Split changes by event_type ─────────────────────────────────────
       final List<Map<String, dynamic>> toUpsert = []; // created + updated
-      final List<int> toDelete = []; // deleted product IDs
+      final List<int> toDelete = [];                   // deleted product IDs
 
       for (final change in changes) {
         if (change['post_type'] != 'product') continue;
 
         final String eventType =
-            (change['event_type'] as String? ?? '').toLowerCase();
+        (change['event_type'] as String? ?? '').toLowerCase();
 
         if (eventType == 'deleted') {
-          // For deleted events the `data` block may be absent or minimal;
-          // fall back to post_id when data.id is unavailable.
           final dynamic rawId = change['data']?['id'] ?? change['post_id'];
-          final int? id =
-              rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '');
+          final int? id = rawId is int
+              ? rawId
+              : int.tryParse(rawId?.toString() ?? '');
           if (id != null) {
             toDelete.add(id);
             if (kDebugMode) print('🗑️ Queued DELETE for product id=$id');
           }
-        } else if (eventType == 'created' || eventType == 'updated') {
+        } else if (eventType == 'created' || eventType == 'updated' ||eventType == 'restored') {
           if (change['data'] is Map) {
             toUpsert.add(Map<String, dynamic>.from(change['data'] as Map));
             if (kDebugMode) {
-              print(
-                '📝 Queued ${eventType.toUpperCase()} for product '
-                'id=${change['data']['id']} name="${change['data']['name']}"',
-              );
+              print('📝 Queued ${eventType.toUpperCase()} for product '
+                  'id=${change['data']['id']} name="${change['data']['name']}"');
             }
           }
         }
       }
 
       if (kDebugMode) {
-        print(
-          '📋 Changes → upsert: ${toUpsert.length}, delete: ${toDelete.length}',
-        );
+        print('📋 Changes → upsert: ${toUpsert.length}, delete: ${toDelete.length}');
       }
 
       // ── 4. Helpers ─────────────────────────────────────────────────────────
@@ -642,154 +658,110 @@ class _TopBarState extends State<TopBar> {
       }
 
       /// Detects the age-restriction tag and returns the minimum age (0 = none).
-      ///
-      /// Rule: tag name == "Age Restricted" (case-insensitive).
-      /// The minimum age is the numeric value of that tag's SLUG (e.g. "21").
       int minAgeFromTags(List<dynamic> tags) {
         for (final t in tags) {
           final name = (t['name'] ?? '').toString().toLowerCase().trim();
-          // Match "age restricted" by name — the slug carries the age number.
           if (name == TextConstants.age_restricted.toLowerCase().trim()) {
             final int parsed =
                 int.tryParse((t['slug'] ?? '').toString().trim()) ?? 0;
-            // If slug is non-numeric (e.g. "age-restricted"), default to 18.
             return parsed > 0 ? parsed : 18;
           }
         }
         return 0;
       }
 
-      /// Normalise one API product map into the exact shape stored in Isar and
-      /// read by CategoriesScreen, NestedGridWidget, and _handleProductTap.
-      ///
-      /// Key design decisions:
-      ///   • `tags`              – original API list, original casing.
-      ///                           _handleProductTap builds SKU.Tags from this.
-      ///   • `fast_key_item_tags`– same list but name/slug lowercased so
-      ///                           CategoriesScreen age-check works.
-      ///   • `fast_key_item_min_age` / `has_age_restriction` – pre-computed from
-      ///                           the numeric slug of the "Age Restricted" tag.
+      /// Normalise one API product map into the exact shape stored in Isar.
       Map<String, dynamic> normaliseProduct(Map<String, dynamic> p) {
-        // ── tags ──────────────────────────────────────────────────────────────
         final List<dynamic> rawTags = (p['tags'] as List?) ?? [];
 
-        // Original-case tags (used by _handleProductTap → SKU.Tags).
-        final List<Map<String, dynamic>> originalTags =
-            rawTags
-                .whereType<Map>()
-                .map(
-                  (t) => {
-                    'id': t['id'],
-                    'name': (t['name'] ?? '').toString(), // ← original casing
-                    'slug': (t['slug'] ?? '').toString(), // ← original casing
-                  },
-                )
-                .toList();
+        final List<Map<String, dynamic>> originalTags = rawTags
+            .whereType<Map>()
+            .map((t) => {
+          'id': t['id'],
+          'name': (t['name'] ?? '').toString(),
+          'slug': (t['slug'] ?? '').toString(),
+        })
+            .toList();
 
-        // Lowercased tags (used by CategoriesScreen / NestedGridWidget age check).
-        final List<Map<String, dynamic>> lowercasedTags =
-            rawTags
-                .whereType<Map>()
-                .map(
-                  (t) => {
-                    'id': t['id'],
-                    'name': (t['name'] ?? '').toString().toLowerCase(),
-                    'slug': (t['slug'] ?? '').toString().toLowerCase(),
-                  },
-                )
-                .toList();
+        final List<Map<String, dynamic>> lowercasedTags = rawTags
+            .whereType<Map>()
+            .map((t) => {
+          'id': t['id'],
+          'name': (t['name'] ?? '').toString().toLowerCase(),
+          'slug': (t['slug'] ?? '').toString().toLowerCase(),
+        })
+            .toList();
 
         final int minAge = minAgeFromTags(rawTags);
 
         if (kDebugMode && minAge > 0) {
-          print(
-            '🔞 Product id=${p['id']} "${p['name']}" → '
-            'age restricted, minAge=$minAge',
-          );
+          print('🔞 Product id=${p['id']} "${p['name']}" → '
+              'age restricted, minAge=$minAge');
         }
         if (kDebugMode) {
-          print(
-            '🏷️ Product id=${p['id']} tags: '
-            '${originalTags.map((t) => '${t['name']}(${t['slug']})').toList()}',
-          );
+          print('🏷️ Product id=${p['id']} tags: '
+              '${originalTags.map((t) => '${t['name']}(${t['slug']})').toList()}');
         }
 
-        // ── images ────────────────────────────────────────────────────────────
         final List<dynamic> images = (p['images'] as List?) ?? [];
-        final String imageUrl =
-            images.isNotEmpty
-                ? ((images.first is Map)
-                    ? (images.first['src'] ?? '').toString()
-                    : images.first.toString())
-                : '';
+        final String imageUrl = images.isNotEmpty
+            ? ((images.first is Map)
+            ? (images.first['src'] ?? '').toString()
+            : images.first.toString())
+            : '';
 
         return {
-          // ── CategoriesScreen / NestedGridWidget keys ──────────────────────
           'fast_key_product_id': p['id'],
-          'fast_key_item_name': p['name'] ?? '',
+          'fast_key_item_name':  p['name'] ?? '',
           'fast_key_item_image': imageUrl,
           'fast_key_item_price': p['price'] ?? p['regular_price'] ?? '0',
-          'fast_key_item_sku': p['sku'] ?? '',
-
-          // Lowercased for CategoriesScreen age-restriction check
-          'fast_key_item_tags': lowercasedTags,
-
-          // Pre-computed age values
+          'fast_key_item_sku':   p['sku'] ?? '',
+          'fast_key_item_tags':  lowercasedTags,
           'fast_key_item_min_age': minAge,
-          'has_age_restriction': minAge > 0,
-
+          'has_age_restriction':   minAge > 0,
           'variations': p['variations'] ?? [],
-          'type': p['type'] ?? 'simple',
-
-          // ── TopBar search overlay / _handleProductTap keys ────────────────
-          'id': p['id'],
-          'name': p['name'] ?? '',
-          'price': p['price'] ?? p['regular_price'] ?? '0',
-          'regular_price': p['regular_price'] ?? '',
-          'sku': p['sku'] ?? '',
-          'images': images,
-
-          // Original-case tags so _handleProductTap → SKU.Tags works correctly
-          'tags': originalTags,
-
+          'type':       p['type'] ?? 'simple',
+          'id':           p['id'],
+          'name':         p['name'] ?? '',
+          'price':        p['price'] ?? p['regular_price'] ?? '0',
+          'regular_price':p['regular_price'] ?? '',
+          'sku':          p['sku'] ?? '',
+          'images':       images,
+          'tags':         originalTags,
           'is_ebt_eligible': isEbtEligibleFromTags(rawTags),
-          'tax': p['tax'],
+          'tax':          p['tax'],
         };
       }
 
       /// Load a JSON-array Isar entry, remove the given product ID, and return
       /// the mutated entry — or null if entry didn't exist / product wasn't found.
       Future<IsarCacheEntry?> removeProductFromEntry(
-        String key,
-        int productId,
-      ) async {
-        final IsarCacheEntry? entry =
-            await isar.isarCacheEntrys
-                .where()
-                .filter()
-                .keyEqualTo(key)
-                .findFirst();
+          String key, int productId) async {
+        final IsarCacheEntry? entry = await isar.isarCacheEntrys
+            .where()
+            .filter()
+            .keyEqualTo(key)
+            .findFirst();
         if (entry == null) return null;
 
         List<Map<String, dynamic>> list = [];
         try {
-          list =
-              (jsonDecode(entry.json) as List)
-                  .whereType<Map>()
-                  .map((m) => Map<String, dynamic>.from(m))
-                  .toList();
+          list = (jsonDecode(entry.json) as List)
+              .whereType<Map>()
+              .map((m) => Map<String, dynamic>.from(m))
+              .toList();
         } catch (_) {
           return null;
         }
 
         final int before = list.length;
         list.removeWhere(
-          (p) =>
-              (p['fast_key_product_id'] ?? p['product_id'] ?? p['id'])
-                  ?.toString() ==
+              (p) =>
+          (p['fast_key_product_id'] ?? p['product_id'] ?? p['id'])
+              ?.toString() ==
               productId.toString(),
         );
-        if (list.length == before) return null; // wasn't in this entry
+        if (list.length == before) return null;
 
         return entry
           ..json = jsonEncode(list)
@@ -798,74 +770,59 @@ class _TopBarState extends State<TopBar> {
 
       // ── 5. Single Isar write transaction ───────────────────────────────────
       await isar.writeTxn(() async {
-        // ══════════════════════════════════════════════════════════════════════
-        // 5-A  DELETED — scrub from every cached list + all related keys
-        // ══════════════════════════════════════════════════════════════════════
-        for (final productId in toDelete) {
-          if (kDebugMode)
-            print('🗑️  Processing DELETE for product $productId…');
 
-          // Scrub from every products_* entry
-          final List<IsarCacheEntry> productEntries =
-              await isar.isarCacheEntrys
-                  .where()
-                  .filter()
-                  .keyStartsWith('products_')
-                  .findAll();
+        // ════════════════════════════════════════════════════════════════════
+        // 5-A  DELETED
+        // ════════════════════════════════════════════════════════════════════
+        for (final productId in toDelete) {
+          if (kDebugMode) print('Processing DELETE for product $productId…');
+
+          final List<IsarCacheEntry> productEntries = await isar.isarCacheEntrys
+              .where()
+              .filter()
+              .keyStartsWith('products_')
+              .findAll();
 
           for (final entry in productEntries) {
-            final IsarCacheEntry? updated = await removeProductFromEntry(
-              entry.key,
-              productId,
-            );
+            final IsarCacheEntry? updated =
+            await removeProductFromEntry(entry.key, productId);
             if (updated != null) {
               await isar.isarCacheEntrys.put(updated);
-              if (kDebugMode)
-                print('  ✂️  Removed $productId from ${entry.key}');
+              if (kDebugMode) print('  ✂️  Removed $productId from ${entry.key}');
             }
           }
 
-          // Scrub from every indigo_products_* entry
-          final List<IsarCacheEntry> indigoEntries =
-              await isar.isarCacheEntrys
-                  .where()
-                  .filter()
-                  .keyStartsWith('indigo_products_')
-                  .findAll();
+          final List<IsarCacheEntry> indigoEntries = await isar.isarCacheEntrys
+              .where()
+              .filter()
+              .keyStartsWith('indigo_products_')
+              .findAll();
 
           for (final entry in indigoEntries) {
-            final IsarCacheEntry? updated = await removeProductFromEntry(
-              entry.key,
-              productId,
-            );
+            final IsarCacheEntry? updated =
+            await removeProductFromEntry(entry.key, productId);
             if (updated != null) {
               await isar.isarCacheEntrys.put(updated);
-              if (kDebugMode)
-                print('  ✂️  Removed $productId from ${entry.key}');
+              if (kDebugMode) print('  ✂️  Removed $productId from ${entry.key}');
             }
           }
 
-          // Delete sku_<id>
           await isar.isarCacheEntrys
               .filter()
               .keyEqualTo('sku_$productId')
               .deleteAll();
 
-          // Delete product_<id>_variations
           await isar.isarCacheEntrys
               .filter()
               .keyEqualTo('product_${productId}_variations')
               .deleteAll();
 
-          if (kDebugMode)
-            print('  ✅ Product $productId fully deleted from Isar');
+          if (kDebugMode) print('  ✅ Product $productId fully deleted from Isar');
         }
 
-        // ══════════════════════════════════════════════════════════════════════
-        // 5-B  CREATED / UPDATED — upsert into matching category cache entries
-        // ══════════════════════════════════════════════════════════════════════
-
-        // Group normalised products by their category IDs.
+        // ════════════════════════════════════════════════════════════════════
+        // 5-B  CREATED / UPDATED
+        // ════════════════════════════════════════════════════════════════════
         final Map<int, List<Map<String, dynamic>>> categoryProductMap = {};
 
         for (final productData in toUpsert) {
@@ -873,11 +830,9 @@ class _TopBarState extends State<TopBar> {
               (productData['categories'] as List?) ?? [];
 
           if (apiCategories.isEmpty) {
-            // No category info — still clean up sku cache
-            final int? id =
-                productData['id'] is int
-                    ? productData['id'] as int
-                    : int.tryParse(productData['id']?.toString() ?? '');
+            final int? id = productData['id'] is int
+                ? productData['id'] as int
+                : int.tryParse(productData['id']?.toString() ?? '');
             if (id != null) {
               await isar.isarCacheEntrys
                   .filter()
@@ -885,10 +840,8 @@ class _TopBarState extends State<TopBar> {
                   .deleteAll();
             }
             if (kDebugMode) {
-              print(
-                '⚠️ Product id=${productData['id']} has no categories — '
-                'skipping category cache update',
-              );
+              print('⚠️ Product id=${productData['id']} has no categories — '
+                  'skipping category cache update');
             }
             continue;
           }
@@ -896,10 +849,9 @@ class _TopBarState extends State<TopBar> {
           final Map<String, dynamic> normalised = normaliseProduct(productData);
 
           for (final cat in apiCategories) {
-            final int? catId =
-                cat['id'] is int
-                    ? cat['id'] as int
-                    : int.tryParse(cat['id']?.toString() ?? '');
+            final int? catId = cat['id'] is int
+                ? cat['id'] as int
+                : int.tryParse(cat['id']?.toString() ?? '');
             if (catId == null) continue;
             categoryProductMap.putIfAbsent(catId, () => []).add(normalised);
           }
@@ -909,49 +861,42 @@ class _TopBarState extends State<TopBar> {
           final int catId = mapEntry.key;
           final List<Map<String, dynamic>> updatedProducts = mapEntry.value;
 
-          // ── products_<catId> ───────────────────────────────────────────────
+          // ── products_<catId> ─────────────────────────────────────────────
           final String categoryKey = 'products_$catId';
-          final IsarCacheEntry? existing =
-              await isar.isarCacheEntrys
-                  .where()
-                  .filter()
-                  .keyEqualTo(categoryKey)
-                  .findFirst();
+          final IsarCacheEntry? existing = await isar.isarCacheEntrys
+              .where()
+              .filter()
+              .keyEqualTo(categoryKey)
+              .findFirst();
 
           List<Map<String, dynamic>> cachedList = [];
           if (existing != null) {
             try {
-              cachedList =
-                  (jsonDecode(existing.json) as List)
-                      .whereType<Map>()
-                      .map((m) => Map<String, dynamic>.from(m))
-                      .toList();
+              cachedList = (jsonDecode(existing.json) as List)
+                  .whereType<Map>()
+                  .map((m) => Map<String, dynamic>.from(m))
+                  .toList();
             } catch (_) {}
           }
 
           for (final updated in updatedProducts) {
             final int productId = updated['fast_key_product_id'] as int? ?? 0;
             final int idx = cachedList.indexWhere(
-              (p) =>
-                  (p['fast_key_product_id'] ?? p['id'])?.toString() ==
+                  (p) =>
+              (p['fast_key_product_id'] ?? p['id'])?.toString() ==
                   productId.toString(),
             );
             if (idx >= 0) {
-              // Merge — API data wins; preserve any extra cached keys
               cachedList[idx] = {...cachedList[idx], ...updated};
               if (kDebugMode) {
-                print(
-                  '♻️  Upserted $productId → $categoryKey | '
-                  'tags=${(updated['tags'] as List?)?.map((t) => '${t['name']}(${t['slug']})').toList()}',
-                );
+                print('♻️  Upserted $productId → $categoryKey | '
+                    'tags=${(updated['tags'] as List?)?.map((t)=>'${t['name']}(${t['slug']})').toList()}');
               }
             } else {
               cachedList.add(updated);
               if (kDebugMode) {
-                print(
-                  '➕ Inserted $productId → $categoryKey | '
-                  'tags=${(updated['tags'] as List?)?.map((t) => '${t['name']}(${t['slug']})').toList()}',
-                );
+                print('➕ Inserted $productId → $categoryKey | '
+                    'tags=${(updated['tags'] as List?)?.map((t)=>'${t['name']}(${t['slug']})').toList()}');
               }
             }
           }
@@ -963,32 +908,30 @@ class _TopBarState extends State<TopBar> {
               ..timestamp = DateTime.now(),
           );
 
-          // ── indigo_products_<catId> ────────────────────────────────────────
+          // ── indigo_products_<catId> ──────────────────────────────────────
           final String indigoKey = 'indigo_products_$catId';
-          final IsarCacheEntry? indigoExisting =
-              await isar.isarCacheEntrys
-                  .where()
-                  .filter()
-                  .keyEqualTo(indigoKey)
-                  .findFirst();
+          final IsarCacheEntry? indigoExisting = await isar.isarCacheEntrys
+              .where()
+              .filter()
+              .keyEqualTo(indigoKey)
+              .findFirst();
 
           List<Map<String, dynamic>> indigoCached = [];
           if (indigoExisting != null) {
             try {
-              indigoCached =
-                  (jsonDecode(indigoExisting.json) as List)
-                      .whereType<Map>()
-                      .map((m) => Map<String, dynamic>.from(m))
-                      .toList();
+              indigoCached = (jsonDecode(indigoExisting.json) as List)
+                  .whereType<Map>()
+                  .map((m) => Map<String, dynamic>.from(m))
+                  .toList();
             } catch (_) {}
           }
 
           for (final updated in updatedProducts) {
             final int productId = updated['fast_key_product_id'] as int? ?? 0;
             final int idx = indigoCached.indexWhere(
-              (p) =>
-                  (p['fast_key_product_id'] ?? p['product_id'] ?? p['id'])
-                      ?.toString() ==
+                  (p) =>
+              (p['fast_key_product_id'] ?? p['product_id'] ?? p['id'])
+                  ?.toString() ==
                   productId.toString(),
             );
             if (idx >= 0) {
@@ -1005,7 +948,7 @@ class _TopBarState extends State<TopBar> {
               ..timestamp = DateTime.now(),
           );
 
-          // ── Clean up sku_* for each upserted product ───────────────────────
+          // ── Clean up sku_* for each upserted product ─────────────────────
           for (final updated in updatedProducts) {
             final int productId = updated['fast_key_product_id'] as int? ?? 0;
             if (productId != 0) {
@@ -1019,10 +962,46 @@ class _TopBarState extends State<TopBar> {
       }); // end writeTxn
 
       if (kDebugMode) {
-        print(
-          '✅ Isar sync complete — '
-          'upserted: ${toUpsert.length}, deleted: ${toDelete.length}',
-        );
+        print('✅ Isar sync complete — '
+            'upserted: ${toUpsert.length}, deleted: ${toDelete.length}');
+      }
+
+      // ── 5-C. Acknowledge sync version to server ────────────────────────────
+      if (lastEventVersion != null) {
+        try {
+          final updateUrl = Uri.parse(
+            '${UrlHelper.baseUrl}'
+                '${UrlHelper.componentVersionUrl}'
+                'data-sync/update-data-count',
+          );
+
+          final updateResponse = await http.post(
+            updateUrl,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'device_id': 'POS-003',
+              'last_sync_version': lastEventVersion,
+            }),
+          );
+
+          if (kDebugMode) {
+            if (updateResponse.statusCode == 200) {
+              print('✅ Sync version acknowledged: '
+                  'last_sync_version=$lastEventVersion — '
+                  '${updateResponse.body}');
+            } else {
+              print('⚠️ update-data-count failed: '
+                  '${updateResponse.statusCode} — ${updateResponse.body}');
+            }
+          }
+        } catch (e) {
+          // Non-fatal — the local Isar sync already succeeded.
+          // Log and continue so the user still sees the success snackbar.
+          if (kDebugMode) print('⚠️ update-data-count error (non-fatal): $e');
+        }
       }
 
       // ── 6. Invalidate in-memory caches ─────────────────────────────────────
@@ -2429,6 +2408,66 @@ class _TopBarState extends State<TopBar> {
           //   },
           // ),
           const SizedBox(width: 16),
+          if (widget.screen == Screen.SHIFT) ...[
+            const SizedBox(width: 10),
+
+            GestureDetector(
+              onTap: () async {
+                if (kDebugMode) {
+                  print("Logout from TopBar");
+                }
+
+                // 🔹 Show loader
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+
+                // 🔹 Perform logout
+                await LogoutBloc(LogoutRepository()).performLogout();
+
+                await UserDbHelper().logout();
+                await PinakaPreferences.clearUserPreferences();
+                TopBar.clearUserCache();
+
+                if (kDebugMode) {
+                  print("#### User data cleared during logout");
+                }
+
+                // 🔹 Close loader
+                Navigator.of(context).pop();
+
+                // 🔹 Navigate to login
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => LoginScreen()),
+                );
+              },
+
+              child: Container(
+                padding: const EdgeInsets.all(13),
+                decoration: BoxDecoration(
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.secondaryBackground
+                      : Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: themeHelper.themeMode == ThemeMode.dark
+                        ? const Color(0xFF3B3939)
+                        : const Color(0xFFF1F1F3),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.logout,
+                  size: 24,
+                  color: Colors.grey, // 🔹 subtle red, not full button
+                ),
+              ),
+            ),
+          ],
 
           // ── Cash drawer ──────────────────────────────────────────────────────
           GestureDetector(

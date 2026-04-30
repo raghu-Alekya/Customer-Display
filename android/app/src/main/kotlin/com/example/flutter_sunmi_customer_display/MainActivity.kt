@@ -29,6 +29,7 @@ import java.text.NumberFormat
 import java.util.Locale
 import android.content.Intent
 import android.graphics.Paint
+import android.graphics.Bitmap
 
 class MainActivity : FlutterActivity() {
 
@@ -457,6 +458,10 @@ class MainActivity : FlutterActivity() {
         private var currentStoreName: String = ""
         private var currentStoreLogoUrl: String? = null
         private var currentStoreBaseUrl: String = ""
+        private var cachedLogoBitmap: Bitmap? = null
+        private var cachedLogoUrl: String? = null
+        private val imageCache = mutableMapOf<String, Bitmap>()
+
 
 
         private lateinit var slideshowContainer: LinearLayout
@@ -694,24 +699,37 @@ class MainActivity : FlutterActivity() {
             paymentTime.text = orderTime
 
             if (!storeLogoUrl.isNullOrEmpty()) {
-                Thread {
-                    try {
-                        val input = URL(storeLogoUrl).openStream()
-                        val bitmap = BitmapFactory.decodeStream(input)
-                        Handler(Looper.getMainLooper()).post {
-                            storeLogoView.setImageBitmap(bitmap)
-                            Log.d("CustomerDisplay", "✅ Loaded store logo from $storeLogoUrl")
+
+                if (storeLogoUrl == cachedLogoUrl && cachedLogoBitmap != null) {
+                    // ✅ Use cached image
+                    storeLogoView.setImageBitmap(cachedLogoBitmap)
+                    Log.d("CustomerDisplay", "⚡ Using cached logo")
+
+                } else {
+                    cachedLogoUrl = storeLogoUrl
+
+                    Thread {
+                        try {
+                            val input = URL(storeLogoUrl).openStream()
+                            val bitmap = BitmapFactory.decodeStream(input)
+
+                            cachedLogoBitmap = bitmap // 🔥 CACHE IT
+
+                            Handler(Looper.getMainLooper()).post {
+                                storeLogoView.setImageBitmap(bitmap)
+                                Log.d("CustomerDisplay", "✅ Logo loaded & cached")
+                            }
+
+                        } catch (e: Exception) {
+                            Handler(Looper.getMainLooper()).post {
+                                storeLogoView.setImageResource(R.drawable.pinaka_logo)
+                            }
                         }
-                    } catch (e: Exception) {
-                        Handler(Looper.getMainLooper()).post {
-                            storeLogoView.setImageResource(R.drawable.pinaka_logo)
-                            Log.e("CustomerDisplay", "❌ Failed to load store logo from $storeLogoUrl: ${e.message}")
-                        }
-                    }
-                }.start()
+                    }.start()
+                }
+
             } else {
                 storeLogoView.setImageResource(R.drawable.pinaka_logo)
-                Log.d("CustomerDisplay", "✅ Using default store logo")
             }
         }
         fun updateCustomerData(

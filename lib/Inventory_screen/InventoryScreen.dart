@@ -20,6 +20,7 @@ import '../../Preferences/pinaka_preferences.dart';
 import '../../Repositories/Auth/shift_repository.dart';
 import '../../Widgets/widget_topbar.dart';
 import '../../Widgets/widget_navigation_bar.dart' as custom_widgets;
+import '../Widgets/widget_alert_popup_dialogs.dart';
 import 'Inventory_Tags/inventory_tag_Widget.dart';
 import 'Inventory_Tags/inventory_tag_entity.dart';
 import 'add_product_toinventory/add_product_inventory_bloc/add_product_inventory_bloc.dart';
@@ -169,6 +170,40 @@ class _InventoryScreenState extends State<InventoryScreen>
         FocusScope.of(context).unfocus(); // ✅ ensures no keyboard
       }
     });
+  }
+  bool _hasEnteredValues() {
+    return _variantNameController.text.isNotEmpty ||
+        _stockController.text.isNotEmpty ||
+        _variantRegularPriceController.text.isNotEmpty ||
+        _variantSalePriceController.text.isNotEmpty ||
+        _selectedCategory != null ||   // ✅ ADD THIS
+        _selectedTags.isNotEmpty ||    // (optional but good)
+        _selectedTax != null;          // (optional)
+  }
+  Future<bool> _handleBack() async {
+    if (_hasEnteredValues()) {
+      bool shouldProceed = false;
+
+      await CustomDialog.showAreYouSure(
+        context,
+        description: "You have entered cash values. Do you want to discard and go back?",
+        confirmText: "Yes, Confirm",
+        cancelText: "No, Keep it",
+        confirm: () {
+          shouldProceed = true;
+          Navigator.of(context).pop();
+        },
+      );
+
+      if (shouldProceed) {
+        Navigator.of(context).maybePop(); // for back button
+      }
+
+      return shouldProceed;
+    } else {
+      Navigator.of(context).maybePop();
+      return true;
+    }
   }
 
   void _handleUnitNameCreate() async {
@@ -1106,6 +1141,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                     if (sidebarPosition == SidebarPosition.left)
                       custom_widgets.NavigationBar(
                         selectedSidebarIndex: _selectedSidebarIndex,
+                        onWillNavigate: (_) => _handleBack(),
                         onSidebarItemSelected: (index) =>
                             setState(() => _selectedSidebarIndex = index),
                         isVertical: true,
@@ -1131,7 +1167,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         color: isDark ? Color(0xFF3B4259) : Color(0xFF3B4259),
                                         borderRadius: BorderRadius.circular(8.0)),
                                     child: TextButton.icon(
-                                      onPressed: () => Navigator.pop(context),
+                                      onPressed: _handleBack,
                                       icon: const Icon(Icons.arrow_back_rounded,
                                           color: Colors.white, size: 15),
                                       label: const Text('Back',
@@ -1221,6 +1257,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                     if (sidebarPosition == SidebarPosition.right)
                       custom_widgets.NavigationBar(
                         selectedSidebarIndex: _selectedSidebarIndex,
+                        onWillNavigate: (_) => _handleBack(),
                         onSidebarItemSelected: (index) =>
                             setState(() => _selectedSidebarIndex = index),
                         isVertical: true,
@@ -1231,6 +1268,7 @@ class _InventoryScreenState extends State<InventoryScreen>
               if (sidebarPosition == SidebarPosition.bottom)
                 custom_widgets.NavigationBar(
                   selectedSidebarIndex: _selectedSidebarIndex,
+                  onWillNavigate: (_) => _handleBack(),
                   onSidebarItemSelected: (index) =>
                       setState(() => _selectedSidebarIndex = index),
                   isVertical: false,

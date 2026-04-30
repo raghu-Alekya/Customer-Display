@@ -1069,107 +1069,104 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                           children: [
                             Spacer(),
                             SizedBox(
-                              height: MediaQuery.of(context).size.height * 0.075, // ✅ same as filter
+                              height: MediaQuery.of(context).size.height * 0.085,
                               child: Container(
+                                width: 180,
                                 margin: const EdgeInsets.symmetric(vertical: 10),
-                                child: Chip(
-                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  padding: EdgeInsets.zero, // ✅ remove extra chip padding
-                                  backgroundColor: _searchController.text.isNotEmpty
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                decoration: BoxDecoration(
+                                  color: _searchController.text.isNotEmpty
                                       ? Colors.redAccent
                                       : themeHelper.themeMode == ThemeMode.dark
                                       ? const Color(0xFF252837)
                                       : Colors.grey.shade200,
-                                  side: BorderSide(
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
                                     color: themeHelper.themeMode == ThemeMode.dark
                                         ? ThemeNotifier.borderColor
                                         : Colors.grey.shade400,
-                                    width: 1.0,
                                   ),
-                                  label: SizedBox(
-                                    width: 150,
-                                    // height: double.infinity, // ✅ fill full chip height
-                                    child: TextField(
-                                      controller: _searchController,
-                                      keyboardType: TextInputType.number, // ✅ numeric keyboard
-                                      inputFormatters: [
-                                        FilteringTextInputFormatter.digitsOnly, // ✅ only digits allowed
-                                      ],
-                                      textAlignVertical: TextAlignVertical.center,
-                                      onChanged: (value) {
-                                        _searchDebounce?.cancel();
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.search,
+                                      size: 18,
+                                      color: _searchController.text.isNotEmpty
+                                          ? Colors.white
+                                          : themeHelper.themeMode == ThemeMode.dark
+                                          ? ThemeNotifier.textDark
+                                          : Colors.black,
+                                    ),
 
-                                        _searchDebounce = Timer(const Duration(milliseconds: 400), () {
-                                          if (!mounted) return;
+                                    const SizedBox(width: 6),
 
-                                          setState(() {
-                                            _currentPage = 1;
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _searchController,
+                                        keyboardType: TextInputType.number,
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.digitsOnly,
+                                        ],
+                                        textAlignVertical: TextAlignVertical.center,
+                                        onChanged: (value) {
+                                          print("🔍 User typed: $value");
+
+                                          _searchDebounce?.cancel();
+
+                                          _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+                                            if (!mounted) return;
+
+                                            print("⏱ Debounced: ${_searchController.text}");
+
+                                            setState(() {
+                                              _currentPage = 1;
+                                            });
+
+                                            _fetchOrders();
                                           });
-
-                                          _fetchOrders();
-                                        });
-                                      },
-                                      style: TextStyle(
-                                        color: _searchController.text.isNotEmpty
-                                            ? Colors.white
-                                            : themeHelper.themeMode == ThemeMode.dark
-                                            ? ThemeNotifier.textDark
-                                            : Colors.black,
-                                        fontSize: 13,
-                                      ),
-                                      decoration: InputDecoration(
-                                        hintText: "Search Order ID",
-                                        hintStyle: TextStyle(
-                                          color: _searchController.text.isNotEmpty
-                                              ? Colors.white70
-                                              : themeHelper.themeMode == ThemeMode.dark
-                                              ? ThemeNotifier.textDark
-                                              : Colors.black,
-                                          fontSize: 13,
-                                        ),
-                                        prefixIcon: Icon(
-                                          Icons.search,
-                                          size: 18,
+                                        },
+                                        style: TextStyle(
                                           color: _searchController.text.isNotEmpty
                                               ? Colors.white
                                               : themeHelper.themeMode == ThemeMode.dark
                                               ? ThemeNotifier.textDark
                                               : Colors.black,
+                                          fontSize: 13,
                                         ),
-                                        suffixIcon: _searchController.text.isNotEmpty
-                                            ? Padding(
-                                          padding: const EdgeInsets.only(right: 4),
-                                          child: IconButton(
-                                            splashRadius: 18,
-                                            icon: const Icon(Icons.close, size: 18, color: Colors.white),
-                                            onPressed: () {
-                                              _searchDebounce?.cancel();
-
-                                              _searchController.clear();
-
-                                              setState(() {
-                                                _currentPage = 1;
-
-                                                // 🔥 Clear UI immediately
-                                                _orders.clear();
-                                                _pageOrders.clear();
-                                                _visibleOrders.clear();
-                                              });
-
-                                              // 🔥 Optional: delay API call slightly
-                                              Future.delayed(const Duration(milliseconds: 100), () {
-                                                if (mounted) _fetchOrders();
-                                              });
-                                            },
-                                          ),
-                                        )
-                                            : null,
-                                        border: InputBorder.none,
-                                        isDense: true,
-                                        contentPadding: EdgeInsets.zero, // ✅ important for height match
+                                        decoration: const InputDecoration(
+                                          hintText: "Search Order ID",
+                                          border: InputBorder.none,
+                                          isDense: true,
+                                        ),
                                       ),
                                     ),
-                                  ),
+
+                                    // ✅ CLEAR BUTTON (NOW WILL WORK)
+                                    if (_searchController.text.isNotEmpty)
+                                      GestureDetector(
+                                        onTap: () {
+                                          print("❌ Clear button clicked");
+
+                                          _searchDebounce?.cancel();
+
+                                          _searchController.clear();
+
+                                          setState(() {
+                                            _currentPage = 1;
+                                            _orders.clear();
+                                            _pageOrders.clear();
+                                            _visibleOrders.clear();
+                                          });
+
+                                          _fetchOrders();
+                                        },
+                                        child: const Padding(
+                                          padding: EdgeInsets.all(6),
+                                          child: Icon(Icons.close, size: 18, color: Colors.white),
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ),
                             ),

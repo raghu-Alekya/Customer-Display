@@ -7813,11 +7813,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   bool isGenerateCouponActive = false;
+
   Future<bool> _syncAndShowCouponPopup() async {
     if (_isProcessing) return false;
 
     setState(() => _isProcessing = true);
-
     bool loaderOpen = true;
 
     showDialog(
@@ -7834,7 +7834,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         loaderOpen = false;
       }
 
-      // 🔒 HARD GUARD
       if (response == null || response is! Map<String, dynamic>) {
         _showErrorPopup("Coupon applied but no response data received.");
         return false;
@@ -7847,10 +7846,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
 
       final coupon = coupons.first;
-      final double discountAmount =
-          (coupon["amount"] as num?)?.toDouble() ?? 0.0;
+      final double discountAmount = (coupon["amount"] as num?)?.toDouble() ?? 0.0;
+      final String couponCode = coupon["code"]?.toString() ?? "";
 
-      // ✅ Only update UI state here; save to Hive only after user clicks OK
+      // Optional: Early minimum amount check (if backend provides it)
+      final double minAmount = (coupon["min_amount"] as num?)?.toDouble() ?? 0.0;
+      final double currentSubtotal = grossTotal; // or computed subtotal
+
+      if (minAmount > 0 && currentSubtotal < minAmount) {
+        _showErrorPopup("Coupon '$couponCode' requires minimum order of \$$minAmount");
+        return false;
+      }
+
+      // Update UI temporarily
       setState(() {
         couponValue = discountAmount;
         ebtTotal = 0.0;
@@ -7858,24 +7866,20 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         isGenerateCouponActive = true;
       });
 
-      // ✅ Await popup result: true = OK (confirm), false = X (cancel)
+      // Show confirmation popup
       final bool confirmed = await _showCouponResponsePopup(response);
 
       if (!confirmed) {
-        // User closed with X – don't save to Hive, reset UI state so they can issue again
         debugPrint("🔵 Coupon popup closed with X – not saving to Hive");
-        setState(() {
-          isGenerateCouponActive = false;
-        });
+        setState(() => isGenerateCouponActive = false);
         return false;
       }
 
+      // === Save to Hive only after user confirmation ===
       final box = StorageProvider.offlineOrders;
-
       final String key = offlineOrder?['id']?.toString() ??
           offlineOrder?['order_id']?.toString() ??
-          offlineOrder?['local_order_id']?.toString() ??
-          "";
+          offlineOrder?['local_order_id']?.toString() ?? "";
 
       if (key.isEmpty) return true;
 
@@ -7885,6 +7889,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           ? Map<String, dynamic>.from(raw)
           : Map<String, dynamic>.from(offlineOrder!);
 
+      // Prepare issued coupons
       final List<Map<String, dynamic>> issueCoupons = [];
       for (final c in response["coupons"] as List? ?? []) {
         if (c is! Map) continue;
@@ -7894,6 +7899,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         }
         issueCoupons.add(m);
       }
+
+      // Keep previous redeemed coupons
       final prevCoupons = <Map<String, dynamic>>[];
       final prevCr = existing["coupon_response"];
       if (prevCr is Map && prevCr["coupons"] is List) {
@@ -7901,10 +7908,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           if (x is Map) prevCoupons.add(Map<String, dynamic>.from(x));
         }
       }
-      final keptRedeems =
-      prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
+
+      final keptRedeems = prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
+
       final mergedResponse = Map<String, dynamic>.from(response);
       mergedResponse["coupons"] = [...issueCoupons, ...keptRedeems];
+
       existing["coupon_response"] = mergedResponse;
       existing["coupon_applied"] = true;
       existing["coupon_applied_at"] = DateTime.now().toIso8601String();
@@ -7913,8 +7922,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       await box.put(key, existing);
       offlineOrder = existing;
 
-      debugPrint("✅ Coupon saved in Hive for order $key");
+      debugPrint("✅ Generated Coupon saved in Hive for order $key");
       return true;
+
     } catch (e) {
       if (loaderOpen) {
         Navigator.of(context).pop();
@@ -7927,6 +7937,121 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       setState(() => _isProcessing = false);
     }
   }
+
+  // Future<bool> _syncAndShowCouponPopup() async {
+  //   if (_isProcessing) return false;
+  //
+  //   setState(() => _isProcessing = true);
+  //
+  //   bool loaderOpen = true;
+  //
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (_) => const Center(child: CircularProgressIndicator()),
+  //   );
+  //
+  //   try {
+  //     final response = await OrderRepository().CouponApply(offlineOrder!);
+  //
+  //     if (loaderOpen) {
+  //       Navigator.of(context).pop();
+  //       loaderOpen = false;
+  //     }
+  //
+  //     // 🔒 HARD GUARD
+  //     if (response == null || response is! Map<String, dynamic>) {
+  //       _showErrorPopup("Coupon applied but no response data received.");
+  //       return false;
+  //     }
+  //
+  //     final coupons = response["coupons"] as List? ?? [];
+  //     if (coupons.isEmpty) {
+  //       _showErrorPopup("Coupon applied, but no coupon details returned.");
+  //       return false;
+  //     }
+  //
+  //     final coupon = coupons.first;
+  //     final double discountAmount =
+  //         (coupon["amount"] as num?)?.toDouble() ?? 0.0;
+  //
+  //     // ✅ Only update UI state here; save to Hive only after user clicks OK
+  //     setState(() {
+  //       couponValue = discountAmount;
+  //       ebtTotal = 0.0;
+  //       cashbackFee = 0.0;
+  //       isGenerateCouponActive = true;
+  //     });
+  //
+  //     // ✅ Await popup result: true = OK (confirm), false = X (cancel)
+  //     final bool confirmed = await _showCouponResponsePopup(response);
+  //
+  //     if (!confirmed) {
+  //       // User closed with X – don't save to Hive, reset UI state so they can issue again
+  //       debugPrint("🔵 Coupon popup closed with X – not saving to Hive");
+  //       setState(() {
+  //         isGenerateCouponActive = false;
+  //       });
+  //       return false;
+  //     }
+  //
+  //     final box = StorageProvider.offlineOrders;
+  //
+  //     final String key = offlineOrder?['id']?.toString() ??
+  //         offlineOrder?['order_id']?.toString() ??
+  //         offlineOrder?['local_order_id']?.toString() ??
+  //         "";
+  //
+  //     if (key.isEmpty) return true;
+  //
+  //     final hasKey = await box.containsKey(key);
+  //     final raw = hasKey ? await box.get(key) : null;
+  //     final Map<String, dynamic> existing = raw is Map
+  //         ? Map<String, dynamic>.from(raw)
+  //         : Map<String, dynamic>.from(offlineOrder!);
+  //
+  //     final List<Map<String, dynamic>> issueCoupons = [];
+  //     for (final c in response["coupons"] as List? ?? []) {
+  //       if (c is! Map) continue;
+  //       final m = Map<String, dynamic>.from(c);
+  //       if (m["generate_type"] != true) {
+  //         m["generate_type"] = false;
+  //       }
+  //       issueCoupons.add(m);
+  //     }
+  //     final prevCoupons = <Map<String, dynamic>>[];
+  //     final prevCr = existing["coupon_response"];
+  //     if (prevCr is Map && prevCr["coupons"] is List) {
+  //       for (final x in prevCr["coupons"] as List) {
+  //         if (x is Map) prevCoupons.add(Map<String, dynamic>.from(x));
+  //       }
+  //     }
+  //     final keptRedeems =
+  //     prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
+  //     final mergedResponse = Map<String, dynamic>.from(response);
+  //     mergedResponse["coupons"] = [...issueCoupons, ...keptRedeems];
+  //     existing["coupon_response"] = mergedResponse;
+  //     existing["coupon_applied"] = true;
+  //     existing["coupon_applied_at"] = DateTime.now().toIso8601String();
+  //     existing["coupon_amount"] = discountAmount;
+  //
+  //     await box.put(key, existing);
+  //     offlineOrder = existing;
+  //
+  //     debugPrint("✅ Coupon saved in Hive for order $key");
+  //     return true;
+  //   } catch (e) {
+  //     if (loaderOpen) {
+  //       Navigator.of(context).pop();
+  //       loaderOpen = false;
+  //     }
+  //     _showErrorPopup("Something went wrong while applying coupon.");
+  //     debugPrint("❌ Coupon popup error: $e");
+  //     return false;
+  //   } finally {
+  //     setState(() => _isProcessing = false);
+  //   }
+  // }
 
   void _showErrorPopup(String message) {
     showDialog(
@@ -8623,215 +8748,300 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Future<void> _applyCoupon(String code) async {
+    code = code.trim();
+    if (code.isEmpty) return;
+
     try {
       final box = StorageProvider.offlineOrders;
-
-      final String orderKey =
-          widget.orderId?.toString() ?? widget.offlineOrderId?.toString() ?? "";
+      final String orderKey = widget.orderId?.toString() ??
+          widget.offlineOrderId?.toString() ?? "";
 
       if (orderKey.isEmpty) return;
 
       final rawOrder = await box.get(orderKey);
-
-      final offlineOrder = Map<String, dynamic>.from(
+      Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(
         rawOrder is Map ? rawOrder : {},
       );
 
       if (offlineOrder.isEmpty) return;
 
-      // Store coupon locally (redeem: generate_type true; keep issued coupons if any)
+      setState(() => isSummaryLoading = true);
 
+      // ✅ BACKUP original coupon_response BEFORE any modification
+      final dynamic originalCouponResponse = offlineOrder["coupon_response"];
+
+      // === 1. Merge only the new redeem coupon ===
       offlineOrder["coupon_response"] =
           _mergeRedeemIntoCouponResponse(offlineOrder["coupon_response"], code);
 
-      // ✅ Use LOCAL order ID instead of Woo ID for syncing
+      _cleanInvalidRedeemCoupons(offlineOrder, code);
 
       final int? localOrderId = int.tryParse(orderKey);
-
       if (localOrderId != null) {
-        offlineOrder["id"] = localOrderId; // critical for local sync
+        offlineOrder["id"] = localOrderId;
       }
 
       await box.put(orderKey, offlineOrder);
 
-      setState(() => isSummaryLoading = true);
+      // === 2. Try sync with server ===
+      final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
 
-      // Send to repository with local ID
+      if (result == null || result is! Map<String, dynamic>) {
+        // ✅ RESTORE original coupon_response on failure
+        offlineOrder["coupon_response"] = originalCouponResponse;
+        await box.put(orderKey, offlineOrder);
 
-      final result =
-      await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+        String errorMsg = "Invalid coupon or unable to apply";
+        if (result is Map && result?['code'] == 'invalid_coupon') {
+          errorMsg = result?['message'] ?? errorMsg;
+        }
 
-      if (result == null || result is! Map) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Invalid coupon or unable to apply"),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text(errorMsg), backgroundColor: Colors.orange),
         );
-
         return;
       }
 
-      // ⭐ Extract values from repository response
-
-      final double newDiscount =
-          double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
-
-      final double newTax =
-          double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
-
-      final double newTotal =
-          double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
-
-      // Update offline order fields
+      // === 3. Success ===
+      final double newDiscount = double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
+      final double newTax = double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
+      final double newTotal = double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
 
       offlineOrder["orderDiscount"] = newDiscount;
-
       offlineOrder["tax_discount"] = newTax;
-
       offlineOrder["grand_total"] = newTotal;
-
       offlineOrder["coupon_applied"] = true;
-
-      offlineOrder["applied_coupons"] = [
-        {"code": code, "amount": newDiscount}
-      ];
-
-      // ✅ Store Woo info if returned, but do NOT send Woo ID next time
+      offlineOrder["applied_coupons"] = [{"code": code, "amount": newDiscount}];
 
       if (result.containsKey("id")) {
         offlineOrder["wooOrderId"] = result["id"];
-
-        offlineOrder["wooStatus"] =
-            result["status"]?.toString().toLowerCase() ?? '';
-
+        offlineOrder["wooStatus"] = result["status"]?.toString().toLowerCase() ?? '';
         offlineOrder["synced"] = true;
-
         offlineOrder["sync_at"] = DateTime.now().toIso8601String();
       }
 
       _enrichRedeemCouponIdsFromWoo(offlineOrder, result, code);
-
       await box.put(orderKey, offlineOrder);
 
-      // 🔥 Update display
-
-      await CustomerDisplayHelper.updateCustomerDisplay(
-        localOrderId!,
-        summaryEnabled: true,
-      );
+      if (localOrderId != null) {
+        await CustomerDisplayHelper.updateCustomerDisplay(localOrderId, summaryEnabled: true);
+      }
 
       setState(() {
-        // Enforce negative sign for display consistency (-$5.00)
-        discount = (newDiscount != 0) ? -(newDiscount.abs()) : 0.0;
+        discount = (newDiscount != 0) ? -newDiscount.abs() : 0.0;
         tax = newTax;
-
-        // Use algebraic sum
         NetTotal = grossTotal + discount + merchantDiscount;
         computedNetPayable = NetTotal + tax + cashbackFee;
         orderTotal = newTotal;
-
         balanceAmount = newTotal;
-
         isCouponAppliedFromApi = true;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Coupon applied successfully"),
-          backgroundColor: Colors.green,
-        ),
+        const SnackBar(content: Text("Coupon applied successfully"), backgroundColor: Colors.green),
       );
 
-      print(
-          "✅ Coupon Applied (local ID $localOrderId): Discount $newDiscount, Tax $newTax, Total $newTotal");
     } catch (e) {
       print("❌ Apply coupon error: $e");
+
+      // ✅ RESTORE on exception too
+      try {
+        final box = StorageProvider.offlineOrders;
+        final String orderKey = widget.orderId?.toString() ??
+            widget.offlineOrderId?.toString() ?? "";
+        if (orderKey.isNotEmpty) {
+          final rawOrder = await box.get(orderKey);
+          if (rawOrder is Map) {
+            final order = Map<String, dynamic>.from(rawOrder);
+            // If coupon_response was corrupted, restore to only issued coupons
+            final cr = order["coupon_response"];
+            if (cr is Map) {
+              final map = Map<String, dynamic>.from(cr);
+              final coupons = (map['coupons'] as List? ?? []);
+              map['coupons'] = coupons.where((c) {
+                if (c is! Map) return false;
+                return !_couponHiveEntryIsRedeem(Map<String, dynamic>.from(c));
+              }).toList();
+              order["coupon_response"] = map;
+              await box.put(orderKey, order);
+            }
+          }
+        }
+      } catch (_) {}
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to apply coupon"), backgroundColor: Colors.red),
+      );
     } finally {
       setState(() => isSummaryLoading = false);
     }
   }
 
+  /// Remove previously failed/invalid redeem coupons before syncing
+  void _cleanInvalidRedeemCoupons(Map<String, dynamic> offlineOrder, String currentCode) {
+    final cr = offlineOrder['coupon_response'];
+    if (cr is! Map) return;
+
+    final map = Map<String, dynamic>.from(cr);
+    final List<dynamic> coupons = map['coupons'] as List? ?? [];
+
+    final cleaned = <Map<String, dynamic>>[];
+
+    for (final c in coupons) {
+      if (c is! Map) continue;
+
+      final couponMap = Map<String, dynamic>.from(c);
+      final isRedeem = _couponHiveEntryIsRedeem(couponMap);
+
+      if (!isRedeem) {
+        // Always keep issued (generate_type: false) coupons
+        cleaned.add(couponMap);
+      } else {
+        // For ALL redeem coupons: only keep the one currently being tried
+        // This ensures only ONE redeem coupon is ever sent to Woo at a time
+        final code = couponMap['code']?.toString().trim();
+        if (code == currentCode) {
+          cleaned.add(couponMap);
+        }
+        // Drop all other redeem coupons (including previously valid ones)
+        // If new coupon succeeds, it becomes the active redeem coupon
+      }
+    }
+
+    map['coupons'] = cleaned;
+    offlineOrder['coupon_response'] = map;
+  }
+
   // Future<void> _applyCoupon(String code) async {
-  //   if (widget.orderId == null || widget.orderId == 0) return;
-  //
-  //   setState(() => isSummaryLoading = true);
-  //
   //   try {
-  //     final response = await orderBloc.applyCouponToOrder(
-  //       orderId: widget.orderId!,
-  //       couponCode: code,
+  //     final box = StorageProvider.offlineOrders;
+  //
+  //     final String orderKey =
+  //         widget.orderId?.toString() ?? widget.offlineOrderId?.toString() ?? "";
+  //
+  //     if (orderKey.isEmpty) return;
+  //
+  //     final rawOrder = await box.get(orderKey);
+  //
+  //     final offlineOrder = Map<String, dynamic>.from(
+  //       rawOrder is Map ? rawOrder : {},
   //     );
   //
-  //     // ----------- SHOW REPOSITORY ERROR MESSAGE -----------
-  //     if (response == null) {
-  //       final errorMessage = orderBloc.lastApplyCouponError.isNotEmpty
-  //           ? orderBloc.lastApplyCouponError
-  //           : "Invalid coupon or unable to apply coupon";
+  //     if (offlineOrder.isEmpty) return;
   //
+  //     // Store coupon locally (redeem: generate_type true; keep issued coupons if any)
+  //
+  //     offlineOrder["coupon_response"] =
+  //         _mergeRedeemIntoCouponResponse(offlineOrder["coupon_response"], code);
+  //
+  //     // ✅ Use LOCAL order ID instead of Woo ID for syncing
+  //
+  //     final int? localOrderId = int.tryParse(orderKey);
+  //
+  //     if (localOrderId != null) {
+  //       offlineOrder["id"] = localOrderId; // critical for local sync
+  //     }
+  //
+  //     await box.put(orderKey, offlineOrder);
+  //
+  //     setState(() => isSummaryLoading = true);
+  //
+  //     // Send to repository with local ID
+  //
+  //     final result =
+  //     await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+  //
+  //     if (result == null || result is! Map) {
   //       ScaffoldMessenger.of(context).showSnackBar(
-  //         SnackBar(
-  //           content: Text(errorMessage),
+  //         const SnackBar(
+  //           content: Text("Invalid coupon or unable to apply"),
   //           backgroundColor: Colors.red,
   //         ),
   //       );
+  //
   //       return;
   //     }
   //
-  //     // ---------------- SUCCESS FLOW ----------------
-  //     oldTax = tax;
+  //     // ⭐ Extract values from repository response
   //
-  //     final appliedDiscount = double.tryParse(response.discountTotal) ?? 0.0;
-  //     final updatedTax = double.tryParse(response.totalTax) ?? tax;
+  //     final double newDiscount =
+  //         double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
+  //
+  //     final double newTax =
+  //         double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
+  //
+  //     final double newTotal =
+  //         double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
+  //
+  //     // Update offline order fields
+  //
+  //     offlineOrder["orderDiscount"] = newDiscount;
+  //
+  //     offlineOrder["tax_discount"] = newTax;
+  //
+  //     offlineOrder["grand_total"] = newTotal;
+  //
+  //     offlineOrder["coupon_applied"] = true;
+  //
+  //     offlineOrder["applied_coupons"] = [
+  //       {"code": code, "amount": newDiscount}
+  //     ];
+  //
+  //     // ✅ Store Woo info if returned, but do NOT send Woo ID next time
+  //
+  //     if (result.containsKey("id")) {
+  //       offlineOrder["wooOrderId"] = result["id"];
+  //
+  //       offlineOrder["wooStatus"] =
+  //           result["status"]?.toString().toLowerCase() ?? '';
+  //
+  //       offlineOrder["synced"] = true;
+  //
+  //       offlineOrder["sync_at"] = DateTime.now().toIso8601String();
+  //     }
+  //
+  //     _enrichRedeemCouponIdsFromWoo(offlineOrder, result, code);
+  //
+  //     await box.put(orderKey, offlineOrder);
+  //
+  //     // 🔥 Update display
+  //
+  //     await CustomerDisplayHelper.updateCustomerDisplay(
+  //       localOrderId!,
+  //       summaryEnabled: true,
+  //     );
+  //
   //     setState(() {
-  //       discount = appliedDiscount;
-  //       tax = updatedTax;
-  //       NetTotal = grossTotal - discount;
-  //       computedNetPayable =
-  //           NetTotal + tax - merchantDiscount + cashbackFee;
-  //       orderTotal = computedNetPayable;
-  //       balanceAmount = computedNetPayable;
-  //       isCouponAppliedFromApi = true; // 🔥 IMPORTANT
-  //       if (loyaltyData != null) {
-  //         loyaltyData = {
-  //           ...loyaltyData!,
-  //           "existing_net_payable": computedNetPayable,
-  //           "new_payable_amount": computedNetPayable - redeemedValue,
-  //         };
-  //       }
+  //       // Enforce negative sign for display consistency (-$5.00)
+  //       discount = (newDiscount != 0) ? -(newDiscount.abs()) : 0.0;
+  //       tax = newTax;
+  //
+  //       // Use algebraic sum
+  //       NetTotal = grossTotal + discount + merchantDiscount;
+  //       computedNetPayable = NetTotal + tax + cashbackFee;
+  //       orderTotal = newTotal;
+  //
+  //       balanceAmount = newTotal;
+  //
+  //       isCouponAppliedFromApi = true;
   //     });
   //
-  //     final offlineBox = StorageProvider.offlineOrders;
-  //     final localKey = widget.offlineOrderId?.toString();
-  //
-  //     if (localKey != null) {
-  //       final existing = offlineBox.get(localKey);
-  //       if (existing != null) {
-  //         final data = Map<String, dynamic>.from(existing);
-  //         data["orderDiscount"] = appliedDiscount;
-  //         data["wooTax"] = updatedTax;
-  //         offlineBox.put(localKey, data);
-  //       }
-  //     }
-  //
-  //     // Customer Display
-  //     final localOrderId = widget.offlineOrderId;
-  //     if (localOrderId != null) {
-  //       await CustomerDisplayHelper.updateCustomerDisplay(localOrderId);
-  //     }
-  //
-  //   } catch (e) {
-  //     print("❌ ERROR applying coupon: $e");
   //     ScaffoldMessenger.of(context).showSnackBar(
   //       const SnackBar(
-  //         content: Text("Something went wrong"),
-  //         backgroundColor: Colors.red,
+  //         content: Text("Coupon applied successfully"),
+  //         backgroundColor: Colors.green,
   //       ),
   //     );
+  //
+  //     print(
+  //         "✅ Coupon Applied (local ID $localOrderId): Discount $newDiscount, Tax $newTax, Total $newTotal");
+  //   } catch (e) {
+  //     print("❌ Apply coupon error: $e");
   //   } finally {
   //     setState(() => isSummaryLoading = false);
   //   }
   // }
+
   Widget _buildAmountDisplay(
       String label,
       String amount, {
@@ -9735,110 +9945,102 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   Future<void> _syncCurrentOfflineOrder() async {
     final String orderKey = widget.orderId?.toString() ??
         widget.offlineOrderId?.toString() ??
-        orderId?.toString() ??
-        "";
+        orderId?.toString() ?? "";
 
-    if (orderKey.isEmpty) {
-      print("❌ No order key found for sync");
-      return;
-    }
+    if (orderKey.isEmpty) return;
 
-    // Guard against duplicate calls from multiple UI flows (void cancel, exit, receipt actions)
-    if (_isOrderSyncInProgress && _activeSyncOrderKey == orderKey) {
-      print("⏭ Sync skipped: already running for order $orderKey");
-      return;
-    }
-
-    final now = DateTime.now();
-    if (_lastSyncedOrderKey == orderKey &&
-        _lastOrderSyncAt != null &&
-        now.difference(_lastOrderSyncAt!).inMilliseconds < 1500) {
-      print("⏭ Sync skipped: duplicate trigger for order $orderKey");
-      return;
-    }
+    if (_isOrderSyncInProgress && _activeSyncOrderKey == orderKey) return;
 
     _isOrderSyncInProgress = true;
     _activeSyncOrderKey = orderKey;
 
     try {
       final box = StorageProvider.offlineOrders;
-
       final raw = await box.get(orderKey);
-      if (raw is! Map) return;
+      if (raw is! Map<String, dynamic>) return;
 
-      final order = Map<String, dynamic>.from(raw);
+      var order = Map<String, dynamic>.from(raw);
 
-      final int? localOrderId = int.tryParse(orderKey);
-      if (localOrderId == null) return;
+      // === CRITICAL: Handle coupon validation failures ===
+      bool syncSuccess = false;
+      int retryCount = 0;
+      const maxRetries = 3;
 
-      final payments = (await LocalPaymentDBHelper.instance
-          .getPaymentsByOrderId(localOrderId))
-          .where((p) => !p.isSynced)
-          .toList();
+      while (!syncSuccess && retryCount < maxRetries) {
+        retryCount++;
 
-      print("💰 Single sync payments attached → ${payments.length}");
+        final result = await OrderRepository().syncSingleOfflineOrder(order);
 
-      final result = await OrderRepository().syncSingleOfflineOrder(order);
+        if (result != null && result is Map) {
+          // Success
+          syncSuccess = true;
+          final woo = Map<String, dynamic>.from(result);
+          final wooOrderId = woo['id'] ?? 0;
+          final wooStatus = woo['status']?.toString().toLowerCase() ?? '';
 
-      if (result == null || result is! Map) {
-        if (kDebugMode) {
-          print("❌ Invalid Woo response for order → $orderKey");
+          // Mark payments synced
+          final localOrderId = int.tryParse(orderKey);
+          if (localOrderId != null) {
+            final payments = await LocalPaymentDBHelper.instance
+                .getPaymentsByOrderId(localOrderId);
+            for (final p in payments.where((p) => !p.isSynced)) {
+              await LocalPaymentDBHelper.instance.markAsSynced(p.id, wooOrderId);
+            }
+          }
+
+          // Clean up Hive
+          if (wooStatus == 'completed') {
+            await box.delete(orderKey);
+            print("✅ Order $orderKey synced & deleted (completed)");
+          } else {
+            order['wooOrderId'] = wooOrderId;
+            order['wooStatus'] = wooStatus;
+            order['synced'] = true;
+            order['sync_at'] = DateTime.now().toIso8601String();
+            await box.put(orderKey, order);
+          }
+
+        } else if (retryCount < maxRetries) {
+          // === HANDLE COUPON FAILURE GRACEFULLY ===
+          print("⚠️ Sync attempt $retryCount failed. Checking for coupon issues...");
+
+          // Remove problematic coupons from this attempt and retry
+          if (order['coupon_response'] is Map) {
+            final cr = Map<String, dynamic>.from(order['coupon_response']);
+            final coupons = (cr['coupons'] as List?) ?? [];
+
+            // Keep only "issued" coupons (generate_type: false), remove redeem ones that failed
+            final keptCoupons = coupons.where((c) {
+              if (c is Map) {
+                final isRedeem = c['generate_type'] == true ||
+                    (c['code']?.toString().contains("2026") ?? false);
+                return !isRedeem;
+              }
+              return true;
+            }).toList();
+
+            cr['coupons'] = keptCoupons;
+            order['coupon_response'] = cr;
+            order['coupon_lines'] = []; // clear for next attempt
+            order['coupon_applied'] = keptCoupons.isNotEmpty;
+
+            print("🔄 Removed failing coupons. Retrying sync...");
+            await box.put(orderKey, order); // save cleaned version
+          }
+        } else {
+          print("❌ All retry attempts failed for order $orderKey");
+          // Optional: mark as partially synced or show user notification
         }
-        return; // replaced 'continue' with return
       }
 
-      final Map<String, dynamic> woo = Map<String, dynamic>.from(result);
-      final int wooOrderId = woo['id'] ?? 0;
-      final String wooStatus = woo['status']?.toString().toLowerCase() ?? '';
-
-      if (kDebugMode) {
-        print("🟣 Woo response → order:$wooOrderId status:$wooStatus");
-      }
-
-      // ✅ Mark payments as synced
-      for (final p in payments) {
-        await LocalPaymentDBHelper.instance.markAsSynced(p.id, wooOrderId);
-      }
-
-      // Match offline_order_sync_service: only remove Hive once Woo is completed.
-      // Deleting on "processing" wiped wooOrderId and the next sync created a new Woo order.
-      if (wooStatus == 'completed') {
-        await box.delete(orderKey);
-        await box.delete(wooOrderId.toString());
-
-        if (kDebugMode) {
-          print(
-            "🗑️ Offline order deleted → local:$orderKey woo:$wooOrderId",
-          );
-        }
-        return;
-      }
-
-      // 🔁 Otherwise keep order for retry
-      order['wooOrderId'] = wooOrderId;
-      order['wooStatus'] = wooStatus;
-      order['synced'] = true;
-      order['sync_at'] = DateTime.now().toIso8601String();
-
-      await box.put(orderKey, order);
-
-      print("✅ Single order synced successfully");
-      if (mounted) {
-        // ScaffoldMessenger.of(context).showSnackBar(
-        //   const SnackBar(
-        //     content: Text("Order synced successfully"),
-        //     backgroundColor: Colors.green,
-        //     duration: Duration(seconds: 2),
-        //   ),
-        // );
-      }
-    } catch (e) {
-      print("❌ Single order sync error: $e");
+    } catch (e, stack) {
+      print("❌ _syncCurrentOfflineOrder error: $e");
+      print(stack);
     } finally {
-      _lastSyncedOrderKey = orderKey;
-      _lastOrderSyncAt = DateTime.now();
       _isOrderSyncInProgress = false;
       _activeSyncOrderKey = null;
+      _lastSyncedOrderKey = orderKey;
+      _lastOrderSyncAt = DateTime.now();
     }
   }
 
