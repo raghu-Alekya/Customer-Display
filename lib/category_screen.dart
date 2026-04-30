@@ -237,7 +237,13 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _leftCategories(),
+
+                    const SizedBox(width: 12), // 🔥 SPACE BEFORE DIVIDER
+
                     Container(width: 1, color: Colors.black12),
+
+                    const SizedBox(width: 12), // 🔥 SPACE AFTER DIVIDER
+
                     Expanded(
                       child: Column(
                         children: [
@@ -383,18 +389,18 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                   ),
                 if (d.name.isNotEmpty) ...[
                   if (hasUrl) const SizedBox(height: 4),
-                  Text(
-                    d.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF2E5AAC),
-                      height: 1.15,
-                    ),
-                  ),
+                  // Text(
+                  //   d.name,
+                  //   maxLines: 2,
+                  //   overflow: TextOverflow.ellipsis,
+                  //   textAlign: TextAlign.center,
+                  //   style: const TextStyle(
+                  //     fontSize: 11,
+                  //     fontWeight: FontWeight.w700,
+                  //     color: Color(0xFF2E5AAC),
+                  //     height: 1.15,
+                  //   ),
+                  // ),
                 ],
               ],
             ),
@@ -415,7 +421,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
           KioskOrderTypeChip(orderType: widget.orderType),
           const SizedBox(width: 6),
           SizedBox(
-            width: 90,
+            width: 200,
             child: Container(
               height: 34,
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
@@ -431,7 +437,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                   Positioned.fill(
                     child: TextField(
                       controller: searchController,
-                      textAlign: TextAlign.center,
+                      textAlign: TextAlign.left,
                       textAlignVertical: TextAlignVertical.center,
                       maxLines: 1,
                       textInputAction: TextInputAction.search,
@@ -492,51 +498,59 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
             ),
           ),
           const SizedBox(width: 6),
-          _capsule(
-            height: 28,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-            borderColor: const Color(0xFFFFA620),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.language, size: 14, color: Color(0xFFFF7A00)),
-                SizedBox(width: 4),
-                Text(
-                  'Eng',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFFF7A00),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // _capsule(
+          //   height: 28,
+          //   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          //   borderColor: const Color(0xFFFFA620),
+          //   child: const Row(
+          //     mainAxisSize: MainAxisSize.min,
+          //     children: [
+          //       Icon(Icons.language, size: 14, color: Color(0xFFFF7A00)),
+          //       SizedBox(width: 4),
+          //       Text(
+          //         'Eng',
+          //         style: TextStyle(
+          //           fontSize: 11,
+          //           fontWeight: FontWeight.w600,
+          //           color: Color(0xFFFF7A00),
+          //         ),
+          //       ),
+          //     ],
+          //   ),
+          // ),
           const SizedBox(width: 4),
-          ...List.generate(orderTypes.length, (index) {
-            final selected = selectedType == index;
-            return GestureDetector(
-              onTap: () => setState(() {
-                selectedType = selected ? null : index;
-              }),
+      Row(
+        children: List.generate(orderTypes.length, (index) {
+          final selected = selectedType == index;
+
+          return GestureDetector(
+            onTap: () => setState(() {
+              selectedType = selected ? null : index;
+            }),
+            child: SizedBox(
+              width: 90, // 🔥 same width for all
               child: _capsule(
                 margin: const EdgeInsets.only(left: 4),
                 height: 30,
-                padding:
-                const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
                 borderColor:
                 selected ? const Color(0xFFFFA620) : Colors.black12,
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.circle, size: 8, color: index == 0 ? Colors.red : Colors.green),
-                    const SizedBox(width: 4),
-                    Text(orderTypes[index], style: const TextStyle(fontSize: 10)),
+                    Icon(Icons.circle,
+                        size: 8,
+                        color: index == 0 ? Colors.red : Colors.green),
+                    const SizedBox(width: 6),
+                    Text(orderTypes[index],
+                        style: const TextStyle(fontSize: 10)),
                   ],
                 ),
               ),
-            );
-          }),
+            ),
+          );
+        }),
+      ),
         ],
       ),
     );
@@ -755,7 +769,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
       borderRadius: BorderRadius.circular(12),
       child: Image.network(
         category.imageUrl!,
-        width: 38,
+        width: 46,
         height: 38,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) {

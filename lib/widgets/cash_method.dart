@@ -281,35 +281,34 @@ class _CashMethodScreenState extends State<CashMethodScreen> {
 
 // ✅ Row 1 → Date & Time
     // Row 1
+    // Row 1 → Date + Time
+    // Row 1 → Date & Time
     bytes.addAll(generator.row([
       esc.PosColumn(
-        text: "Dt: $date", // 🔥 shorter
-        width: 7,
+        text: "Date: $date",
+        width: 8,
       ),
       esc.PosColumn(
         text: "Time: $time",
-        width: 5,
-        styles: const esc.PosStyles(align: esc.PosAlign.right),
+        width: 4,
+        // ❌ remove align: right
       ),
     ]));
 
-// Row 2
+// Row 2 → OrderID & Type
     bytes.addAll(generator.row([
       esc.PosColumn(
-        text: "Ord: ${orderId ?? '--'}", // 🔥 shorter
-        width: 6,
+        text: "OrderID: ${orderId ?? '--'}",
+        width: 8,
       ),
       esc.PosColumn(
-        text: orderType.toUpperCase(),
-        width: 6,
-        styles: const esc.PosStyles(
-          align: esc.PosAlign.right,
-        ),
+        text: "Type: ${orderType.toUpperCase()}",
+        width: 4,
+        // ❌ remove align: right
       ),
     ]));
 
     bytes.addAll(generator.hr());
-
     // bytes.addAll(generator.hr());
 
     // ================================

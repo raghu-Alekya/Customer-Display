@@ -240,16 +240,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ),
                                     ),
                                   ),
-                                Expanded(
-                                  child: Text(
-                                    details.name,
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF222222),
-                                    ),
-                                  ),
-                                ),
+                                // Expanded(
+                                //   child: Text(
+                                //     details.name,
+                                //     style: const TextStyle(
+                                //       fontSize: 18,
+                                //       fontWeight: FontWeight.w700,
+                                //       color: Color(0xFF222222),
+                                //     ),
+                                //   ),
+                                // ),
                               ],
                             );
                           },
