@@ -190,48 +190,26 @@ class NestedGridWidget extends StatelessWidget {
 
 
   Widget _buildImage(String imagePath) {
-    final imageWidget = imagePath.startsWith("http")
-        ? SizedBox(
-      width: 75,
-      height: 75,
-      child: Image.network(
-        imagePath,
-        width: 75,
-        height: 75,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
-            width: 75,
-            height: 75,
-            color: Colors.grey.shade300,
-            child: const Icon(Icons.broken_image, color: Colors.grey),
-          );
-        },
-      ),
-    )
-        : Platform.isWindows
-        ? Image.asset(
-      'assets/default.png',
-      height: 75,
-      width: 75,
-    )
-        : Image.file(
-      File(imagePath),
-      width: 75,
-      height: 75,
-      fit: BoxFit.cover,
-      errorBuilder: (context, error, stackTrace) {
-        return Container(
+    if (imagePath.startsWith("http")) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(5),
+        child: Image.network(
+          imagePath,
           width: 75,
           height: 75,
-          color: Colors.grey.shade300,
-          child: const Icon(Icons.broken_image, color: Colors.grey),
-        );
-      },
-    );
+          fit: BoxFit.cover,
+          gaplessPlayback: true, // 🔥 IMPORTANT (prevents flicker)
+        ),
+      );
+    }
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(5),
-      child: imageWidget,
+      child: Image.asset(
+        'assets/default.png',
+        width: 75,
+        height: 75,
+      ),
     );
   }
 
@@ -252,10 +230,9 @@ class NestedGridWidget extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            /// 🔹 GRID
-            isLoading
-                ? ShimmerEffect.rectangular(height: 900)
-                : ReorderableGridView.builder(
+            /// 🔹 GRID — wrapped in RepaintBoundary to prevent flicker on mode switch
+            RepaintBoundary(
+              child: ReorderableGridView.builder(
               padding: const EdgeInsets.all(8),
               gridDelegate:
               const SliverGridDelegateWithFixedCrossAxisCount(
@@ -336,16 +313,15 @@ class NestedGridWidget extends StatelessWidget {
                     item['is_ebt_eligible'] == true || _isProductEbtEligible(item);
 
 
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
+                return Container(
+                  // duration: const Duration(milliseconds: 300),
                   decoration: BoxDecoration(
                     border: isReordered
                         ? Border.all(color: Colors.blue, width: 3)
                         : null,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  key: ValueKey(
-                      'grid_item_${itemIndex}_${item["fast_key_item_name"]}'),
+                  key: ValueKey(item["fast_key_product_id"]),
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
@@ -1158,12 +1134,15 @@ class NestedGridWidget extends StatelessWidget {
                 );
               },
             ),
+            ),
             /// 🔥 PAGINATION LOADER (FLOATING – NO GAP)
-            if (isPaginating)
-              Positioned(
-                bottom: 40,
-                left: 0,
-                right: 0,
+            Positioned(
+              bottom: 40,
+              left: 0,
+              right: 0,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: isPaginating ? 1.0 : 0.0,
                 child: Center(
                   child: Container(
                     padding: const EdgeInsets.all(19),
@@ -1190,7 +1169,7 @@ class NestedGridWidget extends StatelessWidget {
                   ),
                 ),
               ),
-
+            ),
           ],
         ),
       ),

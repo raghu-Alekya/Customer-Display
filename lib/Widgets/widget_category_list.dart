@@ -1251,13 +1251,13 @@ class CategoryList extends StatelessWidget {
 
                   // Image dull effect
                   AnimatedOpacity(
-                      duration: const Duration(milliseconds: 300),
-                      opacity: showEditButton ? 0.25 : 1.0,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(6), // ⭐ Add your radius here
-                        child: _buildImage(category['image'], context),
-                      ),
-                      ),
+                    duration: const Duration(milliseconds: 300),
+                    opacity: showEditButton ? 0.25 : 1.0,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(6), // ⭐ Add your radius here
+                      child: _buildImage(category['image'], context),
+                    ),
+                  ),
                   const SizedBox(height: 4),
 
                   // Text dull effect

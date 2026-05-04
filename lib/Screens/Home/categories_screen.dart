@@ -497,8 +497,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
 
           final ageRestrictedLower = TextConstants.age_restricted.toLowerCase();
           final ageTag = tags.firstWhere(
-            (t) =>
-                (t["name"]?.toString() ?? "").toLowerCase() == ageRestrictedLower ||
+                (t) =>
+            (t["name"]?.toString() ?? "").toLowerCase() == ageRestrictedLower ||
                 (t["slug"]?.toString() ?? "").toLowerCase() == ageRestrictedLower,
             orElse: () => <String, dynamic>{},
           );
