@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:keyos_app/Homescreen.dart';
 import 'package:keyos_app/cart_manger.dart';
 import 'package:keyos_app/widgets/kiosk_header_widgets.dart';
-import 'package:keyos_app/widgets/settings_screen.dart';
+import 'package:keyos_app/widgets/printer_settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../repository/store_details_repository.dart';
 import 'cash_receipt.dart';

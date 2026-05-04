@@ -1,12 +1,10 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
-// import 'package:kioski2/features/product/data/repositories/product_repository.dart';
-// import 'package:kioski2/features/product/presentation/bloc/product_event.dart';
-// import 'package:kioski2/features/product/presentation/bloc/product_state.dart';
-
 import 'package:equatable/equatable.dart';
 
 import '../model/product model.dart';
 import '../repository/product_data_resource.dart';
+
+/// ================= EVENTS =================
 
 abstract class ProductEvent extends Equatable {
   const ProductEvent();
@@ -33,6 +31,12 @@ class SearchProducts extends ProductEvent {
   List<Object?> get props => [query];
 }
 
+/// 🔥 NEW EVENT
+class ResetProducts extends ProductEvent {
+  const ResetProducts();
+}
+
+/// ================= STATES =================
 
 abstract class ProductState extends Equatable {
   const ProductState();
@@ -67,6 +71,8 @@ class ProductError extends ProductState {
   List<Object?> get props => [message];
 }
 
+/// ================= BLOC =================
+
 class ProductBloc extends Bloc<ProductEvent, ProductState> {
   final ProductRepository _repository;
 
@@ -75,6 +81,11 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
         super(const ProductInitial()) {
     on<FetchProductsForCategory>(_onFetchProductsForCategory);
     on<SearchProducts>(_onSearchProducts);
+
+    /// 🔥 RESET HANDLER
+    on<ResetProducts>((event, emit) {
+      emit(const ProductInitial());
+    });
   }
 
   Future<void> _onFetchProductsForCategory(
@@ -83,7 +94,8 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
       ) async {
     emit(const ProductLoading());
     try {
-      final products = await _repository.getProductsByCategory(event.categoryId);
+      final products =
+      await _repository.getProductsByCategory(event.categoryId);
       emit(ProductLoaded(products));
     } catch (e) {
       emit(ProductError(e.toString()));

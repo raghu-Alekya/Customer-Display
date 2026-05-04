@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:keyos_app/repository/addon_repository.dart';
+import 'package:keyos_app/widgets/search.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'Homescreen.dart';
@@ -437,36 +438,36 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                   Positioned.fill(
                     child: TextField(
                       controller: searchController,
-                      textAlign: TextAlign.left,
-                      textAlignVertical: TextAlignVertical.center,
-                      maxLines: 1,
-                      textInputAction: TextInputAction.search,
-                      onChanged: _onSearchChanged,
-                      onSubmitted: (_) => _searchProducts(),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        height: 1.0,
-                      ),
-                      strutStyle: const StrutStyle(
-                        fontSize: 11,
-                        height: 1.0,
-                        leading: 0,
-                        fontWeight: FontWeight.w400,
-                        forceStrutHeight: true,
-                      ),
+                      readOnly: true,
+
+                      textAlign: TextAlign.start,                // ✅ horizontal center
+                      textAlignVertical: TextAlignVertical.center, // ✅ vertical center
+
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SearchScreen(
+                              query: "",
+                            ),
+                          ),
+                        ).then((_) {
+                          /// 🔥 reload previous category/subcategory products
+                          context.read<ProductBloc>().add(
+                            FetchProductsForCategory(
+                              selectedSubcategoryId ?? rootCategoryId,
+                            ),
+                          );
+                        });
+                      },
+
                       decoration: const InputDecoration(
                         hintText: 'Search',
-                        hintStyle: TextStyle(
-                          fontSize: 11,
-                          height: 1.0,
-                          color: Colors.black54,
-                        ),
                         border: InputBorder.none,
                         isDense: true,
-                        filled: false,
-                        // Horizontal: equal L/R so text centers; vertical: tuned so hint sits
-                        // visually centered (line-height + InputDecorator metrics skew hint high).
-                        contentPadding: EdgeInsets.fromLTRB(28, 10, 28, 10),
+
+                        /// 🔥 important for perfect centering
+                        contentPadding: EdgeInsets.zero,
                       ),
                     ),
                   ),
@@ -476,7 +477,14 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                     bottom: 0,
                     child: Center(
                       child: InkWell(
-                        onTap: _searchProducts,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const SearchScreen (query: ""),
+                            ),
+                          );
+                        },
                         child: Container(
                           height: 22,
                           width: 26,
@@ -705,16 +713,28 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
               final c = categories[index];
               final selected = index == safeSelectedIndex;
               return InkWell(
+                // onTap: () {
+                //   setState(() {
+                //     selectedCategory = index;
+                //     selectedSubcategory = 0;
+                //     selectedSubcategoryId = null;
+                //   });
+                //   context.read<SubcategoryBloc>().add(FetchSubcategories(c.id));
+                //   context
+                //       .read<ProductBloc>()
+                //       .add(FetchProductsForCategory(c.id));
+                // },
                 onTap: () {
                   setState(() {
                     selectedCategory = index;
-                    selectedSubcategory = 0;
+                    selectedSubcategory = -1;
                     selectedSubcategoryId = null;
                   });
-                  context.read<SubcategoryBloc>().add(FetchSubcategories(c.id));
-                  context
-                      .read<ProductBloc>()
-                      .add(FetchProductsForCategory(c.id));
+
+                  // ✅ Only load subcategories
+                  context.read<SubcategoryBloc>().add(
+                    FetchSubcategories(c.id),
+                  );
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
