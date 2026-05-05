@@ -152,16 +152,19 @@
                             android:textSize="20sp"
                             android:textStyle="bold" />
 
-                        <TextView
-                            android:id="@+id/email_value"
-                            android:layout_width="wrap_content"
+                        <EditText
+                            android:id="@+id/email_input"
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
+                            android:layout_weight="1"
                             android:layout_marginStart="6dp"
-                            android:text=""
+                            android:hint="Enter phone/email"
                             android:textColor="#353535"
-                            android:textSize="20sp" />
+                            android:textSize="20sp"
+                            android:background="@android:color/transparent"
+                            android:inputType="textEmailAddress|phone"
+                            android:maxLines="1"/>
                     </LinearLayout>
-
                     <!-- Order ID (Right Side) -->
                     <TextView
                         android:id="@+id/order_id_label"

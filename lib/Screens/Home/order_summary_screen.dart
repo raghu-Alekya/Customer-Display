@@ -5026,6 +5026,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                     final contact = mobileController.text.trim();
                     final orderId = widget.orderId ?? 0;
+                    /// 🔥 DEBUG PRINTS
+                    print("📦 ORDER IDd: $orderId");
+                    print("📞 CONTACT: $contact");
+
 
                     try {
                       final rawResponse =
@@ -5033,6 +5037,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         orderId: orderId,
                         contact: contact,
                       );
+                      print("🌐 RAW RESPONSE: $rawResponse");
 
                       final result = jsonDecode(rawResponse);
                       final data = result["data"];

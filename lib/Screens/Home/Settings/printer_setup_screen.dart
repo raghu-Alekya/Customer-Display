@@ -66,24 +66,6 @@ class _PrinterSetupState extends State<PrinterSetup> {
   static BluetoothPrinter? selectedPrinter; /// remove this
   final PrinterSettings _printerSettings = PrinterSettings();
 
-  /// Build #1.0.279: Added this list for Usb Printer Testing purpose
-  // final List<BluetoothPrinter> testUsbPrinters = [
-  //   BluetoothPrinter(
-  //     deviceName: "USB-Thermal-Printer-80mm",
-  //     productId: "1155",
-  //     vendorId: "22339",
-  //     typePrinter: PrinterType.usb,
-  //     isBle: false,
-  //   ),
-  //   BluetoothPrinter(
-  //     deviceName: "USB-Receipt-Printer-58mm",
-  //     productId: "1156",
-  //     vendorId: "22340",
-  //     typePrinter: PrinterType.usb,
-  //     isBle: false,
-  //   ),
-  // ];
-
   @override
   void initState() {
     if (Platform.isWindows) defaultPrinterType = PrinterType.usb;
@@ -155,31 +137,58 @@ class _PrinterSetupState extends State<PrinterSetup> {
   void _scan() {
     devices.clear();
 
-    /// Build #1.0.279: ADDED THIS -> Test USB printers when type is USB
-    // if (defaultPrinterType == PrinterType.usb) {
-    //   devices.addAll(testUsbPrinters);
-    //   if (kDebugMode) {
-    //     print("#### Added ${testUsbPrinters.length} test USB printers");
-    //   }
-    // }
-
     _subscription = printerManager.discovery(
       type: defaultPrinterType,
       isBle: _isBle,
     ).listen((device) {
+
       if (kDebugMode) {
         print("device found: ${device.name}, address: ${device.address}");
       }
 
-      devices.add(BluetoothPrinter(
-        deviceName: device.name ?? "Unknown Printer",
-        address: device.address ?? "USB001",
-        isBle: _isBle,
-        vendorId: Platform.isWindows ? (device.name ?? "WindowsPrinter") : device.vendorId,
-        productId: Platform.isWindows ? (device.address ?? "USB001") : device.productId,
-        typePrinter: defaultPrinterType,
-      ));
-      setState(() {});
+      // ❌ 1. HARD FILTER invalid devices
+      if (device.name == null || device.name!.isEmpty) return;
+
+      // USB devices must have vendorId + productId
+      if (defaultPrinterType == PrinterType.usb) {
+        if (device.vendorId == null || device.productId == null) {
+          return;
+        }
+
+        // optional: filter non-printers
+        final name = device.name!.toLowerCase();
+        if (!name.contains('printer') &&
+            !name.contains('xp') &&
+            !name.contains('thermal')) {
+          return;
+        }
+      }
+
+      // Bluetooth/network must have address
+      if (defaultPrinterType != PrinterType.usb) {
+        if (device.address == null || device.address!.isEmpty) {
+          return;
+        }
+      }
+
+      // ✅ FIX: Wrap in try-catch to safely handle any null fields
+      // that the thermal_printer library may pass through internally
+      try {
+        devices.add(BluetoothPrinter(
+          deviceName: device.name ?? "Unknown Printer",
+          address: device.address ?? "",          // safe fallback for USB (address is unused)
+          vendorId: device.vendorId,
+          productId: device.productId,
+          isBle: _isBle,
+          typePrinter: defaultPrinterType,
+        ));
+
+        setState(() {});
+      } catch (e) {
+        if (kDebugMode) {
+          print("Printer discovery error (ignored): $e");
+        }
+      }
     });
   }
 
@@ -418,9 +427,6 @@ class _PrinterSetupState extends State<PrinterSetup> {
   Widget build(BuildContext icontext) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return
-      //   MaterialApp(
-      //   home: ,
-      // );
       Scaffold(
         backgroundColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textLight : ThemeNotifier.textDark,
         appBar: AppBar(
@@ -473,6 +479,33 @@ class _PrinterSetupState extends State<PrinterSetup> {
                                     }
                                     return;
                                   }
+
+                                  // ✅ FIX: Persist the connected printer to DB so
+                                  // SettingsScreen can read it back after navigation.
+                                  // connectDevice() only connects the hardware but does
+                                  // not guarantee a DB write, so we do it explicitly here.
+                                  if (selectedPrinter != null) {
+                                    try {
+                                      final printerDb = PrinterDBHelper();
+                                      final existing = await printerDb.getPrinterFromDB();
+                                      if (existing.isEmpty) {
+                                        await printerDb.addPrinterToDB(selectedPrinter!);
+                                        if (kDebugMode) {
+                                          print(">>>>> PrinterSetupScreen: printer saved to DB (new record)");
+                                        }
+                                      } else {
+                                        await printerDb.updatePrinterToDB(selectedPrinter!);
+                                        if (kDebugMode) {
+                                          print(">>>>> PrinterSetupScreen: printer saved to DB (updated existing)");
+                                        }
+                                      }
+                                    } catch (dbError) {
+                                      if (kDebugMode) {
+                                        print(">>>>> PrinterSetupScreen: DB save error (non-fatal): $dbError");
+                                      }
+                                    }
+                                  }
+
                                   setState(() {
                                     if (kDebugMode) {
                                       print(">>>>> PrinterSetupScreen Device is connected : $_isConnected");
@@ -602,9 +635,13 @@ class _PrinterSetupState extends State<PrinterSetup> {
                             .map(
                               (device) => ListTile(
                             title: Text('${device.deviceName}'),
-                            subtitle: Platform.isAndroid && defaultPrinterType == PrinterType.usb
+                            // ✅ FIX: Never show address for USB devices (it's null/empty and irrelevant)
+                            subtitle: (defaultPrinterType == PrinterType.usb || Platform.isWindows)
                                 ? null
-                                : Visibility(visible: !Platform.isWindows, child: Text("${device.address}")),
+                                : Visibility(
+                              visible: device.address != null && device.address!.isNotEmpty,
+                              child: Text("${device.address}"),
+                            ),
                             onTap: () async {
                               // do something
                               if (kDebugMode) {

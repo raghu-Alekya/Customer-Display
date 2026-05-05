@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:thermal_printer/thermal_printer.dart';
 
 import '../../../Constants/text.dart';
+import '../../../Database/assets_db_helper.dart';
 import '../../../Database/db_helper.dart';
 import '../../../Database/printer_db_helper.dart';
 import '../../../Database/store_db_helper.dart';
@@ -69,7 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPrinterSettings();
     });
-     _addThemeListener();   // Build #1.0.207: Fixed -> theme options is not updating in settings screen when updated from other screen top bar
+    _addThemeListener();   // Build #1.0.207: Fixed -> theme options is not updating in settings screen when updated from other screen top bar
   }
 
   // Build #1.0.226: Added this method to load printer settings
@@ -113,61 +114,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }  // # Build 1.0.182(option automatically change when tapped in top bar)
 
-  Future<void> _loadUserDataFromDB() async { // Build #1.0.13 : now user data loads from user table DB
+  Future<void> _loadUserDataFromDB() async {
     try {
       final userData = await UserDbHelper().getUserData();
-      final storeData = await StoreDbHelper.instance.getStoreValidationData(); //Build #1.0.126: updated to StoreDbHelper
-      final deviceDetails = await GlobalUtility.getDeviceDetails(); //Build #1.0.126: updated to Fetch device details from global class
+
+      // NEW: Load store details from Asset Table (Recommended)
+      final storeDetails = await AssetDBHelper.instance.getStoreDetails();
+
+      final deviceDetails = await GlobalUtility.getDeviceDetails();
 
       if (kDebugMode) {
         print("#### Loading user data: $userData");
-        print("#### Loading store data: $storeData");
+        print("#### Loading store details from Asset: ${storeDetails?.name}");
       }
 
       if (userData != null) {
-        //final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);  # Build 1.0.182(Radio option automatically change when tapped in top bar)
         setState(() {
           nameController.text = userData[AppDBConst.userDisplayName] ?? "Unknown Name";
           emailController.text = userData[AppDBConst.userEmail] ?? "test@pinaka.com";
-          deviceIdController.text = deviceDetails['device_id'] ?? "unknown"; // device ID
-          appearance = userData[AppDBConst.themeMode] == ThemeMode.dark.toString()
+          deviceIdController.text = deviceDetails['device_id'] ?? "unknown";
+
+          // Theme
+          appearance = _themeHelper.themeMode == ThemeMode.dark
               ? TextConstants.darkText
               : TextConstants.lightText;
 
-          // Build #1.0.207: Updated this line to use _themeHelper
-          appearance = _themeHelper.themeMode == ThemeMode.dark
-              ? TextConstants.darkText
-              : TextConstants.lightText; // # Build 1.0.182(option automatically change when tapped in top bar)
-
           layoutSelection = userData[AppDBConst.layoutSelection] ?? SharedPreferenceTextConstants.navLeftOrderRight;
           profilePhotoPath = userData[AppDBConst.profilePhoto];
-          userRole = userData[AppDBConst.userRole] ?? "Unknown Role"; //Build #1.0.170: Fixed: User role not updating
+          userRole = userData[AppDBConst.userRole] ?? "Unknown Role";
+
           if (profilePhotoPath != null) {
             _selectedIcon = File(profilePhotoPath!);
           }
         });
       }
 
-      if (storeData != null) { //Build #1.0.54: added
+      // ==================== UPDATED STORE DETAILS ====================
+      if (storeDetails != null) {
         if (kDebugMode) {
-          print("### TEST storeName : ${storeData[AppDBConst.storeName] ?? ""}");
-          print("### TEST licenseKey : ${storeData[AppDBConst.licenseKey] ?? ""}");
+          print("### Loaded Store Details from AssetDB: ${storeDetails.name}");
         }
+
         setState(() {
-          contactNoController.text  = storeData[AppDBConst.storePhone] ?? "";
-          companyNameController.text = storeData[AppDBConst.storeName] ?? "";
-          gstInController.text = storeData[AppDBConst.licenseKey] ?? "";
-          // Add subscription details to UI if needed
+          companyNameController.text = storeDetails.name;
+          contactNoController.text = storeDetails.phoneNumber ?? "";
+          // gstInController.text = storeData[AppDBConst.licenseKey] ?? ""; // Keep if needed from validation
+          // You can add more fields from StoreDetails model if required
         });
+      }
+      // Fallback: Keep old Store Validation logic (for backward compatibility)
+      else {
+        final storeData = await StoreDbHelper.instance.getStoreValidationData();
+        if (storeData != null) {
+          if (kDebugMode) print("### Fallback: Using old Store Validation data");
+          setState(() {
+            contactNoController.text = storeData[AppDBConst.storePhone] ?? "";
+            companyNameController.text = storeData[AppDBConst.storeName] ?? "";
+            gstInController.text = storeData[AppDBConst.licenseKey] ?? "";
+          });
+        }
       }
 
       if (kDebugMode) {
-        print("#### Loaded user data: $userData");
-        print("#### Loaded store data: $storeData");
+        print("#### User & Store data loading completed");
       }
     } catch (e) {
       if (kDebugMode) {
-        print("Error loading user data: $e");
+        print("Error loading user/store data: $e");
       }
     }
   }
@@ -372,50 +385,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-///  Build #1.0.226: TESTING FUNCTION - REMOVE IN PRODUCTION
-/// This bypasses actual printer connection for testing
-//   Future<void> _addTestPrinter() async {
-//     if (kDebugMode) {
-//       print("#### [TEST] Adding test printer for development...");
-//       print("#### [TEST] No physical printer required");
-//     }
-//
-//     try {
-//       final testPrinter = BluetoothPrinter(
-//         deviceName: "Test",
-//         productId: "001",
-//         vendorId: "002",
-//         typePrinter: PrinterType.bluetooth,
-//         state: true,
-//       );
-//
-//       // Add to database
-//       await printerDBHelper.addPrinterToDB(testPrinter);
-//
-//       // Update settings
-//       _printerSettings.selectedPrinter = testPrinter;
-//
-//       setState(() {
-//         if (kDebugMode) {
-//           print("#### [TEST] Test printer added successfully: ${testPrinter.deviceName}");
-//           print("#### [TEST] Printer state: ${testPrinter.state}");
-//         }
-//       });
-//
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(content: Text('Test printer added (Dev Mode)')),
-//       );
-//
-//     } catch (e) {
-//       if (kDebugMode) {
-//         print("#### [TEST ERROR] Failed to add test printer: $e");
-//       }
-//     }
-//   }
-
   @override
   Widget build(BuildContext context) {
- //   final themeHelper = Provider.of<ThemeNotifier>(context);  // Build #1.0.207
+    //   final themeHelper = Provider.of<ThemeNotifier>(context);  // Build #1.0.207
 
     return Scaffold(
       backgroundColor: _themeHelper.getTheme(context).scaffoldBackgroundColor,
@@ -550,21 +522,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
-                // Positioned(
-                //   top: 0,
-                //   right: 0,
-                //   child: GestureDetector(
-                //     onTap: _pickProfilePhoto, // Same function for edit icon
-                //     child: Container(
-                //       padding: EdgeInsets.all(3),
-                //       // decoration: BoxDecoration(
-                //       //   color: Colors.white,
-                //       //   shape: BoxShape.rectangle,
-                //       // ),
-                //       child: Icon(Icons.edit, size: 10, color: Colors.white),
-                //     ),
-                //   ),
-                // ),
               ],
             ),
             SizedBox(width: 10),
@@ -591,14 +548,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
         _buildTextField(label: TextConstants.emailText, controller: emailController,isReadOnly: true),
-        // _buildTextField(
-        //     label: "Subscription Type",
-        //     controller: TextEditingController(text: storeData?[AppDBConst.subscriptionType] ?? ""),
-        //     isReadOnly: true),
-        // _buildTextField(
-        //     label: "Expiration Date",
-        //     controller: TextEditingController(text: storeData?[AppDBConst.expirationDate] ?? ""),
-        //     isReadOnly: true),
       ],
     );
   }
@@ -639,10 +588,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     right: 0,
                     child: Container(
                       padding: EdgeInsets.all(3),
-                      // decoration: BoxDecoration(
-                      //   color: Colors.tealAccent,
-                      //   shape: BoxShape.circle,
-                      // ),
                       child: Icon(Icons.edit, size: 10, color: Colors.white),
                     ),
                   ),
@@ -677,45 +622,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Row(
-        //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        //   children: [
-        //     Column(
-        //       crossAxisAlignment: CrossAxisAlignment.start,
-        //       children: [
-        //         Text(TextConstants.deviceDetailsText,
-        //             style:
-        //             TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-        //         SizedBox(height: 4),
-        //         Text(TextConstants.idPOSText,
-        //             style: TextStyle(fontSize: 14, color: Colors.grey)),
-        //       ],
-        //     ),
-        //     ElevatedButton.icon(
-        //       onPressed: () {
-        //         // Handle Copy Token action
-        //         if (kDebugMode) {
-        //           print("Token Copied");
-        //         }
-        //       },
-        //       icon: Icon(Icons.copy, color: Colors.white),
-        //       label: Text(TextConstants.copyTokenBtnText, style: TextStyle(color: Colors.white)),
-        //       style: ElevatedButton.styleFrom(
-        //         backgroundColor: Colors.teal,
-        //       ),
-        //     ),
-        //   ],
-        // ),
-        // SizedBox(height: 16),
         _buildTextField(
             label: TextConstants.deviceIdText,
             controller: deviceIdController,
             isReadOnly: true),
-        // SizedBox(height: 16), //Build #1.0.122: no need
-        // _buildTextField(label: TextConstants.posNumberText, hintText: TextConstants.posNumberHintText),
-        // SizedBox(height: 16),
-        // Text(TextConstants.posForText, style: TextStyle(fontSize: 14, color: Colors.white70)),
-        // _buildToggleButtons(),
         SizedBox(height: 16),
       ],
     );
@@ -801,21 +711,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildLayoutOption(TextConstants.layoutNavBottomOrderRight, SharedPreferenceTextConstants.navBottomOrderRight),
           ],
         ),
-        // Text(TextConstants.selectKeyboardText, // Build #1.0.15 : removed Keyboard type UI
-        //     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-        // Row(
-        //   children: [
-        //     _buildRadioOption(TextConstants.virtualText),
-        //     _buildRadioOption(TextConstants.systemText),
-        //     _buildRadioOption(TextConstants.bothText),
-        //   ],
-        // ),
-        // _buildSwitchOption(TextConstants.quickProAddText, quickProductAdd, (value) {
-        //   setState(() => quickProductAdd = value);
-        // }),
-        // _buildSwitchOption(TextConstants.outOfStockMngText, outOfStockManage, (value) {
-        //   setState(() => outOfStockManage = value);
-        // }),
       ],
     );
   }
@@ -877,7 +772,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           groupValue: layoutSelection,
           onChanged: (value) {
             setState(() => layoutSelection = value.toString());
-          //  _preferences.saveLayoutSelection(value.toString()); // This updates the notifier
             if (PinakaPreferences.layoutSelectionNotifier.value != layoutSelection) {
               PinakaPreferences.layoutSelectionNotifier.value = layoutSelection;
             }
@@ -893,6 +787,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ],
     );
   }
+
   Widget _buildPrinterSettingsSection() {
     var name = _printerSettings.selectedPrinter?.deviceName ?? '';
     var connection = _printerSettings.selectedPrinter?.state ?? false;
@@ -919,7 +814,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // Build #1.0.226: Always show add button - users can swap printers anytime
             ElevatedButton(
               onPressed: () {
-                /// call printer setup screen
                 if (kDebugMode) {
                   print("#### [ACTION] Add printer button pressed");
                   print("#### [ACTION] Navigating to PrinterSetup screen");
@@ -927,22 +821,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 Navigator.push(context, MaterialPageRoute(
                   builder: (context) => PrinterSetup(),
-                )).then((result) {
+                )).then((result) async {
                   if (result == TextConstants.refresh) {
                     if (kDebugMode) {
                       print("#### [ACTION] Returning from PrinterSetup - refreshing data");
                     }
 
-                    // Build #1.0.226: Reload everything to ensure UI is updated
-                    _printerSettings.loadPrinter().then((_) {
-                      _loadPrinterData(); // Reload receipt settings
+                    // ✅ FIX: Load from DB first (source of truth), then sync into
+                    // PrinterSettings so the in-memory object matches what was saved.
+                    // Previously only _printerSettings.loadPrinter() was called, but if
+                    // that internally reads from a stale cache the UI stays blank.
+                    try {
+                      await _printerSettings.loadPrinter();
+                    } catch (e) {
+                      if (kDebugMode) print("#### [ACTION] loadPrinter error: $e");
+                    }
+
+                    // Fallback: if loadPrinter() left selectedPrinter null, read DB directly.
+                    if (_printerSettings.selectedPrinter == null) {
+                      if (kDebugMode) {
+                        print("#### [ACTION] loadPrinter returned null — reading DB directly as fallback");
+                      }
+                      try {
+                        final rows = await printerDBHelper.getPrinterFromDB();
+                        if (rows.isNotEmpty) {
+                          final row = rows.first;
+                          _printerSettings.selectedPrinter = BluetoothPrinter(
+                            deviceName: row[AppDBConst.orderGetTime] ?? '',
+                            productId:  row[AppDBConst.itemSumPrice]   ?? '',
+                            vendorId:   row[AppDBConst.vendorId]     ?? '',
+                            address:    row[AppDBConst.orderId] ?? '',
+                            typePrinter: PrinterType.values.firstWhere(
+                                  (t) => t.toString() == (row[AppDBConst.printerType] ?? ''),
+                              orElse: () => PrinterType.usb,
+                            ),
+                            state: true,
+                          );
+                          if (kDebugMode) {
+                            print("#### [ACTION] Fallback: loaded printer from DB: ${_printerSettings.selectedPrinter?.deviceName}");
+                          }
+                        }
+                      } catch (dbErr) {
+                        if (kDebugMode) print("#### [ACTION] DB fallback error: $dbErr");
+                      }
+                    }
+
+                    _loadPrinterData(); // Reload receipt header/footer
+                    if (mounted) {
                       setState(() {
                         if (kDebugMode) {
                           print("#### [ACTION] UI refreshed after printer setup");
                           print("#### [ACTION] Current printer: ${_printerSettings.selectedPrinter?.deviceName ?? 'None'}");
                         }
                       });
-                    });
+                    }
                   }
                 });
               },
@@ -1000,38 +932,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ) :
         SizedBox(),
-        //     : Center(
-        //   child: Column(
-        //     children: [
-        //       SvgPicture.asset(
-        //         'assets/svg/password_placeholder.svg', // Replace with actual asset path
-        //         width: 120,
-        //         height: 120,
-        //       ),
-        //       SizedBox(height: 20),
-        //       Text(
-        //         TextConstants.noPrinterText,
-        //         style: TextStyle(
-        //           color: Colors.white,
-        //           fontSize: 18,
-        //           fontWeight: FontWeight.bold,
-        //         ),
-        //       ),
-        //       SizedBox(height: 20),
-        //       /// Build #1.0.226: TEST BUTTON - REMOVE IN PRODUCTION
-        //       // ElevatedButton(
-        //       //   onPressed: _addTestPrinter,
-        //       //   style: ElevatedButton.styleFrom(
-        //       //     backgroundColor: Colors.blueGrey,
-        //       //   ),
-        //       //   child: Text(
-        //       //     "Add Test Printer (Dev)",
-        //       //     style: TextStyle(color: Colors.white),
-        //       //   ),
-        //       // ),
-        //     ],
-        //   ),
-        // ),
       ],
     );
   }
@@ -1063,21 +963,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Text(TextConstants.cacheDurationText, style: TextStyle(fontSize: 14, color: Colors.white)),
             DropdownButton<String>(
-              value: cacheDuration,
-              dropdownColor: Colors.grey[800], // Dropdown background color
-              onChanged: (String? newValue) {
-                setState(() => cacheDuration = newValue!);
-              },
-              items:
-              ["Never", "1 Day", "1 Week", "1 Month"].map((String value) {
-                return DropdownMenuItem(
-                  value: value,
-                  child: Text(
-                    value,
-                    style: TextStyle(color: Colors.white), // Dropdown item text color
-                  ),
-                );
-              }).toList(),
+                value: cacheDuration,
+                dropdownColor: Colors.grey[800], // Dropdown background color
+                onChanged: (String? newValue) {
+                  setState(() => cacheDuration = newValue!);
+                },
+                items:
+                ["Never", "1 Day", "1 Week", "1 Month"].map((String value) {
+                  return DropdownMenuItem(
+                    value: value,
+                    child: Text(
+                      value,
+                      style: TextStyle(color: Colors.white), // Dropdown item text color
+                    ),
+                  );
+                }).toList(),
                 icon: Icon(Icons.arrow_drop_down, color: Colors.white)
             ),
           ],
@@ -1219,14 +1119,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onChanged: (value) {
             setState(() {
               appearance = value.toString();
-              // themeManager.setThemeMode( //Build #1.0.54: updated
-              //     appearance == TextConstants.lightText ? ThemeMode.light : ThemeMode.dark
-              // );
               // Build #1.0.207: Fixed -> theme options is not updating in settings screen when updated from other screen top bar
               final newTheme = appearance == TextConstants.lightText ? ThemeMode.light : ThemeMode.dark; // # Build 1.0.182(option automatically change when tapped in top bar)
               themeManager.setThemeMode(newTheme);
-
-             // _preferences.saveAppThemeMode(themeManager.themeMode);
             });
           },
           fillColor: WidgetStateProperty.resolveWith<Color>((states) {
