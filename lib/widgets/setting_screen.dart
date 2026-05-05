@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:keyos_app/widgets/printer_settings_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -20,6 +22,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool cash = true;
   bool card = true;
   bool upi = true;
+  String? selectedPrinter;
+  String? connectedPrinterName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedPrinter();
+  }
+
+  Future<void> _loadSavedPrinter() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final name = prefs.getString(PrinterPrefsKeys.btName);
+
+    setState(() {
+      connectedPrinterName = name;
+    });
+
+    print("Loaded printer: $name");
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,14 +70,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           color: Colors.black),
                       children: [
                         TextSpan(
-                          text: "Settin",
+                          text: "Settings",
                         ),
-                        TextSpan(
-                          text: "gs",
-                          style: TextStyle(
-                            backgroundColor: Colors.yellow,
-                          ),
-                        ),
+                        // TextSpan(
+                        //   text: "gs",
+                        //   style: TextStyle(
+                        //     backgroundColor: Colors.yellow,
+                        //   ),
+                        // ),
                       ],
                     ),
                   )
@@ -87,32 +109,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// 🔙 BACK BUTTON
   Widget _backButton() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.orange),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.arrow_back_ios, size: 14, color: Colors.orange),
-          SizedBox(width: 4),
-          Text("Back", style: TextStyle(color: Colors.orange)),
-        ],
+    return InkWell(
+      onTap: () {
+        Navigator.pop(context); // 🔥 go back
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.orange),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.arrow_back_ios, size: 14, color: Colors.orange),
+            SizedBox(width: 4),
+            Text("Back", style: TextStyle(color: Colors.orange)),
+          ],
+        ),
       ),
     );
   }
   Widget _row(String title, Widget child) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 13),
+          SizedBox(
+            width: 140, // 🔥 FIXED WIDTH (very important)
+            child: Text(
+              title,
+              style: const TextStyle(fontSize: 13),
+            ),
           ),
-          const Spacer(),
-          child,
+          Expanded(child: child),
         ],
       ),
     );
@@ -196,7 +226,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextSpan(text: parts[0] + " "),
           TextSpan(
             text: parts[1],
-            style: const TextStyle(backgroundColor: Colors.yellow),
+            // style: const TextStyle(backgroundColor: Colors.white),
           ),
         ],
       ),
@@ -322,25 +352,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text("Select Printer Type"),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
 
+        /// 🔹 FIRST ROW (LABEL + BUTTON)
         Row(
           children: [
-            const Text("USB Printer"),
+            const SizedBox(
+              width: 140,
+              child: Text("USB Printer"),
+            ),
             const Spacer(),
+
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
-              onPressed: () {},
-              child: const Text("Add"),
+              onPressed: _connectPrinter,
+              child: const Text(
+                "Add",
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
+
+        /// 🔥 SECOND ROW (PRINTER NAME BELOW BUTTON)
+        if (connectedPrinterName != null &&
+            connectedPrinterName!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 140),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE6E6E6),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      connectedPrinterName!,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    const SizedBox(width: 6),
+
+                    /// 🔥 RED REMOVE BUTTON
+                    InkWell(
+                      onTap: _removePrinter,
+                      child: const Icon(
+                        Icons.close,
+                        size: 16,
+                        color: Colors.red,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
       ],
     );
+  }
+  Future<void> _removePrinter() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    /// 🔥 Remove all saved printer data
+    await prefs.remove(PrinterPrefsKeys.btAddress);
+    await prefs.remove(PrinterPrefsKeys.btName);
+    await prefs.remove(PrinterPrefsKeys.usbVendor);
+    await prefs.remove(PrinterPrefsKeys.usbProduct);
+    await prefs.remove(PrinterPrefsKeys.type);
+
+    setState(() {
+      connectedPrinterName = null;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Printer removed")),
+    );
+  }
+
+  void _testPrint() {
+    print("🖨 Test print triggered");
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Test print sent successfully"),
+      ),
+    );
+  }
+  Future<void> _connectPrinter() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const PrinterSettingsAndTestScreen(),
+      ),
+    );
+
+    /// 🔥 reload printer after adding new one
+    await _loadSavedPrinter();
   }
 
   /// ℹ INFO ROW

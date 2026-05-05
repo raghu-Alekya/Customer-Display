@@ -50,6 +50,7 @@ extension AppPrinterTypeExt on AppPrinterType {
   }
 }
 
+
 /// ---------- Settings + Print Screen ----------
 
 class PrinterSettingsAndTestScreen extends StatefulWidget {
@@ -84,6 +85,17 @@ class _PrinterSettingsAndTestScreenState
       _loading = false;
     });
   }
+  Future<void> _addPrinter() async {
+    final device = await _pickPrinterForSelectedType();
+
+    if (device == null) return;
+
+    await _saveLastPrinterDevice(device);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Printer added successfully")),
+    );
+  }
 
   Future<void> _savePrinterType(AppPrinterType type) async {
     final prefs = await SharedPreferences.getInstance();
@@ -92,27 +104,43 @@ class _PrinterSettingsAndTestScreenState
 
   Future<void> _saveLastPrinterDevice(PrinterDevice device) async {
     final prefs = await SharedPreferences.getInstance();
+
     if (_selected == AppPrinterType.bluetooth) {
       await prefs.setString(
         PrinterPrefsKeys.btAddress,
         (device.address ?? '').toString(),
       );
+
       await prefs.setString(
         PrinterPrefsKeys.btName,
-        device.name.toString(),
+        device.name ?? "Bluetooth Printer",
       );
     } else {
       await prefs.setString(
         PrinterPrefsKeys.usbVendor,
         (device.vendorId ?? '').toString(),
       );
+
       await prefs.setString(
         PrinterPrefsKeys.usbProduct,
         (device.productId ?? '').toString(),
       );
-    }
-  }
 
+      /// 🔥 SAVE REAL USB NAME
+      await prefs.setString(
+        PrinterPrefsKeys.btName,
+        device.name?.toString().isNotEmpty == true
+            ? device.name.toString()
+            : "USB Printer", // fallback only if empty
+      );
+    }
+
+    /// 🔥 SAVE TYPE
+    await prefs.setString(
+      PrinterPrefsKeys.type,
+      _selected.key,
+    );
+  }
   Future<void> _onTypeChanged(AppPrinterType? value) async {
     if (value == null) return;
     setState(() => _selected = value);
@@ -197,7 +225,10 @@ class _PrinterSettingsAndTestScreenState
                 return ListTile(
                   title: Text(name.isEmpty ? '(Unnamed device)' : name),
                   subtitle: details.isEmpty ? null : Text(details),
-                  onTap: () => Navigator.of(ctx).pop(p),
+                  onTap: () async {
+                    await _saveLastPrinterDevice(p); // 🔥 SAVE HERE
+                    Navigator.of(ctx).pop(p);
+                  },
                 );
               },
             ),
@@ -232,75 +263,87 @@ class _PrinterSettingsAndTestScreenState
 
   Future<void> _testPrint() async {
     setState(() => _printing = true);
+
     try {
+      final prefs = await SharedPreferences.getInstance();
       final bytes = await _buildTestBytes();
 
-      // Use the helper that respects Bluetooth/USB selection
-      final device = await _pickPrinterForSelectedType();
-      if (device == null) {
-        // _pickPrinterForSelectedType already showed a SnackBar
-        return;
-      }
+      final savedType = prefs.getString(PrinterPrefsKeys.type);
 
-      final type =
-          _selected == AppPrinterType.bluetooth ? PrinterType.bluetooth : PrinterType.usb;
-      final deviceName = device.name.toString();
-      debugPrint('Connecting to printer: $deviceName ($type)');
-
-      final connected = type == PrinterType.bluetooth
-          ? await _printerManager.connect(
-              type: PrinterType.bluetooth,
-              model: BluetoothPrinterInput(
-                name: deviceName,
-                address: (device.address ?? '').toString(),
-                isBle: false,
-                autoConnect: true,
-              ),
-            )
-          : await _printerManager.connect(
-              type: PrinterType.usb,
-              model: UsbPrinterInput(
-                name: deviceName,
-                productId: (device.productId ?? '').toString(),
-                vendorId: (device.vendorId ?? '').toString(),
-              ),
-            );
-      if (!connected) {
-        throw Exception('Could not connect to printer');
-      }
-      final sent = await _printerManager.send(type: type, bytes: bytes);
-      if (!sent) {
-        throw Exception('Printer did not accept data (send failed)');
-      }
-      await _saveLastPrinterDevice(device);
-
-      if (mounted) {
+      /// 🔥 IF NO PRINTER → FORCE SELECT
+      if (savedType == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Print sent')),
+          const SnackBar(content: Text("Please add printer first")),
         );
+
+        final device = await _pickPrinterForSelectedType();
+        if (device == null) return;
+
+        await _saveLastPrinterDevice(device);
+
+        return _testPrint(); // 🔥 retry automatically
       }
-    } catch (e, st) {
-      debugPrint('Print error: $e\n$st');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Print error: $e')),
-        );
-      }
-    } finally {
-      try {
-        final type =
-            _selected == AppPrinterType.bluetooth ? PrinterType.bluetooth : PrinterType.usb;
-        await Future<void>.delayed(const Duration(milliseconds: 200));
-        await _printerManager.disconnect(
+
+      bool connected = false;
+      PrinterType type;
+
+      if (savedType == 'bluetooth') {
+        type = PrinterType.bluetooth;
+
+        final address = prefs.getString(PrinterPrefsKeys.btAddress);
+        final name = prefs.getString(PrinterPrefsKeys.btName);
+
+        if (address == null) throw Exception("No Bluetooth printer saved");
+
+        connected = await _printerManager.connect(
           type: type,
-          delayMs: type == PrinterType.usb ? 150 : null,
+          model: BluetoothPrinterInput(
+            name: name ?? "",
+            address: address,
+            isBle: false,
+            autoConnect: true,
+          ),
         );
-      } catch (e) {
-        debugPrint('Disconnect error: $e');
+      } else {
+        type = PrinterType.usb;
+
+        final vendorId = prefs.getString(PrinterPrefsKeys.usbVendor);
+        final productId = prefs.getString(PrinterPrefsKeys.usbProduct);
+
+        if (vendorId == null || productId == null) {
+          throw Exception("No USB printer saved");
+        }
+
+        connected = await _printerManager.connect(
+          type: type,
+          model: UsbPrinterInput(
+            name: prefs.getString(PrinterPrefsKeys.btName) ?? "USB Printer",
+            vendorId: vendorId,
+            productId: productId,
+          ),
+        );
       }
-      if (mounted) {
-        setState(() => _printing = false);
-      }
+
+      if (!connected) throw Exception("Connection failed");
+
+      final sent = await _printerManager.send(type: type, bytes: bytes);
+
+      if (!sent) throw Exception("Print failed");
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Print successful')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    } finally {
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      await _printerManager.disconnect(type: PrinterType.bluetooth);
+      await _printerManager.disconnect(type: PrinterType.usb);
+
+      setState(() => _printing = false);
     }
   }
   @override
@@ -336,6 +379,19 @@ class _PrinterSettingsAndTestScreenState
               onChanged: _printing ? null : _onTypeChanged,
             ),
             const SizedBox(height: 24),
+            const SizedBox(height: 20),
+
+            /// 🔥 ADD PRINTER BUTTON
+            Center(
+              child: ElevatedButton(
+                onPressed: _printing ? null : _addPrinter,
+                child: const Text("Add Printer"),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            /// 🔥 TEST PRINT BUTTON
             Center(
               child: ElevatedButton.icon(
                 onPressed: _printing ? null : _testPrint,
