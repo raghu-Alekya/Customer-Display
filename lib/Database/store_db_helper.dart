@@ -107,4 +107,7 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
       print("#### Store validation data cleared during logout");
     }
   }
+
+
+
 }

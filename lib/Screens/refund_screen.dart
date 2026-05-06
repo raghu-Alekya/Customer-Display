@@ -83,12 +83,11 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
     final startIndex = (_currentPage - 1) * _rowsPerPage;
     final endIndex = startIndex + _rowsPerPage;
 
-    _pagedOrders = _allOrders.sublist(
+    _pagedOrders = filteredOrders.sublist(
       startIndex,
-      endIndex > _allOrders.length ? _allOrders.length : endIndex,
+      endIndex > filteredOrders.length ? filteredOrders.length : endIndex,
     );
   }
-
   void _loadPage(int page) {
     setState(() {
       _currentPage = page;
@@ -206,26 +205,27 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                         setState(() {
                           _allOrders = state.orders;
 
-                          // ✅ collect unique transaction IDs
+                          filteredOrders = List.from(_allOrders); // ✅ important
+
                           transactionIds = _allOrders
                               .map((o) => o.transactionId)
                               .where((id) => id.isNotEmpty)
                               .toSet()
                               .toList();
 
-                          filteredOrders = _allOrders;
                           _currentPage = 1;
+
                           _totalPages =
-                              (_allOrders.length / _rowsPerPage).ceil();
-                          _paginate();
+                              (filteredOrders.length / _rowsPerPage).ceil();
+
+                          _paginate(); // ✅ now correct
                         });
                       }
                     },
                     builder: (context, state) {
-                      if (state is CompletedOrdersLoading) {
+                      if (_pagedOrders.isEmpty) {
                         return const Center(child: CircularProgressIndicator());
                       }
-
                       if (state is CompletedOrdersError) {
                         return Center(
                           child: Text(
@@ -355,7 +355,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                 }
 
                 _currentPage = 1;
-                _updatePagination();
+                _paginate();
               });
             },
             decoration: InputDecoration(
@@ -386,7 +386,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
                   setState(() {
                     filteredOrders = _allOrders;
                     _currentPage = 1;
-                    _updatePagination();
+                    _paginate();
                   });
                 },
               )
@@ -562,7 +562,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
     }
 
     _currentPage = 1;
-    _updatePagination();
+    _paginate();
   }
   // ================= TABLE =================
 

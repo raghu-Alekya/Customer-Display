@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:thermal_printer/thermal_printer.dart';
 
 import '../../../Constants/text.dart';
+import '../../../Database/assets_db_helper.dart';
 import '../../../Database/db_helper.dart';
 import '../../../Database/printer_db_helper.dart';
 import '../../../Database/store_db_helper.dart';
@@ -113,61 +114,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }  // # Build 1.0.182(option automatically change when tapped in top bar)
 
-  Future<void> _loadUserDataFromDB() async { // Build #1.0.13 : now user data loads from user table DB
+  Future<void> _loadUserDataFromDB() async {
     try {
       final userData = await UserDbHelper().getUserData();
-      final storeData = await StoreDbHelper.instance.getStoreValidationData(); //Build #1.0.126: updated to StoreDbHelper
-      final deviceDetails = await GlobalUtility.getDeviceDetails(); //Build #1.0.126: updated to Fetch device details from global class
+
+      // NEW: Load store details from Asset Table (Recommended)
+      final storeDetails = await AssetDBHelper.instance.getStoreDetails();
+
+      final deviceDetails = await GlobalUtility.getDeviceDetails();
 
       if (kDebugMode) {
         print("#### Loading user data: $userData");
-        print("#### Loading store data: $storeData");
+        print("#### Loading store details from Asset: ${storeDetails?.name}");
       }
 
       if (userData != null) {
-        //final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);  # Build 1.0.182(Radio option automatically change when tapped in top bar)
         setState(() {
           nameController.text = userData[AppDBConst.userDisplayName] ?? "Unknown Name";
           emailController.text = userData[AppDBConst.userEmail] ?? "test@pinaka.com";
-          deviceIdController.text = deviceDetails['device_id'] ?? "unknown"; // device ID
-          appearance = userData[AppDBConst.themeMode] == ThemeMode.dark.toString()
+          deviceIdController.text = deviceDetails['device_id'] ?? "unknown";
+
+          // Theme
+          appearance = _themeHelper.themeMode == ThemeMode.dark
               ? TextConstants.darkText
               : TextConstants.lightText;
 
-          // Build #1.0.207: Updated this line to use _themeHelper
-          appearance = _themeHelper.themeMode == ThemeMode.dark
-              ? TextConstants.darkText
-              : TextConstants.lightText; // # Build 1.0.182(option automatically change when tapped in top bar)
-
           layoutSelection = userData[AppDBConst.layoutSelection] ?? SharedPreferenceTextConstants.navLeftOrderRight;
           profilePhotoPath = userData[AppDBConst.profilePhoto];
-          userRole = userData[AppDBConst.userRole] ?? "Unknown Role"; //Build #1.0.170: Fixed: User role not updating
+          userRole = userData[AppDBConst.userRole] ?? "Unknown Role";
+
           if (profilePhotoPath != null) {
             _selectedIcon = File(profilePhotoPath!);
           }
         });
       }
 
-      if (storeData != null) { //Build #1.0.54: added
+      // ==================== UPDATED STORE DETAILS ====================
+      if (storeDetails != null) {
         if (kDebugMode) {
-          print("### TEST storeName : ${storeData[AppDBConst.storeName] ?? ""}");
-          print("### TEST licenseKey : ${storeData[AppDBConst.licenseKey] ?? ""}");
+          print("### Loaded Store Details from AssetDB: ${storeDetails.name}");
         }
+
         setState(() {
-          contactNoController.text  = storeData[AppDBConst.storePhone] ?? "";
-          companyNameController.text = storeData[AppDBConst.storeName] ?? "";
-          gstInController.text = storeData[AppDBConst.licenseKey] ?? "";
-          // Add subscription details to UI if needed
+          companyNameController.text = storeDetails.name;
+          contactNoController.text = storeDetails.phoneNumber ?? "";
+          // gstInController.text = storeData[AppDBConst.licenseKey] ?? ""; // Keep if needed from validation
+          // You can add more fields from StoreDetails model if required
         });
+      }
+      // Fallback: Keep old Store Validation logic (for backward compatibility)
+      else {
+        final storeData = await StoreDbHelper.instance.getStoreValidationData();
+        if (storeData != null) {
+          if (kDebugMode) print("### Fallback: Using old Store Validation data");
+          setState(() {
+            contactNoController.text = storeData[AppDBConst.storePhone] ?? "";
+            companyNameController.text = storeData[AppDBConst.storeName] ?? "";
+            gstInController.text = storeData[AppDBConst.licenseKey] ?? "";
+          });
+        }
       }
 
       if (kDebugMode) {
-        print("#### Loaded user data: $userData");
-        print("#### Loaded store data: $storeData");
+        print("#### User & Store data loading completed");
       }
     } catch (e) {
       if (kDebugMode) {
-        print("Error loading user data: $e");
+        print("Error loading user/store data: $e");
       }
     }
   }

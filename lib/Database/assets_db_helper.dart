@@ -83,7 +83,7 @@ class AssetDBHelper { //Build #1.0.54: added
         TextConstants.currencySymbol = assetResponse.currencySymbol;
 
         // Build #1.0.163: No need save media from assets api, updated to saving from image assets api
-       // await txn.delete(AppDBConst.mediaTable, where: '${AppDBConst.assetId} = ?', whereArgs: [assetId]);
+        // await txn.delete(AppDBConst.mediaTable, where: '${AppDBConst.assetId} = ?', whereArgs: [assetId]);
         await txn.delete(AppDBConst.taxTable, where: '${AppDBConst.assetId} = ?', whereArgs: [assetId]);
         await txn.delete(AppDBConst.couponTable, where: '${AppDBConst.assetId} = ?', whereArgs: [assetId]);
         await txn.delete(AppDBConst.orderStatusTable, where: '${AppDBConst.assetId} = ?', whereArgs: [assetId]);
@@ -381,18 +381,20 @@ class AssetDBHelper { //Build #1.0.54: added
   }
 
   // Retrieve store details
+  // In AssetDBHelper.dart
   Future<StoreDetails?> getStoreDetails() async {
     if (kDebugMode) {
       print("#### AssetDBHelper: Fetching store details");
     }
     final db = await database;
     final result = await db.query(AppDBConst.storeDetailsTable, limit: 1);
+
     if (kDebugMode) {
-      print("#### AssetDBHelper: Store details query result: $result");
+      print("#### Store details query result: $result");
     }
+
     return result.isNotEmpty ? StoreDetails.fromJson(result.first) : null;
   }
-
   // Build #1.0.69 : added new functions based on new response of assets api
   Future<List<Denom>> getNotesDenomList() async {
     if (kDebugMode) {

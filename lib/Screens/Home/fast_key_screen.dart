@@ -2203,29 +2203,57 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (isEditing)
+                        SizedBox(
+                          height: 50,
+                          width: 110,
+                          child: TextButton(
+                            onPressed: () =>
+                                _showDeleteConfirmationDialog(tabIndex: index),
+                            style: TextButton.styleFrom(
+                              backgroundColor: Colors.white, // white inside
+                              // shape: RoundedRectangleBorder(
+                              //   borderRadius: BorderRadius.circular(8),
+                              //   side: BorderSide(color: Colors.red, width: 1.5), // red border
+                              // ),
+                            ),
+                            child: const Text(
+                              TextConstants.deleteText,
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 16,
+                                decoration: TextDecoration.underline, // ✅ underline added
+                                decorationColor: Colors.red,
+                              ),
+                            ),
+                          ),
+                        ),
+                      SizedBox(width: 12),
                       SizedBox(
-                        height: 50, // Increased button height
-                        width: 120, // Added fixed width
+                        height: 50,
+                        width: 110,
                         child: TextButton(
                           onPressed: () {
                             nameController.clear();
-                            //Navigator.pop(context); //Build #1.0.68: Close dialog on clear, Updated Build #1.0.229; SCRUM-386
                           },
-                          // => Navigator.pop(context),
                           style: TextButton.styleFrom(
-                            backgroundColor: Colors.grey[100],
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 12),
+                            backgroundColor: Colors.white, // ✅ same as delete
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
+                              side: const BorderSide(
+                                color: Colors.red,
+                                width: 1.5,
+                              ), // ✅ red border
                             ),
                           ),
-                          child: Text(
+                          child: const Text(
                             TextConstants.clearText,
                             style: TextStyle(
-                                color: Colors.red[400],
-                                fontWeight: FontWeight.w500,
-                                fontSize: 16),
+                              color: Colors.red, // ✅ same red text
+                              fontWeight: FontWeight.w500,
+                              fontSize: 16,
+                            ),
                           ),
                         ),
                       ),
@@ -2370,33 +2398,6 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                         ),
                       ),
 
-                      const SizedBox(width: 10),
-
-                      /// DELETE (only in edit)
-                      if (isEditing)
-                        SizedBox(
-                          height: 50,
-                          width: 110,
-                          child: TextButton(
-                            onPressed: () =>
-                                _showDeleteConfirmationDialog(tabIndex: index),
-                            style: TextButton.styleFrom(
-                              backgroundColor: Colors.white, // white inside
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                side: BorderSide(color: Colors.red, width: 1.5), // red border
-                              ),
-                            ),
-                            child: const Text(
-                              TextConstants.deleteText,
-                              style: TextStyle(
-                                color: Colors.red, // red text
-                                fontWeight: FontWeight.w500,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                        ),
                     ],
                   ),
                 ),
