@@ -17,8 +17,43 @@ import '../../Repositories/Auth/login_repository.dart';
 import '../../Repositories/Auth/store_validation_repository.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_loading.dart';
+import '../../services/customer_services.dart';
 import '../Home/pos_home_screen.dart';
 import '../../Widgets/widget_error.dart';
+
+import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+
+class DeviceHelper {
+  static Future<String> getDeviceId() async {
+    final deviceInfo = DeviceInfoPlugin();
+
+    if (Platform.isAndroid) {
+      final androidInfo = await deviceInfo.androidInfo;
+
+      if (kDebugMode) {
+        print(" Android Device ID: ${androidInfo.id}");
+      }
+
+      return androidInfo.id; // or androidId if needed
+    } else if (Platform.isIOS) {
+      final iosInfo = await deviceInfo.iosInfo;
+
+      if (kDebugMode) {
+        print(" iOS Device ID: ${iosInfo.identifierForVendor}");
+      }
+
+      return iosInfo.identifierForVendor ?? "unknown_ios";
+    }
+
+    if (kDebugMode) {
+      print("Unknown Device Platform");
+    }
+
+    return "unknown_device";
+  }
+}
 
 class StoreIdScreen extends StatefulWidget { // Build #1.0.16
   const StoreIdScreen({super.key});
@@ -55,16 +90,34 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
     super.dispose();
   }
 
-  void _handleValidation() {  //Build #1.0.42: Updated code
+  // void _handleValidation() {  //Build #1.0.42: Updated code
+  //   if (_formKey.currentState!.validate()) {
+  //     setState(() {
+  //       _isLoading = true;
+  //       _lastErrorMessage = null; // Reset last error message
+  //     });
+  //     _bloc.validateStore(
+  //       username: _usernameController.text,
+  //       password: _passwordController.text,
+  //       storeId: _storeIdController.text,
+  //     );
+  //   }
+  // }
+
+  void _handleValidation() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
-        _lastErrorMessage = null; // Reset last error message
+        _lastErrorMessage = null;
       });
+
+      final deviceId = await DeviceHelper.getDeviceId();
+
       _bloc.validateStore(
         username: _usernameController.text,
         password: _passwordController.text,
         storeId: _storeIdController.text,
+        deviceId: deviceId, // ✅ ADD THIS
       );
     }
   }
@@ -187,8 +240,21 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
                     final response = snapshot.data!;
                     if (response.status == Status.COMPLETED) {
                       if (response.data!.success) {
-                        // Save validation data and navigate
-                        StoreDbHelper.instance.saveStoreValidationData(response.data!).then((_) {  //Build #1.0.126: updated to StoreDbHelper
+                        final store = response.data!; // StoreValidationResponse
+
+                        // Run async side‑effects after this frame
+                        Future.microtask(() async {
+                          // 1) send store info to customer display
+                          // await CustomerService.publishStoreInfo(
+                          //   storeId: int.tryParse(store.storeId ?? '0') ?? 0,
+                          //   storeName: store.storeName ?? 'Merchant',
+                          //   logoUrl: store.storeLogo,                // <-- use correct field here
+                          // );
+
+
+                          // 2) Save validation data and navigate
+                          await StoreDbHelper.instance.saveStoreValidationData(store);
+                          if (!mounted) return;
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -207,7 +273,8 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
                           }
                         });
                       }
-                    } else if (response.status == Status.ERROR) {
+                    }
+                    else if (response.status == Status.ERROR) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         setState(() {
                           _isLoading = false; // Stop loader

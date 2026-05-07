@@ -2908,7 +2908,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                     : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
-                      Colors.transparent, // ✅ keeps gradient visible
+                      Colors.transparent,
                   shadowColor: Colors.transparent,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(6),
@@ -3978,8 +3978,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                         if (_showUnitNameInput && _activeAddItemAttrIdx == idx)
                           Container(
                             margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                             decoration: BoxDecoration(
                               color: isDark
                                   ? const Color(0xFF1A2535)
@@ -3998,12 +3997,11 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
-                                    color: isDark
-                                        ? Colors.white70
-                                        : Colors.black87,
+                                    color: isDark ? Colors.white70 : Colors.black87,
                                   ),
                                 ),
                                 const SizedBox(width: 8),
+
                                 Expanded(
                                   child: Container(
                                     height: 40,
@@ -4023,16 +4021,13 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       autofocus: true,
                                       style: TextStyle(
                                         fontSize: 13,
-                                        color: isDark
-                                            ? Colors.white
-                                            : Colors.black87,
+                                        color: isDark ? Colors.white : Colors.black87,
                                       ),
                                       decoration: InputDecoration(
                                         border: InputBorder.none,
                                         isDense: true,
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                                horizontal: 12, vertical: 10),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 10),
                                         hintText: 'e.g. blue, XL, 500ml...',
                                         hintStyle: TextStyle(
                                           fontSize: 12,
@@ -4041,12 +4036,14 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               : Colors.grey.shade400,
                                         ),
                                       ),
-                                      onSubmitted: (_) =>
-                                          _handleUnitNameCreate(),
+                                      onSubmitted: (_) => _handleUnitNameCreate(),
                                     ),
                                   ),
                                 ),
+
                                 const SizedBox(width: 10),
+
+                                /// Create Button
                                 SizedBox(
                                   height: 40,
                                   child: ElevatedButton(
@@ -4056,10 +4053,9 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       foregroundColor: const Color(0xFF1B8A3A),
                                       elevation: 0,
                                       shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8)),
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 22),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(horizontal: 22),
                                     ),
                                     child: const Text(
                                       'Create',
@@ -4069,6 +4065,34 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         color: Color(0xFF1B8A3A),
                                       ),
                                     ),
+                                  ),
+                                ),
+
+                                const SizedBox(width: 6),
+
+                                /// Close Icon
+                                Container(
+                                  height: 40,
+                                  width: 40,
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? Colors.white.withOpacity(0.05)
+                                        : Colors.grey.shade200,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: IconButton(
+                                    icon: Icon(
+                                      Icons.close,
+                                      size: 20,
+                                      color: isDark ? Colors.white70 : Colors.black54,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _showUnitNameInput = false;
+                                        _activeAddItemAttrIdx = -1; // or null if nullable
+                                        _unitNameInputController.clear();
+                                      });
+                                    },
                                   ),
                                 ),
                               ],

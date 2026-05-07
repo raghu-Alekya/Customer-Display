@@ -144,6 +144,7 @@ class Shift extends Equatable {
   final String shiftClosingNotes;
   final String shiftStatus;
   final double overShort;
+  final double tillAmount;
 
   const Shift({
     required this.shiftId,
@@ -165,6 +166,7 @@ class Shift extends Equatable {
     required this.shiftClosingNotes,
     required this.shiftStatus,
     required this.overShort,
+    required this.tillAmount,
   });
 
   factory Shift.fromJson(Map<String, dynamic> json) {
@@ -197,6 +199,7 @@ class Shift extends Equatable {
       notes: json['notes']?.toString() ?? '',
       shiftClosingNotes: json['shift_closing_notes']?.toString() ?? '',
       shiftStatus: json['shift_status']?.toString() ?? '',
+      tillAmount: (json['till_amount'] ?? 0).toDouble(),
       overShort: (json['over_short'] is String)
           ? double.tryParse(json['over_short']) ?? 0.0
           : (json['over_short'] as num?)?.toDouble() ?? 0.0,
@@ -223,6 +226,7 @@ class Shift extends Equatable {
     'shift_closing_notes': shiftClosingNotes,
     'shift_status': shiftStatus,
     'over_short': overShort,
+    'till_amount': tillAmount,
   };
 
   @override

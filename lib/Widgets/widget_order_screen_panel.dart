@@ -987,6 +987,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
   }
 
   // Build #1.0.10: Fetches order items for the active order
+
   Future<void> fetchOrderItems() async {
     final int requestId = ++_fetchOrderItemsSeq;
     final int? requestOrderId = widget.activeOrderId;

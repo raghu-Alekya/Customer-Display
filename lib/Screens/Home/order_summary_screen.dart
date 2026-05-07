@@ -7952,6 +7952,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   void _showErrorPopup(String message) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (_) => AlertDialog(
         title: const Center(
           child: Text(

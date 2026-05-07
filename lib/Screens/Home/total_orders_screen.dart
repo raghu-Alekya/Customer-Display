@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:pinaka_pos/Database/db_helper.dart';
 import 'package:pinaka_pos/Models/Assets/asset_model.dart';
@@ -19,8 +18,6 @@ import '../../Preferences/pinaka_preferences.dart';
 import '../../Widgets/widget_order_screen_panel.dart';
 import '../../Widgets/widget_order_status.dart';
 import '../../Widgets/widget_filter_chip.dart';
-import '../../Widgets/widget_order_panel.dart';
-import '../../Widgets/widget_pagination.dart';
 import '../../Widgets/widget_range_filter.dart';
 import '../../Widgets/widget_topbar.dart';
 import '../../Models/Orders/get_orders_model.dart' as model; // Added prefix
@@ -29,9 +26,6 @@ import '../../Helper/api_response.dart';
 import '../../Constants/text.dart';
 import '../../Widgets/widget_navigation_bar.dart' as custom_widgets;
 
-import 'package:quickalert/quickalert.dart';
-
-import '../Auth/login_screen.dart';
 
 /// Last successful Total Orders list for the same filters/page (instant paint on return).
 class _TotalOrdersListCache {
@@ -101,7 +95,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   final List<Employees> _filterUsers = [Employees(iD: "", displayName: "All")];
   final List<OrderType> _filterOrderType = [OrderType(slug: "", name: "All")];
 
-  // 🔥 Page-level lazy loading
+  // Page-level lazy loading
   final ScrollController _tableScrollController = ScrollController();
 
   List<model.OrderModel> _pageOrders = []; // full page data (20)
@@ -743,6 +737,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   void _openRangeFilterDialog() {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) {
         return AlertDialog(
           title: const Text("Select Sales Amount Range"),
@@ -777,6 +772,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);
     showDialog(
       context: context,
+      barrierDismissible: false,
+
       builder: (context) {
         return AlertDialog(
           backgroundColor: themeHelper.themeMode == ThemeMode.dark

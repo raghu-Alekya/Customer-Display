@@ -905,7 +905,7 @@ Future<bool> _handleBack() async {
                                   SidebarPosition.bottom) ...[
                                 /// Back Button Row (inside parent container)
                                 InkWell(
-                                  onTap: () => Navigator.of(context).pop(),
+                                  onTap: _handleBack,
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 16, vertical: 8),
