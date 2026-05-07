@@ -419,6 +419,7 @@ class CustomDialog {
         }) {
       return showDialog(
         context: context,
+        barrierDismissible: false,
         builder: (_) => _buildBaseDialog(
           context,
           Stack(
@@ -458,6 +459,7 @@ class CustomDialog {
         }) {
       return showDialog(
         context: context,
+        barrierDismissible: false,
         builder: (BuildContext dialogContext) => _buildBaseDialog(
           dialogContext,
           Column(

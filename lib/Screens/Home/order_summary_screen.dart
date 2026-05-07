@@ -2189,18 +2189,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         (double.tryParse(amountController.text
             .replaceAll(TextConstants.currencySymbol, '')
             .trim()) ??
-            0) >
-            0) {
+            0) > 0) {
       print(
           "⚠️ DEFENSIVE RESET: balance=0 but amount entered > 0 → forcing reset after possible void");
-
       setState(() {
         _successPopupShown = false;
         _currentPaymentRemainingBalance = null;
         isPaymentStarted = false;
       });
-
-      // Optional: force recalc
       _calculateBalanceFromPaymentHistory();
     }
 
@@ -2209,56 +2205,46 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         .trim();
 
     final double amount = double.tryParse(cleanAmount) ?? 0.0;
-
-    // Convert to cents to avoid floating point issues
     final int enteredCents = (amount * 100).round();
     final int ebtCents = (ebtTotal * 100).round();
 
-    //  Basic validation
+    // Basic validation
     if (enteredCents <= 0 && computedNetPayable > 0) {
       setState(() {
         _amountErrorText = TextConstants.amountValidation;
       });
       return;
     }
-
     _amountErrorText = null;
 
-    // ⭐ EBT validation
+    // EBT validation
     if (selectedPaymentMethod == TextConstants.ebtText) {
-      // ❌ No EBT balance
       if (ebtCents <= 0) {
         setState(() {
           _amountErrorText = "No EBT balance available";
         });
         return;
       }
-
-      // ❌ Amount exceeds EBT balance (even by 1 cent)
       if (enteredCents > ebtCents) {
         setState(() {
-          _amountErrorText =
-          "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
+          _amountErrorText = "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
         });
         return;
       }
     }
 
-    // ⭐ CARD → Sunmi ONLY
-    if (selectedPaymentMethod == TextConstants.card) {
-      _openSunmiSaleScreen(
-        amount: amount,
-        orderId: (widget.orderId ?? widget.offlineOrderId).toString(),
-      );
-      _resetAmountAfterPay();
-      return;
-    }
+    // ✅ REMOVED the Sunmi‑only branch for Card.
+    // Now Card payments go through the same flow as Cash / EBT.
+    // The original code was:
+    // if (selectedPaymentMethod == TextConstants.card) {
+    //   _openSunmiSaleScreen(...);
+    //   return;
+    // }
 
-    // ⭐ Wallet / Cash / EBT → API
+    // ✅ All payment methods (Cash, Card, Wallet, EBT) now call the local storage API
     _callCreatePaymentAPI(); // uses validated amount
     _resetAmountAfterPay();
   }
-
 //  ADD THIS METHOD (you might already have it, but here it is for reference)
   void _resetAmountAfterPay() {
     _rawAmount = 0;
@@ -2572,7 +2558,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   @override
   void initState() {
     super.initState();
-    ScannerGuard.isCouponPopupOpen = true;
+    ScannerGuard.isCouponPopupOpen= true;
 
     orderItems = widget.orderItems
         .map((e) => Map<String, dynamic>.from(e))
@@ -2912,126 +2898,88 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final data = jsonDecode(result);
       final fullSunmi = jsonDecode(data["fullResponse"]);
 
-      double paidAmount =
-          double.tryParse(fullSunmi["processedAmount"] ?? "0") ?? 0.0;
+      double paidAmount = double.tryParse(fullSunmi["processedAmount"] ?? "0") ?? 0.0;
 
-      // --------------------------------------------------
-      // 1 CARD TOTAL
-      // --------------------------------------------------
-      payByCard += paidAmount;
+      if (paidAmount <= 0) {
+        throw Exception("Invalid paid amount from Sunmi");
+      }
+
+      // ==================== UNIFIED PAYMENT FLOW (Same as Cash) ====================
       selectedPaymentMethod = TextConstants.card;
 
-      // --------------------------------------------------
-      // 2 BALANCE CALCULATION (same logic as API flow)
-      // --------------------------------------------------
-      final double previousBalance = balanceAmount;
+      final String datetime = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
-      if (paidAmount >= previousBalance) {
-        changeAmount = paidAmount - previousBalance;
-        balanceAmount = 0.0;
-      } else {
-        balanceAmount = previousBalance - paidAmount;
-        changeAmount = 0.0;
-      }
+      final localPayment = LocalPayment(
+        orderId: widget.orderId ?? 0,
+        title: TextConstants.card,
+        amount: paidAmount,
+        paymentMethod: TextConstants.card,
+        shiftId: shiftId,
+        vendorId: vendorId,
+        userId: userId ?? 0,
+        serviceType: serviceType,
+        datetime: datetime,
+        notes: jsonEncode({
+          "sunmiTransactionId": fullSunmi["transactionId"],
+          "sunmiOrderId": fullSunmi["orderId"],
+          "authCode": fullSunmi["authCode"],
+          "cardType": fullSunmi["cardType"],
+          "maskedCard": fullSunmi["maskedCardNumber"],
+          "hostRef": fullSunmi["hostReferenceNumber"],
+        }),
+        isSynced: false,
+        createdAt: DateTime.now(),
+        remainingBalance: (balanceAmount - paidAmount).clamp(0.0, double.infinity),
+        status: PaymentDbStatus.pending, // Will be marked completed later if needed
+      );
 
-      balanceAmount = double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
+      // 1. Save to Isar
+      final savedPayment = await LocalPaymentDBHelper.instance.savePayment(localPayment);
 
-      // --------------------------------------------------
-      // 3️⃣ TENDER UPDATE
-      // --------------------------------------------------
-      tenderAmount += paidAmount;
+      // 2. Save to Hive (this is what powers your session history)
+      await _savePaymentToHive(
+        amount: paidAmount,
+        paymentMethod: TextConstants.card,
+        transactionId: "sunmi_${savedPayment.id}",
+        localPayment: savedPayment,
+      );
 
-      _order["balanceAmount"] = balanceAmount;
-      _order["paidAmount"] = tenderAmount;
-      _order["tenderAmount"] = tenderAmount;
+      await _saveLocalPaymentToHive(savedPayment);
 
-      setState(() {});
+      // 3. Store last payment info (for void)
+      _lastPayment = LastPaymentInfo(
+        method: TextConstants.card,
+        amount: paidAmount,
+        paymentId: savedPayment.id.toString(),
+        sunmiTxnId: fullSunmi["transactionId"]?.toString(),
+        sunmiOrderId: fullSunmi["orderId"]?.toString(),
+        sunmiDeviceId: fullSunmi["deviceID"]?.toString(),
+      );
 
-      // --------------------------------------------------
-      // 4 AUTO CREATE PAYMENT ENTRY (SERVER)
-      // --------------------------------------------------
+      // 4. Update local state
+      _updateLocalPaymentState(paidAmount, savedPayment);
+
+      // 5. Optional: Also try server sync
       _createPaymentFromSunmi(paidAmount, fullSunmi);
 
-      // --------------------------------------------------
-      // 5 OFFLINE DELETE (same as cash flow)
-      // --------------------------------------------------
-      if (widget.isOfflineSynced && widget.offlineOrderId != null) {
-        try {
-          final offlineId = widget.offlineOrderId!;
-          final box = StorageProvider.offlineOrders;
-
-          if (await box.containsKey(offlineId.toString())) {
-            await box.delete(offlineId.toString());
-          }
-
-          await orderHelper.deleteOrder(offlineId);
-        } catch (e) {
-          print("⚠ Failed deleting offline order: $e");
-        }
-      }
-
-      // --------------------------------------------------
-      // 6 SAVE TO HIVE (balance + tender + ebt)
-      // --------------------------------------------------
-      try {
-        final offlineBox = StorageProvider.offlineOrders;
-        final key = (this.orderId ?? 0).toString();
-
-        if (await offlineBox.containsKey(key)) {
-          final raw = await offlineBox.get(key);
-          final updated = Map<String, dynamic>.from(raw is Map ? raw : {});
-
-          updated["balanceAmount"] = balanceAmount;
-          updated["paidAmount"] = tenderAmount;
-          updated["tenderAmount"] = tenderAmount;
-          updated["ebtTotal"] = ebtTotal;
-
-          await offlineBox.put(key, updated);
-        } else {
-          await offlineBox.put(key, {
-            "balanceAmount": balanceAmount,
-            "paidAmount": tenderAmount,
-            "tenderAmount": tenderAmount,
-            "payByCard": payByCard,
-            "ebtTotal": ebtTotal,
-          });
-        }
-
-        print(
-            "✔ Hive updated → balance=$balanceAmount paid=$tenderAmount card=$payByCard");
-      } catch (e) {
-        print("⚠ Hive update error: $e");
-      }
-
-      // --------------------------------------------------
-      // 7 POPUPS
-      // --------------------------------------------------
+      // 6. Show appropriate dialog
       if (balanceAmount > 0) {
         _showPartialPaymentDialog(context, paidAmount);
       } else {
-        _showPaymentDialog(
-          context,
-          paidAmount,
-          changeAmount: 0,
-          showChange: false,
-        );
+        _showPaymentSuccessPopup(paidAmount, savedPayment);
       }
 
-      // Reset loading state after successful payment
-      setState(() {
-        _processingPaymentMethod = null;
-        isLoading = false;
-      });
-    } catch (e) {
-      // Reset loading state on error
-      setState(() {
-        _processingPaymentMethod = null;
-        isLoading = false;
-      });
-      print("⚠ Card payment error: $e");
+    } catch (e, stack) {
+      print("Sunmi Card Payment Error: $e");
+      print(stack);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Card payment failed: ${e.toString()}")),
+        SnackBar(content: Text("Card payment faileddddddd: $e"), backgroundColor: Colors.red),
       );
+    } finally {
+      setState(() {
+        _processingPaymentMethod = null;
+        isLoading = false;
+      });
     }
   }
 
@@ -4304,7 +4252,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   iconColor: Color(0xFFA484C8),
                                   // isLoading: _processingPaymentMethod == TextConstants.card && isLoading,
                                   // isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.card,
-                                  // ❌ FORCE DISABLE
+
                                   isLoading: false,
                                   isDisabled: false,
                                   onTap: () async {
@@ -4315,13 +4263,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     );
                                     _handlePay();
 
-                                    final url = Uri.parse(
-                                        "https://secure.networkmerchants.com/pay/1234567890abcdef");
 
-                                    if (!await launchUrl(url,
-                                        mode: LaunchMode.externalApplication)) {
-                                      throw "Could not launch $url";
-                                    }
                                   },
                                 ),
                                 _buildPaymentModeButton(
@@ -4641,7 +4583,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     );
   }
 
-  void _showCouponAppliedSnackBar(BuildContext context) {
+  void _showCouponAppliedSnackBar(
+      BuildContext context,
+      ) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -4649,7 +4593,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           content: Text(
             "Coupon already applied. Remove coupon to go back.",
           ),
+
+          //  RED COLOR
+          backgroundColor: Colors.red,
+
           duration: Duration(seconds: 3),
+
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -8056,13 +8005,41 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   void _showErrorPopup(String message) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: const Text("Error"),
-        content: Text(message),
+        title: const Center(
+          child: Text(
+            "Error",
+            style: TextStyle(
+              color: Color(0xFFFE6464),      // 🔴 red color
+              fontSize: 24,             // adjust if needed
+              fontWeight: FontWeight.bold, // stronger emphasis
+              fontFamily: "Inter",      // ✅ your custom font (change if needed)
+            ),
+          ),
+        ),
+        content: Text(
+          message,
+          textAlign: TextAlign.center, // ✅ center message
+        ),
+        actionsAlignment: MainAxisAlignment.center, // ✅ center button
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
+          SizedBox(
+            width: 100,
+            height: 40,
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFFFE6464), // 🔴 button color
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                "OK",
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
           ),
         ],
       ),

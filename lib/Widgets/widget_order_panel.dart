@@ -3046,7 +3046,52 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     // ============================
 // 🛑 CHECK: MERCHANT DISCOUNT WHEN DELETING ITEMS
 // ============================
+    double productsTotal =
+    ((offlineOrder['products'] as List?) ?? []).fold(0.0, (sum, p) {
+      final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
+      final qty = int.tryParse(p['quantity']?.toString() ??
+          p['items_count']?.toString() ??
+          '1') ??
+          1;
+      return sum + (price * qty);
+    });
 
+    double customTotal =
+    ((offlineOrder['custom_items'] as List?) ?? []).fold(0.0, (sum, c) {
+      final price = double.tryParse(
+          c['custom_item_price']?.toString() ??
+              c['amount']?.toString() ??
+              c['price']?.toString() ??
+              '0') ??
+          0;
+      final qty = int.tryParse(c['quantity']?.toString() ??
+          c['items_count']?.toString() ??
+          '1') ??
+          1;
+      return sum + (price * qty);
+    });
+
+    double cashbackTotal =
+    ((offlineOrder['cashbacks'] as List?) ?? []).fold(0.0, (sum, c) {
+      final amount = double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
+      return sum + amount;
+    });
+
+    final double itemPrice = double.tryParse(
+        orderItem['item_price']?.toString() ??
+            orderItem[AppDBConst.itemPrice]?.toString() ??
+            '0') ??
+        0;
+
+    final int itemQty = int.tryParse(orderItem['items_count']?.toString() ??
+        orderItem[AppDBConst.itemCount]?.toString() ??
+        '1') ??
+        1;
+
+    final double itemLineTotal = itemPrice * itemQty;
+
+    final double currentTotal = productsTotal + customTotal;
+    final double newTotal = currentTotal - itemLineTotal;
     final double merchantDiscount = (offlineOrder['merchantDiscount'] is num)
         ? (offlineOrder['merchantDiscount'] as num).toDouble()
         : 0.0;
@@ -3116,7 +3161,19 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         return;
       }
     }
-
+    if (!isPayout && !isCashback && cashbackTotal > 0) {
+      if (cashbackTotal > newTotal) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Colors.red,
+            content: Text(
+              "Cashback is more than the new order total. Please remove cashback first before deleting items.",
+            ),
+          ),
+        );
+        return;
+      }
+    }
     // ============================
     // CONTINUE WITH NORMAL DELETE LOGIC
     // ============================
@@ -4793,6 +4850,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                           context: context,
                                           barrierColor: Colors.black
                                               .withValues(alpha: 0.5),
+                                          barrierDismissible: false,
                                           builder:
                                               (BuildContext dialogContext) {
                                             return EditProduct(
@@ -6769,10 +6827,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                         itemTax = 0.0;
                                       } else if (lineTaxStatus == 'taxable' &&
                                           lineTaxRate > 0) {
-                                        itemTax = roundTaxHalfUp(
-                                            ((discountedUnitPrice * qty) *
-                                                    lineTaxRate) /
-                                                100);
+                                        itemTax = (item['item_tax'] as num?)?.toDouble() ?? 0.0;
                                       } else {
                                         itemTax = getProductTaxFromHive(
                                             productId,
@@ -6780,10 +6835,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             qty);
                                         if (itemTax <= 0 &&
                                             lineTaxStatus != 'none') {
-                                          itemTax = roundTaxHalfUp(
-                                              ((discountedUnitPrice * qty) *
-                                                      defaultNonEbtTaxRate) /
-                                                  100);
+                                          itemTax = (item['item_tax'] as num?)?.toDouble() ?? 0.0;
                                         }
                                       }
                                     } else if (item['item_type'] == 'custom') {

@@ -22,10 +22,11 @@
 
             <ImageView
                 android:id="@+id/welcome_logo"
-                android:layout_width="150dp"
-                android:layout_height="wrap_content"
+                android:layout_width="220dp"
+                android:layout_height="220dp"
                 android:src="@drawable/pinaka_logo"
                 android:contentDescription="Logo"
+                android:scaleType="fitCenter"
                 android:adjustViewBounds="true"
                 android:layout_marginBottom="20dp" />
 

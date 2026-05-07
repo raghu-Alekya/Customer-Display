@@ -32,22 +32,26 @@ class StoreValidationBloc { //Build #1.0.42: Added by Naveen
     required String username,
     required String password,
     required String storeId,
+    String? deviceId, // ✅ ADDED (optional, backward safe)
   }) async {
     if (_validationController.isClosed) return;
 
     validationSink.add(APIResponse.loading(TextConstants.loading));
+
     try {
-      final deviceDetails = await GlobalUtility.getDeviceDetails(); //Build #1.0.126: Updated code - using from global class
+      final deviceDetails = await GlobalUtility.getDeviceDetails(); // existing
+
       final response = await _repository.validateStore(
         username: username,
         password: password,
         storeId: storeId,
-        deviceId: deviceDetails['device_id'] ?? 'unknown',
+        deviceId: deviceId ?? deviceDetails['device_id'] ?? 'unknown', // ✅ fallback preserved
       );
 
       if (kDebugMode) {
         print("StoreValidationBloc - Validation Response: ${response.toJson()}");
       }
+
       if (response.storeId != null && response.storeId!.isNotEmpty) {
         await PinakaPreferences.saveLoggedInStore(
           storeId: response.storeId!,
@@ -67,6 +71,7 @@ class StoreValidationBloc { //Build #1.0.42: Added by Naveen
       validationSink.add(APIResponse.completed(response));
     } catch (e, s) {
       String errorMessage = "Validation failed. Please try again.";
+
       if (kDebugMode) {
         print("Exception type: ${e.runtimeType}");
         print("Exception content: $e");
@@ -75,7 +80,6 @@ class StoreValidationBloc { //Build #1.0.42: Added by Naveen
 
       if (e is UnauthorisedException || e is BadRequestException) {
         try {
-          // Extract JSON from exception string
           final jsonMatch = RegExp(r'\{.*\}').firstMatch(e.toString());
           if (jsonMatch != null) {
             final errorJson = json.decode(jsonMatch.group(0)!);
@@ -89,7 +93,6 @@ class StoreValidationBloc { //Build #1.0.42: Added by Naveen
       } else if (e is SocketException) {
         errorMessage = "Network error. Please check your connection.";
       } else {
-        // Handle generic exceptions
         try {
           final jsonMatch = RegExp(r'\{.*\}').firstMatch(e.toString());
           if (jsonMatch != null) {

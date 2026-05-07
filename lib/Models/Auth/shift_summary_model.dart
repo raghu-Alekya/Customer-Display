@@ -144,6 +144,7 @@ class Shift extends Equatable {
   final String shiftClosingNotes;
   final String shiftStatus;
   final double overShort;
+  final double tillAmount;
 
   const Shift({
     required this.shiftId,
@@ -165,6 +166,7 @@ class Shift extends Equatable {
     required this.shiftClosingNotes,
     required this.shiftStatus,
     required this.overShort,
+    required this.tillAmount
   });
 
   factory Shift.fromJson(Map<String, dynamic> json) {
@@ -190,6 +192,7 @@ class Shift extends Equatable {
           ?.map((e) => VendorPayout.fromJson(e as Map<String, dynamic>))
           .toList() ??
           [],
+      tillAmount: (json['till_amount'] ?? 0).toDouble(),
       totalVendorPayments:
       (json['total_vendor_payments'] as num?)?.toDouble() ?? 0.0,
       openingBalance: (json['opening_balance'] as num?)?.toDouble() ?? 0.0,

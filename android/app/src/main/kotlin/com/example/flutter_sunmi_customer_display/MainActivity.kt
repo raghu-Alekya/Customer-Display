@@ -1,4 +1,4 @@
-package com.example.flutter_sunmi_customer_display
+package com.pinaka.pos
 
 import android.app.Activity
 import android.app.Presentation

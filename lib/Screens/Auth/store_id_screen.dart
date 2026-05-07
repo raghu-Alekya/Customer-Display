@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:pinaka_pos/Screens/Auth/login_screen.dart';
 import 'package:provider/provider.dart';
@@ -21,6 +22,86 @@ import '../../services/customer_services.dart';
 import '../Home/pos_home_screen.dart';
 import '../../Widgets/widget_error.dart';
 
+import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+
+// class DeviceHelper {
+//   static Future<String> getDeviceId() async {
+//     final deviceInfo = DeviceInfoPlugin();
+//
+//     if (Platform.isAndroid) {
+//       final androidInfo = await deviceInfo.androidInfo;
+//
+//       if (kDebugMode) {
+//         print(" Android Device ID: ${androidInfo.id}");
+//       }
+//
+//       return androidInfo.id; // or androidId if needed
+//     } else if (Platform.isIOS) {
+//       final iosInfo = await deviceInfo.iosInfo;
+//
+//       if (kDebugMode) {
+//         print(" iOS Device ID: ${iosInfo.identifierForVendor}");
+//       }
+//
+//       return iosInfo.identifierForVendor ?? "unknown_ios";
+//     }
+//
+//     if (kDebugMode) {
+//       print("Unknown Device Platform");
+//     }
+//
+//     return "unknown_device";
+//   }
+// }
+
+
+class DeviceHelper {
+
+
+  static const platform = MethodChannel('device_serial');
+
+  static Future<String> getSerialNumber() async {
+    try {
+      final String serial = await platform.invokeMethod('getSerial');
+      debugPrint("✅ Device Serial Number: $serial");
+      return serial;
+    } catch (e) {
+      debugPrint("❌ Failed to get serial number: $e");
+      return "unknown_serial";
+    }
+  }
+
+  static Future<String> getDeviceId() async {
+    final deviceInfo = DeviceInfoPlugin();
+
+    if (Platform.isAndroid) {
+      final androidInfo = await deviceInfo.androidInfo;
+
+      if (kDebugMode) {
+        print(" Android Device ID: ${androidInfo.id}");
+      }
+
+      return androidInfo.id; // or androidId if needed
+    } else if (Platform.isIOS) {
+      final iosInfo = await deviceInfo.iosInfo;
+
+      if (kDebugMode) {
+        print(" iOS Device ID: ${iosInfo.identifierForVendor}");
+      }
+
+      return iosInfo.identifierForVendor ?? "unknown_ios";
+    }
+
+    if (kDebugMode) {
+      print("Unknown Device Platform");
+    }
+
+    return "unknown_device";
+  }
+
+}
 class StoreIdScreen extends StatefulWidget { // Build #1.0.16
   const StoreIdScreen({super.key});
 
@@ -56,16 +137,34 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
     super.dispose();
   }
 
-  void _handleValidation() {  //Build #1.0.42: Updated code
+  // void _handleValidation() {  //Build #1.0.42: Updated code
+  //   if (_formKey.currentState!.validate()) {
+  //     setState(() {
+  //       _isLoading = true;
+  //       _lastErrorMessage = null; // Reset last error message
+  //     });
+  //     _bloc.validateStore(
+  //       username: _usernameController.text,
+  //       password: _passwordController.text,
+  //       storeId: _storeIdController.text,
+  //     );
+  //   }
+  // }
+
+  void _handleValidation() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
-        _lastErrorMessage = null; // Reset last error message
+        _lastErrorMessage = null;
       });
+
+      final deviceId = await DeviceHelper.getDeviceId();
+
       _bloc.validateStore(
         username: _usernameController.text,
         password: _passwordController.text,
         storeId: _storeIdController.text,
+        deviceId: deviceId, // ✅ ADD THIS
       );
     }
   }

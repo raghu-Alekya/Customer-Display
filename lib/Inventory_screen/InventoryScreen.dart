@@ -1006,6 +1006,8 @@ class _InventoryScreenState extends State<InventoryScreen>
     _taxClassController.clear();
     _variantNameController.clear();
     _stockController.clear();
+    _variantRegularPriceController.clear();
+    _variantSalePriceController.clear();
 
     setState(() {
       _imageFile = null;
@@ -3138,6 +3140,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         children: [
                                           // 🔹 Regular Price
                                           Text(
+
                                             '\$${regValue.toStringAsFixed(2)}',
                                             style: TextStyle(
                                               fontSize: 20,
@@ -3207,12 +3210,10 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     ];
                                   }
 
-                                  _variantNameController.text =
-                                      _currentVariantName;
+                                  _variantNameController.text = _currentVariantName;
                                   _stockController.text = _currentStock;
-                                  _regularPriceController.text =
-                                      _currentRegularPrice;
-                                  _salePriceController.text = _currentSalePrice;
+                                  _variantRegularPriceController.text = _currentRegularPrice;
+                                  _variantSalePriceController.text = _currentSalePrice;
                                 });
                               },
                               child: Container(
@@ -3513,7 +3514,9 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         SizedBox(
                                           height: 36,
                                           child: TextField(
-                                            controller: _regularPriceController,
+                                            // controller: _regularPriceController,
+                                            controller: _variantRegularPriceController,
+
                                             keyboardType: const TextInputType
                                                 .numberWithOptions(
                                                 decimal: false),
@@ -3589,7 +3592,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         SizedBox(
                                           height: 36,
                                           child: TextField(
-                                            controller: _salePriceController,
+                                            controller: _variantSalePriceController,
                                             keyboardType: const TextInputType
                                                 .numberWithOptions(
                                                 decimal: false),
@@ -3955,15 +3958,12 @@ class _InventoryScreenState extends State<InventoryScreen>
 
                             Map<String, dynamic> newVariant = {
                               'name': _currentVariantName,
-                              'stock': _currentStock.isNotEmpty
-                                  ? _currentStock
-                                  : '0',
-                              'regularPrice':
-                              _currentRegularPrice.isNotEmpty
-                                  ? _currentRegularPrice
+                              'stock': _currentStock.isNotEmpty ? _currentStock : '0',
+                              'regularPrice': _variantRegularPriceController.text.isNotEmpty
+                                  ? _variantRegularPriceController.text
                                   : '0.00',
-                              'salePrice': _currentSalePrice.isNotEmpty
-                                  ? _currentSalePrice
+                              'salePrice': _variantSalePriceController.text.isNotEmpty
+                                  ? _variantSalePriceController.text
                                   : '',
                               'imageFile': _currentImageFile,
                               'attribute': singleAttribute,
@@ -3990,6 +3990,9 @@ class _InventoryScreenState extends State<InventoryScreen>
                             _stockController.clear();
                             _regularPriceController.clear();
                             _salePriceController.clear();
+
+                            _variantRegularPriceController.clear();
+                            _variantSalePriceController.clear();
 
                             _variantAttributes = [
                               {

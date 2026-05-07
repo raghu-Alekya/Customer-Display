@@ -324,7 +324,7 @@ class TopBar extends StatefulWidget {
   State<TopBar> createState() => _TopBarState();
 }
 
-class _TopBarState extends State<TopBar> {
+class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   Timer? _debounce;
@@ -341,7 +341,7 @@ class _TopBarState extends State<TopBar> {
   bool isLoading = false;
 
   bool _isSearchEnabled = true;
-
+  double _lastBottomInset = 0;
   void _clearSearchUiState() {
     _searchController.clear();
     _removeOverlay();
@@ -381,6 +381,7 @@ class _TopBarState extends State<TopBar> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _orderBloc = OrderBloc(OrderRepository());
     _searchController.addListener(_onSearchChanged);
     _searchFocusNode.addListener(_onFocusChanged);
@@ -417,7 +418,19 @@ class _TopBarState extends State<TopBar> {
       }
     }
   }
+  @override
+  void didChangeMetrics() {
+    final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
 
+    // Detect ONLY when keyboard goes from OPEN → CLOSED
+    if (_lastBottomInset > 0 && bottomInset == 0) {
+      if (_searchFocusNode.hasFocus) {
+        _searchFocusNode.unfocus();
+      }
+    }
+
+    _lastBottomInset = bottomInset;
+  }
   @override
   void didUpdateWidget(covariant TopBar oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -438,6 +451,7 @@ class _TopBarState extends State<TopBar> {
   @override
   void dispose() {
     _debounce?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _searchFocusNode.removeListener(_onFocusChanged);

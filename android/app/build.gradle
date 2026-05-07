@@ -1,17 +1,69 @@
+//plugins {
+//    id "com.android.application"
+//    id "org.jetbrains.kotlin.android"
+//    id "dev.flutter.flutter-gradle-plugin"
+//}
+//
+//// Force relocation of the build directory to the project root's build folder
+//// This works around cases where the Flutter Gradle plugin fails to redirect it automatically.
+//project.buildDir = "${rootProject.projectDir}/../build/${project.name}"
+//
+//android {
+//    namespace "com.example.flutter_sunmi_customer_display"
+//    compileSdk 35
+//    ndkVersion "26.1.10909125"
+//
+//    compileOptions {
+//        sourceCompatibility JavaVersion.VERSION_11
+//        targetCompatibility JavaVersion.VERSION_11
+//    }
+//
+//    kotlinOptions {
+//        jvmTarget = "11"
+//    }
+//
+//    defaultConfig {
+//        applicationId "com.example.flutter_sunmi_customer_display"
+//        minSdk 23
+//        targetSdk 35
+//        versionCode = flutter.versionCode
+//        versionName = flutter.versionName
+//    }
+//
+//    buildTypes {
+//        release {
+//            signingConfig signingConfigs.debug
+//            minifyEnabled false
+//            shrinkResources false
+//        }
+//    }
+//}
+//
+//flutter {
+//    source "../.."
+//}
+
+
 plugins {
     id "com.android.application"
     id "org.jetbrains.kotlin.android"
     id "dev.flutter.flutter-gradle-plugin"
 }
 
-// Force relocation of the build directory to the project root's build folder
-// This works around cases where the Flutter Gradle plugin fails to redirect it automatically.
+import java.util.Properties
+import java.io.FileInputStream
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 project.buildDir = "${rootProject.projectDir}/../build/${project.name}"
 
 android {
-    namespace "com.example.flutter_sunmi_customer_display"
-    compileSdk 35
-    ndkVersion "26.1.10909125"
+    namespace "com.pinaka.pos"
+    compileSdk 36
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
@@ -23,16 +75,29 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.flutter_sunmi_customer_display"
-        minSdk 23
+        applicationId "com.pinaka.pos"
+        minSdkVersion flutter.minSdkVersion
         targetSdk 35
+//        versionCode 3
+//        versionName "1.0.3"
+
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+    }
+
+    signingConfigs {
+        release {
+            keyAlias keystoreProperties["keyAlias"]
+            keyPassword keystoreProperties["keyPassword"]
+            storeFile file(keystoreProperties["storeFile"])
+            storePassword keystoreProperties["storePassword"]
+        }
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled false
             shrinkResources false
         }

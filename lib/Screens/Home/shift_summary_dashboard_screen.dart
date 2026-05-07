@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pinaka_pos/Helper/Extentions/text_extensions.dart';
 import 'package:pinaka_pos/Screens/Home/shift_history_dashboard_screen.dart';
@@ -564,36 +565,48 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
           ),
         ],
       ),
-      child: Row(
-        children: [
-          _buildSummaryCard(
-              TextConstants.openingAmount,
-              '${TextConstants.currencySymbol}${shift.openingBalance.toStringAsFixed(2)}',
-              Color(0xFFD3EAFF),
-              "assets/openwithround.png",
-              Color(0xFF487FFF)),
-          SizedBox(width: MediaQuery.of(context).size.width * 0.010),
-          _buildSummaryCard(
-              TextConstants.totalTransactions,
-              '${shift.totalSales}',
-              Color(0xFFF1E2FF),
-              "assets/totalwithround.png",
-              Color(0xFF8252E9)),
-          SizedBox(width: MediaQuery.of(context).size.width * 0.010),
-          _buildSummaryCard(
-              TextConstants.saleAmount,
-              '${TextConstants.currencySymbol}${shift.totalSaleAmount.toStringAsFixed(2)}',
-              Color(0xFFFDE9DB),
-              "assets/Groupwithround.png",
-              Color(0xFFFE8B3E)),
-          SizedBox(width: MediaQuery.of(context).size.width * 0.010),
-          _buildSummaryCard(
-              TextConstants.closingAmount,
-              '${TextConstants.currencySymbol}${shift.closingBalance.toStringAsFixed(2)}',
-              Color(0xFFD2FFF3),
-              "assets/closewithround.png",
-              Color(0xFF0F8B6A)),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _buildSummaryCard(
+                TextConstants.openingAmount,
+                '${TextConstants.currencySymbol}${shift.openingBalance.toStringAsFixed(2)}',
+                Color(0xFFD3EAFF),
+                "assets/openwithround.png",
+                Color(0xFF487FFF)),
+            SizedBox(width: MediaQuery.of(context).size.width * 0.010),
+            _buildSummaryCard(
+                TextConstants.totalTransactions,
+                '${shift.totalSales}',
+                Color(0xFFF1E2FF),
+                "assets/totalwithround.png",
+                Color(0xFF8252E9)),
+            SizedBox(width: MediaQuery.of(context).size.width * 0.010),
+            _buildSummaryCard(
+                TextConstants.saleAmount,
+                '${TextConstants.currencySymbol}${shift.totalSaleAmount.toStringAsFixed(2)}',
+                Color(0xFFFDE9DB),
+                "assets/Groupwithround.png",
+                Color(0xFFFE8B3E)),
+            SizedBox(width: MediaQuery.of(context).size.width * 0.010),
+            _buildSummaryCard(
+              "Till Amount",
+              '${shift.tillAmount < 0 ? '-${TextConstants.currencySymbol}${shift.tillAmount.abs().toStringAsFixed(2)}'
+                  : '${TextConstants.currencySymbol}${shift.tillAmount.toStringAsFixed(2)}'}',
+              Color(0xFFE0F7FA),
+              "assets/svg/cash_drawer.svg",
+              Color(0xFF0097A7),
+            ),
+            SizedBox(width: MediaQuery.of(context).size.width * 0.010),
+            _buildSummaryCard(
+                TextConstants.closingAmount,
+                '${TextConstants.currencySymbol}${shift.closingBalance.toStringAsFixed(2)}',
+                Color(0xFFD2FFF3),
+                "assets/closewithround.png",
+                Color(0xFF0F8B6A)),
+          ],
+        ),
       ),
     );
   }
@@ -649,7 +662,20 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
                     shape: BoxShape.circle,
                   ),
                   child: Center(
-                    child: Image.asset(imagePath, height: 30, width: 30),
+                    child: imagePath.endsWith('.svg')
+                        ? SvgPicture.asset(
+                      imagePath,
+                      height: 20,
+                      width: 20,
+                      fit: BoxFit.contain,
+                      color: Colors.white,
+                    )
+                        : Image.asset(
+                      imagePath,
+                      height: 30,
+                      width: 30,
+                      fit: BoxFit.contain,
+                    ),
                   ),
                 ),
               ],

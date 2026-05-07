@@ -1610,6 +1610,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     return showDialog<void>(
       context: context,
+      barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
@@ -1961,6 +1962,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
@@ -2454,6 +2456,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     var selectedImage = await showDialog<String>(
       context: context,
+      barrierDismissible: false,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
