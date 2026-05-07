@@ -47,6 +47,7 @@ class InventoryCategoriesRemoteDataSourceImpl implements InventoryCategoriesRemo
       final Uri url = Uri.parse(fullUrl).replace(queryParameters: {
         'page': '1',
         'per_page': '100',
+        'parent':'0',
       });
 
       if (kDebugMode) {

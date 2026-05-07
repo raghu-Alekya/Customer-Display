@@ -1426,25 +1426,85 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     }
   }
 
+  DateTime? _getBestDateTime() {
+    // Helper to safely parse and localize
+    DateTime? parseAndLocal(String? dateStr) {
+      if (dateStr == null || dateStr.trim().isEmpty) return null;
+      return DateTime.tryParse(dateStr.trim())?.toLocal();
+    }
+
+    // 1. Priority from _wooOrder (full API data - most accurate)
+    if (_wooOrder != null && _wooOrder!.id == widget.activeOrderId) {
+      final dt = parseAndLocal(_wooOrder!.datePaid) ??
+          parseAndLocal(_wooOrder!.dateCompleted) ??
+          parseAndLocal(_wooOrder!.dateCreated);
+      if (dt != null) return dt;
+    }
+
+    // 2. Priority from previewOrderFromApi (list API snapshot)
+    if (widget.previewOrderFromApi != null &&
+        widget.previewOrderFromApi!.id == widget.activeOrderId) {
+      final dt = parseAndLocal(widget.previewOrderFromApi!.datePaid) ??
+          parseAndLocal(widget.previewOrderFromApi!.dateCompleted) ??
+          parseAndLocal(widget.previewOrderFromApi!.dateCreated);
+      if (dt != null) return dt;
+    }
+
+    // 3. Fallback to local _order map (SQLite / Hive)
+    if (_order.isNotEmpty) {
+      // Check these keys in priority order
+      final candidates = [
+        _order['date_paid'],
+        _order['datePaid'],
+        _order['date_completed'],
+        _order['dateCompleted'],
+        _order[AppDBConst.orderDate],
+        _order['date_created'],
+        _order['created_at'],
+      ];
+
+      for (final candidate in candidates) {
+        final dt = parseAndLocal(candidate?.toString());
+        if (dt != null) return dt;
+      }
+    }
+
+    // 4. Absolute fallback (should rarely hit)
+    return null;
+  }
+
   Widget buildCurrentOrder() {
     final theme = Theme.of(context);
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final ScrollController _scrollController = ScrollController();
     final order = _order ?? {};
-    String displayDate = widget.formattedDate;
-    String displayTime = widget.formattedTime;
 
-    if (order.isNotEmpty && order[AppDBConst.orderDate] != null) {
+    String displayDate = "";
+    String displayTime = "";
+
+    final DateTime? bestDateTime = _getBestDateTime();
+
+    if (bestDateTime != null) {
+      displayDate = DateFormat(TextConstants.dateFormat).format(bestDateTime);
+
+      //  Changed to 12-hour format with AM/PM
+      displayTime = DateFormat('hh:mm:ss a').format(bestDateTime);
+
+    } else if (order.isNotEmpty && order[AppDBConst.orderDate] != null) {
+      // Fallback
       try {
         final DateTime createdDateTime =
-            DateTime.parse(order[AppDBConst.orderDate].toString());
-        displayDate =
-            DateFormat(TextConstants.dateFormat).format(createdDateTime);
-        displayTime =
-            DateFormat(TextConstants.timeFormat).format(createdDateTime);
+        DateTime.parse(order[AppDBConst.orderDate].toString());
+
+        displayDate = DateFormat(TextConstants.dateFormat).format(createdDateTime);
+
+        //  Changed here also
+        displayTime = DateFormat('hh:mm:ss a').format(createdDateTime);
+
       } catch (e) {
         print("Error parsing date: $e");
         displayDate = order[AppDBConst.orderDate].toString().split(' ').first;
+        displayTime = ""; // or handle accordingly
       }
     }
 
@@ -6197,19 +6257,47 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
     final orderIdToPrint = '${widget.activeOrderId ?? 'N/A'}';
 
-    // Date & Time from Order (unchanged)
+    // // Date & Time from Order (unchanged)
+    // String dateToPrint = "";
+    // String timeToPrint = "";
+    // if (_order.isNotEmpty && _order[AppDBConst.orderDate] != null) {
+    //   try {
+    //     final created = DateTime.parse(_order[AppDBConst.orderDate].toString());
+    //     dateToPrint = DateFormat(TextConstants.dateFormat).format(created);
+    //     timeToPrint = DateFormat(TextConstants.timeFormat).format(created);
+    //   } catch (e) {
+    //     if (kDebugMode) print("Date parse error: $e");
+    //     dateToPrint = "N/A";
+    //     timeToPrint = "N/A";
+    //   }
+    // }
+
+    // Date & Time from Order - SAME LOGIC AS SCREEN PANEL
     String dateToPrint = "";
     String timeToPrint = "";
-    if (_order.isNotEmpty && _order[AppDBConst.orderDate] != null) {
+
+    final DateTime? bestDateTime = _getBestDateTime();   // Reuse the same method
+
+    if (bestDateTime != null) {
+      dateToPrint = DateFormat(TextConstants.dateFormat).format(bestDateTime);
+
+      //  12-Hour format with AM/PM (as requested)
+      timeToPrint = DateFormat('hh:mm a').format(bestDateTime);   // e.g., 02:35 PM
+    }
+    else if (_order.isNotEmpty && _order[AppDBConst.orderDate] != null) {
+      // Fallback (kept your original logic as safety net)
       try {
         final created = DateTime.parse(_order[AppDBConst.orderDate].toString());
         dateToPrint = DateFormat(TextConstants.dateFormat).format(created);
-        timeToPrint = DateFormat(TextConstants.timeFormat).format(created);
+        timeToPrint = DateFormat('hh:mm a').format(created);   // AM/PM
       } catch (e) {
         if (kDebugMode) print("Date parse error: $e");
         dateToPrint = "N/A";
         timeToPrint = "N/A";
       }
+    } else {
+      dateToPrint = "N/A";
+      timeToPrint = "N/A";
     }
 
     // -------------------------------

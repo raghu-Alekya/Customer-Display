@@ -79,6 +79,8 @@ class _InventoryScreenState extends State<InventoryScreen>
   bool _manageStock = true;
   String _priceType = 'Fixed Price';
 
+  // Add this variable
+  int _variantFormResetKey = 0;
   // UI State
   int _selectedTab = 0;
   int _selectedSidebarIndex = 4;
@@ -336,8 +338,13 @@ class _InventoryScreenState extends State<InventoryScreen>
   //   }
   // }
 
-  Future<String?> _uploadImageForProduct(File imageFile,
-      {String? customFileName}) async {
+  Future<String?> _uploadImageForProduct(File imageFile, {String? customFileName}) async {
+    // ADD THESE LINES:
+    if (kDebugMode) {
+      print('_uploadImageForProduct() called');
+      print('  path: ${imageFile.path}');
+      print('  exists: ${imageFile.existsSync()}');
+    }
     final url = await _imageUploadRepo.uploadImage(
       imageFile: imageFile,
       fileName: customFileName,
@@ -1015,6 +1022,98 @@ class _InventoryScreenState extends State<InventoryScreen>
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  void _resetVariantForm() {
+    _currentVariantName = '';
+    _currentStock = '';
+    _currentRegularPrice = '';
+    _currentSalePrice = '';
+    _currentImageFile = null;
+    _currentVariantIndex = -1;
+    _currentVariantAttribute = null;
+    _currentVariantAttributeItem = null;
+    _selectedItemSlug = null;
+    _selectedItemName = null;
+
+    _variantNameController.text = '';
+    _stockController.text = '';
+    _variantRegularPriceController.text = '';
+    _variantSalePriceController.text = '';
+
+    _variantAttributes = [
+      {
+        'attribute': null,
+        'attributeItem': null,
+        'selectedSlug': null,
+      }
+    ];
+
+    _showUnitNameInput = false;
+    _activeAddItemAttrIdx = -1;
+    _unitNameInputController.clear();
+
+    // ✅ INCREMENT THIS to force InventoryAttributesWithItemsWidget to fully rebuild
+    _variantFormResetKey++;
+  }
+
+  String _buildVariantKey(List<Map<String, dynamic>> attrs) {
+    final cleaned = attrs
+        .where((e) => e['attribute'] != null && (e['selectedSlug'] ?? '').toString().trim().isNotEmpty)
+        .map((e) {
+      final attr = e['attribute'] as Map<String, dynamic>;
+      final attrId = (attr['id'] ?? '').toString();
+      final slug = (e['selectedSlug'] ?? '').toString().trim();
+      return '$attrId:$slug';
+    })
+        .toList()
+      ..sort();
+
+    return cleaned.join('|');
+  }
+
+  bool _hasDuplicateAttributeSelectionInForm() {
+    final seen = <String>{};
+
+    for (final row in _variantAttributes) {
+      final attr = row['attribute'] as Map<String, dynamic>?;
+      final slug = (row['selectedSlug'] ?? '').toString().trim();
+
+      if (attr == null || slug.isEmpty) continue;
+
+      final attrId = (attr['id'] ?? '').toString();
+      if (seen.contains(attrId)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Same attribute cannot be selected twice in one variant.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return true;
+      }
+      seen.add(attrId);
+    }
+
+    return false;
+  }
+
+  bool _isDuplicateVariant(List<Map<String, dynamic>> attrs) {
+    final newKey = _buildVariantKey(attrs);
+
+    for (int i = 0; i < _variants.length; i++) {
+      if (i == _currentVariantIndex) continue;
+
+      final existingAttrs =
+          (_variants[i]['attributes'] as List?)?.map((e) => Map<String, dynamic>.from(e)).toList() ?? [];
+
+      final existingKey = _buildVariantKey(existingAttrs);
+
+      if (existingKey.isNotEmpty && existingKey == newKey) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   void _clearForm() {
@@ -3318,37 +3417,34 @@ class _InventoryScreenState extends State<InventoryScreen>
                                 setState(() {
                                   _currentVariantIndex = index;
                                   _currentVariantName = variant['name'] ?? '';
-                                  _currentStock = variant['stock'] ?? '';
-                                  _currentRegularPrice =
-                                      variant['regularPrice']?.toString() ?? '';
-                                  _currentSalePrice =
-                                      variant['salePrice']?.toString() ?? '';
+                                  _currentStock = variant['stock']?.toString() ?? '';
+                                  _currentRegularPrice = variant['regularPrice']?.toString() ?? '';
+                                  _currentSalePrice = variant['salePrice']?.toString() ?? '';
                                   _currentImageFile = variant['imageFile'];
 
                                   if (variant['attributes'] != null &&
-                                      (variant['attributes'] as List)
-                                          .isNotEmpty) {
-                                    _variantAttributes =
-                                        List<Map<String, dynamic>>.from(
-                                            variant['attributes']);
+                                      (variant['attributes'] as List).isNotEmpty) {
+                                    _variantAttributes = (variant['attributes'] as List)
+                                        .map((e) => Map<String, dynamic>.from(e))
+                                        .toList();
                                   } else {
                                     _variantAttributes = [
                                       {
                                         'attribute': variant['attribute'],
-                                        'attributeItem':
-                                            variant['attributeItem'],
-                                        'selectedSlug': variant['attributeItem']
-                                            ?['slug'],
+                                        'attributeItem': variant['attributeItem'],
+                                        'selectedSlug': variant['attributeItem']?['slug'],
                                       }
                                     ];
                                   }
 
-                                  _variantNameController.text =
-                                      _currentVariantName;
+                                  _variantNameController.text = _currentVariantName;
                                   _stockController.text = _currentStock;
-                                  _regularPriceController.text =
-                                      _currentRegularPrice;
-                                  _salePriceController.text = _currentSalePrice;
+                                  _variantRegularPriceController.text = _currentRegularPrice;
+                                  _variantSalePriceController.text = _currentSalePrice;
+
+                                  _showUnitNameInput = false;
+                                  _activeAddItemAttrIdx = -1;
+                                  _unitNameInputController.clear();
                                 });
                               },
                               child: Container(
@@ -3649,33 +3745,20 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         SizedBox(
                                           height: 36,
                                           child: TextField(
-                                            controller: _regularPriceController,
-                                            keyboardType: const TextInputType
-                                                .numberWithOptions(
-                                                decimal: false),
+                                            controller: _variantRegularPriceController,   // ← FIXED
+                                            keyboardType: const TextInputType.numberWithOptions(decimal: false),
                                             textAlign: TextAlign.right,
                                             inputFormatters: [
-                                              FilteringTextInputFormatter
-                                                  .digitsOnly,
-                                              TextInputFormatter.withFunction(
-                                                  (oldValue, newValue) {
-                                                final rawText = newValue.text
-                                                    .replaceAll(
-                                                        RegExp(r'[^0-9]'), '');
-                                                if (rawText.isEmpty)
-                                                  return const TextEditingValue(
-                                                      text: '');
-                                                final cents =
-                                                    int.tryParse(rawText) ?? 0;
+                                              FilteringTextInputFormatter.digitsOnly,
+                                              TextInputFormatter.withFunction((oldValue, newValue) {
+                                                final rawText = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+                                                if (rawText.isEmpty) return const TextEditingValue(text: '');
+                                                final cents = int.tryParse(rawText) ?? 0;
                                                 final dollars = cents / 100;
-                                                final formatted =
-                                                    dollars.toStringAsFixed(2);
+                                                final formatted = dollars.toStringAsFixed(2);
                                                 return TextEditingValue(
                                                   text: formatted,
-                                                  selection:
-                                                      TextSelection.collapsed(
-                                                          offset:
-                                                              formatted.length),
+                                                  selection: TextSelection.collapsed(offset: formatted.length),
                                                 );
                                               }),
                                             ],
@@ -3683,24 +3766,15 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               prefixText: '\$ ',
                                               hintText: '0.00',
                                               filled: true,
-                                              fillColor: isDark
-                                                  ? Color(0xFF252837)
-                                                  : Color(0xFFF8F9FA),
-                                              border: OutlineInputBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(6)),
-                                              contentPadding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 12,
-                                                      vertical: 0),
+                                              fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+                                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                                             ),
                                             style: TextStyle(
-                                                fontSize: 12,
-                                                color: isDark
-                                                    ? Colors.white
-                                                    : Colors.black87),
-                                            onChanged: (value) =>
-                                                _currentRegularPrice = value,
+                                              fontSize: 12,
+                                              color: isDark ? Colors.white : Colors.black87,
+                                            ),
+                                            onChanged: (value) => _currentRegularPrice = value,
                                           ),
                                         ),
                                       ],
@@ -3725,33 +3799,20 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         SizedBox(
                                           height: 36,
                                           child: TextField(
-                                            controller: _salePriceController,
-                                            keyboardType: const TextInputType
-                                                .numberWithOptions(
-                                                decimal: false),
+                                            controller: _variantSalePriceController,      // ← FIXED
+                                            keyboardType: const TextInputType.numberWithOptions(decimal: false),
                                             textAlign: TextAlign.right,
                                             inputFormatters: [
-                                              FilteringTextInputFormatter
-                                                  .digitsOnly,
-                                              TextInputFormatter.withFunction(
-                                                  (oldValue, newValue) {
-                                                final rawText = newValue.text
-                                                    .replaceAll(
-                                                        RegExp(r'[^0-9]'), '');
-                                                if (rawText.isEmpty)
-                                                  return const TextEditingValue(
-                                                      text: '');
-                                                final cents =
-                                                    int.tryParse(rawText) ?? 0;
+                                              FilteringTextInputFormatter.digitsOnly,
+                                              TextInputFormatter.withFunction((oldValue, newValue) {
+                                                final rawText = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+                                                if (rawText.isEmpty) return const TextEditingValue(text: '');
+                                                final cents = int.tryParse(rawText) ?? 0;
                                                 final dollars = cents / 100;
-                                                final formatted =
-                                                    dollars.toStringAsFixed(2);
+                                                final formatted = dollars.toStringAsFixed(2);
                                                 return TextEditingValue(
                                                   text: formatted,
-                                                  selection:
-                                                      TextSelection.collapsed(
-                                                          offset:
-                                                              formatted.length),
+                                                  selection: TextSelection.collapsed(offset: formatted.length),
                                                 );
                                               }),
                                             ],
@@ -3759,24 +3820,15 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               prefixText: '\$ ',
                                               hintText: '0.00',
                                               filled: true,
-                                              fillColor: isDark
-                                                  ? Color(0xFF252837)
-                                                  : Color(0xFFF8F9FA),
-                                              border: OutlineInputBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(6)),
-                                              contentPadding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 12,
-                                                      vertical: 0),
+                                              fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+                                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                                             ),
                                             style: TextStyle(
-                                                fontSize: 12,
-                                                color: isDark
-                                                    ? Colors.white
-                                                    : Colors.black87),
-                                            onChanged: (value) =>
-                                                _currentSalePrice = value,
+                                              fontSize: 12,
+                                              color: isDark ? Colors.white : Colors.black87,
+                                            ),
+                                            onChanged: (value) => _currentSalePrice = value,
                                           ),
                                         ),
                                       ],
@@ -3799,7 +3851,6 @@ class _InventoryScreenState extends State<InventoryScreen>
                       ),
                     ),
                     SizedBox(height: 6),
-// Replace this block in your ..._variantAttributes.asMap().entries.map((entry) { ... })
 
                     ..._variantAttributes.asMap().entries.expand((entry) {
                       final idx = entry.key;
@@ -3841,6 +3892,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                 child: SizedBox(
                                   height: 48,
                                   child: InventoryAttributesWithItemsWidget(
+                                    key: ValueKey('attr_widget_${_variantFormResetKey}_$idx'),
                                     onAttributeSelected: (attribute) {
                                       setState(() {
                                         _variantAttributes[idx]['attribute'] = {
@@ -4107,102 +4159,108 @@ class _InventoryScreenState extends State<InventoryScreen>
                       child: ElevatedButton(
                         onPressed: isVariantsEnabled
                             ? () {
-                                final generatedName =
-                                    _generateVariantName().trim();
-                                if (generatedName.isEmpty) {
-                                  return;
-                                }
+                          final generatedName = _generateVariantName().trim();
 
-                                setState(() {
-                                  _currentVariantName = generatedName;
+                          final preparedAttributes = _variantAttributes
+                              .where((attr) =>
+                          attr['attribute'] != null &&
+                              (attr['selectedSlug'] ?? '').toString().trim().isNotEmpty)
+                              .map((attr) => {
+                            'attribute': Map<String, dynamic>.from(attr['attribute']),
+                            'attributeItem': attr['attributeItem'] != null
+                                ? Map<String, dynamic>.from(attr['attributeItem'])
+                                : null,
+                            'selectedSlug': attr['selectedSlug'],
+                          })
+                              .toList();
 
-                                  Map<String, dynamic>? singleAttribute;
-                                  Map<String, dynamic>? singleAttributeItem;
+                          if (preparedAttributes.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please select at least one attribute and item.'),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                            return;
+                          }
 
-                                  for (var attr in _variantAttributes) {
-                                    if (attr['attribute'] != null &&
-                                        attr['attributeItem'] != null) {
-                                      singleAttribute = attr['attribute'];
-                                      singleAttributeItem =
-                                          attr['attributeItem'];
-                                      break;
-                                    }
-                                  }
+                          if (_hasDuplicateAttributeSelectionInForm()) return;
 
-                                  Map<String, dynamic> newVariant = {
-                                    'name': _currentVariantName,
-                                    'stock': _currentStock.isNotEmpty
-                                        ? _currentStock
-                                        : '0',
-                                    'regularPrice':
-                                        _currentRegularPrice.isNotEmpty
-                                            ? _currentRegularPrice
-                                            : '0.00',
-                                    'salePrice': _currentSalePrice.isNotEmpty
-                                        ? _currentSalePrice
-                                        : '',
-                                    'imageFile': _currentImageFile,
-                                    'attribute': singleAttribute,
-                                    'attributeItem': singleAttributeItem,
-                                    'attributes':
-                                        List<Map<String, dynamic>>.from(
-                                            _variantAttributes),
-                                  };
+                          if (_isDuplicateVariant(preparedAttributes)) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('This attribute combination already exists.'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            return;
+                          }
 
-                                  if (_currentVariantIndex >= 0) {
-                                    _variants[_currentVariantIndex] =
-                                        newVariant;
-                                  } else {
-                                    _variants.add(newVariant);
-                                  }
+                          // Always regenerate from current attributes so edits reflect the new selection
+                          final variantName = _generateVariantName().trim().isNotEmpty
+                              ? _generateVariantName().trim()
+                              : (_variantNameController.text.trim().isNotEmpty
+                              ? _variantNameController.text.trim()
+                              : 'Unnamed');
 
-                                  _currentVariantName = '';
-                                  _currentStock = '';
-                                  _currentRegularPrice = '';
-                                  _currentSalePrice = '';
-                                  _currentImageFile = null;
-                                  _currentVariantIndex = -1;
-                                  _variantNameController.clear();
-                                  _stockController.clear();
-                                  _regularPriceController.clear();
-                                  _salePriceController.clear();
+                          final Map<String, dynamic> newVariant = {
+                            'name': variantName,
+                            'stock': _stockController.text.trim().isNotEmpty
+                                ? _stockController.text.trim()
+                                : '0',
+                            'regularPrice': _variantRegularPriceController.text.trim().isNotEmpty
+                                ? _variantRegularPriceController.text.trim()
+                                : '0.00',
+                            'salePrice': _variantSalePriceController.text.trim(),
+                            'imageFile': _currentImageFile,
+                            'attributes': preparedAttributes,
+                            'attribute': preparedAttributes.isNotEmpty
+                                ? preparedAttributes.first['attribute']
+                                : null,
+                            'attributeItem': preparedAttributes.isNotEmpty
+                                ? preparedAttributes.first['attributeItem']
+                                : null,
+                          };
 
-                                  _variantAttributes = [
-                                    {
-                                      'attribute': null,
-                                      'attributeItem': null,
-                                      'selectedSlug': null,
-                                    }
-                                  ];
-                                });
-                              }
+                          setState(() {
+                            if (_currentVariantIndex >= 0) {
+                              _variants[_currentVariantIndex] = newVariant;
+                            } else {
+                              _variants.insert(0, newVariant); // Add on top
+                            }
+
+                            _resetVariantForm(); // ← Now properly clears everything
+                          });
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                _currentVariantIndex >= 0
+                                    ? 'Variant updated successfully.'
+                                    : 'Variant added successfully.',
+                              ),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
                             : null,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: isVariantsEnabled
-                              ? Color(0xFF00BFA5)
-                              : Colors.grey.shade300,
+                          backgroundColor: isVariantsEnabled ? Color(0xFF00BFA5) : Colors.grey.shade300,
                           foregroundColor: Colors.white,
                           elevation: 0,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                          disabledBackgroundColor: Colors.grey.shade300,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              _currentVariantIndex >= 0
-                                  ? Icons.check
-                                  : Icons.add,
+                              _currentVariantIndex >= 0 ? Icons.check : Icons.add,
                               size: 20,
                             ),
-                            SizedBox(width: 8),
+                            const SizedBox(width: 8),
                             Text(
-                              _currentVariantIndex >= 0
-                                  ? 'Update Variant'
-                                  : 'Add New Variant',
-                              style: const TextStyle(
-                                  fontSize: 15, fontWeight: FontWeight.w600),
+                              _currentVariantIndex >= 0 ? 'Update Variant' : 'Add New Variant',
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                             ),
                           ],
                         ),
