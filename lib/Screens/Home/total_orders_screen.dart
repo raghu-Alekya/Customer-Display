@@ -780,6 +780,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) {
         return AlertDialog(
           backgroundColor: themeHelper.themeMode == ThemeMode.dark

@@ -43,6 +43,7 @@ class CustomerDisplayHelper {
   static Future<void> updateCustomerDisplay(
       int serverOrderId, {
         bool summaryEnabled = false,
+        double redeemedValue = 0.0,
       }) async {
     try {
 

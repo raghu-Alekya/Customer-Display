@@ -498,6 +498,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) {
         return AlertDialog(
           backgroundColor: themeHelper.themeMode == ThemeMode.dark

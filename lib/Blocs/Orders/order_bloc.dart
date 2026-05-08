@@ -509,6 +509,17 @@ class OrderBloc { // Build #1.0.25 - added by naveen
   //   }
   // }
 
+
+  Future<Map<String, dynamic>?> syncSingleOfflineOrder(
+      Map<String, dynamic> offlineOrder,
+      ) async {
+
+    return await _orderRepository
+        .syncSingleOfflineOrder(
+      offlineOrder,
+    );
+  }
+
   //Build #1.0.40: fetchOrders
   Future<void> fetchOrders({bool allStatuses = false, int pageNumber =1}) async { //Build #1.0.54: updated
     if (_fetchOrdersController.isClosed) return;

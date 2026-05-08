@@ -2289,10 +2289,16 @@ bool _isSkuGenerated = false;
 
       if (discounts.isNotEmpty) {
         setState(() => _isDiscountLoading = false);
-        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext)
+            .showSnackBar(
           const SnackBar(
-            content: Text("A discount is already applied to this order."),
+            content: Text(
+              "A discount is already applied to this order.",
+            ),
             backgroundColor: Colors.orange,
+
+            // 🔥 REDUCE TIME
+            duration: Duration(seconds: 1),
           ),
         );
         return;

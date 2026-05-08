@@ -4313,9 +4313,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         offlineOrder['merchantDiscount'] = merchantDiscount;
       }
 
-      final isPercentageDiscount =
-          (offlineOrder['merchantDiscountIsPercentage'] as bool?) ?? false;
-      print("🔥 FINAL orderTax CALCULATED from Hive products = $orderTax");
+      // final isPercentageDiscount =
+      //     (offlineOrder['merchantDiscountIsPercentage'] as bool?) ?? false;
+      // print("🔥 FINAL orderTax CALCULATED from Hive products = $orderTax");
 
       netTotal = grossTotal - orderDiscount - merchantDiscount;
       netPayable = netTotal + orderTax + cashbackFee;
@@ -4341,8 +4341,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         print("   payoutTotal: $payoutTotal");
         print("   cashbackTotal: $cashbackTotal");
         print("   grossTotal: $grossTotal");
-        print(
-            "   merchantDiscount: $merchantDiscount (${isPercentageDiscount ? 'Percentage' : 'Fixed'})");
+        // print(
+        //     "   merchantDiscount: $merchantDiscount (${isPercentageDiscount ? 'Percentage' : 'Fixed'})");
         print("   netTotal: $netTotal");
         print("   netPayable: $netPayable");
         print("🧾 Offline items for UI → ${jsonEncode(orderItems)}");

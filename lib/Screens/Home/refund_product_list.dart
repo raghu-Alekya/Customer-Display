@@ -1595,9 +1595,15 @@ class _RefundScreenState extends State<RefundScreen> {
               if (selectedItems.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Please select at least one product to refund.'),
+                    content: Text(
+                      'Please select at least one product to refund.',
+                    ),
+
+                    // 🔥 RED COLOR
+                    backgroundColor: Colors.red,
                   ),
                 );
+
                 return;
               }
 

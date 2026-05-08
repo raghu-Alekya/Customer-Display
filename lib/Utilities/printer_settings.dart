@@ -57,15 +57,15 @@ class PrinterSettings {
       if (kDebugMode) print("Generic openDrawer error: $e");
     }
 
-    if (context != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(TextConstants.cashDrawerIsOpening),
-          backgroundColor: Colors.orange,
-          duration: Duration(seconds: 1),
-        ),
-      );
-    }
+    // if (context != null) {
+    //   ScaffoldMessenger.of(context).showSnackBar(
+    //     const SnackBar(
+    //       content: Text(TextConstants.cashDrawerIsOpening),
+    //       backgroundColor: Colors.orange,
+    //       duration: Duration(seconds: 1),
+    //     ),
+    //   );
+    // }
   }
 
   Future<void> loadPrinter() async {

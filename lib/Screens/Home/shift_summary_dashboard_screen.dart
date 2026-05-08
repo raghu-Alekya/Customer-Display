@@ -594,10 +594,11 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
             SizedBox(width: MediaQuery.of(context).size.width * 0.010),
             _buildSummaryCard(
               "Till Amount",
-              '${TextConstants.currencySymbol}${shift.tillAmount.toStringAsFixed(2)}',
-              Color(0xFFE0F7FA), // 👈 light cyan background
-              "assets/svg/cash_drawer.svg", // 👈 your icon
-              Color(0xFF0097A7), // 👈 teal text/icon color
+              '${shift.tillAmount < 0 ? '-${TextConstants.currencySymbol}${shift.tillAmount.abs().toStringAsFixed(2)}'
+                  : '${TextConstants.currencySymbol}${shift.tillAmount.toStringAsFixed(2)}'}',
+              Color(0xFFE0F7FA),
+              "assets/svg/cash_drawer.svg",
+              Color(0xFF0097A7),
             ),
             SizedBox(width: MediaQuery.of(context).size.width * 0.010),
             _buildSummaryCard(
