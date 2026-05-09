@@ -51,24 +51,42 @@ class _InventoryAttributesDropdownState extends State<InventoryAttributesDropdow
 
   void _showDropdown() {
     final searchController = TextEditingController();
-    List<InventoryAttributesEntity> filteredList = List.from(attributes);
+    List<InventoryAttributesEntity> filteredList =
+    List.from(attributes);
+
+    final RenderBox renderBox =
+    context.findRenderObject() as RenderBox;
+
+    final position = renderBox.localToGlobal(Offset.zero);
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    const dropdownHeight = 300.0;
+
+    final spaceBelow =
+        screenHeight - position.dy - renderBox.size.height;
+
+    final bool openUp = spaceBelow < dropdownHeight;
 
     _overlayEntry = OverlayEntry(
       builder: (context) => GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onTap: _removeDropdown, // Close when tapping outside
+        onTap: _removeDropdown,
         child: Material(
           color: Colors.transparent,
           child: Stack(
             children: [
-              // Background tap area
               Positioned.fill(
                 child: GestureDetector(onTap: _removeDropdown),
               ),
-              // Dropdown content
+
               CompositedTransformFollower(
                 link: _layerLink,
-                offset: const Offset(0, 48),
+
+                //// FIXED POSITION LOGIC
+                // offset: openUp
+                //     ? const Offset(0, -310)
+                //     : const Offset(0, 48),
+
                 showWhenUnlinked: false,
                 child: Material(
                   elevation: 6,
@@ -77,73 +95,101 @@ class _InventoryAttributesDropdownState extends State<InventoryAttributesDropdow
                     builder: (context, setModalState) {
                       return Container(
                         width: 240,
-                        constraints: const BoxConstraints(maxHeight: 300),
+                        constraints: const BoxConstraints(
+                          maxHeight: 300,
+                        ),
                         decoration: BoxDecoration(
                           color: Theme.of(context).cardColor,
                           borderRadius: BorderRadius.circular(8),
                         ),
+
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Search Field
-                            Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: TextField(
-                                controller: searchController,
-                                autofocus: true,
-                                decoration: InputDecoration(
-                                  hintText: 'Search attribute...',
-                                  prefixIcon: const Icon(Icons.search, size: 20),
-                                  isDense: true,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(6),
+                            /// SEARCH (TOP)
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              child: SizedBox(
+                                height: 36,
+                                child: TextField(
+                                  controller: searchController,
+                                  autofocus: true,
+                                  style: const TextStyle(fontSize: 13),
+                                  decoration: InputDecoration(
+                                    hintText: 'Search attribute...',
+                                    isDense: true,
+                                    prefixIcon: const Icon(
+                                      Icons.search,
+                                      size: 16,
+                                    ),
+                                    prefixIconConstraints:
+                                    const BoxConstraints(
+                                      minWidth: 32,
+                                      minHeight: 32,
+                                    ),
+                                    contentPadding:
+                                    const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 8,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius:
+                                      BorderRadius.circular(6),
+                                    ),
                                   ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 10,
-                                  ),
+                                  onChanged: (value) {
+                                    setModalState(() {
+                                      filteredList = attributes
+                                          .where((attr) => attr.name
+                                          .toLowerCase()
+                                          .contains(
+                                        value.toLowerCase(),
+                                      ))
+                                          .toList();
+                                    });
+                                  },
                                 ),
-                                onChanged: (value) {
-                                  setModalState(() {
-                                    filteredList = attributes
-                                        .where((attr) => attr.name
-                                        .toLowerCase()
-                                        .contains(value.toLowerCase()))
-                                        .toList();
-                                  });
-                                },
                               ),
                             ),
 
-                            // List of Attributes
-                            Expanded(
+                            /// LIST
+                            Flexible(
                               child: filteredList.isEmpty
-                                  ? const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(20),
-                                  child: Text('No attributes found'),
+                                  ? const Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Center(
+                                  child: Text(
+                                    'No attributes found',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
                                 ),
                               )
                                   : ListView.builder(
                                 shrinkWrap: true,
                                 itemCount: filteredList.length,
                                 itemBuilder: (context, index) {
-                                  final attr = filteredList[index];
+                                  final attr =
+                                  filteredList[index];
+
                                   final isSelected =
-                                      attr.id == selectedAttribute?.id;
+                                      attr.id ==
+                                          selectedAttribute?.id;
 
                                   return InkWell(
                                     onTap: () {
                                       setState(() {
                                         selectedAttribute = attr;
                                       });
+
                                       widget.onAttributeSelected(attr);
+
                                       _removeDropdown();
                                     },
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 12,
-                                        horizontal: 14,
+                                      padding:
+                                      const EdgeInsets.symmetric(
+                                        vertical: 10,
+                                        horizontal: 12,
                                       ),
                                       color: isSelected
                                           ? Theme.of(context)
@@ -153,12 +199,13 @@ class _InventoryAttributesDropdownState extends State<InventoryAttributesDropdow
                                       child: Text(
                                         attr.name,
                                         style: TextStyle(
-                                          fontSize: 14,
+                                          fontSize: 13,
                                           fontWeight: isSelected
                                               ? FontWeight.w600
                                               : FontWeight.normal,
                                           color: isSelected
-                                              ? Theme.of(context).primaryColor
+                                              ? Theme.of(context)
+                                              .primaryColor
                                               : null,
                                         ),
                                       ),
@@ -182,7 +229,6 @@ class _InventoryAttributesDropdownState extends State<InventoryAttributesDropdow
 
     Overlay.of(context).insert(_overlayEntry!);
   }
-
   void _removeDropdown() {
     _overlayEntry?.remove();
     _overlayEntry = null;

@@ -83,6 +83,7 @@ class _InventoryScreenState extends State<InventoryScreen>
   int _variantFormResetKey = 0;
   // UI State
   int _selectedTab = 0;
+  int _inlineEditIndex = -1; // -1 = no inline edit open
   int _selectedSidebarIndex = 4;
   late ShiftBloc shiftBloc;
   final PinakaPreferences _preferences = PinakaPreferences();
@@ -717,7 +718,7 @@ class _InventoryScreenState extends State<InventoryScreen>
         type: 'simple',
         sku: _skuController.text.trim().isNotEmpty
             ? _skuController.text.trim()
-            : 'SKU${DateTime.now().millisecondsSinceEpoch}',
+            : '${DateTime.now().millisecondsSinceEpoch}',
         regularPrice: regPrice.toStringAsFixed(2),
         salePrice: salePrice != null && salePrice > 0
             ? salePrice.toStringAsFixed(2)
@@ -2100,7 +2101,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                   ? () {
                                                       setState(() {
                                                         _skuController.text =
-                                                            'SKU${DateTime.now().millisecondsSinceEpoch}';
+                                                            '${DateTime.now().millisecondsSinceEpoch}';
                                                       });
                                                     }
                                                   : null,
@@ -3003,7 +3004,7 @@ class _InventoryScreenState extends State<InventoryScreen>
               child: ElevatedButton(
                 onPressed: canGenerateSku
                     ? () => setState(() => _skuController.text =
-                        'SKU${DateTime.now().millisecondsSinceEpoch}')
+                        '${DateTime.now().millisecondsSinceEpoch}')
                     : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
@@ -3054,12 +3055,23 @@ class _InventoryScreenState extends State<InventoryScreen>
         SizedBox(height: 8),
         Row(
           children: [
-            Checkbox(
-              value: _hasVariablePrice,
-              onChanged: (val) =>
-                  setState(() => _hasVariablePrice = val ?? false),
-              activeColor: Colors.white,
-              side: BorderSide(color: isDark ? Colors.white38 : Colors.black38),
+            GestureDetector(
+              onTap: () => setState(() => _hasVariablePrice = !_hasVariablePrice),
+              child: Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: _hasVariablePrice ? const Color(0xFF2196F3) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: const Color(0xFF2196F3),
+                    width: 2,
+                  ),
+                ),
+                child: _hasVariablePrice
+                    ? const Icon(Icons.check, size: 14, color: Colors.white)
+                    : null,
+              ),
             ),
             Expanded(
               child: Text(
@@ -3218,275 +3230,903 @@ class _InventoryScreenState extends State<InventoryScreen>
               // Existing variants list (unchanged)
               if (_variants.isNotEmpty) ...[
                 ..._variants.asMap().entries.map((entry) {
-                  int index = entry.key;
-                  var variant = entry.value;
+                  final int index = entry.key;
+                  final variant = entry.value;
+
                   return Container(
-                    margin: EdgeInsets.only(bottom: 16, left: 10, right: 10),
-                    padding: EdgeInsets.all(16),
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 16, left: 10, right: 10),
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: isDark ? Color(0xFF1F1D2B) : Colors.white,
+                      color: _inlineEditIndex == index
+                          ? (isDark ? const Color(0xFF1A2D4A) : const Color(0xFFEFF7FF))
+                          : (isDark ? const Color(0xFF1F1D2B) : Colors.white),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
+                        color: _inlineEditIndex == index
+                            ? const Color(0xFF2196F3)
+                            : (isDark ? const Color(0xFF3B4259) : const Color(0xFFE0E0E0)),
+                        width: _inlineEditIndex == index ? 1.5 : 1,
                       ),
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Index Number
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Color(0xFF2196F3).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Center(
-                            child: Text(
-                              '${index + 1}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF2196F3),
+
+                        // ── NORMAL DISPLAY ROW (always visible) ──────────────────
+                        Row(
+                          children: [
+                            // Index badge
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2196F3).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${index + 1}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF2196F3),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                        SizedBox(width: 16),
+                            const SizedBox(width: 12),
 
-                        // Image with remove button (unchanged)
-                        Stack(
-                          children: [
+                            // Variant image (small thumbnail)
                             Container(
-                              width: 60,
-                              height: 60,
+                              width: 50,
+                              height: 50,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(8),
-                                color: isDark
-                                    ? Color(0xFF252837)
-                                    : Color(0xFFF8F9FA),
+                                color: isDark ? const Color(0xFF252837) : const Color(0xFFF8F9FA),
                                 border: Border.all(
-                                  color: isDark
-                                      ? Color(0xFF3B4259)
-                                      : Color(0xFFE0E0E0),
+                                  color: isDark ? const Color(0xFF3B4259) : const Color(0xFFE0E0E0),
                                 ),
                               ),
                               child: variant['imageFile'] != null
                                   ? ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.file(
-                                        variant['imageFile'],
-                                        fit: BoxFit.cover,
-                                      ),
-                                    )
-                                  : Icon(
-                                      Icons.image_outlined,
-                                      size: 32,
-                                      color: Colors.grey.shade400,
-                                    ),
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.file(variant['imageFile'], fit: BoxFit.cover),
+                              )
+                                  : Icon(Icons.image_outlined, size: 24, color: Colors.grey.shade400),
                             ),
-                            if (variant['imageFile'] != null)
-                              Positioned(
-                                top: 4,
-                                right: 4,
-                                child: GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      variant['imageFile'] = null;
-                                    });
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.all(3),
-                                    decoration: const BoxDecoration(
-                                      color: Colors.black54,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(
-                                      Icons.close,
-                                      size: 12,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
+                            const SizedBox(width: 12),
 
-                        SizedBox(width: 16),
-
-                        // Details (unchanged)
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                variant['name'] ?? 'Unnamed',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark ? Colors.white : Colors.black87,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              SizedBox(height: 8),
-                              // Text(
-                              //   '\$ ${(() {
-                              //     final raw = variant['salePrice']?.toString() ?? '0';
-                              //     final cleaned = raw.replaceAll(RegExp(r'[^0-9.]'), '');
-                              //     final value = double.tryParse(cleaned) ?? 0.0;
-                              //     return value.toStringAsFixed(2);
-                              //   })()}',
-                              //   style: TextStyle(
-                              //     fontSize: 14,
-                              //     fontWeight: FontWeight.w500,
-                              //     color: isDark ? Colors.white70 : Colors.black54,
-                              //   ),
-                              // ),
-
-                              SizedBox(height: 8),
-                              Row(
+                            // Name + price info
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Builder(
-                                    builder: (context) {
-                                      final regValue = double.tryParse(
+                                  Text(
+                                    variant['name'] ?? 'Unnamed',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark ? Colors.white : Colors.black87,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Builder(builder: (context) {
+                                        final regValue = double.tryParse(
                                             (variant['regularPrice'] ?? '0')
                                                 .toString()
-                                                .replaceAll(
-                                                    RegExp(r'[^0-9.]'), ''),
-                                          ) ??
-                                          0.0;
-
-                                      final saleValue = double.tryParse(
+                                                .replaceAll(RegExp(r'[^0-9.]'), '')) ??
+                                            0.0;
+                                        final saleValue = double.tryParse(
                                             (variant['salePrice'] ?? '')
                                                 .toString()
-                                                .replaceAll(
-                                                    RegExp(r'[^0-9.]'), ''),
-                                          ) ??
-                                          0.0;
-
-                                      final hasSale = saleValue > 0;
-
-                                      return Row(
-                                        children: [
-                                          // 🔹 Regular Price
+                                                .replaceAll(RegExp(r'[^0-9.]'), '')) ??
+                                            0.0;
+                                        final hasSale = saleValue > 0;
+                                        return Row(children: [
                                           Text(
                                             '\$${regValue.toStringAsFixed(2)}',
                                             style: TextStyle(
-                                              fontSize: 20,
+                                              fontSize: 13,
                                               fontWeight: FontWeight.w600,
                                               color: hasSale
-                                                  ? Colors.grey.shade600
-                                                  : (isDark
-                                                      ? Colors.white70
-                                                      : Colors.black54),
-                                              decoration: hasSale
-                                                  ? TextDecoration.lineThrough
-                                                  : null,
+                                                  ? Colors.grey.shade500
+                                                  : (isDark ? Colors.white70 : Colors.black54),
+                                              decoration: hasSale ? TextDecoration.lineThrough : null,
                                             ),
                                           ),
-
-                                          // 🔹 Sale Price
                                           if (hasSale) ...[
                                             const SizedBox(width: 6),
                                             Text(
                                               '\$${saleValue.toStringAsFixed(2)}',
                                               style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight
-                                                    .w600, // SAME weight
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
                                                 color: isDark
                                                     ? Colors.orange.shade300
                                                     : Colors.orange.shade700,
                                               ),
                                             ),
                                           ],
-                                        ],
-                                      );
-                                    },
+                                        ]);
+                                      }),
+                                      const SizedBox(width: 10),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF2196F3).withOpacity(0.08),
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          'Stock: ${variant['stock'] ?? '0'}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
-                              )
-                            ],
-                          ),
-                        ),
-
-                        // Edit + Delete (unchanged)
-                        Row(
-                          children: [
-                            InkWell(
-                              onTap: () {
-                                setState(() {
-                                  _currentVariantIndex = index;
-                                  _currentVariantName = variant['name'] ?? '';
-                                  _currentStock = variant['stock']?.toString() ?? '';
-                                  _currentRegularPrice = variant['regularPrice']?.toString() ?? '';
-                                  _currentSalePrice = variant['salePrice']?.toString() ?? '';
-                                  _currentImageFile = variant['imageFile'];
-
-                                  if (variant['attributes'] != null &&
-                                      (variant['attributes'] as List).isNotEmpty) {
-                                    _variantAttributes = (variant['attributes'] as List)
-                                        .map((e) => Map<String, dynamic>.from(e))
-                                        .toList();
-                                  } else {
-                                    _variantAttributes = [
-                                      {
-                                        'attribute': variant['attribute'],
-                                        'attributeItem': variant['attributeItem'],
-                                        'selectedSlug': variant['attributeItem']?['slug'],
-                                      }
-                                    ];
-                                  }
-
-                                  _variantNameController.text = _currentVariantName;
-                                  _stockController.text = _currentStock;
-                                  _variantRegularPriceController.text = _currentRegularPrice;
-                                  _variantSalePriceController.text = _currentSalePrice;
-
-                                  _showUnitNameInput = false;
-                                  _activeAddItemAttrIdx = -1;
-                                  _unitNameInputController.clear();
-                                });
-                              },
-                              child: Container(
-                                padding: EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: Color(0xFF2196F3).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                      color:
-                                          Color(0xFF2196F3).withOpacity(0.3)),
-                                ),
-                                child: Icon(Icons.edit_outlined,
-                                    size: 20, color: Color(0xFF2196F3)),
                               ),
                             ),
-                            SizedBox(width: 8),
-                            InkWell(
-                              onTap: () {
-                                setState(() {
-                                  _variants.removeAt(index);
-                                });
-                              },
-                              child: Container(
-                                padding: EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: Color(0xFFEF5350).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                      color:
-                                          Color(0xFFEF5350).withOpacity(0.3)),
+
+                            // Edit + Delete buttons
+                            Row(
+                              children: [
+                                InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      if (_inlineEditIndex == index) {
+                                        _inlineEditIndex = -1;
+                                        _resetVariantForm();
+                                      } else {
+                                        _inlineEditIndex = index;
+                                        _currentVariantIndex = index;
+                                        _currentVariantName = variant['name'] ?? '';
+                                        _currentStock = variant['stock']?.toString() ?? '';
+                                        _currentRegularPrice = variant['regularPrice']?.toString() ?? '';
+                                        _currentSalePrice = variant['salePrice']?.toString() ?? '';
+                                        _currentImageFile = variant['imageFile'];
+
+                                        if (variant['attributes'] != null &&
+                                            (variant['attributes'] as List).isNotEmpty) {
+                                          _variantAttributes = (variant['attributes'] as List)
+                                              .map((e) => Map<String, dynamic>.from(e))
+                                              .toList();
+                                        } else {
+                                          _variantAttributes = [{
+                                            'attribute': variant['attribute'],
+                                            'attributeItem': variant['attributeItem'],
+                                            'selectedSlug': variant['attributeItem']?['slug'],
+                                          }];
+                                        }
+
+                                        _variantNameController.text = _currentVariantName;
+                                        _stockController.text = _currentStock;
+                                        _variantRegularPriceController.text = _currentRegularPrice;
+                                        _variantSalePriceController.text = _currentSalePrice;
+                                        _showUnitNameInput = false;
+                                        _activeAddItemAttrIdx = -1;
+                                        _unitNameInputController.clear();
+                                      }
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: _inlineEditIndex == index
+                                          ? const Color(0xFF2196F3).withOpacity(0.2)
+                                          : const Color(0xFF2196F3).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                          color: const Color(0xFF2196F3).withOpacity(0.3)),
+                                    ),
+                                    child: Icon(
+                                      _inlineEditIndex == index
+                                          ? Icons.expand_less
+                                          : Icons.edit_outlined,
+                                      size: 20,
+                                      color: const Color(0xFF2196F3),
+                                    ),
+                                  ),
                                 ),
-                                child: Icon(Icons.delete_outline,
-                                    size: 20, color: Color(0xFFEF5350)),
-                              ),
+                                const SizedBox(width: 8),
+                                InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      if (_inlineEditIndex == index) {
+                                        _inlineEditIndex = -1;
+                                        _resetVariantForm();
+                                      }
+                                      _variants.removeAt(index);
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEF5350).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                          color: const Color(0xFFEF5350).withOpacity(0.3)),
+                                    ),
+                                    child: const Icon(Icons.delete_outline,
+                                        size: 20, color: Color(0xFFEF5350)),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
+
+                        // ── INLINE EDIT FORM (only when edit is clicked) ─────────
+
+                        if (_inlineEditIndex == index) ...[
+                          const SizedBox(height: 16),
+                          const Divider(),
+                          const SizedBox(height: 12),
+
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Image picker (unchanged)
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Variant Image',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Stack(children: [
+                                    InkWell(
+                                      onTap: () async {
+                                        final XFile? pickedFile = await _picker.pickImage(
+                                          source: ImageSource.gallery,
+                                          maxWidth: 200,
+                                          maxHeight: 200,
+                                          imageQuality: 85,
+                                        );
+                                        if (pickedFile != null) {
+                                          setState(() => _currentImageFile = File(pickedFile.path));
+                                        }
+                                      },
+                                      child: Container(
+                                        width: 100,
+                                        height: 100,
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? const Color(0xFF252837)
+                                              : const Color(0xFFF8F9FA),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: isDark
+                                                ? const Color(0xFF3B4259)
+                                                : const Color(0xFFE0E0E0),
+                                          ),
+                                        ),
+                                        child: _currentImageFile != null
+                                            ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Image.file(_currentImageFile!, fit: BoxFit.cover),
+                                        )
+                                            : Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: const [
+                                            Icon(Icons.cloud_upload_outlined,
+                                                size: 24, color: Color(0xFF2196F3)),
+                                            SizedBox(height: 4),
+                                            Text('Upload',
+                                                style: TextStyle(
+                                                    fontSize: 11, color: Color(0xFF2196F3))),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    if (_currentImageFile != null)
+                                      Positioned(
+                                        top: 6,
+                                        right: 6,
+                                        child: GestureDetector(
+                                          onTap: () => setState(() => _currentImageFile = null),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: const BoxDecoration(
+                                              color: Colors.black54,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(Icons.close, size: 12, color: Colors.white),
+                                          ),
+                                        ),
+                                      ),
+                                  ]),
+                                ],
+                              ),
+                              const SizedBox(width: 6),
+
+                              // Fields (unchanged)
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      children: [
+                                        // Variant Name display
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Variant Name',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: isDark
+                                                      ? Colors.grey.shade400
+                                                      : Colors.grey.shade600,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Container(
+                                                height: 36,
+                                                width: double.infinity,
+                                                padding: const EdgeInsets.symmetric(
+                                                    horizontal: 12, vertical: 8),
+                                                decoration: BoxDecoration(
+                                                  color: isDark
+                                                      ? const Color(0xFF2A2D3E)
+                                                      : Colors.grey.shade100,
+                                                  borderRadius: BorderRadius.circular(6),
+                                                  border: Border.all(
+                                                    color: isDark
+                                                        ? const Color(0xFF3B4259)
+                                                        : Colors.grey.shade300,
+                                                  ),
+                                                ),
+                                                child: Align(
+                                                  alignment: Alignment.centerLeft,
+                                                  child: Text(
+                                                    _generateVariantName().isNotEmpty
+                                                        ? _generateVariantName()
+                                                        : 'Auto from attributes',
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      color: _generateVariantName().isNotEmpty
+                                                          ? (isDark ? Colors.white70 : Colors.black54)
+                                                          : (isDark
+                                                          ? Colors.grey.shade500
+                                                          : Colors.grey.shade600),
+                                                      fontStyle: _generateVariantName().isEmpty
+                                                          ? FontStyle.italic
+                                                          : null,
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        // Stock
+                                        SizedBox(
+                                          width: 100,
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Stock',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: isDark
+                                                      ? Colors.grey.shade400
+                                                      : Colors.grey.shade600,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              SizedBox(
+                                                height: 36,
+                                                child: TextField(
+                                                  controller: _stockController,
+                                                  onChanged: (value) => _currentStock = value,
+                                                  keyboardType: TextInputType.number,
+                                                  decoration: InputDecoration(
+                                                    hintText: '0',
+                                                    filled: true,
+                                                    fillColor: isDark
+                                                        ? const Color(0xFF252837)
+                                                        : const Color(0xFFF8F9FA),
+                                                    border: OutlineInputBorder(
+                                                        borderRadius: BorderRadius.circular(6)),
+                                                    contentPadding: const EdgeInsets.symmetric(
+                                                        horizontal: 12, vertical: 0),
+                                                  ),
+                                                  style: const TextStyle(fontSize: 14),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        // Regular Price
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Regular Price',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: isDark
+                                                      ? Colors.grey.shade400
+                                                      : Colors.grey.shade600,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              SizedBox(
+                                                height: 36,
+                                                child: TextField(
+                                                  controller: _variantRegularPriceController,
+                                                  keyboardType:
+                                                  const TextInputType.numberWithOptions(decimal: false),
+                                                  textAlign: TextAlign.right,
+                                                  inputFormatters: [
+                                                    FilteringTextInputFormatter.digitsOnly,
+                                                    TextInputFormatter.withFunction((o, n) {
+                                                      final raw = n.text.replaceAll(RegExp(r'[^0-9]'), '');
+                                                      if (raw.isEmpty)
+                                                        return const TextEditingValue(text: '');
+                                                      final formatted =
+                                                      (int.parse(raw) / 100).toStringAsFixed(2);
+                                                      return TextEditingValue(
+                                                        text: formatted,
+                                                        selection: TextSelection.collapsed(
+                                                            offset: formatted.length),
+                                                      );
+                                                    }),
+                                                  ],
+                                                  decoration: InputDecoration(
+                                                    prefixText: '\$ ',
+                                                    hintText: '0.00',
+                                                    filled: true,
+                                                    fillColor: isDark
+                                                        ? const Color(0xFF252837)
+                                                        : const Color(0xFFF8F9FA),
+                                                    border: OutlineInputBorder(
+                                                        borderRadius: BorderRadius.circular(6)),
+                                                    contentPadding: const EdgeInsets.symmetric(
+                                                        horizontal: 12, vertical: 0),
+                                                  ),
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: isDark ? Colors.white : Colors.black87,
+                                                  ),
+                                                  onChanged: (value) => _currentRegularPrice = value,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        // Sale Price
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Sale Price',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: isDark
+                                                      ? Colors.grey.shade400
+                                                      : Colors.grey.shade600,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              SizedBox(
+                                                height: 36,
+                                                child: TextField(
+                                                  controller: _variantSalePriceController,
+                                                  keyboardType:
+                                                  const TextInputType.numberWithOptions(decimal: false),
+                                                  textAlign: TextAlign.right,
+                                                  inputFormatters: [
+                                                    FilteringTextInputFormatter.digitsOnly,
+                                                    TextInputFormatter.withFunction((o, n) {
+                                                      final raw = n.text.replaceAll(RegExp(r'[^0-9]'), '');
+                                                      if (raw.isEmpty)
+                                                        return const TextEditingValue(text: '');
+                                                      final formatted =
+                                                      (int.parse(raw) / 100).toStringAsFixed(2);
+                                                      return TextEditingValue(
+                                                        text: formatted,
+                                                        selection: TextSelection.collapsed(
+                                                            offset: formatted.length),
+                                                      );
+                                                    }),
+                                                  ],
+                                                  decoration: InputDecoration(
+                                                    prefixText: '\$ ',
+                                                    hintText: '0.00',
+                                                    filled: true,
+                                                    fillColor: isDark
+                                                        ? const Color(0xFF252837)
+                                                        : const Color(0xFFF8F9FA),
+                                                    border: OutlineInputBorder(
+                                                        borderRadius: BorderRadius.circular(6)),
+                                                    contentPadding: const EdgeInsets.symmetric(
+                                                        horizontal: 12, vertical: 0),
+                                                  ),
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: isDark ? Colors.white : Colors.black87,
+                                                  ),
+                                                  onChanged: (value) => _currentSalePrice = value,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+
+                                    // Attributes label (unchanged)
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        'Attributes',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: isDark ? Colors.white : Colors.black87,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+
+                                    // Attribute rows – MODIFIED: removed the numbered circle
+                                    ..._variantAttributes.asMap().entries.expand((attrEntry) {
+                                      final attrIdx = attrEntry.key;
+                                      final isLastAttr = attrIdx == _variantAttributes.length - 1;
+                                      return [
+                                        Padding(
+                                          padding: const EdgeInsets.only(bottom: 4),
+                                          child: Row(
+                                            crossAxisAlignment: CrossAxisAlignment.center,
+                                            children: [
+                                              // [REMOVED] the blue numbered circle (Container with width 28)
+                                              // Originally there was a Container with the number – now removed.
+                                              // The attribute widget now starts directly without empty space.
+                                              Expanded(
+                                                flex: 3,
+                                                child: SizedBox(
+                                                  height: 48,
+                                                  child: InventoryAttributesWithItemsWidget(
+                                                    key: ValueKey(
+                                                        'inline_edit_${_variantFormResetKey}_${index}_$attrIdx'),
+                                                    onAttributeSelected: (attr) => setState(() {
+                                                      _variantAttributes[attrIdx]['attribute'] = {
+                                                        'id': attr.id,
+                                                        'name': attr.name,
+                                                        'slug': attr.slug,
+                                                      };
+                                                      _variantAttributes[attrIdx]['attributeItem'] = null;
+                                                      _variantAttributes[attrIdx]['selectedSlug'] = null;
+                                                    }),
+                                                    onItemSlugSelected: (attr, slug) => setState(() {
+                                                      _variantAttributes[attrIdx]['attributeItem'] = {
+                                                        'slug': slug
+                                                      };
+                                                      _variantAttributes[attrIdx]['selectedSlug'] = slug;
+                                                      if (_activeAddItemAttrIdx == attrIdx) {
+                                                        _showUnitNameInput = false;
+                                                        _activeAddItemAttrIdx = -1;
+                                                      }
+                                                    }),
+                                                    onAddItemTapped: () => setState(() {
+                                                      _showUnitNameInput = true;
+                                                      _activeAddItemAttrIdx = attrIdx;
+                                                      _unitNameInputController.clear();
+                                                    }),
+                                                    onRegisterRefresher: (_) {},
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              if (isLastAttr)
+                                                TextButton.icon(
+                                                  onPressed: () => setState(() =>
+                                                      _variantAttributes.add({
+                                                        'attribute': null,
+                                                        'attributeItem': null,
+                                                        'selectedSlug': null,
+                                                      })),
+                                                  icon: const Icon(Icons.add_circle_outline,
+                                                      size: 18, color: Color(0xFF2196F3)),
+                                                  label: const Text(
+                                                    'Add',
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      color: Color(0xFF2196F3),
+                                                      fontWeight: FontWeight.w500,
+                                                      decoration: TextDecoration.underline,
+                                                      decorationColor: Color(0xFF2196F3),
+                                                    ),
+                                                  ),
+                                                  style: TextButton.styleFrom(
+                                                    padding: const EdgeInsets.symmetric(
+                                                        horizontal: 4, vertical: 4),
+                                                  ),
+                                                ),
+                                              if (!isLastAttr && _variantAttributes.length > 1)
+                                                Padding(
+                                                  padding: const EdgeInsets.only(left: 8),
+                                                  child: InkWell(
+                                                    onTap: () => setState(() {
+                                                      _variantAttributes.removeAt(attrIdx);
+                                                      if (_activeAddItemAttrIdx == attrIdx) {
+                                                        _showUnitNameInput = false;
+                                                        _activeAddItemAttrIdx = -1;
+                                                      }
+                                                    }),
+                                                    child: Container(
+                                                      padding: const EdgeInsets.all(10),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(0xFFEF5350).withOpacity(0.1),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        border: Border.all(
+                                                            color: const Color(0xFFEF5350)
+                                                                .withOpacity(0.3)),
+                                                      ),
+                                                      child: const Icon(Icons.delete_outline,
+                                                          size: 20, color: Color(0xFFEF5350)),
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+
+                                        // Unit name input (unchanged)
+                                        if (_showUnitNameInput && _activeAddItemAttrIdx == attrIdx)
+                                          Container(
+                                            margin: const EdgeInsets.only(bottom: 12),
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 14, vertical: 12),
+                                            decoration: BoxDecoration(
+                                              color: isDark
+                                                  ? const Color(0xFF1A2535)
+                                                  : const Color(0xFFF0F7FF),
+                                              borderRadius: BorderRadius.circular(10),
+                                              border: Border.all(
+                                                color: isDark
+                                                    ? const Color(0xFF2A3F5F)
+                                                    : const Color(0xFFBBDEFB),
+                                              ),
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Text(
+                                                  'Unit Name : ',
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: isDark ? Colors.white70 : Colors.black87,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Container(
+                                                    height: 40,
+                                                    decoration: BoxDecoration(
+                                                      color: isDark
+                                                          ? const Color(0xFF252837)
+                                                          : Colors.white,
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      border: Border.all(
+                                                        color: isDark
+                                                            ? const Color(0xFF3B4259)
+                                                            : Colors.grey.shade300,
+                                                      ),
+                                                    ),
+                                                    child: TextField(
+                                                      controller: _unitNameInputController,
+                                                      autofocus: true,
+                                                      style: TextStyle(
+                                                        fontSize: 13,
+                                                        color: isDark ? Colors.white : Colors.black87,
+                                                      ),
+                                                      decoration: InputDecoration(
+                                                        border: InputBorder.none,
+                                                        isDense: true,
+                                                        contentPadding: const EdgeInsets.symmetric(
+                                                            horizontal: 12, vertical: 10),
+                                                        hintText: 'e.g. blue, XL, 500ml...',
+                                                        hintStyle: TextStyle(
+                                                          fontSize: 12,
+                                                          color: isDark
+                                                              ? Colors.grey.shade600
+                                                              : Colors.grey.shade400,
+                                                        ),
+                                                      ),
+                                                      onSubmitted: (_) => _handleUnitNameCreate(),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 10),
+                                                SizedBox(
+                                                  height: 40,
+                                                  child: ElevatedButton(
+                                                    onPressed: _handleUnitNameCreate,
+                                                    style: ElevatedButton.styleFrom(
+                                                      backgroundColor: const Color(0xFFB9F5C8),
+                                                      foregroundColor: const Color(0xFF1B8A3A),
+                                                      elevation: 0,
+                                                      shape: RoundedRectangleBorder(
+                                                          borderRadius: BorderRadius.circular(8)),
+                                                      padding: const EdgeInsets.symmetric(
+                                                          horizontal: 22),
+                                                    ),
+                                                    child: const Text('Create',
+                                                        style: TextStyle(
+                                                            fontSize: 14,
+                                                            fontWeight: FontWeight.w700,
+                                                            color: Color(0xFF1B8A3A))),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Container(
+                                                  height: 40,
+                                                  width: 40,
+                                                  decoration: BoxDecoration(
+                                                    color: isDark
+                                                        ? Colors.white.withOpacity(0.05)
+                                                        : Colors.red,
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: IconButton(
+                                                    icon: Icon(Icons.close,
+                                                        size: 20,
+                                                        color: isDark ? Colors.white : Colors.white),
+                                                    onPressed: () => setState(() {
+                                                      _showUnitNameInput = false;
+                                                      _activeAddItemAttrIdx = -1;
+                                                      _unitNameInputController.clear();
+                                                    }),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                      ];
+                                    }).toList(),
+
+                                    const SizedBox(height: 6),
+
+                                    // Update Variant button (unchanged)
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 36,
+                                      child: ElevatedButton(
+                                        onPressed: () {
+                                          final preparedAttributes = _variantAttributes
+                                              .where((a) =>
+                                          a['attribute'] != null &&
+                                              (a['selectedSlug'] ?? '')
+                                                  .toString()
+                                                  .trim()
+                                                  .isNotEmpty)
+                                              .map((a) => {
+                                            'attribute':
+                                            Map<String, dynamic>.from(a['attribute']),
+                                            'attributeItem': a['attributeItem'] != null
+                                                ? Map<String, dynamic>.from(a['attributeItem'])
+                                                : null,
+                                            'selectedSlug': a['selectedSlug'],
+                                          })
+                                              .toList();
+
+                                          if (preparedAttributes.isEmpty) {
+                                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                                content: Text(
+                                                    'Please select at least one attribute and item.'),
+                                                backgroundColor: Colors.orange));
+                                            return;
+                                          }
+                                          if (_hasDuplicateAttributeSelectionInForm()) return;
+                                          if (_isDuplicateVariant(preparedAttributes)) {
+                                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                                content: Text(
+                                                    'This attribute combination already exists.'),
+                                                backgroundColor: Colors.red));
+                                            return;
+                                          }
+
+                                          final variantName = () {
+                                            final parts = <String>[];
+                                            for (var a in _variantAttributes) {
+                                              final n = a['attribute']?['name'] as String?;
+                                              final s = a['selectedSlug'] as String?;
+                                              if (n != null && s != null && s.trim().isNotEmpty) {
+                                                final niceVal = s
+                                                    .split('-')
+                                                    .map((w) => w.isNotEmpty
+                                                    ? w[0].toUpperCase() + w.substring(1)
+                                                    : '')
+                                                    .join(' ');
+                                                parts.add('$n: $niceVal');
+                                              }
+                                            }
+                                            return parts.join(' • ');
+                                          }();
+
+                                          setState(() {
+                                            _variants[index] = {
+                                              'name': variantName.isNotEmpty ? variantName : 'Unnamed',
+                                              'stock': _stockController.text.trim().isNotEmpty
+                                                  ? _stockController.text.trim()
+                                                  : '0',
+                                              'regularPrice':
+                                              _variantRegularPriceController.text.trim().isNotEmpty
+                                                  ? _variantRegularPriceController.text.trim()
+                                                  : '0.00',
+                                              'salePrice': _variantSalePriceController.text.trim(),
+                                              'imageFile': _currentImageFile,
+                                              'attributes': preparedAttributes,
+                                              'attribute': preparedAttributes.isNotEmpty
+                                                  ? preparedAttributes.first['attribute']
+                                                  : null,
+                                              'attributeItem': preparedAttributes.isNotEmpty
+                                                  ? preparedAttributes.first['attributeItem']
+                                                  : null,
+                                            };
+                                            _inlineEditIndex = -1;
+                                            _resetVariantForm();
+                                          });
+
+                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                              content: Text('Variant updated successfully.'),
+                                              backgroundColor: Colors.green));
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF00BFA5),
+                                          foregroundColor: Colors.white,
+                                          elevation: 0,
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(10)),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: const [
+                                            Icon(Icons.check, size: 20),
+                                            SizedBox(width: 8),
+                                            Text('Update Variant',
+                                                style: TextStyle(
+                                                    fontSize: 15, fontWeight: FontWeight.w600)),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   );
                 }).toList(),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
               ],
 
               Container(
@@ -3494,10 +4134,10 @@ class _InventoryScreenState extends State<InventoryScreen>
                 margin: const EdgeInsets.symmetric(horizontal: 10),
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: isDark ? Color(0xFF1F1D2B) : Colors.white,
+                  color: isDark ? const Color(0xFF1F1D2B) : Colors.white,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isDark ? Color(0xFF3B4259) : Color(0xFFE0E0E0),
+                    color: isDark ? const Color(0xFF3B4259) : const Color(0xFFE0E0E0),
                   ),
                 ),
                 child: Column(
@@ -3506,7 +4146,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Image Upload (unchanged)
+                        // ── Variant Image Upload ──────────────────────────────────
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -3514,18 +4154,15 @@ class _InventoryScreenState extends State<InventoryScreen>
                               'Variant Image',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: isDark
-                                    ? Colors.grey.shade400
-                                    : Colors.grey.shade600,
+                                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                               ),
                             ),
-                            SizedBox(height: 8),
+                            const SizedBox(height: 8),
                             Stack(
                               children: [
                                 InkWell(
                                   onTap: () async {
-                                    final XFile? pickedFile =
-                                        await _picker.pickImage(
+                                    final XFile? pickedFile = await _picker.pickImage(
                                       source: ImageSource.gallery,
                                       maxWidth: 200,
                                       maxHeight: 200,
@@ -3533,8 +4170,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     );
                                     if (pickedFile != null) {
                                       setState(() {
-                                        _currentImageFile =
-                                            File(pickedFile.path);
+                                        _currentImageFile = File(pickedFile.path);
                                       });
                                     }
                                   },
@@ -3542,44 +4178,25 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     width: 100,
                                     height: 100,
                                     decoration: BoxDecoration(
-                                      color: isDark
-                                          ? Color(0xFF252837)
-                                          : Color(0xFFF8F9FA),
+                                      color: isDark ? const Color(0xFF252837) : const Color(0xFFF8F9FA),
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
-                                        color: isDark
-                                            ? Color(0xFF3B4259)
-                                            : Color(0xFFE0E0E0),
+                                        color: isDark ? const Color(0xFF3B4259) : const Color(0xFFE0E0E0),
                                       ),
                                     ),
                                     child: _currentImageFile != null
                                         ? ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            child: Image.file(
-                                              _currentImageFile!,
-                                              fit: BoxFit.cover,
-                                            ),
-                                          )
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(_currentImageFile!, fit: BoxFit.cover),
+                                    )
                                         : Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: const [
-                                              Icon(
-                                                Icons.cloud_upload_outlined,
-                                                size: 24,
-                                                color: Color(0xFF2196F3),
-                                              ),
-                                              SizedBox(height: 4),
-                                              Text(
-                                                'Upload',
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: Color(0xFF2196F3),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: const [
+                                        Icon(Icons.cloud_upload_outlined, size: 24, color: Color(0xFF2196F3)),
+                                        SizedBox(height: 4),
+                                        Text('Upload', style: TextStyle(fontSize: 11, color: Color(0xFF2196F3))),
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 if (_currentImageFile != null)
@@ -3587,22 +4204,14 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     top: 6,
                                     right: 6,
                                     child: GestureDetector(
-                                      onTap: () {
-                                        setState(() {
-                                          _currentImageFile = null;
-                                        });
-                                      },
+                                      onTap: () => setState(() => _currentImageFile = null),
                                       child: Container(
                                         padding: const EdgeInsets.all(4),
                                         decoration: const BoxDecoration(
                                           color: Colors.black54,
                                           shape: BoxShape.circle,
                                         ),
-                                        child: const Icon(
-                                          Icons.close,
-                                          size: 12,
-                                          color: Colors.white,
-                                        ),
+                                        child: const Icon(Icons.close, size: 12, color: Colors.white),
                                       ),
                                     ),
                                   ),
@@ -3610,43 +4219,36 @@ class _InventoryScreenState extends State<InventoryScreen>
                             ),
                           ],
                         ),
-                        SizedBox(width: 6),
+                        const SizedBox(width: 6),
 
+                        // ── Fields ────────────────────────────────────────────────
                         Expanded(
                           child: Column(
                             children: [
                               Row(
                                 children: [
+                                  // Variant Name (auto-generated display)
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Variant Name',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: isDark
-                                                ? Colors.grey.shade400
-                                                : Colors.grey.shade600,
+                                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                                           ),
                                         ),
-                                        SizedBox(height: 6),
+                                        const SizedBox(height: 6),
                                         Container(
                                           height: 36,
                                           width: double.infinity,
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 12, vertical: 8),
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                           decoration: BoxDecoration(
-                                            color: isDark
-                                                ? Color(0xFF2A2D3E)
-                                                : Colors.grey.shade100,
-                                            borderRadius:
-                                                BorderRadius.circular(6),
+                                            color: isDark ? const Color(0xFF2A2D3E) : Colors.grey.shade100,
+                                            borderRadius: BorderRadius.circular(6),
                                             border: Border.all(
-                                              color: isDark
-                                                  ? Color(0xFF3B4259)
-                                                  : Colors.grey.shade300,
+                                              color: isDark ? const Color(0xFF3B4259) : Colors.grey.shade300,
                                             ),
                                           ),
                                           child: Align(
@@ -3657,19 +4259,10 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                   : 'Auto from attributes',
                                               style: TextStyle(
                                                 fontSize: 14,
-                                                color: _generateVariantName()
-                                                        .isNotEmpty
-                                                    ? (isDark
-                                                        ? Colors.white70
-                                                        : Colors.black54)
-                                                    : (isDark
-                                                        ? Colors.grey.shade500
-                                                        : Colors.grey.shade600),
-                                                fontStyle:
-                                                    _generateVariantName()
-                                                            .isEmpty
-                                                        ? FontStyle.italic
-                                                        : null,
+                                                color: _generateVariantName().isNotEmpty
+                                                    ? (isDark ? Colors.white70 : Colors.black54)
+                                                    : (isDark ? Colors.grey.shade500 : Colors.grey.shade600),
+                                                fontStyle: _generateVariantName().isEmpty ? FontStyle.italic : null,
                                               ),
                                               overflow: TextOverflow.ellipsis,
                                             ),
@@ -3678,45 +4271,35 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       ],
                                     ),
                                   ),
-                                  SizedBox(width: 12),
+                                  const SizedBox(width: 12),
+                                  // Stock
                                   SizedBox(
                                     width: 100,
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Stock',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: isDark
-                                                ? Colors.grey.shade400
-                                                : Colors.grey.shade600,
+                                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                                           ),
                                         ),
-                                        SizedBox(height: 6),
+                                        const SizedBox(height: 6),
                                         SizedBox(
                                           height: 36,
                                           child: TextField(
                                             controller: _stockController,
-                                            onChanged: (value) =>
-                                                _currentStock = value,
+                                            onChanged: (value) => _currentStock = value,
                                             keyboardType: TextInputType.number,
                                             decoration: InputDecoration(
                                               hintText: '0',
                                               filled: true,
-                                              fillColor: isDark
-                                                  ? Color(0xFF252837)
-                                                  : Color(0xFFF8F9FA),
-                                              border: OutlineInputBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(6)),
-                                              contentPadding:
-                                                  EdgeInsets.symmetric(
-                                                      horizontal: 12,
-                                                      vertical: 0),
+                                              fillColor: isDark ? const Color(0xFF252837) : const Color(0xFFF8F9FA),
+                                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                                             ),
-                                            style: TextStyle(fontSize: 14),
+                                            style: const TextStyle(fontSize: 14),
                                           ),
                                         ),
                                       ],
@@ -3724,38 +4307,34 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   ),
                                 ],
                               ),
-                              SizedBox(height: 12),
+                              const SizedBox(height: 12),
                               Row(
                                 children: [
+                                  // Regular Price
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Regular Price',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: isDark
-                                                ? Colors.grey.shade400
-                                                : Colors.grey.shade600,
+                                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                                           ),
                                         ),
-                                        SizedBox(height: 6),
+                                        const SizedBox(height: 6),
                                         SizedBox(
                                           height: 36,
                                           child: TextField(
-                                            controller: _variantRegularPriceController,   // ← FIXED
+                                            controller: _variantRegularPriceController,
                                             keyboardType: const TextInputType.numberWithOptions(decimal: false),
                                             textAlign: TextAlign.right,
                                             inputFormatters: [
                                               FilteringTextInputFormatter.digitsOnly,
-                                              TextInputFormatter.withFunction((oldValue, newValue) {
-                                                final rawText = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-                                                if (rawText.isEmpty) return const TextEditingValue(text: '');
-                                                final cents = int.tryParse(rawText) ?? 0;
-                                                final dollars = cents / 100;
-                                                final formatted = dollars.toStringAsFixed(2);
+                                              TextInputFormatter.withFunction((o, n) {
+                                                final raw = n.text.replaceAll(RegExp(r'[^0-9]'), '');
+                                                if (raw.isEmpty) return const TextEditingValue(text: '');
+                                                final formatted = (int.parse(raw) / 100).toStringAsFixed(2);
                                                 return TextEditingValue(
                                                   text: formatted,
                                                   selection: TextSelection.collapsed(offset: formatted.length),
@@ -3766,7 +4345,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               prefixText: '\$ ',
                                               hintText: '0.00',
                                               filled: true,
-                                              fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+                                              fillColor: isDark ? const Color(0xFF252837) : const Color(0xFFF8F9FA),
                                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
                                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                                             ),
@@ -3780,36 +4359,32 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       ],
                                     ),
                                   ),
-                                  SizedBox(width: 12),
+                                  const SizedBox(width: 12),
+                                  // Sale Price
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Sale Price',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: isDark
-                                                ? Colors.grey.shade400
-                                                : Colors.grey.shade600,
+                                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                                           ),
                                         ),
-                                        SizedBox(height: 6),
+                                        const SizedBox(height: 6),
                                         SizedBox(
                                           height: 36,
                                           child: TextField(
-                                            controller: _variantSalePriceController,      // ← FIXED
+                                            controller: _variantSalePriceController,
                                             keyboardType: const TextInputType.numberWithOptions(decimal: false),
                                             textAlign: TextAlign.right,
                                             inputFormatters: [
                                               FilteringTextInputFormatter.digitsOnly,
-                                              TextInputFormatter.withFunction((oldValue, newValue) {
-                                                final rawText = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-                                                if (rawText.isEmpty) return const TextEditingValue(text: '');
-                                                final cents = int.tryParse(rawText) ?? 0;
-                                                final dollars = cents / 100;
-                                                final formatted = dollars.toStringAsFixed(2);
+                                              TextInputFormatter.withFunction((o, n) {
+                                                final raw = n.text.replaceAll(RegExp(r'[^0-9]'), '');
+                                                if (raw.isEmpty) return const TextEditingValue(text: '');
+                                                final formatted = (int.parse(raw) / 100).toStringAsFixed(2);
                                                 return TextEditingValue(
                                                   text: formatted,
                                                   selection: TextSelection.collapsed(offset: formatted.length),
@@ -3820,7 +4395,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               prefixText: '\$ ',
                                               hintText: '0.00',
                                               filled: true,
-                                              fillColor: isDark ? Color(0xFF252837) : Color(0xFFF8F9FA),
+                                              fillColor: isDark ? const Color(0xFF252837) : const Color(0xFFF8F9FA),
                                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
                                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                                             ),
@@ -3841,7 +4416,10 @@ class _InventoryScreenState extends State<InventoryScreen>
                         ),
                       ],
                     ),
-                    SizedBox(height: 10),
+
+                    const SizedBox(height: 10),
+
+                    // ── Attributes label ──────────────────────────────────────────
                     Text(
                       'Attributes',
                       style: TextStyle(
@@ -3850,15 +4428,14 @@ class _InventoryScreenState extends State<InventoryScreen>
                         color: isDark ? Colors.white : Colors.black87,
                       ),
                     ),
-                    SizedBox(height: 6),
+                    const SizedBox(height: 6),
 
+                    // ── Attribute rows (for NEW variant form only) ────────────────
                     ..._variantAttributes.asMap().entries.expand((entry) {
                       final idx = entry.key;
-                      final attr = entry.value;
                       final isLast = idx == _variantAttributes.length - 1;
 
                       return [
-                        // ── Attribute Row ──────────────────────────────────────────
                         Padding(
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Row(
@@ -3869,8 +4446,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                 width: 28,
                                 height: 28,
                                 decoration: BoxDecoration(
-                                  color:
-                                      const Color(0xFF2196F3).withOpacity(0.1),
+                                  color: const Color(0xFF2196F3).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Center(
@@ -3900,26 +4476,20 @@ class _InventoryScreenState extends State<InventoryScreen>
                                           'name': attribute.name,
                                           'slug': attribute.slug,
                                         };
-                                        _variantAttributes[idx]
-                                            ['attributeItem'] = null;
-                                        _variantAttributes[idx]
-                                            ['selectedSlug'] = null;
+                                        _variantAttributes[idx]['attributeItem'] = null;
+                                        _variantAttributes[idx]['selectedSlug'] = null;
                                       });
                                     },
                                     onItemSlugSelected: (attribute, slug) {
                                       setState(() {
-                                        _variantAttributes[idx]
-                                            ['attributeItem'] = {'slug': slug};
-                                        _variantAttributes[idx]
-                                            ['selectedSlug'] = slug;
-                                        // Hide unit name input if it was open for this row
+                                        _variantAttributes[idx]['attributeItem'] = {'slug': slug};
+                                        _variantAttributes[idx]['selectedSlug'] = slug;
                                         if (_activeAddItemAttrIdx == idx) {
                                           _showUnitNameInput = false;
                                           _activeAddItemAttrIdx = -1;
                                         }
                                       });
                                     },
-                                    // ✅ KEY FIX: wire up onAddItemTapped
                                     onAddItemTapped: () {
                                       setState(() {
                                         _showUnitNameInput = true;
@@ -3927,43 +4497,11 @@ class _InventoryScreenState extends State<InventoryScreen>
                                         _unitNameInputController.clear();
                                       });
                                     },
-                                    onRegisterRefresher: (refresher) {
-                                      // _attributeRefreshers[idx] = refresher;
-                                    },
+                                    onRegisterRefresher: (refresher) {},
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 12),
-
-                              // Selected slug display
-                              // Expanded(
-                              //   flex: 2,
-                              //   child: Container(
-                              //     height: 40,
-                              //     padding: const EdgeInsets.symmetric(horizontal: 12),
-                              //     decoration: BoxDecoration(
-                              //       color: isDark ? const Color(0xFF252837) : Colors.white70,
-                              //       borderRadius: BorderRadius.circular(8),
-                              //       border: Border.all(
-                              //         color: isDark
-                              //             ? const Color(0xFF3B4259)
-                              //             : const Color(0xFFE0E0E0),
-                              //       ),
-                              //     ),
-                              //     child: Align(
-                              //       alignment: Alignment.centerLeft,
-                              //       child: Text(
-                              //         attr['selectedSlug'] ?? 'Not selected',
-                              //         style: TextStyle(
-                              //           fontSize: 12,
-                              //           color: isDark ? Colors.white70 : Colors.black54,
-                              //         ),
-                              //         overflow: TextOverflow.ellipsis,
-                              //       ),
-                              //     ),
-                              //   ),
-                              // ),
-                              // const SizedBox(width: 12),
 
                               // Add / Remove button
                               if (isLast)
@@ -3977,8 +4515,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       });
                                     });
                                   },
-                                  icon: const Icon(Icons.add_circle_outline,
-                                      size: 18, color: Color(0xFF2196F3)),
+                                  icon: const Icon(Icons.add_circle_outline, size: 18, color: Color(0xFF2196F3)),
                                   label: const Text(
                                     'Add',
                                     style: TextStyle(
@@ -3990,8 +4527,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     ),
                                   ),
                                   style: TextButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 4, vertical: 4),
+                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                                   ),
                                 ),
                               if (!isLast && _variantAttributes.length > 1)
@@ -4010,15 +4546,11 @@ class _InventoryScreenState extends State<InventoryScreen>
                                     child: Container(
                                       padding: const EdgeInsets.all(10),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFEF5350)
-                                            .withOpacity(0.1),
+                                        color: const Color(0xFFEF5350).withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                            color: const Color(0xFFEF5350)
-                                                .withOpacity(0.3)),
+                                        border: Border.all(color: const Color(0xFFEF5350).withOpacity(0.3)),
                                       ),
-                                      child: const Icon(Icons.delete_outline,
-                                          size: 20, color: Color(0xFFEF5350)),
+                                      child: const Icon(Icons.delete_outline, size: 20, color: Color(0xFFEF5350)),
                                     ),
                                   ),
                                 ),
@@ -4026,20 +4558,16 @@ class _InventoryScreenState extends State<InventoryScreen>
                           ),
                         ),
 
-                        // ✅ KEY FIX: Unit Name input appears BELOW the matching attribute row
+                        // Unit Name input below matching attribute row
                         if (_showUnitNameInput && _activeAddItemAttrIdx == idx)
                           Container(
                             margin: const EdgeInsets.only(bottom: 12),
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                             decoration: BoxDecoration(
-                              color: isDark
-                                  ? const Color(0xFF1A2535)
-                                  : const Color(0xFFF0F7FF),
+                              color: isDark ? const Color(0xFF1A2535) : const Color(0xFFF0F7FF),
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: isDark
-                                    ? const Color(0xFF2A3F5F)
-                                    : const Color(0xFFBBDEFB),
+                                color: isDark ? const Color(0xFF2A3F5F) : const Color(0xFFBBDEFB),
                               ),
                             ),
                             child: Row(
@@ -4053,19 +4581,14 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-
                                 Expanded(
                                   child: Container(
                                     height: 40,
                                     decoration: BoxDecoration(
-                                      color: isDark
-                                          ? const Color(0xFF252837)
-                                          : Colors.white,
+                                      color: isDark ? const Color(0xFF252837) : Colors.white,
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
-                                        color: isDark
-                                            ? const Color(0xFF3B4259)
-                                            : Colors.grey.shade300,
+                                        color: isDark ? const Color(0xFF3B4259) : Colors.grey.shade300,
                                       ),
                                     ),
                                     child: TextField(
@@ -4078,24 +4601,18 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       decoration: InputDecoration(
                                         border: InputBorder.none,
                                         isDense: true,
-                                        contentPadding: const EdgeInsets.symmetric(
-                                            horizontal: 12, vertical: 10),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                         hintText: 'e.g. blue, XL, 500ml...',
                                         hintStyle: TextStyle(
                                           fontSize: 12,
-                                          color: isDark
-                                              ? Colors.grey.shade600
-                                              : Colors.grey.shade400,
+                                          color: isDark ? Colors.grey.shade600 : Colors.grey.shade400,
                                         ),
                                       ),
                                       onSubmitted: (_) => _handleUnitNameCreate(),
                                     ),
                                   ),
                                 ),
-
                                 const SizedBox(width: 10),
-
-                                /// Create Button
                                 SizedBox(
                                   height: 40,
                                   child: ElevatedButton(
@@ -4104,44 +4621,30 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       backgroundColor: const Color(0xFFB9F5C8),
                                       foregroundColor: const Color(0xFF1B8A3A),
                                       elevation: 0,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                       padding: const EdgeInsets.symmetric(horizontal: 22),
                                     ),
                                     child: const Text(
                                       'Create',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF1B8A3A),
-                                      ),
+                                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF1B8A3A)),
                                     ),
                                   ),
                                 ),
-
                                 const SizedBox(width: 6),
-
-                                /// Close Icon
                                 Container(
                                   height: 40,
                                   width: 40,
                                   decoration: BoxDecoration(
-                                    color: isDark
-                                        ? Colors.white.withOpacity(0.05)
-                                        : Colors.grey.shade200,
+                                    color: isDark ? Colors.white.withOpacity(0.05) : Colors.red,
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: IconButton(
-                                    icon: Icon(
-                                      Icons.close,
-                                      size: 20,
-                                      color: isDark ? Colors.white70 : Colors.black54,
-                                    ),
+                                    icon: Icon(Icons.close, size: 20,
+                                        color: isDark ? Colors.white70 : Colors.white),
                                     onPressed: () {
                                       setState(() {
                                         _showUnitNameInput = false;
-                                        _activeAddItemAttrIdx = -1; // or null if nullable
+                                        _activeAddItemAttrIdx = -1;
                                         _unitNameInputController.clear();
                                       });
                                     },
@@ -4152,15 +4655,16 @@ class _InventoryScreenState extends State<InventoryScreen>
                           ),
                       ];
                     }).toList(),
-                    SizedBox(height: 6),
+
+                    const SizedBox(height: 6),
+
+                    // ── Add New Variant button ────────────────────────────────────
                     SizedBox(
                       width: double.infinity,
                       height: 36,
                       child: ElevatedButton(
                         onPressed: isVariantsEnabled
                             ? () {
-                          final generatedName = _generateVariantName().trim();
-
                           final preparedAttributes = _variantAttributes
                               .where((attr) =>
                           attr['attribute'] != null &&
@@ -4175,28 +4679,23 @@ class _InventoryScreenState extends State<InventoryScreen>
                               .toList();
 
                           if (preparedAttributes.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Please select at least one attribute and item.'),
-                                backgroundColor: Colors.orange,
-                              ),
-                            );
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                              content: Text('Please select at least one attribute and item.'),
+                              backgroundColor: Colors.orange,
+                            ));
                             return;
                           }
 
                           if (_hasDuplicateAttributeSelectionInForm()) return;
 
                           if (_isDuplicateVariant(preparedAttributes)) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('This attribute combination already exists.'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                              content: Text('This attribute combination already exists.'),
+                              backgroundColor: Colors.red,
+                            ));
                             return;
                           }
 
-                          // Always regenerate from current attributes so edits reflect the new selection
                           final variantName = _generateVariantName().trim().isNotEmpty
                               ? _generateVariantName().trim()
                               : (_variantNameController.text.trim().isNotEmpty
@@ -4223,45 +4722,28 @@ class _InventoryScreenState extends State<InventoryScreen>
                           };
 
                           setState(() {
-                            if (_currentVariantIndex >= 0) {
-                              _variants[_currentVariantIndex] = newVariant;
-                            } else {
-                              _variants.insert(0, newVariant); // Add on top
-                            }
-
-                            _resetVariantForm(); // ← Now properly clears everything
+                            _variants.add(newVariant); // ← always add at bottom
+                            _resetVariantForm();
                           });
 
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                _currentVariantIndex >= 0
-                                    ? 'Variant updated successfully.'
-                                    : 'Variant added successfully.',
-                              ),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('Variant added successfully.'),
+                            backgroundColor: Colors.green,
+                          ));
                         }
                             : null,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: isVariantsEnabled ? Color(0xFF00BFA5) : Colors.grey.shade300,
+                          backgroundColor: isVariantsEnabled ? const Color(0xFF00BFA5) : Colors.grey.shade300,
                           foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              _currentVariantIndex >= 0 ? Icons.check : Icons.add,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _currentVariantIndex >= 0 ? 'Update Variant' : 'Add New Variant',
-                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                            ),
+                          children: const [
+                            Icon(Icons.add, size: 20),
+                            SizedBox(width: 8),
+                            Text('Add New Variant', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
