@@ -58,50 +58,51 @@ import 'package:flutter/foundation.dart';
 
 
 class DeviceHelper {
-
-
   static const platform = MethodChannel('device_serial');
 
   static Future<String> getSerialNumber() async {
     try {
       final String serial = await platform.invokeMethod('getSerial');
-      debugPrint("✅ Device Serial Number: $serial");
-      return serial;
+
+      if (serial.isNotEmpty && serial != "unknown_serial") {
+        // ✅ This prints to Flutter console (run tab in VS Code / Android Studio)
+        debugPrint("✅ [SERIAL] Device serial number: $serial");
+        print("SERIAL_NUMBER=$serial"); // also visible in raw logcat
+        return serial;
+      }
+      throw Exception("Empty serial from native");
     } catch (e) {
-      debugPrint("❌ Failed to get serial number: $e");
-      return "unknown_serial";
+      debugPrint("❌ [SERIAL] Native failed, using Android ID: $e");
+      return await getDeviceId();
     }
   }
 
+  /// Most reliable unique ID for normal apps
   static Future<String> getDeviceId() async {
     final deviceInfo = DeviceInfoPlugin();
-
     if (Platform.isAndroid) {
       final androidInfo = await deviceInfo.androidInfo;
+      debugPrint("Display ID (Unique): ${androidInfo.display}");
+      debugPrint("Model: ${androidInfo.model}");
+      debugPrint("Brand: ${androidInfo.brand}");
+      debugPrint("Android ID : ${androidInfo.id}");
 
-      if (kDebugMode) {
-        print(" Android Device ID: ${androidInfo.id}");
-      }
-
-      return androidInfo.id; // or androidId if needed
-    } else if (Platform.isIOS) {
-      final iosInfo = await deviceInfo.iosInfo;
-
-      if (kDebugMode) {
-        print(" iOS Device ID: ${iosInfo.identifierForVendor}");
-      }
-
-      return iosInfo.identifierForVendor ?? "unknown_ios";
+      return androidInfo.display;
     }
-
-    if (kDebugMode) {
-      print("Unknown Device Platform");
-    }
-
     return "unknown_device";
   }
 
+  /// Print everything for debugging
+  static Future<void> printAllDeviceInfo() async {
+    debugPrint("=== Starting Device Info Debug ===");
+    final deviceId = await getDeviceId();
+    final serial = await getSerialNumber();
+
+    debugPrint("🔢 Final Serial / Identifier Used: $serial");
+    debugPrint("=== Debug Finished ===");
+  }
 }
+
 class StoreIdScreen extends StatefulWidget { // Build #1.0.16
   const StoreIdScreen({super.key});
 
@@ -126,6 +127,19 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
     super.initState();
     _bloc = StoreValidationBloc(StoreValidationRepository());
     //  _checkExistingUser(); // Un comment this line if auto login needed
+
+    _fetchSerial();
+
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await DeviceHelper.printAllDeviceInfo();
+    });
+  }
+
+  Future<void> _fetchSerial() async {
+    final serial = await DeviceHelper.getSerialNumber();
+    debugPrint("📱 Device Serial (in UI): $serial");
+    // Use serial for your registration/licensing logic
   }
 
   @override

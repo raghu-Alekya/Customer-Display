@@ -30,6 +30,12 @@ import java.util.Locale
 import android.content.Intent
 import android.graphics.Paint
 import android.graphics.Bitmap
+import android.widget.EditText
+import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
+import android.widget.Button
+import android.widget.GridLayout
+import android.widget.Toast
 
 class MainActivity : FlutterActivity() {
 
@@ -43,13 +49,119 @@ class MainActivity : FlutterActivity() {
     private var saleResultCallback: MethodChannel.Result? = null
     private var isOrderActive = false
 
-
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        Log.d("CustomerDisplay", "🔧 configureFlutterEngine called")
 
+        // ================= DEVICE SERIAL CHANNEL =================
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "device_serial")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "getSerial") {
+                    try {
+                        var serial = ""
 
+                        // ✅ METHOD 1: SUNMI SDK via reflection (no permissions needed)
+                        try {
+                            val systemProperties = Class.forName("android.os.SystemProperties")
+                            val getMethod = systemProperties.getMethod("get", String::class.java, String::class.java)
 
+                            val candidates = listOf(
+                                "ro.serialno",
+                                "ro.boot.serialno",
+                                "persist.sys.serialno",
+                                "ro.product.serial",
+                                "sys.sunmi.serialno",
+                                "ro.sunmi.serialno",
+                                "ro.boot.serialno"
+                            )
+
+                            for (prop in candidates) {
+                                val value = getMethod.invoke(null, prop, "") as? String ?: ""
+                                if (value.isNotEmpty() && value != "unknown" && value.length > 4) {
+                                    serial = value
+                                    Log.d("DeviceSerial", "✅ [Reflection] $prop = $serial")
+                                    break
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w("DeviceSerial", "Reflection method failed: ${e.message}")
+                        }
+
+                        // ✅ METHOD 2: Shell exec with timeout fix
+                        if (serial.isEmpty()) {
+                            try {
+                                val process = Runtime.getRuntime().exec(arrayOf("getprop", "ro.serialno"))
+                                val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
+                                // Read BEFORE waitFor — this is the critical fix
+                                val value = reader.readLine()?.trim() ?: ""
+                                reader.close()
+                                process.destroy()
+
+                                if (value.isNotEmpty() && value != "unknown" && value.length > 4) {
+                                    serial = value
+                                    Log.d("DeviceSerial", "✅ [Shell] ro.serialno = $serial")
+                                }
+                            } catch (e: Exception) {
+                                Log.w("DeviceSerial", "Shell method failed: ${e.message}")
+                            }
+                        }
+
+                        // ✅ METHOD 3: Build.getSerial() with permission check
+                        if (serial.isEmpty()) {
+                            try {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                    if (checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE)
+                                        == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                        val value = android.os.Build.getSerial()
+                                        if (value.isNotEmpty() && value != "unknown") {
+                                            serial = value
+                                            Log.d("DeviceSerial", "✅ [Build] getSerial = $serial")
+                                        }
+                                    } else {
+                                        Log.w("DeviceSerial", "READ_PHONE_STATE not granted — requesting")
+                                        requestPermissions(
+                                            arrayOf(android.Manifest.permission.READ_PHONE_STATE),
+                                            1001
+                                        )
+                                    }
+                                } else {
+                                    @Suppress("DEPRECATION")
+                                    val value = android.os.Build.SERIAL
+                                    if (value.isNotEmpty() && value != "unknown") {
+                                        serial = value
+                                        Log.d("DeviceSerial", "✅ [Build legacy] = $serial")
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.w("DeviceSerial", "Build.getSerial failed: ${e.message}")
+                            }
+                        }
+
+                        // ✅ METHOD 4: /proc/cmdline parse (works on many SUNMI models)
+                        if (serial.isEmpty()) {
+                            try {
+                                val cmdline = java.io.File("/proc/cmdline").readText()
+                                val match = Regex("androidboot\\.serialno=([A-Za-z0-9]+)").find(cmdline)
+                                val value = match?.groupValues?.get(1) ?: ""
+                                if (value.isNotEmpty() && value.length > 4) {
+                                    serial = value
+                                    Log.d("DeviceSerial", "✅ [cmdline] serialno = $serial")
+                                }
+                            } catch (e: Exception) {
+                                Log.w("DeviceSerial", "/proc/cmdline failed: ${e.message}")
+                            }
+                        }
+
+                        Log.d("DeviceSerial", "🎯 FINAL SERIAL → '$serial'")
+                        result.success(if (serial.isNotEmpty()) serial else "unknown_serial")
+
+                    } catch (e: Exception) {
+                        Log.e("DeviceSerial", "Critical: ${e.message}")
+                        result.success("unknown_serial")
+                    }
+                }
+            }
+
+        // ================= CUSTOMER DISPLAY CHANNEL =================
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             Log.d("CustomerDisplay", "📢 MethodChannel call → method=${call.method}, args=${call.arguments}")
 
@@ -82,50 +194,10 @@ class MainActivity : FlutterActivity() {
                     currentStoreLogoUrl = storeLogoUrl
                     currentStoreBaseUrl = storeBaseUrl
 
-                    // --- Call the slideshow API first to see logs ---
-                    if (storeBaseUrl.isNotEmpty()) {
-                        Thread {
-                            try {
-                                val apiUrl =
-                                    "$storeBaseUrl/wp-content/plugins/pinaka-pos-wp/promotion_images.php"
-                                val json = URL(apiUrl).readText()
-                                val jsonArray = JSONArray(json)
-
-                                val imageUrls = mutableListOf<String>()
-                                for (i in 0 until jsonArray.length()) {
-                                    val obj = jsonArray.getJSONObject(i)
-                                    val url = obj.getString("url")
-                                    imageUrls.add(url)
-                                }
-
-                                Log.d(
-                                    "CustomerDisplay",
-                                    "✅ Slideshow API returned ${imageUrls.size} images for store $storeName"
-                                )
-                                for (url in imageUrls) {
-                                    Log.d("CustomerDisplay", "Slide URL: $url")
-                                }
-
-                            } catch (e: Exception) {
-                                Log.e(
-                                    "CustomerDisplay",
-                                    "❌ Failed to load slideshow for store $storeName: ${e.message}"
-                                )
-                            }
-                        }.start()
-                    } else {
-                        Log.e(
-                            "CustomerDisplay",
-                            "storeBaseUrl is empty → cannot load slideshow for store $storeName"
-                        )
-                    }
-
-                    // --- Show Welcome layout on customer display ---
                     if (customerDisplayPresentation == null) {
                         showWelcomeOnCustomerDisplay()
                     }
 
-// ✅ Prevent override during active order
                     if (!isOrderActive) {
                         customerDisplayPresentation?.showWelcomeLayout(
                             storeId,
@@ -139,7 +211,6 @@ class MainActivity : FlutterActivity() {
 
                     result.success("Welcome updated with store")
                 }
-
 
                 "showCustomerData" -> {
                     val orderId = call.argument<Int>("orderId") ?: 0
@@ -186,6 +257,7 @@ class MainActivity : FlutterActivity() {
                         result.error("NO_DISPLAY", "No secondary display found", null)
                     }
                 }
+
                 "resetDisplay" -> {
                     Log.d("CustomerDisplay", "🔥 resetDisplay called")
 
@@ -219,6 +291,7 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+
         // ================= PAYMENT CHANNEL =================
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -254,7 +327,6 @@ class MainActivity : FlutterActivity() {
                         "➡ startVoid → amount=$amount, originOrderId=$originOrderId, originTxn=$originTransactionId"
                     )
 
-                    // ✅ Basic validation only
                     if (originOrderId.isNullOrEmpty() || originTransactionId.isNullOrEmpty()) {
                         result.error("INVALID_ARGS", "Missing origin order or transaction ID", null)
                         return@setMethodCallHandler
@@ -274,12 +346,11 @@ class MainActivity : FlutterActivity() {
                     startActivityForResult(intent, 9091)
                 }
 
-
                 else -> result.notImplemented()
             }
         }
-
     }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
 
@@ -304,12 +375,9 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         Log.d("CustomerDisplay", "➡ onResume called")
-//        showWelcomeOnCustomerDisplay()
     }
 
     private fun showWelcomeOnCustomerDisplay(): Boolean {
-
-        // ✅ BLOCK welcome if order is active
         if (isOrderActive) {
             Log.d("CustomerDisplay", "⛔ Ignoring Welcome — Order is active")
             return true
@@ -333,6 +401,7 @@ class MainActivity : FlutterActivity() {
             false
         }
     }
+
     private fun showDataOnCustomerDisplay(
         orderId: Int,
         storeId: String,
@@ -351,9 +420,7 @@ class MainActivity : FlutterActivity() {
         loyaltyContact: String,
         summaryEnabled: Boolean
     ): Boolean {
-        // 🔥 ADD THIS LINE HERE (FIRST LINE)
         isOrderActive = true
-
 
         if (customerDisplayPresentation == null) {
             Log.d("CustomerDisplay", "CustomerDisplayPresentation null, recreating display")
@@ -384,7 +451,7 @@ class MainActivity : FlutterActivity() {
             orderTime,
             cashbackFee,
             loyaltyContact,
-            summaryEnabled // ✅
+            summaryEnabled
         )
 
         Log.d("CustomerDisplay", "✔ CustomerDisplayPresentation updated with order #$orderId")
@@ -392,17 +459,16 @@ class MainActivity : FlutterActivity() {
         return customerDisplayPresentation != null
     }
 
-
     private fun showThankYouOnCustomerDisplay(): Boolean {
-        isOrderActive = false
-
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val displays = displayManager.displays
+
         Log.d("CustomerDisplay", "Detected displays: ${displays.size} for Thank You")
 
         return if (displays.size > 1) {
             val secondaryDisplay = displays[1]
-            Log.d("CustomerDisplay", "Secondary display found: ${secondaryDisplay.name} for Thank You")
+
+            Log.d("CustomerDisplay", "Secondary display found: ${secondaryDisplay.name}")
 
             if (customerDisplayPresentation == null || customerDisplayPresentation?.display != secondaryDisplay) {
                 customerDisplayPresentation?.dismiss()
@@ -411,19 +477,28 @@ class MainActivity : FlutterActivity() {
             }
 
             customerDisplayPresentation?.showThankYouLayout()
+
             Log.d("CustomerDisplay", "✔ Thank You layout displayed")
 
             Handler(Looper.getMainLooper()).postDelayed({
-                Log.d("CustomerDisplay", "➡ Reverting back to Welcome after Thank You")
-                customerDisplayPresentation?.updateWelcomeWithStore(currentStoreId, currentStoreName, currentStoreLogoUrl)
+                Log.d("CustomerDisplay", "➡ Reverting back to Welcome")
+                isOrderActive = false
+                customerDisplayPresentation?.resetFirstOrderShown()
+                customerDisplayPresentation?.showWelcomeLayout(
+                    currentStoreId,
+                    currentStoreName,
+                    currentStoreLogoUrl,
+                    currentStoreBaseUrl
+                )
             }, 5000)
 
             true
         } else {
-            Log.e("CustomerDisplay", "❌ No secondary display available for Thank You")
+            Log.e("CustomerDisplay", "❌ No secondary display available")
             false
         }
     }
+
     override fun onDestroy() {
         Log.d("CustomerDisplay", "➡ onDestroy called, dismissing CustomerDisplayPresentation")
         customerDisplayPresentation?.dismiss()
@@ -461,8 +536,8 @@ class MainActivity : FlutterActivity() {
         private var cachedLogoBitmap: Bitmap? = null
         private var cachedLogoUrl: String? = null
         private val imageCache = mutableMapOf<String, Bitmap>()
-
-
+        private val slideshowBitmapCache = mutableMapOf<String, Bitmap>()
+        private var cachedSlideshowUrls = mutableListOf<String>()
 
         private lateinit var slideshowContainer: LinearLayout
 
@@ -471,6 +546,11 @@ class MainActivity : FlutterActivity() {
             Log.d("CustomerDisplay", "➡ CustomerDisplayPresentation onCreate")
             setContentView(R.layout.welcome_layout)
             welcomeText = findViewById(R.id.welcome_text)
+        }
+
+        fun resetFirstOrderShown() {
+            firstOrderShown = false
+            Log.d("CustomerDisplay", " firstOrderShown reset")
         }
 
         fun updateWelcomeWithStore(
@@ -517,36 +597,125 @@ class MainActivity : FlutterActivity() {
             }
         }
         private fun loadSlideshowFromApi(storeBaseUrl: String) {
+
+            // ✅ Use cached slideshow immediately
+            if (cachedSlideshowUrls.isNotEmpty()) {
+
+                Log.d(
+                    "CustomerDisplay",
+                    "⚡ Using cached slideshow (${cachedSlideshowUrls.size} images)"
+                )
+
+                displaySlideshow(cachedSlideshowUrls)
+
+                return
+            }
+
             if (storeBaseUrl.isEmpty()) {
-                Log.e("CustomerDisplay", "❌ storeBaseUrl is empty. Slideshow cannot be loaded.")
-                displaySlideshow(emptyList())
+
+                Log.e(
+                    "CustomerDisplay",
+                    "❌ storeBaseUrl empty"
+                )
+
                 return
             }
 
             Thread {
+
                 try {
-                    val apiUrl = "$storeBaseUrl/wp-content/plugins/pinaka-pos-wp/promotion_images.php"
+
+                    val apiUrl =
+                        "$storeBaseUrl/wp-content/plugins/pinaka-pos-wp/promotion_images.php"
+
                     val json = URL(apiUrl).readText()
+
                     val jsonArray = JSONArray(json)
 
                     val imageUrls = mutableListOf<String>()
+
                     for (i in 0 until jsonArray.length()) {
+
                         val obj = jsonArray.getJSONObject(i)
+
                         val url = obj.getString("url")
+
                         imageUrls.add(url)
+
+                        // ✅ Preload bitmap into cache
+                        if (!slideshowBitmapCache.containsKey(url)) {
+
+                            try {
+
+                                val bitmap = BitmapFactory.decodeStream(
+                                    URL(url).openStream()
+                                )
+
+                                if (bitmap != null) {
+
+                                    slideshowBitmapCache[url] = bitmap
+
+                                    Log.d(
+                                        "CustomerDisplay",
+                                        "✅ Cached slide: $url"
+                                    )
+                                }
+
+                            } catch (e: Exception) {
+
+                                Log.e(
+                                    "CustomerDisplay",
+                                    "❌ Cache failed for $url"
+                                )
+                            }
+                        }
                     }
 
+                    cachedSlideshowUrls.clear()
+                    cachedSlideshowUrls.addAll(imageUrls)
+
                     Handler(Looper.getMainLooper()).post {
-                        displaySlideshow(imageUrls)
+
+                        displaySlideshow(cachedSlideshowUrls)
                     }
 
                 } catch (e: Exception) {
-                    Log.e("CustomerDisplay", "❌ Failed to load slideshow: ${e.message}")
+
+                    Log.e(
+                        "CustomerDisplay",
+                        "❌ Slideshow API failed: ${e.message}"
+                    )
+
                     Handler(Looper.getMainLooper()).post {
-                        displaySlideshow(emptyList())
+
+                        // ✅ fallback to cache
+                        if (cachedSlideshowUrls.isNotEmpty()) {
+
+                            displaySlideshow(cachedSlideshowUrls)
+                        }
                     }
                 }
+
             }.start()
+        }
+        private fun bindSlideshowViewSafely(): Boolean {
+
+            return try {
+
+                slideshowImageView =
+                    findViewById(R.id.slideshow_image)
+
+                true
+
+            } catch (e: Exception) {
+
+                Log.e(
+                    "CustomerDisplay",
+                    "❌ slideshow_image not found"
+                )
+
+                false
+            }
         }
 
         private lateinit var slideshowImageView: ImageView
@@ -556,60 +725,188 @@ class MainActivity : FlutterActivity() {
         private val slideshowInterval = 3000L
 
         private fun displaySlideshow(imageUrls: List<String>) {
+
             slideshowImageView = findViewById(R.id.slideshow_image)
 
             slideshowUrls = imageUrls
-            if (slideshowHandler == null) slideshowHandler = Handler(Looper.getMainLooper())
+
+            slideshowHandler?.removeCallbacksAndMessages(null)
+
+            slideshowHandler = Handler(Looper.getMainLooper())
+
             startSlideshow()
         }
 
         private fun startSlideshow() {
-            stopSlideshow()
-            if (slideshowHandler == null) slideshowHandler = Handler(Looper.getMainLooper())
+
+            if (slideshowHandler == null) {
+                slideshowHandler = Handler(Looper.getMainLooper())
+            }
+
+            slideshowHandler?.removeCallbacksAndMessages(null)
 
             slideshowHandler?.post(object : Runnable {
+
                 override fun run() {
+
+                    // ✅ No slides yet
                     if (slideshowUrls.isEmpty()) {
-                        slideshowImageView.setImageResource(R.drawable.pinaka_logo)
-                        slideshowImageView.scaleType = ImageView.ScaleType.CENTER_INSIDE
-                    } else {
-                        val url = slideshowUrls[currentSlide]
-                        Thread {
-                            try {
-                                val input = URL(url).openStream()
-                                val bitmap = BitmapFactory.decodeStream(input)
-                                Handler(Looper.getMainLooper()).post {
-                                    slideshowImageView.setImageBitmap(bitmap)
-                                    slideshowImageView.scaleType = ImageView.ScaleType.CENTER_CROP
-                                }
-                            } catch (e: Exception) {
-                                Log.e("CustomerDisplay", "❌ Failed to load slide image: ${e.message}")
-                            }
-                        }.start()
-                        currentSlide = (currentSlide + 1) % slideshowUrls.size
+
+                        Log.d(
+                            "CustomerDisplay",
+                            "⚠ No slideshow images available"
+                        )
+
+                        slideshowHandler?.postDelayed(this, 1000)
+                        return
                     }
-                    slideshowHandler?.postDelayed(this, slideshowInterval)
+
+                    // ✅ Safety
+                    if (currentSlide >= slideshowUrls.size) {
+                        currentSlide = 0
+                    }
+
+                    val url = slideshowUrls[currentSlide]
+
+                    Log.d(
+                        "CustomerDisplay",
+                        "🖼 Showing slide: $url"
+                    )
+
+                    // ✅ ALWAYS get latest ImageView
+                    try {
+
+                        slideshowImageView =
+                            findViewById(R.id.slideshow_image)
+
+                    } catch (e: Exception) {
+
+                        Log.e(
+                            "CustomerDisplay",
+                            "❌ slideshow_image missing"
+                        )
+
+                        slideshowHandler?.postDelayed(
+                            this,
+                            slideshowInterval
+                        )
+
+                        return
+                    }
+
+                    // ✅ Use cache first
+                    val cachedBitmap = slideshowBitmapCache[url]
+
+                    if (cachedBitmap != null) {
+
+                        Handler(Looper.getMainLooper()).post {
+
+                            slideshowImageView.setImageBitmap(
+                                cachedBitmap
+                            )
+
+                            slideshowImageView.scaleType =
+                                ImageView.ScaleType.CENTER_CROP
+                        }
+
+                        Log.d(
+                            "CustomerDisplay",
+                            "⚡ Loaded from cache"
+                        )
+
+                    } else {
+
+                        // ✅ Download if not cached
+                        Thread {
+
+                            try {
+
+                                val bitmap =
+                                    BitmapFactory.decodeStream(
+                                        URL(url).openStream()
+                                    )
+
+                                if (bitmap != null) {
+
+                                    slideshowBitmapCache[url] =
+                                        bitmap
+
+                                    Handler(Looper.getMainLooper()).post {
+
+                                        try {
+
+                                            slideshowImageView =
+                                                findViewById(
+                                                    R.id.slideshow_image
+                                                )
+
+                                            slideshowImageView
+                                                .setImageBitmap(bitmap)
+
+                                            slideshowImageView.scaleType =
+                                                ImageView.ScaleType.CENTER_CROP
+
+                                            Log.d(
+                                                "CustomerDisplay",
+                                                "✅ Downloaded & cached slide"
+                                            )
+
+                                        } catch (e: Exception) {
+
+                                            Log.e(
+                                                "CustomerDisplay",
+                                                "❌ Failed updating ImageView"
+                                            )
+                                        }
+                                    }
+                                }
+
+                            } catch (e: Exception) {
+
+                                Log.e(
+                                    "CustomerDisplay",
+                                    "❌ Failed to load slide: ${e.message}"
+                                )
+                            }
+
+                        }.start()
+                    }
+
+                    // ✅ Next slide
+                    currentSlide =
+                        (currentSlide + 1) % slideshowUrls.size
+
+                    // ✅ Continue slideshow
+                    slideshowHandler?.postDelayed(
+                        this,
+                        slideshowInterval
+                    )
                 }
             })
         }
-
         fun showWelcomeLayout(
             storeId: String,
             storeName: String,
             storeLogoUrl: String?,
             storeBaseUrl: String? = null
         ) {
-            stopSlideshow()
 
-            // ✅ BLOCK if order already shown
+            // ✅ BLOCK only while order screen active
             if (firstOrderShown) {
-                Log.d("CustomerDisplay", "⛔ Skipping welcome — order already shown")
+                Log.d(
+                    "CustomerDisplay",
+                    "⛔ Skipping welcome — order already shown"
+                )
                 return
             }
 
-            Log.d("CustomerDisplay", "➡ Switching back to Welcome layout")
+            Log.d(
+                "CustomerDisplay",
+                "➡ Switching back to Welcome layout"
+            )
 
             Handler(Looper.getMainLooper()).post {
+
                 setContentView(R.layout.welcome_layout)
 
                 currentStoreId = storeId
@@ -618,43 +915,83 @@ class MainActivity : FlutterActivity() {
                 currentStoreBaseUrl = storeBaseUrl ?: ""
 
                 welcomeText = findViewById(R.id.welcome_text)
-                val footerText = findViewById<TextView>(R.id.footer_text)
-                val logoView = findViewById<ImageView>(R.id.welcome_logo)
-                slideshowImageView = findViewById(R.id.slideshow_image)
+
+                val footerText =
+                    findViewById<TextView>(R.id.footer_text)
+
+                val logoView =
+                    findViewById<ImageView>(R.id.welcome_logo)
+
+                slideshowImageView =
+                    findViewById(R.id.slideshow_image)
 
                 welcomeText.text =
-                    if (storeName.isNotEmpty()) "Welcome to $storeName" else "👋 Welcome to Pinaka"
+                    if (storeName.isNotEmpty())
+                        "Welcome to $storeName"
+                    else
+                        "👋 Welcome to Pinaka"
 
                 footerText.visibility =
-                    if (storeName.isNotEmpty()) View.VISIBLE else View.GONE
+                    if (storeName.isNotEmpty())
+                        View.VISIBLE
+                    else
+                        View.GONE
 
+                // ✅ Load logo
                 if (!storeLogoUrl.isNullOrEmpty()) {
+
                     Thread {
+
                         try {
-                            val input = URL(storeLogoUrl).openStream()
-                            val bitmap = BitmapFactory.decodeStream(input)
+
+                            val input =
+                                URL(storeLogoUrl).openStream()
+
+                            val bitmap =
+                                BitmapFactory.decodeStream(input)
+
                             Handler(Looper.getMainLooper()).post {
+
                                 logoView.setImageBitmap(bitmap)
                             }
+
                         } catch (e: Exception) {
+
                             Handler(Looper.getMainLooper()).post {
-                                logoView.setImageResource(R.drawable.pinaka_logo)
+
+                                logoView.setImageResource(
+                                    R.drawable.pinaka_logo
+                                )
                             }
                         }
+
                     }.start()
+
                 } else {
-                    logoView.setImageResource(R.drawable.pinaka_logo)
+
+                    logoView.setImageResource(
+                        R.drawable.pinaka_logo
+                    )
                 }
 
-                slideshowHandler?.removeCallbacksAndMessages(null)
-                slideshowHandler = Handler(Looper.getMainLooper())
+                // ✅ DON'T recreate handler
+                // ✅ DON'T stop slideshow
+                // ✅ reuse cached slideshow
 
-                if (!currentStoreBaseUrl.isNullOrEmpty() && storeName.isNotEmpty()) {
+                if (
+                    currentStoreBaseUrl.isNotEmpty() &&
+                    storeName.isNotEmpty()
+                ) {
+
                     loadSlideshowFromApi(currentStoreBaseUrl)
-                }
 
-                // ❌ REMOVE THIS LINE
-                // firstOrderShown = false
+                } else {
+
+                    Log.d(
+                        "CustomerDisplay",
+                        "⚠ No slideshow URL available"
+                    )
+                }
             }
         }
 
@@ -694,42 +1031,115 @@ class MainActivity : FlutterActivity() {
             orderDate: String,
             orderTime: String
         ) {
+
             storeInfoText.text = storeName
+
             paymentDate.text = orderDate
             paymentTime.text = orderTime
 
+            // ✅ Always configure ImageView properly
+            storeLogoView.scaleType =
+                ImageView.ScaleType.FIT_CENTER
+
+            storeLogoView.adjustViewBounds = true
+
+            // ✅ Store logo available
             if (!storeLogoUrl.isNullOrEmpty()) {
 
-                if (storeLogoUrl == cachedLogoUrl && cachedLogoBitmap != null) {
-                    // ✅ Use cached image
-                    storeLogoView.setImageBitmap(cachedLogoBitmap)
-                    Log.d("CustomerDisplay", "⚡ Using cached logo")
+                // ✅ Use cached bitmap
+                if (
+                    storeLogoUrl == cachedLogoUrl &&
+                    cachedLogoBitmap != null
+                ) {
+
+                    storeLogoView.setImageBitmap(
+                        cachedLogoBitmap
+                    )
+
+                    Log.d(
+                        "CustomerDisplay",
+                        "⚡ Using cached logo"
+                    )
 
                 } else {
+
                     cachedLogoUrl = storeLogoUrl
 
                     Thread {
+
                         try {
-                            val input = URL(storeLogoUrl).openStream()
-                            val bitmap = BitmapFactory.decodeStream(input)
 
-                            cachedLogoBitmap = bitmap // 🔥 CACHE IT
+                            val input =
+                                URL(storeLogoUrl).openStream()
 
-                            Handler(Looper.getMainLooper()).post {
-                                storeLogoView.setImageBitmap(bitmap)
-                                Log.d("CustomerDisplay", "✅ Logo loaded & cached")
+                            val bitmap =
+                                BitmapFactory.decodeStream(input)
+
+                            if (bitmap != null) {
+
+                                cachedLogoBitmap = bitmap
+
+                                Handler(Looper.getMainLooper()).post {
+
+                                    storeLogoView.setImageBitmap(bitmap)
+
+                                    storeLogoView.scaleType =
+                                        ImageView.ScaleType.FIT_CENTER
+
+                                    Log.d(
+                                        "CustomerDisplay",
+                                        "✅ Logo loaded & cached"
+                                    )
+                                }
+
+                            } else {
+
+                                Handler(Looper.getMainLooper()).post {
+
+                                    storeLogoView.setImageResource(
+                                        R.drawable.pinaka_logo
+                                    )
+
+                                    storeLogoView.scaleType =
+                                        ImageView.ScaleType.FIT_CENTER
+                                }
                             }
 
                         } catch (e: Exception) {
+
                             Handler(Looper.getMainLooper()).post {
-                                storeLogoView.setImageResource(R.drawable.pinaka_logo)
+
+                                storeLogoView.setImageResource(
+                                    R.drawable.pinaka_logo
+                                )
+
+                                storeLogoView.scaleType =
+                                    ImageView.ScaleType.FIT_CENTER
+
+                                Log.e(
+                                    "CustomerDisplay",
+                                    "❌ Failed loading store logo"
+                                )
                             }
                         }
+
                     }.start()
                 }
 
             } else {
-                storeLogoView.setImageResource(R.drawable.pinaka_logo)
+
+                // ✅ Proper Pinaka fallback
+                storeLogoView.setImageResource(
+                    R.drawable.pinaka_logo
+                )
+
+                storeLogoView.scaleType =
+                    ImageView.ScaleType.FIT_CENTER
+
+                Log.d(
+                    "CustomerDisplay",
+                    "⚡ Showing default Pinaka logo"
+                )
             }
         }
         fun updateCustomerData(
@@ -773,18 +1183,187 @@ class MainActivity : FlutterActivity() {
             setContentView(R.layout.customer_display_layout)
             bindOrderViews()
 
-            // --- Loyalty Contact Display ---
-            val emailValueView = findViewById<TextView>(R.id.email_value)
+            // ================= CUSTOMER INPUT + CUSTOM KEYPAD =================
+// ================= CUSTOMER INPUT + CUSTOM KEYPAD =================
 
+            val emailInput =
+                findViewById<android.widget.EditText>(
+                    R.id.email_input
+                )
+
+            val customKeypad =
+                findViewById<GridLayout>(
+                    R.id.custom_keypad
+                )
+
+// ✅ Initially hide keypad
+            customKeypad.visibility = View.GONE
+
+// ✅ Restore loyalty contact
             if (loyaltyContact.isNotEmpty()) {
-                emailValueView.text = loyaltyContact
+
+                emailInput.setText(loyaltyContact)
+
             } else {
-                emailValueView.text = "- Guest"
+
+                emailInput.setText("")
             }
 
-            Log.d("CustomerDisplay", "📱 Loyalty Contact displayed: ${emailValueView.text}")
+            Log.d(
+                "CustomerDisplay",
+                "📱 Loyalty Contact displayed: ${emailInput.text}"
+            )
 
+// ✅ Configure EditText
+            emailInput.isFocusable = true
+            emailInput.isFocusableInTouchMode = true
+            emailInput.isClickable = true
+            emailInput.isCursorVisible = true
 
+// ✅ Disable Android keyboard
+            emailInput.showSoftInputOnFocus = false
+
+// ✅ Open keypad only when tapped
+            emailInput.setOnClickListener {
+
+                customKeypad.visibility = View.VISIBLE
+
+                Log.d(
+                    "CustomerDisplay",
+                    "⌨ Custom keypad opened"
+                )
+            }
+
+// ======================================================
+// APPEND FUNCTION
+// ======================================================
+
+            fun appendText(value: String) {
+
+                val currentText =
+                    emailInput.text.toString()
+
+                emailInput.setText(currentText + value)
+
+                emailInput.setSelection(
+                    emailInput.text.length
+                )
+            }
+
+// ======================================================
+// REUSABLE KEY SETUP
+// ======================================================
+
+            fun setupKey(buttonId: Int, value: String) {
+
+                findViewById<Button>(buttonId)
+                    .setOnClickListener {
+
+                        appendText(value)
+                    }
+            }
+
+// ======================================================
+// NUMBER KEYS
+// ======================================================
+
+            setupKey(R.id.key_0, "0")
+            setupKey(R.id.key_1, "1")
+            setupKey(R.id.key_2, "2")
+            setupKey(R.id.key_3, "3")
+            setupKey(R.id.key_4, "4")
+            setupKey(R.id.key_5, "5")
+            setupKey(R.id.key_6, "6")
+            setupKey(R.id.key_7, "7")
+            setupKey(R.id.key_8, "8")
+            setupKey(R.id.key_9, "9")
+
+// ======================================================
+// SPECIAL KEYS
+// ======================================================
+
+            setupKey(R.id.key_at, "@")
+            setupKey(R.id.key_dot, ".")
+            setupKey(R.id.key_space, " ")
+
+// ======================================================
+// ALPHABET KEYS
+// ======================================================
+
+            setupKey(R.id.key_a, "a")
+            setupKey(R.id.key_b, "b")
+            setupKey(R.id.key_c, "c")
+            setupKey(R.id.key_d, "d")
+            setupKey(R.id.key_e, "e")
+            setupKey(R.id.key_f, "f")
+            setupKey(R.id.key_g, "g")
+            setupKey(R.id.key_h, "h")
+            setupKey(R.id.key_i, "i")
+            setupKey(R.id.key_j, "j")
+            setupKey(R.id.key_k, "k")
+            setupKey(R.id.key_l, "l")
+            setupKey(R.id.key_m, "m")
+            setupKey(R.id.key_n, "n")
+            setupKey(R.id.key_o, "o")
+            setupKey(R.id.key_p, "p")
+            setupKey(R.id.key_q, "q")
+            setupKey(R.id.key_r, "r")
+            setupKey(R.id.key_s, "s")
+            setupKey(R.id.key_t, "t")
+            setupKey(R.id.key_u, "u")
+            setupKey(R.id.key_v, "v")
+            setupKey(R.id.key_w, "w")
+            setupKey(R.id.key_x, "x")
+            setupKey(R.id.key_y, "y")
+            setupKey(R.id.key_z, "z")
+
+// ======================================================
+// BACKSPACE
+// ======================================================
+
+            findViewById<Button>(R.id.key_clear)
+                .setOnClickListener {
+
+                    val text =
+                        emailInput.text.toString()
+
+                    if (text.isNotEmpty()) {
+
+                        val updated =
+                            text.dropLast(1)
+
+                        emailInput.setText(updated)
+
+                        emailInput.setSelection(
+                            emailInput.text.length
+                        )
+                    }
+                }
+
+// ======================================================
+// DONE BUTTON
+// ======================================================
+
+            findViewById<Button>(R.id.key_done)
+                .setOnClickListener {
+
+                    val customerValue =
+                        emailInput.text.toString()
+
+                    Log.d(
+                        "CustomerDisplay",
+                        "✅ Customer entered: $customerValue"
+                    )
+
+                    // ✅ Hide keypad
+                    customKeypad.visibility = View.GONE
+
+                    Toast.makeText(
+                        context,
+                        "Customer Added",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             // Update store info
             updateStoreInfo(
                 currentStoreId,
@@ -797,12 +1376,22 @@ class MainActivity : FlutterActivity() {
             // Slideshow
             slideshowImageView = findViewById(R.id.slideshow_image)
             if (currentStoreBaseUrl.isNotEmpty()) {
-                loadSlideshowFromApi(currentStoreBaseUrl)
-            } else {
-                slideshowImageView.setImageResource(R.drawable.pinaka_logo)
-                slideshowImageView.scaleType = ImageView.ScaleType.CENTER_INSIDE
-            }
 
+                Log.d("CustomerDisplay", "▶ Restarting slideshow")
+
+                loadSlideshowFromApi(currentStoreBaseUrl)
+
+            } else {
+
+                slideshowImageView.setImageResource(R.drawable.pinaka_logo)
+
+                slideshowImageView.scaleType =
+                    ImageView.ScaleType.FIT_CENTER
+
+                slideshowImageView.adjustViewBounds = true
+
+                slideshowImageView.setBackgroundColor(Color.WHITE)
+            }
             val summaryContainer = findViewById<LinearLayout>(R.id.summary_container)
 
             // -----------------------------------------------------
@@ -1240,45 +1829,55 @@ class MainActivity : FlutterActivity() {
 
 
         fun showThankYouLayout() {
-            stopSlideshow()
+
             setContentView(R.layout.thank_you_layout)
 
-            //val storeLogoView = findViewById<ImageView>(R.id.thank_you_store_logo)
+            slideshowImageView = findViewById(R.id.slideshow_image)
+
             val thankYouText = findViewById<TextView>(R.id.thank_you_text)
             val visitAgainText = findViewById<TextView>(R.id.visit_again_text)
 
             thankYouText.text = "Thank You!"
             visitAgainText.text = "Please Visit Again"
-            if (!currentStoreLogoUrl.isNullOrEmpty()) {
-                Thread {
-                    try {
-                        val input = URL(currentStoreLogoUrl).openStream()
-                        val bitmap = BitmapFactory.decodeStream(input)
-                        Handler(Looper.getMainLooper()).post {
-                            storeLogoView.setImageBitmap(bitmap)
-                        }
-                    } catch (e: Exception) {
-                        Handler(Looper.getMainLooper()).post {
-                            storeLogoView.setImageResource(R.drawable.pinaka_logo)
-                        }
-                    }
-                }.start()
-            } else {
-                storeLogoView.setImageResource(R.drawable.pinaka_logo)
-            }
-            if (!currentStoreBaseUrl.isNullOrEmpty()) {
+
+            if (currentStoreBaseUrl.isNotEmpty()) {
+
+                Log.d(
+                    "CustomerDisplay",
+                    "▶ Loading Thank You slideshow"
+                )
+
                 loadSlideshowFromApi(currentStoreBaseUrl)
+
+            } else {
+
+                slideshowImageView.setImageResource(R.drawable.pinaka_logo)
+
+                slideshowImageView.scaleType =
+                    ImageView.ScaleType.FIT_CENTER
+
+                slideshowImageView.adjustViewBounds = true
+
+                slideshowImageView.setBackgroundColor(Color.WHITE)
             }
         }
+
         private fun stopSlideshow() {
+
             slideshowHandler?.removeCallbacksAndMessages(null)
+
             slideshowHandler = null
+
             currentSlide = 0
+
             Log.d("CustomerDisplay", "🛑 Slideshow stopped")
         }
 
         override fun onDetachedFromWindow() {
+
             super.onDetachedFromWindow()
+
+            stopSlideshow()
         }
     }
 }

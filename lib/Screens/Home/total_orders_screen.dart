@@ -70,7 +70,7 @@ class TotalOrdersScreen extends StatefulWidget {
 }
 
 class _OrdersScreenState extends State<TotalOrdersScreen>
-    with LayoutSelectionMixin {
+    with LayoutSelectionMixin, WidgetsBindingObserver{
   late OrderBloc _orderBloc;
   List<model.OrderModel> _orders = []; // Use model.OrderModel
   int _selectedSidebarIndex = 3;
@@ -92,6 +92,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   Timer? _loadingDelayTimer;
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
+  double _lastBottomInset = 0;
+  final _searchFocusNode = FocusNode();
   ///Filters
   // List<String> _availableStatuses = ["All"];
   final List<OrderStatus> _filterStatuses = [
@@ -202,6 +204,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selectedSidebarIndex = widget.lastSelectedIndex ?? 3;
     _orderBloc = OrderBloc(OrderRepository());
     // Preserve POS context so when navigating back to Fast Keys/Categories/Add,
@@ -287,7 +290,19 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     //   fetchOrders: false, // Show shimmer initially
     // );
   }
+  @override
+  void didChangeMetrics() {
+    final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
 
+    // Detect ONLY when keyboard goes from OPEN → CLOSED
+    if (_lastBottomInset > 0 && bottomInset == 0) {
+      if (_searchFocusNode.hasFocus) {
+        _searchFocusNode.unfocus();
+      }
+    }
+
+    _lastBottomInset = bottomInset;
+  }
   bool get _hasMoreLazyData {
     if (_rowsPerPage <= _chunkSize) return false;
 
@@ -907,6 +922,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     _orderBloc.dispose();
     debugPrint("OrdersScreen: Disposed");
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -1105,6 +1121,14 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                     Expanded(
                                       child: TextField(
                                         controller: _searchController,
+                                        focusNode: _searchFocusNode,
+                                        onSubmitted: (_) {
+                                          FocusScope.of(context).unfocus();
+                                        },
+
+                                        onTapOutside: (_) {
+                                          FocusScope.of(context).unfocus();
+                                        },
                                         keyboardType: TextInputType.number,
                                         inputFormatters: [
                                           FilteringTextInputFormatter.digitsOnly,

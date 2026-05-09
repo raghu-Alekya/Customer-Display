@@ -35,7 +35,7 @@ class CompletedOrdersScreen extends StatefulWidget {
   State<CompletedOrdersScreen> createState() => _CompletedOrdersScreenState();
 }
 
-class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
+class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> with WidgetsBindingObserver{
   int _selectedSidebarIndex = 5;
   int _currentPage = 1;
 
@@ -63,7 +63,8 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   List<String> transactionIds = [];
   Map<int, String?> selectedTxnPerOrder = {};
   List<String> transactionIdOptions = [];
-
+  double _lastBottomInset = 0;
+  final _searchFocusNode = FocusNode();
   List<CompletedOrder> _orders = [];
   // int _totalPages = 1;
   String _todayStart() {
@@ -112,6 +113,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   void initState() {
     super.initState();
     // _allOrders = widget.orders; // or loaded data
+    WidgetsBinding.instance.addObserver(this);
     filteredOrders = _allOrders;
 
     context.read<CompletedOrdersBloc>().add(
@@ -121,7 +123,24 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
       ),
     );
   }
+  @override
+  void didChangeMetrics() {
+    final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
 
+    // Detect ONLY when keyboard goes from OPEN → CLOSED
+    if (_lastBottomInset > 0 && bottomInset == 0) {
+      if (_searchFocusNode.hasFocus) {
+        _searchFocusNode.unfocus();
+      }
+    }
+
+    _lastBottomInset = bottomInset;
+  }
+  @override
+  void dispose() {
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
   Widget build(BuildContext context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final layout = PinakaPreferences.layoutSelectionNotifier.value;
@@ -336,8 +355,16 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
           ),
           child: TextField(
             controller: searchController,
+            focusNode: _searchFocusNode,
             textAlignVertical:
             TextAlignVertical.center, // ⭐ centers hint & text vertically
+            onSubmitted: (_) {
+              FocusScope.of(context).unfocus();
+            },
+
+            onTapOutside: (_) {
+              FocusScope.of(context).unfocus();
+            },
             onChanged: (value) {
               setState(() {
                 if (value.isEmpty) {
