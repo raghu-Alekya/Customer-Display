@@ -17,22 +17,18 @@ class UpiMethodScreen extends StatelessWidget {
 
   String _formatAmount(double amount) => '\$${amount.toStringAsFixed(2)}';
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE5E7EB),
-      body: Center(
-        child: Container(
-          width: 500,
-          // margin: const EdgeInsets.symmetric(vertical: 16),
-          // padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF7F7F8),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.black, width: 12),
-          ),
+      backgroundColor: const Color(0xFFFFFFFF),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              /// HEADER
               Row(
                 children: [
                   KioskMenuBackButton(
@@ -42,69 +38,91 @@ class UpiMethodScreen extends StatelessWidget {
                   KioskOrderTypeChip(orderType: orderType),
                 ],
               ),
-              const SizedBox(height: 26),
-              const Text(
-                'Pay with UPI',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF22262C),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Scan QR code with any UPI app\nto complete payment',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF7D8188),
-                  height: 1.3,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                width: 190,
-                height: 190,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFD8DDE6)),
-                ),
-                child: const Icon(
-                  Icons.qr_code_2_rounded,
-                  size: 120,
-                  color: Color(0xFF4F6B9A),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE9EEF5),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFC7D3E3)),
-                ),
+
+              const SizedBox(height: 16),
+
+              Expanded(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _UpiRow(label: 'Sub Total', value: _formatAmount(subtotal)),
-                    SizedBox(height: 8),
-                    _UpiRow(
-                      label: 'Tax (CGST + SGST)',
-                      value: _formatAmount(tax),
+                    const Text(
+                      'Pay with UPI',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF22262C),
+                      ),
                     ),
-                    SizedBox(height: 8),
-                    Divider(height: 1, color: Color(0xFFBFD0E4)),
-                    SizedBox(height: 8),
-                    _UpiRow(
-                      label: 'Net Payable',
-                      value: _formatAmount(total),
-                      highlight: true,
+
+                    const SizedBox(height: 8),
+
+                    const Text(
+                      'Scan QR code with any UPI app\nto complete payment',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: Color(0xFF7D8188),
+                        height: 1.3,
+                      ),
                     ),
+
+                    const SizedBox(height: 28),
+
+                    /// QR AREA
+                    SizedBox(
+                      width: double.infinity,
+                      height: 200,
+                      child: Image.asset(
+                        'assets/QR_code.png',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    /// BILL
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE9EEF5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFFC7D3E3),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          _UpiRow(
+                            label: 'Sub Total',
+                            value: _formatAmount(subtotal),
+                          ),
+                          const SizedBox(height: 10),
+                          const Divider(color: Color(0xFFBFD0E4)),
+                          const SizedBox(height: 10),
+                          _UpiRow(
+                            label: 'Tax (CGST + SGST)',
+                            value: _formatAmount(tax),
+                          ),
+                          const SizedBox(height: 10),
+                          const Divider(color: Color(0xFFBFD0E4)),
+                          const SizedBox(height: 10),
+                          _UpiRow(
+                            label: 'Net Payable',
+                            value: _formatAmount(total),
+                            highlight: true,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const Spacer(),
                   ],
                 ),
               ),
-              const Spacer(),
+
+              /// BUTTON
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -113,7 +131,7 @@ class UpiMethodScreen extends StatelessWidget {
                     backgroundColor: const Color(0xFFFF9900),
                     foregroundColor: Colors.white,
                     elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -122,11 +140,13 @@ class UpiMethodScreen extends StatelessWidget {
                     'Check Payment Status',
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      fontSize: 16,
+                      fontSize: 18,
                     ),
                   ),
                 ),
               ),
+
+              const SizedBox(height: 16),
             ],
           ),
         ),

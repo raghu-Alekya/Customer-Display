@@ -1020,44 +1020,62 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
     );
   }
 
-  void _searchProducts() {
-    final query = searchController.text.trim();
+  void _searchProducts(String query) {
+    query = query.trim();
+
     if (query.isEmpty) {
       if (selectedSubcategoryId != null) {
-        context
-            .read<ProductBloc>()
+        context.read<ProductBloc>()
             .add(FetchProductsForCategory(selectedSubcategoryId!));
         return;
       }
 
       final categoryState = context.read<CategoryBloc>().state;
-      if (categoryState is CategoryLoaded && categoryState.categories.isNotEmpty) {
+
+      if (categoryState is CategoryLoaded &&
+          categoryState.categories.isNotEmpty) {
         final safeIndex = selectedCategory < categoryState.categories.length
             ? selectedCategory
             : 0;
+
         context.read<ProductBloc>().add(
-          FetchProductsForCategory(categoryState.categories[safeIndex].id),
+          FetchProductsForCategory(
+            categoryState.categories[safeIndex].id,
+          ),
         );
         return;
       }
 
-      context
-          .read<ProductBloc>()
-          .add(const FetchProductsForCategory(rootCategoryId));
+      context.read<ProductBloc>().add(
+        const FetchProductsForCategory(rootCategoryId),
+      );
       return;
     }
 
-    context.read<ProductBloc>().add(SearchProducts(query));
+    if (query.length >= 2) {
+      context.read<ProductBloc>().add(SearchProducts(query));
+    }
   }
 
   void _onSearchChanged(String value) {
     searchDebounceTimer?.cancel();
-    searchDebounceTimer = Timer(const Duration(milliseconds: 450), () {
-      if (!mounted) return;
-      if (value.trim().isEmpty || value.trim().length >= 2) {
-        _searchProducts();
-      }
-    });
+
+    final query = value.trim();
+
+    // Immediately clear old search results
+    if (query.isNotEmpty && query.length < 2) {
+      context.read<ProductBloc>().add(ClearProducts());
+      return;
+    }
+
+    searchDebounceTimer = Timer(
+      const Duration(milliseconds: 450),
+          () {
+        if (!mounted) return;
+
+        _searchProducts(query);
+      },
+    );
   }
 
   int _totalCartQuantity() {

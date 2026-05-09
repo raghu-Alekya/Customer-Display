@@ -35,6 +35,7 @@ class SearchProducts extends ProductEvent {
 class ResetProducts extends ProductEvent {
   const ResetProducts();
 }
+class ClearProducts extends ProductEvent {}
 
 /// ================= STATES =================
 
@@ -62,6 +63,7 @@ class ProductLoaded extends ProductState {
   List<Object?> get props => [products];
 }
 
+
 class ProductError extends ProductState {
   final String message;
 
@@ -82,6 +84,9 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
     on<FetchProductsForCategory>(_onFetchProductsForCategory);
     on<SearchProducts>(_onSearchProducts);
 
+    on<ClearProducts>((event, emit) {
+      emit(const ProductLoaded([]));
+    });
     /// 🔥 RESET HANDLER
     on<ResetProducts>((event, emit) {
       emit(const ProductInitial());
@@ -114,4 +119,5 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
       emit(ProductError(e.toString()));
     }
   }
+
 }

@@ -8,7 +8,7 @@ import 'card_method.dart';
 import 'cash_method.dart';
 
 /// PNGs in `assets/` — rename these constants to match your filenames.
-const String _paymentTileAssetCard = 'assets/card.png';
+const String _paymentTileAssetCard = 'assets/card_payment.png';
 const String _paymentTileAssetQr = 'assets/QRcode.png';
 const String _paymentTileAssetCash = 'assets/cash.png';
 

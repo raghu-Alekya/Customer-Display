@@ -102,7 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       // 🔵 Background
                       Container(
-                        height: 350,
+                        height: 420,
                         decoration: const BoxDecoration(
                           color: Color(0xFF24467A),
                           borderRadius: BorderRadius.only(

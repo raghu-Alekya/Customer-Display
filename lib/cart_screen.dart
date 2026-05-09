@@ -306,11 +306,15 @@ class _CartScreenState extends State<CartScreen> {
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      _qty("-", () {
-                                        if (qty > 1) {
-                                          setState(() => item["qty"]--);
-                                        }
-                                      }),
+                                      _qty(
+                                        "-",
+                                            () {
+                                          if (qty > 1) {
+                                            setState(() => item["qty"]--);
+                                          }
+                                        },
+                                        enabled: qty > 1,
+                                      ),
                                       Padding(
                                         padding: const EdgeInsets.symmetric(horizontal: 6),
                                         child: Text("$qty"),
@@ -479,23 +483,31 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   /// 🔘 QTY BUTTON
-  Widget _qty(String text, VoidCallback onTap) {
+  Widget _qty(
+      String text,
+      VoidCallback onTap, {
+        bool enabled = true,
+      }) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       child: Container(
-        height: 36, // 👈 increased size
+        height: 36,
         width: 36,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: const Color(0xFFFFE0C2),
+          color: enabled
+              ? const Color(0xFFFFE0C2)
+              : Colors.grey.shade300,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
           text,
-          style: const TextStyle(
-            fontSize: 18, // 👈 bigger icon
+          style: TextStyle(
+            fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.orange,
+            color: enabled
+                ? Colors.orange
+                : Colors.grey,
           ),
         ),
       ),

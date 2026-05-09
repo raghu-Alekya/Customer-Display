@@ -333,14 +333,6 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                   const SizedBox(height: 16),
 
                   /// 🔹 CUSTOMIZE
-                  const Text(
-                    "Customize",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const Text("Choose one or more add ons"),
-
-                  const SizedBox(height: 10),
-
                   if (isLoading)
                     const Expanded(
                       child: Center(
@@ -356,93 +348,108 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                         ),
                       ),
                     )
-                  else
-                    Row(
-                      children: List.generate(addons.length, (index) {
-                        final addon = addons[index];
-                        final isSelected = addon.isSelected;
+                  else if (addons.isNotEmpty) ...[
+                      const Text(
+                        "Customize",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
 
-                        return GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              addon.isSelected = !isSelected;
-                            });
-                          },
-                          child: Container(
-                            margin: const EdgeInsets.only(right: 12),
-                            padding: const EdgeInsets.all(10),
-                            width: 110,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isSelected
-                                    ? const Color(0xFFFF7A00)
-                                    : Colors.grey.shade300,
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                Stack(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: Container(
-                                        height: 50,
-                                        width: 50,
-                                        color: Colors.orange.shade100,
-                                        child: (addon.imageUrl != null && addon.imageUrl!.trim().isNotEmpty)
-                                            ? Image.network(
-                                          addon.imageUrl!,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => const Icon(Icons.fastfood),
-                                        )
-                                            : const Icon(Icons.fastfood),
-                                      ),
-                                    ),
-                                    if (isSelected)
-                                      Positioned(
-                                        right: -2,
-                                        top: -2,
-                                        child: Container(
-                                          padding: const EdgeInsets.all(3),
-                                          decoration: const BoxDecoration(
-                                            color: Color(0xFFFF7A00),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const Icon(
-                                            Icons.check,
-                                            size: 14,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  addon.name,
-                                  style: TextStyle(
-                                    fontSize: 13,
+                      const Text("Choose one or more add ons"),
+
+                      const SizedBox(height: 10),
+
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: List.generate(addons.length, (index) {
+                            final addon = addons[index];
+                            final isSelected = addon.isSelected;
+
+                            return GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  addon.isSelected = !isSelected;
+                                });
+                              },
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 12),
+                                padding: const EdgeInsets.all(10),
+                                width: 110,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
                                     color: isSelected
                                         ? const Color(0xFFFF7A00)
-                                        : Colors.black,
+                                        : Colors.grey.shade300,
+                                    width: 1.5,
                                   ),
                                 ),
-                                Text(
-                                  "\$${addon.price.toStringAsFixed(2)}",
-                                  style: const TextStyle(
-                                    color: Colors.green,
-                                    fontSize: 12,
-                                  ),
+                                child: Column(
+                                  children: [
+                                    Stack(
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(10),
+                                          child: Container(
+                                            height: 50,
+                                            width: 50,
+                                            color: Colors.orange.shade100,
+                                            child: (addon.imageUrl != null &&
+                                                addon.imageUrl!.trim().isNotEmpty)
+                                                ? Image.network(
+                                              addon.imageUrl!,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) =>
+                                              const Icon(Icons.fastfood),
+                                            )
+                                                : const Icon(Icons.fastfood),
+                                          ),
+                                        ),
+                                        if (isSelected)
+                                          Positioned(
+                                            right: -2,
+                                            top: -2,
+                                            child: Container(
+                                              padding: const EdgeInsets.all(3),
+                                              decoration: const BoxDecoration(
+                                                color: Color(0xFFFF7A00),
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.check,
+                                                size: 14,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      addon.name,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isSelected
+                                            ? const Color(0xFFFF7A00)
+                                            : Colors.black,
+                                      ),
+                                    ),
+                                    Text(
+                                      "\$${addon.price.toStringAsFixed(2)}",
+                                      style: const TextStyle(
+                                        color: Colors.green,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }),
-                    )
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
+                    ]
                 ],
               ),
             ),

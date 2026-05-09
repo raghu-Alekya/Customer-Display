@@ -123,7 +123,7 @@ class _UserLoginState extends State<UserLogin> {
             ClipPath(
               clipper: TopCurveClipper(),
               child: Container(
-                height: 300,
+                height: 420,
                 color: AppColors.primaryBlue,
               ),
             ),
@@ -154,6 +154,7 @@ class _UserLoginState extends State<UserLogin> {
                   /// Login Card
                   Container(
                     width: 350,
+                    height: 500,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: AppColors.white,
@@ -230,7 +231,7 @@ class _UserLoginState extends State<UserLogin> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 22),
 
                         /// 🔥 LOGIN BUTTON (UPDATED)
                         SizedBox(

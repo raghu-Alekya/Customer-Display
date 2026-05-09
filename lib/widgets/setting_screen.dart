@@ -59,28 +59,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Row(
                 children: [
                   _backButton(),
-                  const SizedBox(width: 10),
 
-                  /// 🔥 TITLE WITH HIGHLIGHT
-                  RichText(
-                    text: const TextSpan(
-                      style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black),
-                      children: [
-                        TextSpan(
-                          text: "Settings",
+                  Expanded(
+                    child: Center(
+                      child: RichText(
+                        text: const TextSpan(
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: "Settings",
+                            ),
+                          ],
                         ),
-                        // TextSpan(
-                        //   text: "gs",
-                        //   style: TextStyle(
-                        //     backgroundColor: Colors.yellow,
-                        //   ),
-                        // ),
-                      ],
+                      ),
                     ),
-                  )
+                  ),
+
+                  const SizedBox(width: 70), // same approximate width as back button
                 ],
               ),
             ),

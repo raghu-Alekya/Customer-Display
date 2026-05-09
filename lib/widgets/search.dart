@@ -26,7 +26,7 @@ class _SearchScreenState extends State<SearchScreen> {
     controller.text = widget.query;
 
     /// 🔥 If coming with pre-filled query
-    if (widget.query.isNotEmpty && widget.query.length >= 3) {
+    if (widget.query.isNotEmpty && widget.query.length >= 2) {
       context.read<ProductBloc>().add(SearchProducts(widget.query));
     }
   }
@@ -34,10 +34,23 @@ class _SearchScreenState extends State<SearchScreen> {
   void _onSearchChanged(String value) {
     debounce?.cancel();
 
+    final query = value.trim();
+
+    // clear old results immediately
+    if (query.isNotEmpty && query.length < 2) {
+      context.read<ProductBloc>().add(ClearProducts());
+      return;
+    }
+
+    if (query.isEmpty) {
+      context.read<ProductBloc>().add(ClearProducts());
+      return;
+    }
+
     debounce = Timer(const Duration(milliseconds: 400), () {
-      if (value.trim().length >= 3) {
-        context.read<ProductBloc>().add(SearchProducts(value.trim()));
-      }
+      if (!mounted) return;
+
+      context.read<ProductBloc>().add(SearchProducts(query));
     });
   }
 
@@ -130,9 +143,8 @@ class _SearchScreenState extends State<SearchScreen> {
                             GestureDetector(
                               onTap: () {
                                 controller.clear();
-                                setState(() {}); // 🔥 refresh UI
-
-                                // ❌ no bloc call needed
+                                context.read<ProductBloc>().add(ClearProducts());
+                                setState(() {});
                               },
                               child: const Icon(
                                 Icons.close,
@@ -232,12 +244,12 @@ class _SearchScreenState extends State<SearchScreen> {
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        "₹${item.price}",
+                                        "\$${item.price.toString().replaceAll('₹', '').trim()}",
                                         style: const TextStyle(
                                           color: Colors.green,
                                           fontWeight: FontWeight.w600,
                                         ),
-                                      ),
+                                      )
                                     ],
                                   ),
                                 ),
