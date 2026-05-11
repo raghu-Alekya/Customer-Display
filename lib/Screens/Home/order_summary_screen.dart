@@ -2554,10 +2554,305 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     _mergeOrderSummaryLineItemsFromHive(orderItems, hiveOrder);
     await _mergeOrderSummaryLineItemsFromProductCache(orderItems);
   }
+  Future<void> _handleCustomerAddFromDisplay(
+      String contact,
+      ) async {
+    try {
+      print("STEP 1 - START");
+
+      final offlineBox =
+          StorageProvider.offlineOrders;
+
+      final localKey =
+      widget.offlineOrderId?.toString();
+
+      print("STEP 2 - localKey = $localKey");
+
+      if (localKey == null) {
+        throw Exception("Offline order not found");
+      }
+
+      final existing =
+      await offlineBox.get(localKey);
+
+      print("STEP 3 - existing = $existing");
+
+      if (existing == null) {
+        throw Exception("Order data missing");
+      }
+
+      final offlineOrder =
+      Map<String, dynamic>.from(existing);
+
+      print("STEP 4 - syncing");
+
+      final syncResponse =
+      await orderBloc.syncSingleOfflineOrder(
+        offlineOrder,
+      );
+
+      print("STEP 5 - syncResponse = $syncResponse");
+
+      if (syncResponse == null) {
+        throw Exception("Sync failed");
+      }
+
+      final int syncedOrderId =
+          syncResponse["id"] ?? 0;
+
+      print("STEP 6 - wooOrderId = $syncedOrderId");
+
+      final rawResponse =
+      await orderBloc.addLoyaltyPoints(
+        orderId: syncedOrderId,
+        contact: contact,
+      );
+
+      print("STEP 7 - customer response = $rawResponse");
+
+      final result = jsonDecode(rawResponse);
+
+      if (result["success"] != true) {
+        throw Exception(
+          result["message"] ?? "Loyalty API failed",
+        );
+      }
+
+      final data = result["data"] ?? {};
+
+      final int pts =
+          int.tryParse(
+            data["available_points"]
+                ?.toString() ?? "0",
+          ) ??
+              0;
+
+      final double redeemedAmt =
+          double.tryParse(
+            data["value_redeemed"]
+                ?.toString() ?? "0",
+          ) ??
+              0.0;
+
+      final double newPayable =
+          double.tryParse(
+            data["new_payable_amount"]
+                ?.toString() ?? "0",
+          ) ??
+              computedNetPayable;
+
+      print("STEP 8 - points = $pts");
+      print("STEP 9 - redeemed = $redeemedAmt");
+
+      // 🔥 SAVE TO OFFLINE ORDER
+      offlineOrder["loyaltyContact"] = contact;
+      offlineOrder["pendingRedeemValue"] = redeemedAmt;
+      offlineOrder["availablePoints"] = pts;
+      offlineOrder["isRedeemApplied"] = false;
+
+      await offlineBox.put(
+        localKey,
+        offlineOrder,
+      );
+
+      setState(() {
+        availablePoints = pts;
+
+        // store potential redeem value only
+        redeemedValue = redeemedAmt;
+
+        // DO NOT APPLY YET
+        isRedeemAppliedFromApi = false;
+
+        isRedeemActive = true;
+
+        mobileController.text = contact;
+      });
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        syncedOrderId,
+        summaryEnabled: true,
+      );
+
+      print("FLUTTER redeemedValue before send = $redeemedValue");
+
+      // await _customerDisplayChannel.invokeMethod(
+      //   "customerDisplayResult",
+      //   {
+      //     "success": true,
+      //     "redeemedAmount": redeemedValue,
+      //   },
+      // );
+
+      print("FLUTTER customerDisplayResult sent");
+
+    } catch (e) {
+      print("DISPLAY ERROR = $e");
+
+      // await _customerDisplayChannel.invokeMethod(
+      //   "customerDisplayResult",
+      //   {
+      //     "success": false,
+      //     "message": e.toString(),
+      //   },
+      // );
+    }
+  }
+  Future<void> _applyRedeemFromCustomerDisplay() async {
+    setState(() {
+      isRedeemAppliedFromApi = true;
+
+      // keep net payable unchanged
+      // balanceAmount =
+      //     (computedNetPayable - redeemedValue) - tenderAmount;
+    });
+
+    // await CustomerDisplayHelper.updateCustomerDisplay(
+    //   widget.orderId ?? widget.offlineOrderId ?? 0,
+    //   summaryEnabled: true,
+    //   redeemedValue: redeemedValue, // ADD
+    // );
+  }
+
 
   @override
   void initState() {
     super.initState();
+    const MethodChannel _customerDisplayChannel =
+    MethodChannel(
+      'com.example.flutter_customer_display/sunmi_display',
+    );
+
+    _customerDisplayChannel.setMethodCallHandler(
+          (call) async {
+        print("📥 FLUTTER RECEIVED: ${call.method}");
+
+        if (call.method == "customerDisplayRedeemClicked") {
+          final String contact =
+              call.arguments["contact"] ?? "";
+
+          print("📱 REDEEM CONTACT = $contact");
+
+          if (contact.isEmpty) return;
+
+          // Step 1: fetch redeem info only
+          await _handleCustomerAddFromDisplay(contact);
+
+          // Step 2: apply redeem to summary
+          await _applyRedeemFromCustomerDisplay();
+
+          await _customerDisplayChannel.invokeMethod(
+            "updateRedeemAmount",
+            {
+              "redeemedAmount": redeemedValue,
+            },
+          );
+          try {
+
+            final offlineBox =
+                StorageProvider.offlineOrders;
+
+            final localKey =
+            widget.offlineOrderId?.toString();
+
+            if (localKey == null) {
+              throw Exception("Offline order not found");
+            }
+
+            final existing =
+            await offlineBox.get(localKey);
+
+            if (existing == null) {
+              throw Exception("Order data missing");
+            }
+
+            final offlineOrder =
+            Map<String, dynamic>.from(existing);
+
+            // 1️⃣ SYNC
+            final syncResponse =
+            await orderBloc.syncSingleOfflineOrder(
+              offlineOrder,
+            );
+
+            if (syncResponse == null) {
+              throw Exception("Sync failed");
+            }
+
+            // 2️⃣ WOO ORDER ID
+            final int syncedOrderId =
+                syncResponse["id"] ?? 0;
+
+            if (syncedOrderId == 0) {
+              throw Exception("Woo order id missing");
+            }
+
+            // 3️⃣ CREATE CUSTOMER
+            final rawResponse =
+            await orderBloc.addLoyaltyPoints(
+              orderId: syncedOrderId,
+              contact: contact,
+            );
+
+            final result =
+            jsonDecode(rawResponse);
+
+            if (result["success"] == false) {
+              throw Exception(
+                result["message"] ??
+                    "Customer API failed",
+              );
+            }
+
+            final data =
+                result["data"] ?? {};
+
+            final pts =
+                int.tryParse(
+                  data["available_points"]
+                      ?.toString() ??
+                      "0",
+                ) ??
+                    0;
+
+            setState(() {
+              loyaltyData = data;
+              availablePoints = pts;
+              isRedeemActive = true;
+              showCustomerInput = true;
+              mobileController.text = contact;
+            });
+
+            offlineOrder["loyaltyContact"] =
+                contact;
+
+            await offlineBox.put(
+              localKey,
+              offlineOrder,
+            );
+
+            await _customerDisplayChannel
+                .invokeMethod(
+              "customerDisplayResult",
+              {
+                "success": true,
+                "points": pts,
+              },
+            );
+
+          } catch (e) {
+
+            await _customerDisplayChannel
+                .invokeMethod(
+              "customerDisplayResult",
+              {
+                "success": false,
+                "message": e.toString(),
+              },
+            );
+          }
+        }
+      },
+    );
     ScannerGuard.isCouponPopupOpen= true;
 
     orderItems = widget.orderItems
@@ -4604,6 +4899,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       );
   }
 
+  void _showRedeemPointsSnackBar(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          "Please remove redeemed points before going back",
+        ),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   Widget _buildNavigationBar() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final theme = Theme.of(context);
@@ -4713,6 +5019,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               payments.any((p) => !p.isSynced);
 
               final bool hasDiscount = discount > 0;
+
+              final bool hasRedeemPoints =
+                  loyaltyData != null &&
+                      availablePoints > 0 &&
+                      isRedeemActive == true;
+
+              // Redeem points check
+              if (hasRedeemPoints) {
+                _showRedeemPointsSnackBar(context);
+                return;
+              }
 
               // Remaining balance
               final double effectiveRemaining =
@@ -4969,26 +5286,96 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                     }
 
                     // ---------- ADD ----------
+                    // ---------- ADD ----------
                     if (!(isPhoneValid || isEmailValid)) return;
 
                     setState(() => isAddLoading = true);
 
                     final contact = mobileController.text.trim();
-                    final orderId = widget.orderId ?? 0;
 
                     try {
+
+                      // ======================================
+                      // 1️⃣ LOAD OFFLINE ORDER FROM HIVE
+                      // ======================================
+                      final offlineBox = StorageProvider.offlineOrders;
+
+                      final localKey = widget.offlineOrderId?.toString();
+
+                      if (localKey == null) {
+                        throw Exception("Offline order not found");
+                      }
+
+                      final existing = await offlineBox.get(localKey);
+
+                      if (existing == null) {
+                        throw Exception("Order data missing");
+                      }
+
+                      final offlineOrder =
+                      Map<String, dynamic>.from(existing);
+
+                      print("🟡 OFFLINE ORDER LOADED");
+
+                      // ======================================
+                      // 2️⃣ SYNC ORDER WITH BACKEND
+                      // ======================================
+                      final syncResponse =
+                      await orderBloc.syncSingleOfflineOrder(
+                        offlineOrder,
+                      );
+
+                      print("✅ SYNC RESPONSE points: $syncResponse");
+
+                      if (syncResponse == null) {
+                        throw Exception("Sync failed");
+                      }
+
+                      // ======================================
+                      // 3️⃣ GET WOO ORDER ID
+                      // ======================================
+                      final int syncedOrderId =
+                          syncResponse["id"] ?? 0;
+
+                      if (syncedOrderId == 0) {
+                        throw Exception("Backend order id missing");
+                      }
+
+                      print("🟢 WOO ORDER ID lo: $syncedOrderId");
+
+                      // ======================================
+                      // 4️⃣ CALL CREATE CUSTOMER API
+                      // ======================================
                       final rawResponse =
                       await orderBloc.addLoyaltyPoints(
-                        orderId: orderId,
+                        orderId: syncedOrderId,
                         contact: contact,
                       );
 
-                      final result = jsonDecode(rawResponse);
-                      final data = result["data"];
-                      final pts = int.tryParse(
-                          data["available_points"].toString()) ??
-                          0;
+                      print("🌐 CUSTOMER RESPONSE: $rawResponse");
 
+                      final result = jsonDecode(rawResponse);
+
+                      print("✅ FULL CUSTOMER RESULT: $result");
+
+                      if (result == null) {
+                        throw Exception("Empty customer response");
+                      }
+
+                      if (result["success"] == false) {
+                        throw Exception(
+                          result["message"] ?? "Customer API failed",
+                        );
+                      }
+
+                      final data = result["data"] ?? {};
+
+                      final pts = int.tryParse(
+                        data["available_points"]?.toString() ?? "0",
+                      ) ?? 0;
+                      // ======================================
+                      // 5️⃣ UPDATE UI
+                      // ======================================
                       setState(() {
                         loyaltyData = data;
                         availablePoints = pts;
@@ -4996,46 +5383,56 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         showCustomerInput = true;
                       });
 
-                      final offlineBox = StorageProvider.offlineOrders;
-                      final localKey = widget.offlineOrderId?.toString();
+                      // ======================================
+                      // 6️⃣ SAVE CONTACT LOCALLY
+                      // ======================================
+                      offlineOrder["loyaltyContact"] = contact;
 
-                      if (localKey != null) {
-                        final existing = await offlineBox.get(localKey);
-                        if (existing != null) {
-                          final d = Map<String, dynamic>.from(
-                              existing is Map ? existing : {});
-                          d["loyaltyContact"] = contact;
-                          await offlineBox.put(localKey, d);
-                        }
-                      }
+                      await offlineBox.put(localKey, offlineOrder);
 
+                      // ======================================
+                      // 7️⃣ UPDATE CUSTOMER DISPLAY
+                      // ======================================
                       final localOrderId = widget.offlineOrderId;
+
                       if (localOrderId != null) {
-                        await CustomerDisplayHelper.updateCustomerDisplay(
-                            localOrderId);
+                        await CustomerDisplayHelper
+                            .updateCustomerDisplay(
+                          localOrderId,
+                        );
                       }
 
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(
-                                "Loyalty Points Added Successfully!"),
+                              "Customer Added Successfully!",
+                            ),
                             backgroundColor: Colors.green,
                           ),
                         );
                       }
+
                     } catch (e) {
+
+                      print("❌ ERROR: $e");
+
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
+                          SnackBar(
                             content: Text(
-                                "Failed to add loyalty points. Please try again."),
+                              "Failed: ${e.toString()}",
+                            ),
                             backgroundColor: Colors.red,
                           ),
                         );
                       }
+
                     } finally {
-                      if (mounted) setState(() => isAddLoading = false);
+
+                      if (mounted) {
+                        setState(() => isAddLoading = false);
+                      }
                     }
                   },
                   child: Container(
