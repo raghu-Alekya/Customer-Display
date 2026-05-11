@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:isar/isar.dart';
 import 'package:pinaka_pos/Screens/Auth/login_screen.dart';
 import 'package:pinaka_pos/Screens/Home/apps_dashboard_screen.dart';
 import 'package:pinaka_pos/Screens/Home/categories_screen.dart';
@@ -19,6 +20,8 @@ import 'package:flutter_swipe_button/flutter_swipe_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../Blocs/Orders/refund_orderlist_bloc.dart';
 import '../Constants/misc_features.dart';
+import '../Database/isar_cache_entry.dart';
+import '../Database/isar_service.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
@@ -30,6 +33,7 @@ import '../Helper/customerdisplayhelper.dart';
 import '../Preferences/pinaka_preferences.dart';
 import '../Repositories/Auth/logout_repository.dart';
 import '../Repositories/Orders/refund_orderlist_repository.dart';
+import '../Screens/Auth/store_id_screen.dart';
 import '../Screens/Home/add_screen.dart';
 import '../Screens/Home/Settings/settings_screen.dart';
 import '../Screens/Home/shift_open_close_balance.dart';
@@ -72,6 +76,22 @@ class NavigationBar extends StatelessWidget {
   String todayEnd() {
     final now = DateTime.now();
     return DateTime(now.year, now.month, now.day, 23, 59, 59).toIso8601String();
+  }
+
+  Future<void> _clearAllCategoryCaches() async {
+    try {
+      final isar = await IsarService.instance;
+
+      await isar.writeTxn(() async {
+        await isar.isarCacheEntrys.clear(); // Clears ALL cached entries
+      });
+
+      if (kDebugMode) {
+        print("🧹 All Isar cache cleared on logout");
+      }
+    } catch (e) {
+      if (kDebugMode) print("⚠️ Failed to clear Isar cache: $e");
+    }
   }
 
   @override
@@ -180,23 +200,23 @@ class NavigationBar extends StatelessWidget {
               Future.microtask(() {
                 if (!context.mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(
-                // Build #1.0.254 : Fixed - Push and replace is showing jump animation for nav bar
-                PageRouteBuilder(
-                  pageBuilder:
-                      (context, animation, secondaryAnimation) =>
-                      POSHomeScreen(lastSelectedIndex: 0),
-                  transitionsBuilder: (
-                      context,
-                      animation,
-                      secondaryAnimation,
-                      child,
-                      ) {
-                    return child; // No transition animation
-                  },
-                  transitionDuration:
-                  Duration.zero, // Instant transition
-                ),
-                    (route) => false,
+                  // Build #1.0.254 : Fixed - Push and replace is showing jump animation for nav bar
+                  PageRouteBuilder(
+                    pageBuilder:
+                        (context, animation, secondaryAnimation) =>
+                        POSHomeScreen(lastSelectedIndex: 0),
+                    transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                        ) {
+                      return child; // No transition animation
+                    },
+                    transitionDuration:
+                    Duration.zero, // Instant transition
+                  ),
+                      (route) => false,
                 );
               });
               // Build #1.0.247 : Updated pushReplacement TO pushAndRemoveUntil
@@ -232,22 +252,22 @@ class NavigationBar extends StatelessWidget {
               Future.microtask(() {
                 if (!context.mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder:
-                      (context, animation, secondaryAnimation) =>
-                      POSHomeScreen(lastSelectedIndex: 1),
-                  transitionsBuilder: (
-                      context,
-                      animation,
-                      secondaryAnimation,
-                      child,
-                      ) {
-                    return child; // No transition animation
-                  },
-                  transitionDuration:
-                  Duration.zero, // Instant transition
-                ),
-                    (route) => false,
+                  PageRouteBuilder(
+                    pageBuilder:
+                        (context, animation, secondaryAnimation) =>
+                        POSHomeScreen(lastSelectedIndex: 1),
+                    transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                        ) {
+                      return child; // No transition animation
+                    },
+                    transitionDuration:
+                    Duration.zero, // Instant transition
+                  ),
+                      (route) => false,
                 );
               });
               // Navigator.of(context).pushAndRemoveUntil(
@@ -282,22 +302,22 @@ class NavigationBar extends StatelessWidget {
               Future.microtask(() {
                 if (!context.mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder:
-                      (context, animation, secondaryAnimation) =>
-                      POSHomeScreen(lastSelectedIndex: 2),
-                  transitionsBuilder: (
-                      context,
-                      animation,
-                      secondaryAnimation,
-                      child,
-                      ) {
-                    return child; // No transition animation
-                  },
-                  transitionDuration:
-                  Duration.zero, // Instant transition
-                ),
-                    (route) => false,
+                  PageRouteBuilder(
+                    pageBuilder:
+                        (context, animation, secondaryAnimation) =>
+                        POSHomeScreen(lastSelectedIndex: 2),
+                    transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                        ) {
+                      return child; // No transition animation
+                    },
+                    transitionDuration:
+                    Duration.zero, // Instant transition
+                  ),
+                      (route) => false,
                 );
               });
               // Navigator.of(context).pushAndRemoveUntil(
@@ -444,9 +464,9 @@ class NavigationBar extends StatelessWidget {
                 Navigator.of(context).pushAndRemoveUntil(
                   PageRouteBuilder(
                     pageBuilder: (context, animation, secondaryAnimation) =>
-                        const CompletedOrdersScreen(
-                          lastSelectedIndex: 5,
-                        ),
+                    const CompletedOrdersScreen(
+                      lastSelectedIndex: 5,
+                    ),
                     transitionsBuilder:
                         (context, animation, secondaryAnimation, child) {
                       return child; // No animation
@@ -614,23 +634,23 @@ class NavigationBar extends StatelessWidget {
               Future.microtask(() {
                 if (!context.mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(
-                // Build #1.0.254 : Fixed - Push and replace is showing jump animation for nav bar
-                PageRouteBuilder(
-                  pageBuilder:
-                      (context, animation, secondaryAnimation) =>
-                      POSHomeScreen(lastSelectedIndex: 0),
-                  transitionsBuilder: (
-                      context,
-                      animation,
-                      secondaryAnimation,
-                      child,
-                      ) {
-                    return child; // No transition animation
-                  },
-                  transitionDuration:
-                  Duration.zero, // Instant transition
-                ),
-                    (route) => false,
+                  // Build #1.0.254 : Fixed - Push and replace is showing jump animation for nav bar
+                  PageRouteBuilder(
+                    pageBuilder:
+                        (context, animation, secondaryAnimation) =>
+                        POSHomeScreen(lastSelectedIndex: 0),
+                    transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                        ) {
+                      return child; // No transition animation
+                    },
+                    transitionDuration:
+                    Duration.zero, // Instant transition
+                  ),
+                      (route) => false,
                 );
               });
               // Navigator.of(context).pushAndRemoveUntil(
@@ -719,22 +739,22 @@ class NavigationBar extends StatelessWidget {
               Future.microtask(() {
                 if (!context.mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder:
-                      (context, animation, secondaryAnimation) =>
-                      POSHomeScreen(lastSelectedIndex: 2),
-                  transitionsBuilder: (
-                      context,
-                      animation,
-                      secondaryAnimation,
-                      child,
-                      ) {
-                    return child; // No transition animation
-                  },
-                  transitionDuration:
-                  Duration.zero, // Instant transition
-                ),
-                    (route) => false,
+                  PageRouteBuilder(
+                    pageBuilder:
+                        (context, animation, secondaryAnimation) =>
+                        POSHomeScreen(lastSelectedIndex: 2),
+                    transitionsBuilder: (
+                        context,
+                        animation,
+                        secondaryAnimation,
+                        child,
+                        ) {
+                      return child; // No transition animation
+                    },
+                    transitionDuration:
+                    Duration.zero, // Instant transition
+                  ),
+                      (route) => false,
                 );
               });
               // Navigator.pushReplacement(
@@ -878,9 +898,9 @@ class NavigationBar extends StatelessWidget {
                 Navigator.of(context).pushAndRemoveUntil(
                   PageRouteBuilder(
                     pageBuilder: (context, animation, secondaryAnimation) =>
-                        const CompletedOrdersScreen(
-                          lastSelectedIndex: 5,
-                        ),
+                    const CompletedOrdersScreen(
+                      lastSelectedIndex: 5,
+                    ),
                     transitionsBuilder:
                         (context, animation, secondaryAnimation, child) {
                       return child; // No animation
@@ -1357,6 +1377,10 @@ class NavigationBar extends StatelessWidget {
                                 // 4️⃣ Clear any other runtime cache
                                 // VendorData.clearAll();
 
+                                // await _clearAllCategoryCaches();
+                                //
+                                // await PinakaPreferences.clearUserPreferences();
+
                                 if (kDebugMode) {
                                   print("#### User data cleared during logout");
                                 }
@@ -1364,14 +1388,24 @@ class NavigationBar extends StatelessWidget {
                                 // 5️⃣ Close loader
                                 Navigator.of(context).pop();
 
+
                                 // 6️⃣ Navigate to login screen
                                 ScannerGuard.isCouponPopupOpen = false;
+
                                 Navigator.pushReplacement(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => LoginScreen(),
                                   ),
                                 );
+
+                                // Navigator.pushReplacement(
+                                //   context,
+                                //   MaterialPageRoute(
+                                //     builder: (_) => StoreIdScreen(),
+                                //   ),
+                                // );
+
                               },
                               child: Text(
                                 TextConstants.logoutText,

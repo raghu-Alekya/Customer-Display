@@ -22,6 +22,7 @@ import '../Database/order_panel_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/api_response.dart';
 import '../Helper/cashbackhelper.dart';
+import '../Helper/url_helper.dart';
 import '../Models/Assets/asset_model.dart';
 import '../Models/Orders/orders_model.dart';
 import '../Models/Search/product_custom_item_model.dart' as model;
@@ -31,6 +32,8 @@ import '../Repositories/Search/product_search_repository.dart';
 import '../Utilities/svg_images_utility.dart';
 import 'OrderPopupHelper.dart';
 import 'widget_custom_num_pad.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class AppScreenTabWidget extends StatefulWidget {
   AppScreenTabWidget(
@@ -90,6 +93,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
   // Adding a separate state variable for selected tab
   late int _selectedTabIndex;
+  // Map<String, dynamic>? _customItemTemplate;
 
   // Text editing controllers
   final TextEditingController _customItemNameController =
@@ -107,6 +111,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   bool _isEnteringItemPrice = false;
   bool _isAmountEntered = false;
 
+  Map<String, dynamic>? _customItemTemplate;
+  List<Map<String, dynamic>> _customItemsList = []; // ← NEW
+  String _selectedCustomItemName = "Custom Item";
+
   // Function to check if the item name is empty
   bool _isItemNameEmpty() {
     return _customItemNameController.text.trim().isEmpty;
@@ -119,6 +127,89 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
   String normalizeSku(String s) {
     return OrderHelper.normalizeSku(s);
+  }
+
+
+  Future<String> _getTokenFromDb() async {
+    try {
+      final db = await DBHelper.instance.database;
+      final result = await db.query(
+        AppDBConst.userTable,
+        where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+        orderBy: '${AppDBConst.userId} DESC',
+        limit: 1,
+      );
+
+      if (result.isNotEmpty) {
+        final token = result.first[AppDBConst.userToken] as String;
+        if (kDebugMode) print('🔑 Token fetched from DB for Custom Items');
+        return token;
+      } else {
+        throw Exception('No active user token found');
+      }
+    } catch (e) {
+      print("❌ Error getting token: $e");
+      // Fallback to hardcoded token (as safety net)
+      return '';
+    }
+  }
+
+// ==================== FINAL FIXED: FETCH CUSTOM ITEM TEMPLATE ====================
+  Future<void> _fetchCustomItemTemplate() async {
+    try {
+      // Initialize dynamic base URL
+      await UrlHelper.initializeBaseUrl();
+
+      final String token = await _getTokenFromDb();
+      if (token.isEmpty) {
+        print("⚠️ No token available");
+        return;
+      }
+
+      final headers = {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      };
+
+      // Use wooBaseUrl + your exact query parameter
+      final String fullUrl = '${UrlHelper.wooBaseUrl}products?custom_products=true';
+      final uri = Uri.parse(fullUrl);
+
+      final request = http.Request('GET', uri);
+      request.headers.addAll(headers);
+
+      if (kDebugMode) {
+        print(" Fetching Custom Items → $uri");
+      }
+
+      final response = await request.send();
+
+      if (response.statusCode == 200) {
+        final String body = await response.stream.bytesToString();
+        final List<dynamic> data = jsonDecode(body);
+
+        if (data.isNotEmpty && mounted) {
+          setState(() {
+            _customItemTemplate = data.first as Map<String, dynamic>;
+            _customItemsList = List<Map<String, dynamic>>.from(data);
+
+            if (_customItemsList.isNotEmpty) {
+              _selectedCustomItemName = _customItemsList.first['name']?.toString() ?? "Custom Item";
+              _customItemNameController.text = _selectedCustomItemName;
+            }
+          });
+
+          print("✅ Successfully Loaded ${_customItemsList.length} Custom Items");
+          for (var item in _customItemsList) {
+            print("   → ${item['name']} (ID: ${item['id']}) | Tax: ${item['tax_percent']}%");
+          }
+        }
+      } else {
+        print("❌ Failed to load custom items: ${response.reasonPhrase} (Status: ${response.statusCode})");
+      }
+    } catch (e) {
+      print("❌ Error fetching custom item template: $e");
+    }
   }
 
   @override
@@ -151,6 +242,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
     _loadTaxes();
     // Initialize the selected tab index from widget
     _selectedTabIndex = widget.selectedTabIndex;
+
+    //  NEW: Load Custom Item Template + List for Dropdown
+    // Replace the old fetch block in initState with this:
+    _fetchCustomItemTemplate();   // No .then() needed anymore
   }
 
   Future<void> _loadTaxes() async {
@@ -1165,20 +1260,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   //
   // }
 
-  // CUSTOM ITEM TAB
+// CUSTOM ITEM TAB - WITH DROPDOWN (Enhanced UI)
   Widget _buildCustomItemTab(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
-    // return Container(
-    //   width: screenWidth * 0.75,
-    //   height: screenHeight * 0.75,
-    //   padding: const EdgeInsets.fromLTRB(20, 0, 20, 5),
-    //   decoration: BoxDecoration(
-    //       color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.red,
-    //     borderRadius: BorderRadius.circular(16),
-    //   ),
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Column(
@@ -1190,43 +1275,95 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
               fontWeight: FontWeight.bold,
               color: themeHelper.themeMode == ThemeMode.dark
                   ? ThemeNotifier.textDark
-                  : Color(0xFF1E2745),
+                  : const Color(0xFF1E2745),
             ),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 10),
+
           Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildLabeledTextField(
-                title: TextConstants.nameText,
-                hintText: TextConstants.customItemName,
-                controller: _customItemNameController,
-                focusNode: _nameFocusNode,
+              // Name Dropdown with Tax Info
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    TextConstants.nameText,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.textDark
+                          : Color(0xFF1E2745),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Container(
+                    height: MediaQuery.of(context).size.height / 14,
+                    width: MediaQuery.of(context).size.width * 0.25,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.paymentEntryContainerColor
+                          : null,
+                      border: Border.all(color: Colors.grey.shade400),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: DropdownButton<String>(
+                      value: _selectedCustomItemName,
+                      isExpanded: true,
+                      underline: const SizedBox(),
+                      icon: const Icon(Icons.arrow_drop_down),
+                      items: _customItemsList.map((item) {
+                        final name = item['name']?.toString() ?? "Custom Item";
+
+                        // Extract Tax Rate
+                        double taxRate = 0.0;
+                        final taxData = item['tax'];
+                        if (taxData is Map && taxData['tax_rates'] is List) {
+                          final rates = taxData['tax_rates'] as List;
+                          if (rates.isNotEmpty) {
+                            taxRate = double.tryParse(
+                                rates[0]['rate']?.toString() ?? '0'
+                            ) ?? 0.0;
+                          }
+                        }
+
+                        final displayText = taxRate > 0
+                            ? "$name (Tax: ${taxRate.toStringAsFixed(1)}%)"
+                            : name;
+
+                        return DropdownMenuItem<String>(
+                          value: name,           // Keep original name as value
+                          child: Text(displayText),
+                        );
+                      }).toList(),
+                      onChanged: (newValue) {
+                        if (newValue != null) {
+                          setState(() {
+                            _selectedCustomItemName = newValue;
+                            _customItemNameController.text = newValue;
+                          });
+                        }
+                      },
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(width: 20),
-              _buildSkuField(),
-            ],
-          ),
-          const SizedBox(height: 5),
-          Row(
-            //mainAxisAlignment: MainAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
+
               _buildLabeledTextField(
                 title: TextConstants.itemPrice,
                 hintText: "${TextConstants.currencySymbol} 0.00",
-                //TextConstants.enterThePrice,
                 controller: _customItemPriceController,
                 readOnly: true,
-                isHighlighted:
-                _isEnteringItemPrice, // Use dynamic highlighting instead of hardcoded true
+                isHighlighted: _isEnteringItemPrice,
               ),
-              const SizedBox(width: 20),
-              _buildTaxDropdown(),
             ],
           ),
-          const SizedBox(height: 10),
+
+          const SizedBox(height: 40),
           _buildCustomNumpad(context),
         ],
       ),
@@ -1320,7 +1457,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
             if (price == null || price <= 0) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Enter valid price')),
+                const SnackBar(content: Text('Enter valid price'),
+                  backgroundColor: Colors.red,
+                ),
               );
               return;
             }
@@ -1403,88 +1542,88 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
     );
   }
 
-  Widget _buildSkuField() {
-    final themeHelper = Provider.of<ThemeNotifier>(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          height: 5,
-        ),
-        Text(
-          TextConstants.sku,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-            color: themeHelper.themeMode == ThemeMode.dark
-                ? ThemeNotifier.textDark
-                : Color(0xFF1E2745),
-          ),
-        ),
-        const SizedBox(height: 5),
-        Container(
-          height: MediaQuery.of(context).size.height / 14,
-          width: MediaQuery.of(context).size.width * 0.2,
-          decoration: BoxDecoration(
-            border: Border.all(
-                color: themeHelper.themeMode == ThemeMode.dark
-                    ? ThemeNotifier.borderColor
-                    : Colors.grey.shade300),
-            color: themeHelper.themeMode == ThemeMode.dark
-                ? ThemeNotifier.paymentEntryContainerColor
-                : Color(0xFFECE9E9),
-            // Custom background color,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _skuController,
-                  readOnly: true,
-                  textAlign: TextAlign.start,
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    contentPadding:
-                    EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-                    hintText: TextConstants.generateTheSku,
-                    hintStyle: TextStyle(
-                        color: themeHelper.themeMode == ThemeMode.dark
-                            ? ThemeNotifier.textDark
-                            : Colors.grey),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(6.0),
-                child: ElevatedButton(
-                  onPressed: (_isItemNameEmpty() || _isSkuGenerated) ? null : _generateSku,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _isGenerateSkuEnabled()
-                        ? Colors.redAccent
-                        : Colors.grey,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    //minimumSize: const Size(60, 36),
-                  ),
-                  child: const Text(
-                    TextConstants.generate,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              )
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+  // Widget _buildSkuField() {
+  //   final themeHelper = Provider.of<ThemeNotifier>(context);
+  //   return Column(
+  //     crossAxisAlignment: CrossAxisAlignment.start,
+  //     children: [
+  //       SizedBox(
+  //         height: 5,
+  //       ),
+  //       Text(
+  //         TextConstants.sku,
+  //         style: TextStyle(
+  //           fontWeight: FontWeight.w600,
+  //           fontSize: 14,
+  //           color: themeHelper.themeMode == ThemeMode.dark
+  //               ? ThemeNotifier.textDark
+  //               : Color(0xFF1E2745),
+  //         ),
+  //       ),
+  //       const SizedBox(height: 5),
+  //       Container(
+  //         height: MediaQuery.of(context).size.height / 14,
+  //         width: MediaQuery.of(context).size.width * 0.2,
+  //         decoration: BoxDecoration(
+  //           border: Border.all(
+  //               color: themeHelper.themeMode == ThemeMode.dark
+  //                   ? ThemeNotifier.borderColor
+  //                   : Colors.grey.shade300),
+  //           color: themeHelper.themeMode == ThemeMode.dark
+  //               ? ThemeNotifier.paymentEntryContainerColor
+  //               : Color(0xFFECE9E9),
+  //           // Custom background color,
+  //           borderRadius: BorderRadius.circular(10),
+  //         ),
+  //         child: Row(
+  //           children: [
+  //             Expanded(
+  //               child: TextField(
+  //                 controller: _skuController,
+  //                 readOnly: true,
+  //                 textAlign: TextAlign.start,
+  //                 decoration: InputDecoration(
+  //                   border: InputBorder.none,
+  //                   contentPadding:
+  //                   EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+  //                   hintText: 'generateTheSku',
+  //                   hintStyle: TextStyle(
+  //                       color: themeHelper.themeMode == ThemeMode.dark
+  //                           ? ThemeNotifier.textDark
+  //                           : Colors.grey),
+  //                 ),
+  //               ),
+  //             ),
+  //             Padding(
+  //               padding: const EdgeInsets.all(6.0),
+  //               child: ElevatedButton(
+  //                 onPressed: (_isItemNameEmpty() || _isSkuGenerated) ? null : _generateSku,
+  //                 style: ElevatedButton.styleFrom(
+  //                   backgroundColor: _isGenerateSkuEnabled()
+  //                       ? Colors.redAccent
+  //                       : Colors.grey,
+  //                   foregroundColor: Colors.white,
+  //                   padding: const EdgeInsets.symmetric(horizontal: 12),
+  //                   shape: RoundedRectangleBorder(
+  //                     borderRadius: BorderRadius.circular(8),
+  //                   ),
+  //                   //minimumSize: const Size(60, 36),
+  //                 ),
+  //                 child: const Text(
+  //                   TextConstants.generate,
+  //                   style: TextStyle(
+  //                     fontSize: 12,
+  //                     fontWeight: FontWeight.bold,
+  //                   ),
+  //                 ),
+  //               ),
+  //             )
+  //           ],
+  //         ),
+  //       ),
+  //     ],
+  //   );
+  // }
 
   Widget _buildTaxDropdown() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -1954,7 +2093,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   Future<Map<String, dynamic>?> _findDynamicProductByTokens(
       List<String> tokens) async {
     final normalizedTokens =
-        tokens.map((e) => e.toLowerCase().trim()).where((e) => e.isNotEmpty).toList();
+    tokens.map((e) => e.toLowerCase().trim()).where((e) => e.isNotEmpty).toList();
     if (normalizedTokens.isEmpty) return null;
 
     if (_productMetaInitialized && _productMetaCache.isNotEmpty) {
@@ -3086,409 +3225,276 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
     }
   }
 
-  // Handle adding the custom item
-  //Build #1.0.78: Explanation!
-  // Moved custom item insertion and order total update to OrderBloc.updateOrderProducts.
-  // Added sku to OrderLineItem for API calls.
-  // Added dbOrderId parameter to updateOrderProducts.
-  // Kept local insertion for non-API orders.
-  // Added alert dialog with retry option for API failures.
-  // Ensured _isCustomItemLoading is shown during API calls.
-  // Preserved success toast, UI refresh, and field clearing logic.
-  // Removed commented-out navigation code, as it’s marked as not working.
-  Future<void> _handleAddCustomItem() async {
-    final orderHelper = OrderHelper();
+  // Future<void> _handleAddCustomItem() async {
+  //   if (kDebugMode) print("🟢 [CUSTOM ITEM] START");
+  //
+  //   final orderHelper = OrderHelper();
+  //   final int? ensuredOrderId = await orderHelper.ensureOrderExists();
+  //
+  //   if (ensuredOrderId == null) {
+  //     ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //       const SnackBar(content: Text("Failed to create order"), backgroundColor: Colors.red),
+  //     );
+  //     return;
+  //   }
+  //
+  //   // Validation for price
+  //   final cleanedPrice = _customItemPrice.replaceAll(RegExp(r'[^0-9.]'), '');
+  //   final double? price = double.tryParse(cleanedPrice);
+  //
+  //   if (price == null || price <= 0) {
+  //     ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //       const SnackBar(content: Text("Please enter valid price"), backgroundColor: Colors.red),
+  //     );
+  //     return;
+  //   }
+  //
+  //   setState(() => _isCustomItemLoading = true);
+  //
+  //   try {
+  //     final box = StorageProvider.offlineOrders;
+  //     final key = ensuredOrderId.toString();
+  //     final rawOrder = await box.get(key) ?? {};
+  //     final orderData = Map<String, dynamic>.from(rawOrder);
+  //
+  //     // Get existing products
+  //     List<dynamic> products = (orderData["products"] ?? [])
+  //         .map((e) => Map<String, dynamic>.from(e))
+  //         .toList();
+  //
+  //     // 🔥 CHECK IF CUSTOM ITEM ALREADY EXISTS
+  //     final hasCustomItem = products.any((item) =>
+  //     (item["name"] ?? "").toString().trim().toLowerCase() == "custom item");
+  //
+  //     if (hasCustomItem) {
+  //       setState(() => _isCustomItemLoading = false);
+  //       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //         const SnackBar(
+  //           content: Text("Order already have custom item so if you want to add one more create new order"),
+  //           backgroundColor: Colors.orange,
+  //           duration: Duration(seconds: 4),
+  //         ),
+  //       );
+  //       return;
+  //     }
+  //
+  //     // === ADD NEW CUSTOM ITEM ===
+  //     final normalizedSku = _skuController.text.trim().isNotEmpty
+  //         ? normalizeSku(_skuController.text)
+  //         : "C-${DateTime.now().millisecondsSinceEpoch}";
+  //
+  //     final template = _customItemTemplate ?? {
+  //       "id": 60303,
+  //       "name": "Custom Item",
+  //       "categories": [{"name": "Custom Product", "slug": "custom-product", "id": 520}],
+  //       "tags": [{"name": "variable product", "slug": "variable-product", "id": 423}],
+  //       "tax": {"tax_status": "taxable", "tax_class": "grocery"}
+  //     };
+  //
+  //     final customItem = {
+  //       "server_item_id": null,
+  //       "product_id": template["id"] ?? 60303,
+  //       "variation_id": 0,
+  //       "type": "simple",
+  //       "name": "Custom Item",
+  //       "price": price,
+  //       "sku": normalizedSku,
+  //
+  //       "categories": template["categories"],
+  //       "tags": template["tags"],
+  //
+  //       "tax_status": template["tax"]?["tax_status"] ?? "taxable",
+  //       "tax_class": template["tax"]?["tax_class"] ?? "grocery",
+  //       "tax_rate": _selectedTax?.rate ?? 0.0,
+  //
+  //       "quantity": 1,
+  //       "item_image": "assets/custom.png",
+  //       "product_image": "assets/custom.png",
+  //       AppDBConst.itemType: "custom",
+  //       AppDBConst.itemName: "Custom Item",
+  //       AppDBConst.itemPrice: price,
+  //       AppDBConst.itemSumPrice: price,
+  //       AppDBConst.itemCount: 1,
+  //     };
+  //
+  //     products.add(customItem);
+  //
+  //     // Recalculate totals
+  //     double grossTotal = 0.0;
+  //     for (var p in products) {
+  //       final itemPrice = (p["price"] ?? 0.0) as num;
+  //       final qty = (p["quantity"] ?? 1) as num;
+  //       grossTotal += itemPrice * qty;
+  //     }
+  //
+  //     orderData["products"] = products;
+  //     orderData["gross_total"] = grossTotal;
+  //     orderData["net_total"] = grossTotal;
+  //     orderData["net_payable"] = grossTotal;
+  //
+  //     // Save order
+  //     await box.put(key, orderData);
+  //
+  //     // Cache for search
+  //     await StorageProvider.productCache.put("sku_$normalizedSku", {"products": [customItem]});
+  //
+  //     // Reset UI
+  //     setState(() {
+  //       _isCustomItemLoading = false;
+  //       _customItemPrice = "0.00";
+  //       _customItemPriceController.clear();
+  //       _skuController.clear();
+  //       _isEnteringItemPrice = false;
+  //     });
+  //
+  //     await _orderHelper.loadData();
+  //     await _loadOrderData();
+  //     OrderHelper.notifyOrderPanelToRefresh();
+  //     widget.refreshOrderList?.call();
+  //
+  //     ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //       const SnackBar(content: Text("Custom Item added successfully!"), backgroundColor: Colors.green),
+  //     );
+  //   } catch (e, st) {
+  //     print(" Custom Item Error: $e\n$st");
+  //     setState(() => _isCustomItemLoading = false);
+  //     ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //       SnackBar(content: Text("Error adding custom item: $e"), backgroundColor: Colors.red),
+  //     );
+  //   }
+  // }
 
+  Future<void> _handleAddCustomItem() async {
+    if (kDebugMode) print("🟢 [CUSTOM ITEM] START");
+
+    final orderHelper = OrderHelper();
     final int? ensuredOrderId = await orderHelper.ensureOrderExists();
 
     if (ensuredOrderId == null) {
-      if (kDebugMode) {
-        print("❌ Failed to create or restore order");
-      }
-
-      final msg = OrderHelper.lastEnsureOrderError ??
-          "Unable to create order. Please try again.";
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        SnackBar(
-          content: Text(msg),
-          backgroundColor: Colors.red,
-        ),
+        const SnackBar(content: Text("Failed to create order"), backgroundColor: Colors.red),
       );
       return;
     }
 
-    if (kDebugMode) {
-      print("🆔 Active Order ID (ensured): $ensuredOrderId");
-    }
+    // Price Validation
+    final cleanedPrice = _customItemPrice.replaceAll(RegExp(r'[^0-9.]'), '');
+    final double? price = double.tryParse(cleanedPrice);
 
-    if (kDebugMode) print("🟢 [STEP 0] ENTER _handleAddCustomItem()");
-
-    // -----------------------------
-    // VALIDATION
-    // -----------------------------
-    if (kDebugMode) {
-      print("🟢 [STEP 1] VALIDATION INPUTS:");
-      print("     • Name:        '$_customItemName'");
-      print("     • Price:       '$_customItemPrice'");
-      print("     • Tax Slab:    '$_selectedTaxSlab'");
-      print("     • SKU:         '$_sku'");
-    }
-
-    if (_customItemName.isEmpty) {
-      if (kDebugMode) print("❌ [STEP 1A] Name is empty");
+    if (price == null || price <= 0) {
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        const SnackBar(
-          content: Text(TextConstants.itemNameRequired),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
+        const SnackBar(content: Text("Please enter valid price"), backgroundColor: Colors.red),
       );
       return;
     }
-
-    if (_customItemPrice.isEmpty ||
-        double.tryParse(_customItemPrice) == null ||
-        double.parse(_customItemPrice) == 0) {
-      if (kDebugMode) {
-        print("❌ [STEP 1B] Invalid price: '$_customItemPrice'");
-      }
-      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        const SnackBar(
-          content: Text(TextConstants.invalidPriceError),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    if (_selectedTaxSlab.isEmpty) {
-      if (kDebugMode) print("❌ [STEP 1C] Tax slab is empty");
-      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        const SnackBar(
-          content: Text(TextConstants.taxSlabRequired),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    if (_sku.isEmpty) {
-      if (kDebugMode) print("❌ [STEP 1D] SKU is empty");
-      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        const SnackBar(
-          content: Text(TextConstants.skuRequired),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    if (kDebugMode) print("✅ [STEP 1] VALIDATION PASSED");
 
     setState(() => _isCustomItemLoading = true);
 
     try {
-      // -----------------------------
-      // PREP ORDER
-      // -----------------------------
-      if (kDebugMode) print("🟡 [STEP 2] PREP ORDER");
-
-      final orderHelper = OrderHelper();
-      final int serverOrderId = ensuredOrderId;
-      orderHelper.activeOrderId = serverOrderId;
-
-      if (kDebugMode) {
-        print("   • Existing activeOrderId: ${orderHelper.activeOrderId}");
-        print("   • Using serverOrderId:    $serverOrderId");
-      }
-
-      orderHelper.activeOrderId ??= serverOrderId;
-
       final box = StorageProvider.offlineOrders;
-      final orderKey = serverOrderId.toString();
+      final key = ensuredOrderId.toString();
+      final rawOrder = await box.get(key) ?? {};
+      final orderData = Map<String, dynamic>.from(rawOrder);
 
-      if (!(await box.containsKey(orderKey))) {
-        if (kDebugMode) {
-          print(
-              "   • No existing offline order for $orderKey, creating new...");
-        }
-        await box.put(orderKey, {
-          "order_id": serverOrderId,
-          "created_at": DateTime.now().toIso8601String(),
-          "products": [],
-          "payouts": [],
-          "cashbacks": [],
-          "orderAgeRestricted": false,
-        });
-      } else {
-        if (kDebugMode) {
-          print("   • Found existing offline order for $orderKey");
-        }
-      }
-
-      final rawOrder = await box.get(orderKey);
-      if (kDebugMode) {
-        print("   • rawOrder from Hive: $rawOrder");
-      }
-
-      final Map<String, dynamic> orderData =
-      Map<String, dynamic>.from(_convertToJsonSafe(rawOrder));
-
-      final List products = (orderData["products"] ?? [])
-          .map((e) => Map<String, dynamic>.from(_convertToJsonSafe(e)))
+      List<dynamic> products = (orderData["products"] ?? [])
+          .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
-      if (kDebugMode) {
-        print("   • Current products count: ${products.length}");
-        for (var p in products) {
-          print(
-              "     - Product in order: sku=${p['sku']}, qty=${p['quantity']}");
-        }
-      }
+      // Find the selected item from dropdown
+      final selectedItem = _customItemsList.firstWhere(
+            (item) => (item['name']?.toString() ?? "") == _selectedCustomItemName,
+        orElse: () => _customItemsList.isNotEmpty ? _customItemsList.first : {},
+      );
 
-      // -----------------------------
-// TAX TAB SELECTION VALIDATION
-// -----------------------------
-      if (_selectedTax == null) {
-        if (kDebugMode) {
-          print("❌ [STEP 1E] Tax tab not selected");
-        }
+      final String itemName = selectedItem['name']?.toString() ?? "Custom Item";
+      final int productId = selectedItem['id'] ?? 60303;
 
+      // 🔥 CHECK IF SAME ID ALREADY EXISTS
+      final bool alreadyExists = products.any((item) {
+        return (item['product_id'] ?? 0) == productId;
+      });
+
+      if (alreadyExists) {
+        setState(() => _isCustomItemLoading = false);
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
-            content: Text("Please select a tax slab before adding the item"),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
+            content: Text("This item already added. Create new order to add again."),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
           ),
         );
         return;
       }
 
-      // -----------------------------
-      // TAX SLAB
-      // -----------------------------
-      if (kDebugMode) print("🟡 [STEP 3] TAX SLAB LOOKUP");
+      // ==================== DYNAMIC DATA FROM NEW API STRUCTURE ====================
+      final categories = selectedItem['categories'] is List ? selectedItem['categories'] : [];
+      final tags = selectedItem['tags'] is List ? selectedItem['tags'] : [];
 
-      final taxes = await _assetDBHelper.getTaxList();
-      if (kDebugMode) {
-        print("   • Available taxes (${taxes.length}): "
-            "${taxes.map((t) => '${t.name}(${t.slug})').join(', ')}");
-        print("   • Selected tax slab: $_selectedTaxSlab");
-      }
+      // NEW TAX STRUCTURE (Flat fields)
+      final bool isTaxable = selectedItem['taxable'] == true;
+      final String taxClass = selectedItem['tax_class']?.toString() ?? "grocery";
+      final double taxPercent = double.tryParse(
+          selectedItem['tax_percent']?.toString() ?? '0'
+      ) ?? 0.0;
 
-      // if (_selectedTaxSlab.isNotEmpty) {
-      //   final selectedTax = taxes.firstWhere(
-      //         (t) => t.name == _selectedTaxSlab,
-      //     orElse: () => taxes.isNotEmpty
-      //         ? taxes.first
-      //         : Tax(slug: "none", name: _selectedTaxSlab),
-      //   );
-      //
-      //   taxStatus =
-      //   selectedTax.slug.isNotEmpty ? TextConstants.taxable : "";
-      //   taxClass = selectedTax.slug;
-      //
-      //   if (kDebugMode) {
-      //     print("   • Resolved tax → status: '$taxStatus', class: '$taxClass'");
-      //   }
-      // }
-      // -----------------------------
-// TAX FROM API (FIXED)
-// -----------------------------
-      if (kDebugMode) print("🟡 [STEP 3] TAX FROM API");
-      double taxRate = 0.0;
-      String taxStatus = "";
-      String taxClass = "";
+      final normalizedSku = _skuController.text.trim().isNotEmpty
+          ? normalizeSku(_skuController.text)
+          : "C-${DateTime.now().millisecondsSinceEpoch}";
 
-      if (_selectedTax != null) {
-        taxStatus = TextConstants.taxable;
-        taxClass = _selectedTax!.taxClass; // ✅ FROM API
-        taxRate = _selectedTax!.rate; // ✅ FROM API
-      }
-
-      if (kDebugMode) {
-        print("   • Tax Status : $taxStatus");
-        print("   • Tax Class  : $taxClass");
-        print("   • Tax Rate   : $taxRate%");
-      }
-
-      // -----------------------------
-      // NORMALIZE SKU
-      // -----------------------------
-      if (kDebugMode) print("🟡 [STEP 4] NORMALIZE SKU");
-
-      final normalizedSku = normalizeSku(_sku);
-      if (kDebugMode) {
-        print("   • Original SKU:  '${_sku}'");
-        print("   • Normalized:    '$normalizedSku'");
-      }
-
-      // -----------------------------
-      // CHECK IN EXISTING ORDER
-      // -----------------------------
-      if (kDebugMode) print("🟡 [STEP 5] CHECK EXISTING PRODUCT IN ORDER");
-
-      final existingIndex = products.indexWhere((item) {
-        final raw = (item["sku"] ?? "").toString();
-        final stored = normalizeSku(raw);
-        return stored == normalizedSku ||
-            raw == normalizedSku ||
-            raw.toLowerCase() == normalizedSku ||
-            raw.trim() == normalizedSku ||
-            raw.replaceAll(" ", "") == normalizedSku;
-      });
-
-      if (kDebugMode) {
-        print("   • existingIndex: $existingIndex");
-      }
-
-      if (existingIndex != -1) {
-        final oldQty = (products[existingIndex]["quantity"] ?? 1);
-        products[existingIndex]["quantity"] = oldQty + 1;
-
-        if (kDebugMode) {
-          print(
-              "🔁 [STEP 5A] Increased quantity of '$normalizedSku' from $oldQty to ${products[existingIndex]["quantity"]}");
-        }
-      } else {
-        if (kDebugMode) print("🆕 [STEP 5B] Creating NEW custom item");
-
-        final customItem = {
-          "server_item_id": null,
-          "product_id": 0,
-          "variation_id": 0,
-          "type": "custom",
-          "name": _customItemName.trim(),
-          "price": double.parse(_customItemPrice),
-          "sku": normalizedSku,
-
-          // ✅ TAX (API BASED)
-          "tax_status": taxStatus,
-          "tax_class": taxClass,
-          "tax_rate": taxRate,
-          "tags": [TextConstants.customItem],
-          "quantity": 1,
-
-          /// 🔥 FIXED IMAGE KEYS → MUST MATCH YOUR ORDER PANEL UI
-          AppDBConst.itemImage: "assets/custom.png",
-          "item_image": "assets/custom.png",
-          "product_image": "assets/custom.png",
-
-          AppDBConst.itemType: TextConstants.customItemText,
-        };
-
-        products.add(customItem);
-
-        if (kDebugMode) {
-          print("   • Added new custom item:");
-          print("       name: ${customItem['name']}");
-          print("       price: ${customItem['price']}");
-          print("       sku: ${customItem['sku']}");
-        }
-      }
-
-      // -----------------------------
-      // SAVE ORDER BACK
-      // -----------------------------
-      if (kDebugMode) print("🟡 [STEP 6] SAVE ORDER BACK TO HIVE");
-
-      orderData["products"] = products;
-      await orderHelper.saveOfflineOrder(serverOrderId, orderData);
-
-      if (kDebugMode) {
-        final debugOrder = await box.get(orderKey);
-        print("   • Saved order snapshot: $debugOrder");
-      }
-
-      // -----------------------------
-      // CACHE IN productCache
-      // -----------------------------
-      if (kDebugMode) print("🟡 [STEP 7] UPDATE productCache");
-
-      final productBox = StorageProvider.productCache;
-      final cacheKey = "sku_$normalizedSku";
-      final cacheItem = {
-        "id": 0,
-        "product_id": 0,
+      final customItem = {
+        "server_item_id": null,
+        "product_id": productId,
         "variation_id": 0,
-        "name": _customItemName.trim(),
-        "type": "custom",
-        "is_custom_item": true,
-        "price": double.parse(_customItemPrice).toString(),
+        "type": selectedItem['type']?.toString() ?? "simple",
+        "name": itemName,
+        "price": price,
         "sku": normalizedSku,
 
-        // ✅ TAX (API BASED)
-        "tax_status": taxStatus,
-        "tax_class": taxClass,
-        "tax_rate": taxRate,
-        "variations": [],
+        "categories": categories,
+        "tags": tags,
 
-        /// FIXED IMAGE KEYS
-        "images": [
-          {"src": "assets/custom.png"}
-        ],
-        AppDBConst.itemImage: "assets/custom.png",
+        // Updated Tax Fields for new API response
+        "tax_status": isTaxable ? "taxable" : "none",
+        "tax_class": taxClass,
+        "tax_rate": _selectedTax?.rate ?? taxPercent,   // Use tax_percent from API
+
+        "quantity": 1,
         "item_image": "assets/custom.png",
         "product_image": "assets/custom.png",
-
-        AppDBConst.itemType: TextConstants.customItemText,
+        AppDBConst.itemType: "custom",
+        AppDBConst.itemName: itemName,
+        AppDBConst.itemPrice: price,
+        AppDBConst.itemSumPrice: price,
+        AppDBConst.itemCount: 1,
       };
 
-      await productBox.put(cacheKey, {
-        "products": [cacheItem]
-      });
+      products.add(customItem);
 
-      if (kDebugMode) {
-        print(
-            "   • productCache[$cacheKey] = ${await productBox.get(cacheKey)}");
+      // Recalculate Totals
+      double grossTotal = 0.0;
+      for (var p in products) {
+        final itemPrice = (p["price"] ?? 0.0) as num;
+        final qty = (p["quantity"] ?? 1) as num;
+        grossTotal += itemPrice * qty;
       }
 
-      // -----------------------------
-      // UPDATE IN-MEMORY CACHE
-      // -----------------------------
-      // -----------------------------
-// UPDATE IN-MEMORY CACHE
-// -----------------------------
-      if (kDebugMode) print("🟡 [STEP 8] UPDATE IN-MEMORY CACHE");
+      orderData["products"] = products;
+      orderData["gross_total"] = grossTotal;
+      orderData["net_total"] = grossTotal;
+      orderData["net_payable"] = grossTotal;
 
-// Save custom item into memory cache
-      OrderHelper.addToCache(normalizedSku, cacheItem);
+      await box.put(key, orderData);
 
-// PRINT EXACT VALUE STORED IN MEMORY CACHE
-      if (kDebugMode) {
-        final mem = OrderHelper.getFromCache(normalizedSku);
+      // Cache for future scans
+      await StorageProvider.productCache.put("sku_$normalizedSku", {"products": [customItem]});
 
-        print("🔥 In-memory cache updated for custom SKU: $normalizedSku");
-        print("🧠 [MEMORY] STORED VALUE → $mem");
-
-        try {
-          print("🧠 [MEMORY] STORED JSON → ${jsonEncode(mem)}");
-        } catch (_) {
-          print("⚠ [MEMORY] Could not encode to JSON");
-        }
-      }
-
-      // -----------------------------
-      // RESET UI
-      // -----------------------------
-      if (kDebugMode) print("🟡 [STEP 9] RESET UI & RELOAD ORDER");
-
+      // Reset UI
       setState(() {
         _isCustomItemLoading = false;
-        _customItemName = "";
-        _customItemPrice = "";
-        _sku = "";
-        _customItemNameController.clear();
+        _customItemPrice = "0.00";
         _customItemPriceController.clear();
         _skuController.clear();
-        _isSkuGenerated = false;
-        _selectedTax = null;
-        _selectedTaxSlab =
-        _taxSlabOptions.isNotEmpty ? _taxSlabOptions.first : "";
-        _isTaxDropdownEnabled = true;
+        _isEnteringItemPrice = false;
       });
 
       await _orderHelper.loadData();
@@ -3496,27 +3502,17 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       OrderHelper.notifyOrderPanelToRefresh();
       widget.refreshOrderList?.call();
 
-      if (kDebugMode) print("✅ [STEP 10] Custom item added successfully!");
-
-      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        const SnackBar(
-          content: Text("✅ Custom item added successfully!"),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } catch (e, st) {
-      print("❌ [ERROR] Exception in _handleAddCustomItem: $e");
-      print("🧵 StackTrace: $st");
-
+      // ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+      //   SnackBar(
+      //     content: Text("$itemName added successfully!"),
+      //     backgroundColor: Colors.green,
+      //   ),
+      // );
+    } catch (e) {
+      print("❌ Custom Item Error: $e");
       setState(() => _isCustomItemLoading = false);
-
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        SnackBar(
-          content: Text("Error adding custom item: $e"),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
+        SnackBar(content: Text("Error adding custom item"), backgroundColor: Colors.red),
       );
     }
   }

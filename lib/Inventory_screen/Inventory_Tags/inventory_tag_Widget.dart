@@ -162,31 +162,57 @@ class VariablePriceCheckboxWidget extends StatelessWidget {
         SizedBox(
           width: 22,
           height: 22,
+          // child:
+          // Checkbox(
+          //   value: value,
+          //   onChanged: (val) {
+          //     if (val != null) {
+          //       // ✅ Debug prints similar to InventoryTagMultiSelectWidget
+          //       debugPrint('Tag Selected -> name: $name, slug: $slug');
+          //
+          //       // ✅ Print in the [name, slug] style like your tag widget
+          //       debugPrint('$name Tag -> [name: $name, slug: $slug]');
+          //
+          //       onChanged(val); // callback
+          //     }
+          //   },
+          //   shape: RoundedRectangleBorder(
+          //     borderRadius: BorderRadius.circular(4),
+          //   ),
+          //   side: BorderSide(
+          //     color: isDark ? Colors.white38 : const Color(0xFFBDBDBD),
+          //     width: 2,
+          //   ),
+          //   checkColor: Colors.white,
+          //   fillColor: MaterialStateProperty.all(
+          //     const Color(0xFF2196F3),
+          //   ),
+          // ),
+
           child: Checkbox(
-            value: value,
-            onChanged: (val) {
-              if (val != null) {
-                // ✅ Debug prints similar to InventoryTagMultiSelectWidget
-                debugPrint('Tag Selected -> name: $name, slug: $slug');
-
-                // ✅ Print in the [name, slug] style like your tag widget
-                debugPrint('$name Tag -> [name: $name, slug: $slug]');
-
-                onChanged(val); // callback
-              }
-            },
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4),
-            ),
-            side: BorderSide(
-              color: isDark ? Colors.white38 : const Color(0xFFBDBDBD),
-              width: 2,
-            ),
-            checkColor: Colors.white,
-            fillColor: MaterialStateProperty.all(
-              const Color(0xFF2196F3),
-            ),
-          ),
+      value: value,
+      onChanged: (val) {
+        if (val != null) {
+          debugPrint('Tag Selected -> name: $name, slug: $slug');
+          debugPrint('$name Tag -> [name: $name, slug: $slug]');
+          onChanged(val);
+        }
+      },
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(4),
+      ),
+      side: const BorderSide(
+        color: Colors.grey,  // ✅ Grey border when unselected
+        width: 2,
+      ),
+      checkColor: Colors.white,  // ✅ White tick
+      fillColor: MaterialStateProperty.resolveWith<Color>((states) {
+        if (states.contains(MaterialState.selected)) {
+          return Colors.blue;         // ✅ Blue bg when checked
+        }
+        return Colors.transparent;    // ✅ No fill when unchecked
+      }),
+    ),
         ),
         const SizedBox(width: 6),
         RichText(

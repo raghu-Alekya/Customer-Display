@@ -1226,6 +1226,62 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   //   _onBarcodeScannedCallback.call(barcode);
   // }
   // final GlobalKey<BarcodeKeyboardListenerState> _scannerKey = GlobalKey();//Build #1.0.268: 2. create global key
+
+  Future<bool> _isCustomItemAlreadyInOrder(int orderId, String sku) async {
+    final box = StorageProvider.offlineOrders;
+    final raw = await box.get(orderId.toString());
+    if (raw == null) return false;
+
+    final order = Map<String, dynamic>.from(raw);
+    final products = (order['products'] as List?) ?? [];
+
+    final normalized = sku.toLowerCase().trim();
+
+    return products.any((item) {
+      final type = (item['item_type'] ?? item['type'] ?? '').toString().toLowerCase();
+      final itemSku = (item['sku'] ?? '').toString().toLowerCase().trim();
+      return type.contains('custom') && itemSku == normalized;
+    });
+  }
+
+  Future<void> _incrementExistingCustomItem(int orderId, String sku) async {
+    final box = StorageProvider.offlineOrders;
+    final raw = await box.get(orderId.toString());
+    if (raw == null) return;
+
+    final order = Map<String, dynamic>.from(raw);
+    final products = (order['products'] as List?)
+        ?.map((e) => Map<String, dynamic>.from(e))
+        .toList() ?? [];
+
+    final normalized = sku.toLowerCase().trim();
+
+    for (var item in products) {
+      final type = (item['item_type'] ?? item['type'] ?? '').toString().toLowerCase();
+      final itemSku = (item['sku'] ?? '').toString().toLowerCase().trim();
+
+      if (type.contains('custom') && itemSku == normalized) {
+        final qty = (item['quantity'] ?? item['items_count'] ?? 1) as int;
+        final newQty = qty + 1;
+
+        item['quantity'] = newQty;
+        item['items_count'] = newQty;
+        item['item_sum_price'] = (item['price'] ?? 0.0) * newQty;
+        break;
+      }
+    }
+
+    await box.put(orderId.toString(), order);
+    await orderHelper.loadData();
+    await fetchOrderItems();
+    OrderHelper.notifyOrderPanelToRefresh();
+    widget.refreshOrderList?.call();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Custom Item quantity increased"), backgroundColor: Colors.green),
+    );
+  }
+
   Future<void> _handleOrderPanelBarcode(String barcode) async {
     if (ScannerMutex.noOrderBusy) {
       print("🚫 BLOCKED BY ScannerMutex.noOrderBusy");
@@ -1316,51 +1372,31 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
       SKU.ProductBySkuResponse? product;
       bool foundOffline = false;
-      // unused local normalizedSku was removed
+      Map<String, dynamic>? resolvedProductMap;   // Added for safety
 
-// The synchronous backend validation that bypassed cache was removed to restore instantaneous scanning speeds.
+      // ====================== CUSTOM ITEM LOGIC (Added Here) ======================
+      // Check if product is still null after all resolution attempts
+      if (product == null) {
+        final bool alreadyExists = await _isCustomItemAlreadyInOrder(activeOrderId, normalizedBarcode);
 
-//             // 🔥 FAST DELETION VALIDATION
-//             final isar = await IsarService.instance;
-//
-//             final cachedEntries = await isar.isarCacheEntrys
-//                 .where()
-//                 .filter()
-//                 .keyStartsWith("products_")
-//                 .findAll();
-//
-//             bool existsInCache = false;
-//
-//             for (final entry in cachedEntries) {
-//               final List<dynamic> products = json.decode(entry.json);
-//
-//               for (final p in products) {
-//                 final sku = (p["sku"] ?? "").toString().toLowerCase();
-//
-//                 if (sku == normalizedBarcode.toLowerCase()) {
-//                   existsInCache = true;
-//                   break;
-//                 }
-//               }
-//
-//               if (existsInCache) break;
-//             }
-//
-// // 🔥 IF NOT FOUND → OPEN CUSTOM ITEM POPUP
-//             if (!existsInCache) {
-//               print("🔄 Product removed from backend → opening Custom Item popup");
-//
-//               _isLoading = false;
-//               if (mounted) setState(() {});
-//
-//               await _openCustomItemDialog(context, trimmedBarcode);
-//               return;
-//             }
+        if (alreadyExists) {
+          // ✅ INCREMENT EXISTING CUSTOM ITEM
+          await _incrementExistingCustomItem(activeOrderId, normalizedBarcode);
+          _isLoading = false;
+          if (mounted) setState(() {});
+          return;
+        } else {
+          // NEW CUSTOM ITEM → Open Dialog
+          _isLoading = false;
+          if (mounted) setState(() {});
+          await _openCustomItemDialog(context, trimmedBarcode);
+          return;
+        }
+      }
+
       // ---------------------------------------------------------------------------
       // 1️⃣ MEMORY CACHE
       // ---------------------------------------------------------------------------
-// 1️⃣ MEMORY CACHE
-// ---------------------------------------------------------------------------
       try {
         final memoryData = OrderHelper.getFromCache(trimmedBarcode);
 
@@ -1377,121 +1413,75 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
           Map<String, dynamic> productMap;
 
-          // Case A → stored as {products:[{...}]}
           if (memoryData is Map &&
               memoryData["products"] is List &&
               memoryData["products"].isNotEmpty) {
             productMap = Map<String, dynamic>.from(memoryData["products"][0]);
 
-            // 🔐 Restore meta_data safely
             if (productMap["meta_data"] is List) {
               productMap["meta_data"] =
               List<Map<String, dynamic>>.from(productMap["meta_data"]);
             }
 
-            // 🔐 Restore tags safely
             if (productMap["tags"] is List) {
               productMap["tags"] =
               List<Map<String, dynamic>>.from(productMap["tags"]);
             }
-          }
-
-          // Case B → stored as flat map
-          else {
+          } else {
             productMap = Map<String, dynamic>.from(memoryData);
           }
-          // 🔥 FIX FOR CUSTOM ITEM RE-SCAN 🔥
+
           if (productMap.containsKey('product') &&
               productMap['product'] is Map<String, dynamic>) {
             productMap = Map<String, dynamic>.from(productMap['product']);
           }
 
-// ✅ STORE FINAL MAP FOR LATER USE
           resolvedProductMap = productMap;
 
           if (kDebugMode) {
             print("💾 Extracted productMap from memory → $productMap");
             try {
               print("💾 productMap JSON → ${jsonEncode(productMap)}");
-            } catch (_) {
-              print("💾 productMap not JSON encodable");
-            }
-            // ⭐⭐⭐ ADD THESE THREE ⭐⭐⭐
-            print("🖼 MEMORY productMap['images'] → ${productMap['images']}");
-
-            if (productMap['images'] is List &&
-                productMap['images'].isNotEmpty) {
-              print("🖼 MEMORY image src → ${productMap['images'][0]['src']}");
-            } else {
-              print("🖼 MEMORY image src → NONE");
-            }
+            } catch (_) {}
           }
 
           product = SKU.ProductBySkuResponse.fromJson(productMap);
           foundOffline = true;
-
-          if (kDebugMode) {
-            print(
-                "🧠 MEMORY → PRODUCT → name=${product?.name}, price=${product?.price}, sku=${product?.sku}");
-          }
         }
       } catch (e, s) {
         print("❌ MEMORY CACHE ERROR → $e");
         print("📌 STACKTRACE → $s");
       }
 
-// ---------------------------------------------------------------------------
-// 2️⃣ PRODUCT CACHE (Custom Items + Normal SKU)
-// ---------------------------------------------------------------------------
+      // ---------------------------------------------------------------------------
+      // 2️⃣ PRODUCT CACHE (Custom Items + Normal SKU)
+      // ---------------------------------------------------------------------------
       try {
         if (product == null) {
-          final cached = await productBox.get(cacheKey); // <-- await here
+          final cached = await productBox.get(cacheKey);
 
           if (cached != null) {
             if (kDebugMode) {
               print("💽 HIVE productCache[$cacheKey] RAW → $cached");
-              try {
-                print("💽 HIVE JSON → ${jsonEncode(cached)}");
-              } catch (_) {
-                print("💽 HIVE map not JSON encodable");
-              }
             }
 
             List<dynamic> items = [];
 
             if (cached is Map && cached["products"] is List) {
-              items = List<dynamic>.from(cached["products"]); // safe copy
+              items = List<dynamic>.from(cached["products"]);
             }
 
             if (items.isNotEmpty) {
               final productMap = Map<String, dynamic>.from(items[0]);
-
-              if (kDebugMode) {
-                print("💽 Extracted productMap from Hive → $productMap");
-                try {
-                  print("💽 productMap JSON → ${jsonEncode(productMap)}");
-                } catch (_) {
-                  print("💽 productMap not JSON encodable");
-                }
-              }
-
               product = SKU.ProductBySkuResponse.fromJson(productMap);
               resolvedProductMap = productMap;
               foundOffline = true;
-
-              if (kDebugMode) {
-                print(
-                    "🟢 productCache → PRODUCT → name=${product?.name}, price=${product?.price}");
-              }
             }
           }
         }
       } catch (e, s) {
         print("❌ PRODUCT CACHE ERROR → $e");
-        print("📌 STACKTRACE → $s");
       }
-      // Removed redundant auto-increment logic.
-      // All scans now proceed to product resolution below.
 
       // ---------------------------------------------------------------------------
       // 4️⃣ FULL LIST CACHE
@@ -1531,8 +1521,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             await productBox.put(cacheKey, {
               "products": products.map((p) {
                 final map = p.toJson();
-
-                // 🔥 FIX: Persist tags
                 map["tags"] = p.tags
                     ?.map((t) => {
                   "id": t.id,
@@ -1540,15 +1528,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                   "slug": t.slug,
                 })
                     .toList();
-
-                // 🔥 Also persist meta_data if present
                 map["meta_data"] = p.metaData
                     ?.map((m) => {
                   "key": m.key,
                   "value": m.value,
                 })
                     .toList();
-
                 return map;
               }).toList(),
             });
@@ -1561,33 +1546,27 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
 
       // ---------------------------------------------------------------------------
-      // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
+      // 6️⃣ STILL NULL → CUSTOM ITEM POPUP   (This part is now protected by above logic)
       // ---------------------------------------------------------------------------
-      // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
       if (product == null) {
-        // ❌ Block only if scanner or age flow is active
         if (_ageVerificationActive || isDriverLicense) {
           if (kDebugMode) {
             print("🚫 Custom Item popup BLOCKED (DL / Age / Locked)");
           }
-
           _isLoading = false;
           if (mounted) setState(() {});
           return;
         }
 
-        // ✅ Stop loader BEFORE opening popup
         _isLoading = false;
         if (mounted) setState(() {});
 
-        // ✅ PASS BARCODE HERE
         await _openCustomItemDialog(context, trimmedBarcode);
-
         return;
       }
 
       // ---------------------------------------------------------------------------
-      // 7️⃣ EXTRACT PRODUCT DATA
+      // 7️⃣ EXTRACT PRODUCT DATA  (Your original code continues unchanged)
       // ---------------------------------------------------------------------------
       final bool isCustomItem =
           product.id == null || product.id == 0 || product.type == 'custom';
@@ -1603,15 +1582,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           : (product.sku ?? trimmedBarcode);
 
       final productPrice = isCustomItem
-          ? double.tryParse(
-        resolvedProductMap?['price']?.toString() ?? '0',
-      ) ??
-          0.0
+          ? double.tryParse(resolvedProductMap?['price']?.toString() ?? '0') ?? 0.0
           : double.tryParse(product.price?.toString() ?? '0') ?? 0.0;
 
       final int? selectedVariationId =
       (product.variations != null && product.variations!.isNotEmpty)
-          ? null // variant not selected yet
+          ? null
           : null;
 
       final taxStatus = isCustomItem
@@ -1621,18 +1597,14 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           ? (resolvedProductMap?['tax_class'] ?? '').toString()
           : (product.taxClass ?? '');
       final taxRate = isCustomItem
-          ? double.tryParse(
-          resolvedProductMap?['tax_rate']?.toString() ?? '0') ??
-          0.0
+          ? double.tryParse(resolvedProductMap?['tax_rate']?.toString() ?? '0') ?? 0.0
           : 0.0;
 
-// 🖼 Image
       String image = "";
       if ((product.images ?? []).isNotEmpty) {
         image = product.images!.first.src ?? "";
       }
 
-// 🧠 Metadata & Tags
       final metaData = product.metaData ?? [];
       final tags = product.tags ?? [];
 
@@ -5088,8 +5060,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                 index <
                                                     productsLen +
                                                         customLen) {
-                                              final custom = customItems[
-                                              index - productsLen];
+                                              final custom = customItems[index - productsLen];
                                               final price = double.tryParse(custom[
                                               'custom_item_price']
                                                   ?.toString() ??
