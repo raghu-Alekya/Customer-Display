@@ -140,30 +140,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
     }
   }
 
-  Future<void> printPurchasedItems() async { // Build #1.0.80: Testing purpose added for purchasedItemsTable data
-    final db = await DBHelper.instance.database;
-    final items = await db.query(AppDBConst.purchasedItemsTable);
 
-    if (kDebugMode) {
-      print("===== Purchased Items Table Contents =====");
-      for (var item in items) {
-        print(item);
-      }
-      print("===== End of Table =====");
-    }
-  }
-
-  // 2. Update Order Products
-
-  ///Todo:
-  ///1. check if product item is present in order table then get the item server id
-  ///2. and increase/ update the quantity as per user selection
-  ///3. else add new product with quantity 1 or more passed by user
-  ///4. Clear order item table
-  ///5. Update order table with total_tax, total and discount_total
-  ///5. Save response in db for line_items
-  ///6. stop loading
-  ///7. Return
   Future<String> updateOrderProducts({required int? orderId, required int? dbOrderId, required List<OrderLineItem> lineItems, bool isEditQuantity = false}) async {
     String logString = " OrderBloc - updateOrderProducts \n";
     if (_updateOrderController.isClosed) return logString;
@@ -509,6 +486,386 @@ class OrderBloc { // Build #1.0.25 - added by naveen
     }
   }
 
+  Future<void> printPurchasedItems() async { // Build #1.0.80: Testing purpose added for purchasedItemsTable data
+    final db = await DBHelper.instance.database;
+    final items = await db.query(AppDBConst.purchasedItemsTable);
+
+    if (kDebugMode) {
+      print("===== Purchased Items Table Contents =====");
+      for (var item in items) {
+        print(item);
+      }
+      print("===== End of Table =====");
+    }
+  }
+
+  // 2. Update Order Products
+
+  ///Todo:
+  ///1. check if product item is present in order table then get the item server id
+  ///2. and increase/ update the quantity as per user selection
+  ///3. else add new product with quantity 1 or more passed by user
+  ///4. Clear order item table
+  ///5. Update order table with total_tax, total and discount_total
+  ///5. Save response in db for line_items
+  ///6. stop loading
+  ///7. Return
+  // Future<String> updateOrderProducts({required int? orderId, required int? dbOrderId, required List<OrderLineItem> lineItems, bool isEditQuantity = false}) async {
+  //   String logString = " OrderBloc - updateOrderProducts \n";
+  //   if (_updateOrderController.isClosed) return logString;
+  //
+  //   updateOrderSink.add(APIResponse.loading(TextConstants.loading));
+  //   try {
+  //
+  //     /// NOTE:
+  //     // final itemsToAdd = lineItems.map((item) => OrderLineItem(
+  //     //   productId: item.productId,
+  //     //   quantity: item.quantity, // Setting quantity to 0 removes the item
+  //     // )).toList();
+  //     //  final db = await DBHelper.instance.database;
+  //     //  final existingItem = await db.query(
+  //     //    AppDBConst.purchasedItemsTable,
+  //     //    where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemSKU} = ? AND ${AppDBConst.itemType} = ?',
+  //     //    whereArgs: [dbOrderId, sku, type],
+  //     //  );
+  //     //
+  //     //  if (existingItem.isNotEmpty) { //Build #1.0.78: already managing this , no need
+  //     // //NOTE: request -> id, quantity to update existing item quantity
+  //     // Use Line Item Id -> id
+  //     //  }else{
+  //     //    //NOTE: request -> product, quantity to create new item in order
+  //     // Use Id -> product id
+  //     //  }
+  //     // Build #1.0.80: Updated code with fixes, duplicate products adding into order panel
+  //     final db = await DBHelper.instance.database;
+  //     final itemsToAdd = <OrderLineItem>[];
+  //
+  //     if (orderId == null) {  //Build #1.0.128: Updated - If Order's are empty while adding adding item to order first create order then proceed
+  //       if (kDebugMode) {
+  //         print("#### updateOrderProducts orderId is $orderId");
+  //       }
+  //       logString += " -- createOrder -- \n";
+  //       // Call create new order if orderId is null
+  //       logString += await createOrder(isUpdateOrder: true); //Build #1.0.249 : FIXED continues loader on product selection
+  //       logString += " -- OrderBloc.updateOrderProducts - order created -- \n";
+  //     }
+  //
+  //     final serverOrderId = OrderHelper().activeOrderId;
+  //     if (kDebugMode) {
+  //       print("#### updateOrderProducts serverOrderId is $serverOrderId");
+  //     }
+  //
+  //     if(serverOrderId == null){
+  //       updateOrderSink.add(APIResponse.error(TextConstants.orderNotFoundError));
+  //       return logString;
+  //     }
+  //
+  //     // var itemsInDB = await OrderHelper().getOrderItems(orderId);
+  //     // for(var item in itemsInDB){
+  //     //   if (kDebugMode) {
+  //     //     print("#### updateOrderProducts getOrderItems: dbOrderId-> $dbOrderId, orderId:$orderId, item.productId  , productId-> ${item[AppDBConst.itemProductId]}, variationId-> ${item[AppDBConst.itemVariationId]}, itemId-> ${item[AppDBConst.itemId]}");
+  //     //   }
+  //     // }
+  //
+  //     for (var item in lineItems) {
+  //       if (kDebugMode) {
+  //         print("#### updateOrderProducts checking new line item ${item.productId} in DB.");
+  //       }
+  //
+  //       var existingItem = await db.query(
+  //         AppDBConst.purchasedItemsTable,
+  //         where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemVariationId} = ? AND ${AppDBConst.itemType} = ?',
+  //         whereArgs: [serverOrderId, item.productId, ItemType.product.value],
+  //       );
+  //
+  //       if(existingItem.isEmpty) {
+  //         if (kDebugMode) {
+  //           print("#### updateOrderProducts existingItem is not found with variation id ${AppDBConst.itemProductId}");
+  //         }
+  //         existingItem = await db.query(
+  //           AppDBConst.purchasedItemsTable,
+  //           where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemType} = ?',
+  //           whereArgs: [serverOrderId, item.productId, ItemType.product.value],
+  //         );
+  //         if(existingItem.isEmpty) { // Build #1.0.187: Fixed - Updating Quantity of Custom Item Creates Duplicate Line Item
+  //           existingItem = await db.query(
+  //             AppDBConst.purchasedItemsTable,
+  //             where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemType} = ?',
+  //             whereArgs: [serverOrderId, item.productId, ItemType.customProduct.value],
+  //           );
+  //         }
+  //         if((existingItem.isNotEmpty && (existingItem.first[AppDBConst.itemVariationId] as int) > 0)){
+  //           if (kDebugMode) {
+  //             print(
+  //                 "OrderBloc - Existing item found productID: ${existingItem.first[AppDBConst.itemServerId]}, but variationId: ${existingItem.first[AppDBConst.itemVariationId]} instead ${item.productId}");
+  //             existingItem = [];
+  //           }
+  //         }
+  //       }
+  //
+  //       if (kDebugMode) {
+  //         print("#### updateOrderProducts: dbOrderId-> $dbOrderId, orderId:$serverOrderId, productId-> ${item.productId}, variationId-> ${item.variationId}, itemId-> ${item.id}");
+  //         print("#### updateOrderProducts: Server Item Id ${existingItem.isEmpty}");
+  //       }
+  //
+  //       if (existingItem.isNotEmpty) {
+  //         final currentQuantity = existingItem.first[AppDBConst.itemCount] as int;
+  //         itemsToAdd.add(OrderLineItem(
+  //           id: existingItem.first[AppDBConst.itemServerId] as int?,
+  //           // Build #1.0.108: We have to identify is editing product pass updated qty, else if same product adding again currentQuantity + new quantity
+  //           // otherwise while editing product qty was doubling the value
+  //           quantity: isEditQuantity ? item.quantity : currentQuantity + item.quantity,
+  //         ));
+  //         if (kDebugMode) {
+  //           print("OrderBloc - Existing item found ID: ${existingItem.first[AppDBConst.itemServerId]}, updated quantity: ${currentQuantity + item.quantity}");
+  //         }
+  //       } else { // NEW Product
+  //         if(isEditQuantity){ // Build 1.0.214: Fixed Issue [SCRUM - 364] -> Item reappears in cart after being deleted while edit screen is open
+  //           if (kDebugMode) {
+  //             print("OrderBloc - Existing item not found in order, isEditQuantity is $isEditQuantity, skipping update for item");
+  //           }
+  //           updateOrderSink.add(APIResponse.error("Cannot update quantity: Item not found in order."));
+  //           return logString;
+  //         }
+  //         itemsToAdd.add(OrderLineItem(
+  //           productId: item.productId,
+  //           quantity: item.quantity,
+  //         ));
+  //         if (kDebugMode) {
+  //           print("OrderBloc - New item added ID: ${item.productId}");
+  //         }
+  //       }
+  //     }
+  //
+  //     final request = UpdateOrderRequestModel(lineItems: itemsToAdd);
+  //     final response = await _orderRepository.updateOrderProducts(
+  //       orderId: serverOrderId,
+  //       request: request,
+  //     );
+  //
+  //     if(response == null){
+  //       updateOrderSink.add(APIResponse.error("Response is empty after updating product to order $serverOrderId"));
+  //       return logString;
+  //     }
+  //
+  //     if (kDebugMode) {
+  //       print("OrderBloc - Order updated with ID: ${response.id}");
+  //       print("OrderBloc - New total: ${response.total}");
+  //       print("OrderBloc - Line items count: ${response.lineItems.length}");
+  //     }
+  //     //Build 1.1.36: working on updating order items in db getting issue.....
+  //     //Build #1.0.78: Update DB after successful API response
+  //     OrderHelper orderHelper = OrderHelper();
+  //     double merchantDiscount = 0.0; // Build #1.0.278: Updating merchant discount data into order table
+  //     var merchantDiscountIds = "";
+  //     // Clear existing items for this order
+  //     await orderHelper.clearOrderItems(serverOrderId);
+  //     //Build #1.0.78: Add updated items from the API response
+  //     ///update order details like total ,tax, discounts, merchant discouts
+  //     if (kDebugMode) {
+  //       print("#### OrderBloc - Updating order table for orderId $serverOrderId, total:${double.tryParse(response.total) ?? 0.0},"
+  //           " totalTax:${double.tryParse(response.totalTax) ?? 0.0}");
+  //       print("#### OrderBloc - updateOrderProducts -> couponLines count : ${response.couponLines.length}"); // Build #1.0.181: Debug print
+  //     }
+  //     // LineItems
+  //     for (var lineItem in response.lineItems) {
+  //       final String variationName = lineItem.productVariationData?.metaData?.firstWhere((e) => e.key == "custom_name", orElse: () => model.MetaData(id: 0, key: "", value: "")).value ?? "";
+  //       final int variationCount = lineItem.productData.variations?.length ?? 0;
+  //       final String combo = lineItem.metaData.firstWhere((e) => e.value.contains('Combo'), orElse: () => model.MetaData(id: 0, key: "", value: "")).value.split(' ').first ?? "";
+  //       ///Todo: check if these values should come from product data or product variation data or line item data
+  //       final bool hasVariations = lineItem.productData.variations != null && lineItem.productData.variations!.isNotEmpty;
+  //       // final double salesPrice = double.parse(lineItem.productData.salePrice ?? "0.0");
+  //       // final double regularPrice = double.parse(lineItem.productData.regularPrice ?? "0.0");
+  //       // final double unitPrice = double.parse(lineItem.productData.price ?? "0.0");
+  //       // Safely parse prices, handling null or empty strings
+  //       /// Build #1.0.168: Fixed Issue - Order Panel gross total seems incorrect again
+  //       /// The issue is we are using productData values always not checking productVariationData if have those!
+  //       final double salesPrice = hasVariations
+  //           ? double.tryParse(lineItem.productVariationData?.salePrice?.isNotEmpty == true ? lineItem.productVariationData!.salePrice! : "0.0") ?? 0.0
+  //           : double.tryParse(lineItem.productData.salePrice?.isNotEmpty == true ? lineItem.productData.salePrice! : "0.0") ?? 0.0;
+  //       final double regularPrice = hasVariations
+  //           ? double.tryParse(lineItem.productVariationData?.regularPrice?.isNotEmpty == true ? lineItem.productVariationData!.regularPrice! : "0.0") ?? 0.0
+  //           : double.tryParse(lineItem.productData.regularPrice?.isNotEmpty == true ? lineItem.productData.regularPrice! : "0.0") ?? 0.0;
+  //       final double unitPrice = hasVariations
+  //           ? double.tryParse(lineItem.productVariationData?.price?.isNotEmpty == true ? lineItem.productVariationData!.price! : "0.0") ?? 0.0
+  //           : double.tryParse(lineItem.productData.price?.isNotEmpty == true ? lineItem.productData.price! : "0.0") ?? 0.0;
+  //       final double itemPrice = double.tryParse(lineItem.subtotal.isNotEmpty == true ? lineItem.subtotal : '0.0') ?? 0.0;
+  //       // Build #1.0.187: Fixed - Updating Quantity of Custom Item Creates Duplicate Line Item
+  //       // Check if the product has a tag named "Custom Item"
+  //       bool isCustomItem = lineItem.productData.tags.any((tag) => tag.name == TextConstants.customItem);
+  //       if (kDebugMode) {
+  //         print("#### isCustomItem 1022 : isCustomItem -> $isCustomItem");
+  //       }
+  //
+  //       // final double itemPrice = double.parse(lineItem.subtotal ?? '0.0');//lineItem.productData.regularPrice == '' ?  double.parse(lineItem.productData.price ?? '0.0') : double.parse(lineItem.productData.regularPrice ?? '0.0');
+  //       if (kDebugMode) {
+  //         print("#### Start adding lineItem ${lineItem.id}, orderId:$serverOrderId , ProductId:${lineItem.productId}, VariationId:${lineItem.variationId}");
+  //         print("variationName $variationName, variationCount:$variationCount, combo:$combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
+  //       }
+  //       if (lineItem.name == TextConstants.discountText) { // Build #1.0.278: Updating merchant discount data into order table  // Updated: Detect 'Discount' in line_items
+  //         if (kDebugMode) {
+  //           print("#### OrderBloc - Adding merchant discount item: id: ${lineItem.id}, total: ${lineItem.total}");
+  //         }
+  //         merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
+  //         merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
+  //         if (kDebugMode) {
+  //           print("#### TEST 0000  - $merchantDiscountIds");
+  //         }
+  //       }else if ((lineItem.name == TextConstants.payout)) {  /// Build #1.0.205: payout is added as product so while updating order table check here as well
+  //         if (kDebugMode) {
+  //           print("#### OrderBloc - Adding payout item: id: ${response.lineItems!.last.id}, total: ${response.lineItems!.last.total}");
+  //         }
+  //         await orderHelper.addItemToOrder(
+  //           lineItem.id,
+  //           lineItem.name ?? '',
+  //           'assets/svg/payout.svg',
+  //           double.parse(lineItem.total ?? '0.0'),
+  //           1,
+  //           '',
+  //           serverOrderId,
+  //           type: ItemType.payout.value,
+  //         );
+  //       } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
+  //         await orderHelper.addItemToOrder(
+  //           lineItem.id,
+  //           lineItem.name,
+  //           lineItem.image.src ?? '',// Fixed: Access 'src' key from image Map
+  //           itemPrice, // Ensure price is parsed correctly
+  //           lineItem.quantity,
+  //           lineItem.sku ?? '',
+  //           serverOrderId,
+  //           productId: lineItem.productId, // Build #1.0.80: newly added these two
+  //           variationId: lineItem.variationId,
+  //           type: isCustomItem ? ItemType.customProduct.value : ItemType.product.value, // Build #1.0.187: Set type based on Custom Item tag
+  //           variationName: variationName,
+  //           variationCount: variationCount,
+  //           combo: combo,
+  //           salesPrice: salesPrice,
+  //           regularPrice: regularPrice,
+  //           unitPrice: unitPrice,
+  //         );
+  //       }
+  //       if (kDebugMode) {
+  //         print("#### End adding lineItem ${lineItem.id}, orderId:$serverOrderId , ProductId:${lineItem.productId}, VariationId:${lineItem.variationId}");
+  //       }
+  //     }
+  //     if (kDebugMode) {
+  //       var itemsInDB = await OrderHelper().getOrderItems(serverOrderId);
+  //       for(var item in itemsInDB){
+  //         print("#### updateOrderProducts getOrderItems after adding : "
+  //             "dbOrderId-> $dbOrderId, orderId:$serverOrderId, orderHelper.activeOrderId!: ${orderHelper.activeOrderId!} "
+  //             "productId-> ${item[AppDBConst.itemProductId]}, variationId-> ${item[AppDBConst.itemVariationId]}, "
+  //             "itemId-> ${item[AppDBConst.itemServerId]}");
+  //       }
+  //     }
+  //     // Fee Lines
+  //     /// Build #1.0.138:
+  //     /// We need to display/add `feeLines` and `couponLines` items in the order panel.
+  //     /// When adding an item or custom item, the existing `feeLines` and `couponLines` are being removed.
+  //     /// This happens because `clearOrderItems` is called first, and then only `lineItems` are re-added—
+  //     /// `feeLines` and `couponLines` are not included.
+  //     /// This issue is now fixed; all items will be correctly shown in the order panel.
+  //     for (var feeLine in response.feeLines ?? []) {
+  //       if (feeLine.name == TextConstants.payout) {
+  //         await orderHelper.addItemToOrder(
+  //           feeLine.id,
+  //           feeLine.name ?? '',
+  //           'assets/svg/payout.svg', // Fixed: Access 'src' key from image Map
+  //           double.parse(feeLine.total!), // Ensure price is parsed correctly
+  //           1,
+  //           '',
+  //           serverOrderId,
+  //           type: ItemType.payout.value,
+  //         );
+  //       }
+  //     }
+  //     // Coupon Lines
+  //     for (var couponLine in response.couponLines) {
+  //       await orderHelper.addItemToOrder(
+  //         couponLine.id,
+  //         couponLine.code ?? '',
+  //         'assets/svg/coupon.svg', // Fixed: Access 'src' key from image Map
+  //         double.parse(couponLine.nominalAmount!.toString()), // Ensure price is parsed correctly
+  //         1,
+  //         '',
+  //         serverOrderId,
+  //         type: ItemType.coupon.value,
+  //       );
+  //     }
+  //
+  //     // Build #1.0.278: Updating merchant discount data into order table
+  //     // replaced placement from above to here , because we have to collect merchantDiscount, merchantDiscountIds then append into order table
+  //     await db.update(
+  //       AppDBConst.orderTable,
+  //       {
+  //         AppDBConst.orderTotal: double.tryParse(response.total) ?? 0.0,
+  //         AppDBConst.orderStatus: response.status,
+  //         AppDBConst.orderType: response.createdVia ?? 'in-store',
+  //         AppDBConst.orderDate: response.dateCreated,
+  //         AppDBConst.orderTime: response.dateCreated,
+  //         AppDBConst.orderPaymentMethod: response.paymentMethod,
+  //         AppDBConst.orderDiscount: double.tryParse(response.discountTotal) ?? 0.0, // Store discount
+  //         AppDBConst.orderTax: double.tryParse(response.totalTax) ?? 0.0, // Store tax
+  //         AppDBConst.orderShipping: double.tryParse(response.shippingTotal) ?? 0.0, // Store shipping
+  //         //Build #1.0.234: Saving Age Restricted value in order table
+  //         AppDBConst.orderAgeRestricted: response.metaData.firstWhere(
+  //               (meta) => meta.key == TextConstants.ageRestrictedKey,
+  //           orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
+  //         ).value.toString(),
+  //         AppDBConst.merchantDiscount: merchantDiscount,
+  //         AppDBConst.merchantDiscountIds: merchantDiscountIds,
+  //       },
+  //       where: '${AppDBConst.orderServerId} = ?',
+  //       whereArgs: [serverOrderId],
+  //     );
+  //
+  //     //DEBUG : query and print the updated data to verify
+  //     final updatedOrder = await db.query(
+  //       AppDBConst.orderTable,
+  //       where: '${AppDBConst.orderServerId} = ?',
+  //       whereArgs: [serverOrderId],
+  //     );
+  //
+  //     if (updatedOrder.isNotEmpty && kDebugMode) {
+  //       if (kDebugMode) {
+  //         print("#### OrderBloc - AFTER UPDATE - Order data for orderId $serverOrderId:");
+  //         print("Total: ${updatedOrder[0][AppDBConst.orderTotal]}");
+  //         print("Status: ${updatedOrder[0][AppDBConst.orderStatus]}");
+  //         print("Type: ${updatedOrder[0][AppDBConst.orderType]}");
+  //         print("Discount: ${updatedOrder[0][AppDBConst.orderDiscount]}");
+  //         print("Tax: ${updatedOrder[0][AppDBConst.orderTax]}");
+  //         print("Shipping: ${updatedOrder[0][AppDBConst.orderShipping]}");
+  //         print("========================================");
+  //       }
+  //     }
+  //     await CustomerDisplayHelper.updateCustomerDisplay(serverOrderId);
+  //
+  //     updateOrderSink.add(APIResponse.completed(response));
+  //     return logString;
+  //   } catch (e, s) {
+  //     if (e.toString().contains('Unauthorised')) {
+  //       updateOrderSink.add(APIResponse.error("Unauthorised. Session is expired."));
+  //     }
+  //     else {
+  //       updateOrderSink.add(APIResponse.error(_extractErrorMessage(e)));
+  //       if (kDebugMode) print("Exception in updateOrderProducts: $e, DEBUG $s");
+  //       logString = "Exception in OrderBloc.updateOrderProducts: $e, *** DEBUG $s ***\n";
+  //     }
+  //     return logString;
+  //   }
+  // }
+
+
+  Future<Map<String, dynamic>?> syncSingleOfflineOrder(
+      Map<String, dynamic> offlineOrder,
+      ) async {
+
+    return await _orderRepository
+        .syncSingleOfflineOrder(
+      offlineOrder,
+    );
+  }
+
   //Build #1.0.40: fetchOrders
   Future<void> fetchOrders({bool allStatuses = false, int pageNumber =1}) async { //Build #1.0.54: updated
     if (_fetchOrdersController.isClosed) return;
@@ -575,10 +932,9 @@ class OrderBloc { // Build #1.0.25 - added by naveen
 
       // Convert List<OrderList> to List<get_orders.OrderModel>
       final orderModels = response.ordersData; //Build #1.0.134
-      // Emit UI first; syncOrdersFromApi can be slow (Isar per order) and must not block the list.
+      OrderHelper orderHelper = OrderHelper();
+      await orderHelper.syncOrdersFromApi(orderModels);
       fetchTotalOrdersSink.add(APIResponse.completed(response));
-      final OrderHelper orderHelper = OrderHelper();
-      unawaited(orderHelper.syncOrdersFromApi(orderModels));
     } catch (e, s) {
       if (e.toString().contains('Unauthorised')) {
         fetchTotalOrdersSink.add(APIResponse.error("Unauthorised. Session is expired."));
@@ -878,212 +1234,212 @@ class OrderBloc { // Build #1.0.25 - added by naveen
   }
   // 5. Delete Order Item
   /// Build #1.0.192: Fixed -> After Deleting Item/Payout/Coupon/Discount , update response to db and update UI
-  Future<void> deleteOrderItem({required int orderId, required List<OrderLineItem> lineItems, int? dbItemId}) async {
-    if (_deleteOrderItemController.isClosed) return;
-
-    deleteOrderItemSink.add(APIResponse.loading(TextConstants.loading));
-    try {
-      // For deletion, we set quantity to 0 for the items to be removed
-      final itemsToDelete = lineItems.map((item) => OrderLineItem(
-        id: item.id,
-        quantity: 0, // Setting quantity to 0 removes the item
-      )).toList();
-
-      final request = UpdateOrderRequestModel(lineItems: itemsToDelete);
-      final response = await _orderRepository.updateOrderProducts(
-        orderId: orderId,
-        request: request,
-      );
-
-      if (response == null) {
-        deleteOrderItemSink.add(APIResponse.error("Response is empty after deleting product from order $orderId"));
-        return;
-      }
-      if (kDebugMode) {
-        print("OrderBloc - Item deleted from order ID: ${response.id}");
-        print("OrderBloc - Updated total: ${response.total}");
-        print("OrderBloc - Remaining items: ${response.lineItems.length}");
-      }
-
-      // Build #1.0.78: Delete specific item from DB after successful API response
-      OrderHelper orderHelper = OrderHelper();
-      if((dbItemId != null) || (dbItemId != 0)) { // Build #1.0.274 : delete only product items not for merchant discount
-        await orderHelper.deleteItem(dbItemId ?? 0);
-      }
-      // Clear existing items for this order
-      await orderHelper.clearOrderItems(orderId);
-
-      // Debug print: Clearing order items
-      if (kDebugMode) {
-        print("#### OrderBloc - deleteOrderItem: Cleared existing items for orderId $orderId");
-      }
-
-      // Update order table with latest data
-      final db = await DBHelper.instance.database;
-      double merchantDiscount = 0.0;
-      String merchantDiscountIds = "";
-      if (response.lineItems.isNotEmpty) {
-        for (var lineItem in response.lineItems) { // Build #1.0.274 : updated feelines to line items
-          if (lineItem.name == TextConstants.discountText) {
-            merchantDiscount += double.tryParse(lineItem.total ?? '0.0')?.abs() ?? 0.0;
-            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
-            if (kDebugMode) {
-              print("#### OrderBloc - deleteOrderItem: Adding to merchantDiscount: ${lineItem.total}, new total: $merchantDiscount");
-            }
-          }
-        }
-      }
-
-      // Debug print: Calculated merchant discount
-      if (kDebugMode) {
-        print("#### OrderBloc - deleteOrderItem: Merchant discount calculated as $merchantDiscount with IDs: $merchantDiscountIds for orderId $orderId");
-      }
-
-      await db.update(
-        AppDBConst.orderTable,
-        {
-          AppDBConst.orderTotal: double.tryParse(response.total) ?? 0.0,
-          AppDBConst.orderStatus: response.status,
-          AppDBConst.orderType: response.createdVia ?? 'in-store',
-          AppDBConst.orderDate: response.dateCreated,
-          AppDBConst.orderTime: response.dateCreated,
-          AppDBConst.orderPaymentMethod: response.paymentMethod,
-          AppDBConst.orderDiscount: double.tryParse(response.discountTotal) ?? 0.0,
-          AppDBConst.orderTax: double.tryParse(response.totalTax) ?? 0.0,
-          AppDBConst.orderShipping: double.tryParse(response.shippingTotal) ?? 0.0,
-          AppDBConst.merchantDiscount: merchantDiscount,
-          AppDBConst.merchantDiscountIds: merchantDiscountIds,
-          AppDBConst.orderAgeRestricted: response.metaData.firstWhere(
-                (meta) => meta.key == TextConstants.ageRestrictedKey,
-            orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
-          ).value.toString(),
-        },
-        where: '${AppDBConst.orderServerId} = ?',
-        whereArgs: [orderId],
-      );
-
-      // Added updated line items from the API response
-      for (var lineItem in response.lineItems) {
-        final String variationName = lineItem.productVariationData?.metaData?.firstWhere(
-              (e) => e.key == "custom_name",
-          orElse: () => model.MetaData(id: 0, key: "", value: ""),
-        ).value ?? "";
-        final int variationCount = lineItem.productData.variations?.length ?? 0;
-        final String combo = lineItem.metaData.firstWhere(
-              (e) => e.value.contains('Combo'),
-          orElse: () => model.MetaData(id: 0, key: "", value: ""),
-        ).value.split(' ').first ?? "";
-        final bool hasVariations = lineItem.productData.variations != null && lineItem.productData.variations!.isNotEmpty;
-        final double salesPrice = hasVariations
-            ? double.tryParse(lineItem.productVariationData?.salePrice?.isNotEmpty == true ? lineItem.productVariationData!.salePrice! : "0.0") ?? 0.0
-            : double.tryParse(lineItem.productData.salePrice?.isNotEmpty == true ? lineItem.productData.salePrice! : "0.0") ?? 0.0;
-        final double regularPrice = hasVariations
-            ? double.tryParse(lineItem.productVariationData?.regularPrice?.isNotEmpty == true ? lineItem.productVariationData!.regularPrice! : "0.0") ?? 0.0
-            : double.tryParse(lineItem.productData.regularPrice?.isNotEmpty == true ? lineItem.productData.regularPrice! : "0.0") ?? 0.0;
-        final double unitPrice = hasVariations
-            ? double.tryParse(lineItem.productVariationData?.price?.isNotEmpty == true ? lineItem.productVariationData!.price! : "0.0") ?? 0.0
-            : double.tryParse(lineItem.productData.price?.isNotEmpty == true ? lineItem.productData.price! : "0.0") ?? 0.0;
-        final double itemPrice = double.tryParse(lineItem.subtotal.isNotEmpty == true ? lineItem.subtotal : '0.0') ?? 0.0;
-        bool isCustomItem = lineItem.productData.tags.any((tag) => tag.name == TextConstants.customItem);
-
-        if (kDebugMode) {
-          print("#### OrderBloc - deleteOrderItem: Adding lineItem ${lineItem.id}, orderId: $orderId, ProductId: ${lineItem.productId}, VariationId: ${lineItem.variationId}");
-          print("#### OrderBloc - deleteOrderItem: variationName $variationName, variationCount: $variationCount, combo: $combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
-        }
-
-        if ((lineItem.name == TextConstants.payout)) {  /// Build #1.0.205: payout is added as product so while updating order table check here as well
-          if (kDebugMode) {
-            print("#### OrderBloc - Adding payout item: id: ${response.lineItems!.last.id}, total: ${response.lineItems!.last.total}");
-          }
-          await orderHelper.addItemToOrder(
-            lineItem.id,
-            lineItem.name ?? '',
-            'assets/svg/payout.svg',
-            double.parse(lineItem.total ?? '0.0'),
-            1,
-            '',
-            orderId,
-            type: ItemType.payout.value,
-          );
-        } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
-          await orderHelper.addItemToOrder(
-            lineItem.id,
-            lineItem.name,
-            lineItem.image.src ?? '',
-            itemPrice,
-            lineItem.quantity,
-            lineItem.sku ?? '',
-            orderId,
-            productId: lineItem.productId,
-            variationId: lineItem.variationId,
-            type: isCustomItem ? ItemType.customProduct.value : ItemType.product
-                .value,
-            variationName: variationName,
-            variationCount: variationCount,
-            combo: combo,
-            salesPrice: salesPrice,
-            regularPrice: regularPrice,
-            unitPrice: unitPrice,
-          );
-        }
-      }
-
-      // Added fee lines
-      for (var feeLine in response.feeLines ?? []) {
-        if (feeLine.name == TextConstants.payout) {
-          await orderHelper.addItemToOrder(
-            feeLine.id,
-            feeLine.name ?? '',
-            'assets/svg/payout.svg',
-            double.parse(feeLine.total ?? '0.0'),
-            1,
-            '',
-            orderId,
-            type: ItemType.payout.value,
-          );
-          if (kDebugMode) {
-            print("#### OrderBloc - deleteOrderItem: Added feeLine ${feeLine.id}, name: ${feeLine.name}, total: ${feeLine.total}");
-          }
-        }
-      }
-
-      // Added coupon lines
-      for (var couponLine in response.couponLines) {
-        await orderHelper.addItemToOrder(
-          couponLine.id,
-          couponLine.code ?? '',
-          'assets/svg/coupon.svg',
-          double.parse(couponLine.nominalAmount?.toString() ?? '0.0'),
-          1,
-          '',
-          orderId,
-          type: ItemType.coupon.value,
-        );
-        if (kDebugMode) {
-          print("#### OrderBloc - deleteOrderItem: Added couponLine ${couponLine.id}, code: ${couponLine.code}, amount: ${couponLine.nominalAmount}");
-        }
-      }
-
-      // Debug print: Final state of order items
-      if (kDebugMode) {
-        var itemsInDB = await orderHelper.getOrderItems(orderId);
-        for (var item in itemsInDB) {
-          print("#### OrderBloc - deleteOrderItem: Final items in DB - orderId: $orderId, productId: ${item[AppDBConst.itemProductId]}, variationId: ${item[AppDBConst.itemVariationId]}, itemId: ${item[AppDBConst.itemServerId]}");
-        }
-      }
-      await CustomerDisplayHelper.updateCustomerDisplay(orderId);
-
-      deleteOrderItemSink.add(APIResponse.completed(response));
-    } catch (e) {
-      if (e.toString().contains('Unauthorised')) {
-        deleteOrderItemSink.add(APIResponse.error("Unauthorised. Session is expired."));
-      }
-      else {
-        deleteOrderItemSink.add(APIResponse.error(_extractErrorMessage(e)));
-      }
-      if (kDebugMode) print("Exception in deleteOrderItem: $e");
-    }
-  }
+  // Future<void> deleteOrderItem({required int orderId, required List<OrderLineItem> lineItems, int? dbItemId}) async {
+  //   if (_deleteOrderItemController.isClosed) return;
+  //
+  //   deleteOrderItemSink.add(APIResponse.loading(TextConstants.loading));
+  //   try {
+  //     // For deletion, we set quantity to 0 for the items to be removed
+  //     final itemsToDelete = lineItems.map((item) => OrderLineItem(
+  //       id: item.id,
+  //       quantity: 0, // Setting quantity to 0 removes the item
+  //     )).toList();
+  //
+  //     final request = UpdateOrderRequestModel(lineItems: itemsToDelete);
+  //     final response = await _orderRepository.updateOrderProducts(
+  //       orderId: orderId,
+  //       request: request,
+  //     );
+  //
+  //     if (response == null) {
+  //       deleteOrderItemSink.add(APIResponse.error("Response is empty after deleting product from order $orderId"));
+  //       return;
+  //     }
+  //     if (kDebugMode) {
+  //       print("OrderBloc - Item deleted from order ID: ${response.id}");
+  //       print("OrderBloc - Updated total: ${response.total}");
+  //       print("OrderBloc - Remaining items: ${response.lineItems.length}");
+  //     }
+  //
+  //     // Build #1.0.78: Delete specific item from DB after successful API response
+  //     OrderHelper orderHelper = OrderHelper();
+  //     if((dbItemId != null) || (dbItemId != 0)) { // Build #1.0.274 : delete only product items not for merchant discount
+  //       await orderHelper.deleteItem(dbItemId ?? 0);
+  //     }
+  //     // Clear existing items for this order
+  //     await orderHelper.clearOrderItems(orderId);
+  //
+  //     // Debug print: Clearing order items
+  //     if (kDebugMode) {
+  //       print("#### OrderBloc - deleteOrderItem: Cleared existing items for orderId $orderId");
+  //     }
+  //
+  //     // Update order table with latest data
+  //     final db = await DBHelper.instance.database;
+  //     double merchantDiscount = 0.0;
+  //     String merchantDiscountIds = "";
+  //     if (response.lineItems.isNotEmpty) {
+  //       for (var lineItem in response.lineItems) { // Build #1.0.274 : updated feelines to line items
+  //         if (lineItem.name == TextConstants.discountText) {
+  //           merchantDiscount += double.tryParse(lineItem.total ?? '0.0')?.abs() ?? 0.0;
+  //           merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
+  //           if (kDebugMode) {
+  //             print("#### OrderBloc - deleteOrderItem: Adding to merchantDiscount: ${lineItem.total}, new total: $merchantDiscount");
+  //           }
+  //         }
+  //       }
+  //     }
+  //
+  //     // Debug print: Calculated merchant discount
+  //     if (kDebugMode) {
+  //       print("#### OrderBloc - deleteOrderItem: Merchant discount calculated as $merchantDiscount with IDs: $merchantDiscountIds for orderId $orderId");
+  //     }
+  //
+  //     await db.update(
+  //       AppDBConst.orderTable,
+  //       {
+  //         AppDBConst.orderTotal: double.tryParse(response.total) ?? 0.0,
+  //         AppDBConst.orderStatus: response.status,
+  //         AppDBConst.orderType: response.createdVia ?? 'in-store',
+  //         AppDBConst.orderDate: response.dateCreated,
+  //         AppDBConst.orderTime: response.dateCreated,
+  //         AppDBConst.orderPaymentMethod: response.paymentMethod,
+  //         AppDBConst.orderDiscount: double.tryParse(response.discountTotal) ?? 0.0,
+  //         AppDBConst.orderTax: double.tryParse(response.totalTax) ?? 0.0,
+  //         AppDBConst.orderShipping: double.tryParse(response.shippingTotal) ?? 0.0,
+  //         AppDBConst.merchantDiscount: merchantDiscount,
+  //         AppDBConst.merchantDiscountIds: merchantDiscountIds,
+  //         AppDBConst.orderAgeRestricted: response.metaData.firstWhere(
+  //               (meta) => meta.key == TextConstants.ageRestrictedKey,
+  //           orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
+  //         ).value.toString(),
+  //       },
+  //       where: '${AppDBConst.orderServerId} = ?',
+  //       whereArgs: [orderId],
+  //     );
+  //
+  //     // Added updated line items from the API response
+  //     for (var lineItem in response.lineItems) {
+  //       final String variationName = lineItem.productVariationData?.metaData?.firstWhere(
+  //             (e) => e.key == "custom_name",
+  //         orElse: () => model.MetaData(id: 0, key: "", value: ""),
+  //       ).value ?? "";
+  //       final int variationCount = lineItem.productData.variations?.length ?? 0;
+  //       final String combo = lineItem.metaData.firstWhere(
+  //             (e) => e.value.contains('Combo'),
+  //         orElse: () => model.MetaData(id: 0, key: "", value: ""),
+  //       ).value.split(' ').first ?? "";
+  //       final bool hasVariations = lineItem.productData.variations != null && lineItem.productData.variations!.isNotEmpty;
+  //       final double salesPrice = hasVariations
+  //           ? double.tryParse(lineItem.productVariationData?.salePrice?.isNotEmpty == true ? lineItem.productVariationData!.salePrice! : "0.0") ?? 0.0
+  //           : double.tryParse(lineItem.productData.salePrice?.isNotEmpty == true ? lineItem.productData.salePrice! : "0.0") ?? 0.0;
+  //       final double regularPrice = hasVariations
+  //           ? double.tryParse(lineItem.productVariationData?.regularPrice?.isNotEmpty == true ? lineItem.productVariationData!.regularPrice! : "0.0") ?? 0.0
+  //           : double.tryParse(lineItem.productData.regularPrice?.isNotEmpty == true ? lineItem.productData.regularPrice! : "0.0") ?? 0.0;
+  //       final double unitPrice = hasVariations
+  //           ? double.tryParse(lineItem.productVariationData?.price?.isNotEmpty == true ? lineItem.productVariationData!.price! : "0.0") ?? 0.0
+  //           : double.tryParse(lineItem.productData.price?.isNotEmpty == true ? lineItem.productData.price! : "0.0") ?? 0.0;
+  //       final double itemPrice = double.tryParse(lineItem.subtotal.isNotEmpty == true ? lineItem.subtotal : '0.0') ?? 0.0;
+  //       bool isCustomItem = lineItem.productData.tags.any((tag) => tag.name == TextConstants.customItem);
+  //
+  //       if (kDebugMode) {
+  //         print("#### OrderBloc - deleteOrderItem: Adding lineItem ${lineItem.id}, orderId: $orderId, ProductId: ${lineItem.productId}, VariationId: ${lineItem.variationId}");
+  //         print("#### OrderBloc - deleteOrderItem: variationName $variationName, variationCount: $variationCount, combo: $combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
+  //       }
+  //
+  //       if ((lineItem.name == TextConstants.payout)) {  /// Build #1.0.205: payout is added as product so while updating order table check here as well
+  //         if (kDebugMode) {
+  //           print("#### OrderBloc - Adding payout item: id: ${response.lineItems!.last.id}, total: ${response.lineItems!.last.total}");
+  //         }
+  //         await orderHelper.addItemToOrder(
+  //           lineItem.id,
+  //           lineItem.name ?? '',
+  //           'assets/svg/payout.svg',
+  //           double.parse(lineItem.total ?? '0.0'),
+  //           1,
+  //           '',
+  //           orderId,
+  //           type: ItemType.payout.value,
+  //         );
+  //       } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
+  //         await orderHelper.addItemToOrder(
+  //           lineItem.id,
+  //           lineItem.name,
+  //           lineItem.image.src ?? '',
+  //           itemPrice,
+  //           lineItem.quantity,
+  //           lineItem.sku ?? '',
+  //           orderId,
+  //           productId: lineItem.productId,
+  //           variationId: lineItem.variationId,
+  //           type: isCustomItem ? ItemType.customProduct.value : ItemType.product
+  //               .value,
+  //           variationName: variationName,
+  //           variationCount: variationCount,
+  //           combo: combo,
+  //           salesPrice: salesPrice,
+  //           regularPrice: regularPrice,
+  //           unitPrice: unitPrice,
+  //         );
+  //       }
+  //     }
+  //
+  //     // Added fee lines
+  //     for (var feeLine in response.feeLines ?? []) {
+  //       if (feeLine.name == TextConstants.payout) {
+  //         await orderHelper.addItemToOrder(
+  //           feeLine.id,
+  //           feeLine.name ?? '',
+  //           'assets/svg/payout.svg',
+  //           double.parse(feeLine.total ?? '0.0'),
+  //           1,
+  //           '',
+  //           orderId,
+  //           type: ItemType.payout.value,
+  //         );
+  //         if (kDebugMode) {
+  //           print("#### OrderBloc - deleteOrderItem: Added feeLine ${feeLine.id}, name: ${feeLine.name}, total: ${feeLine.total}");
+  //         }
+  //       }
+  //     }
+  //
+  //     // Added coupon lines
+  //     for (var couponLine in response.couponLines) {
+  //       await orderHelper.addItemToOrder(
+  //         couponLine.id,
+  //         couponLine.code ?? '',
+  //         'assets/svg/coupon.svg',
+  //         double.parse(couponLine.nominalAmount?.toString() ?? '0.0'),
+  //         1,
+  //         '',
+  //         orderId,
+  //         type: ItemType.coupon.value,
+  //       );
+  //       if (kDebugMode) {
+  //         print("#### OrderBloc - deleteOrderItem: Added couponLine ${couponLine.id}, code: ${couponLine.code}, amount: ${couponLine.nominalAmount}");
+  //       }
+  //     }
+  //
+  //     // Debug print: Final state of order items
+  //     if (kDebugMode) {
+  //       var itemsInDB = await orderHelper.getOrderItems(orderId);
+  //       for (var item in itemsInDB) {
+  //         print("#### OrderBloc - deleteOrderItem: Final items in DB - orderId: $orderId, productId: ${item[AppDBConst.itemProductId]}, variationId: ${item[AppDBConst.itemVariationId]}, itemId: ${item[AppDBConst.itemServerId]}");
+  //       }
+  //     }
+  //     await CustomerDisplayHelper.updateCustomerDisplay(orderId);
+  //
+  //     deleteOrderItemSink.add(APIResponse.completed(response));
+  //   } catch (e) {
+  //     if (e.toString().contains('Unauthorised')) {
+  //       deleteOrderItemSink.add(APIResponse.error("Unauthorised. Session is expired."));
+  //     }
+  //     else {
+  //       deleteOrderItemSink.add(APIResponse.error(_extractErrorMessage(e)));
+  //     }
+  //     if (kDebugMode) print("Exception in deleteOrderItem: $e");
+  //   }
+  // }
 
   // Build #1.0.49: added this function for discount api call
   Future<void> applyDiscount(int orderId, String discountCode) async {
