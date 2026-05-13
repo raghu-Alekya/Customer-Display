@@ -8139,8 +8139,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                               const SizedBox(height: 14),
 
-                              _couponRow("Discount Amount",
-                                  "₹${coupon["amount"]}", textPrimary),
+                              // _couponRow("Discount Amount",
+                              //     "₹${coupon["amount"]}", textPrimary),
+
+                              _couponRow(
+                                "Discount Amount",
+                                "\$${coupon["amount"]}",
+                                textPrimary,
+                              ),
 
                               _couponRow(
                                 "Min Order Amount",

@@ -5230,7 +5230,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             offlineOrder['order_tax'] =
                                                 orderTax;
 
-// Update net_total / net_payable
+                                   // Update net_total / net_payable
                                             offlineOrder['gross_total'] =
                                                 grossTotal;
                                             offlineOrder['net_total'] =
@@ -5249,7 +5249,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             OrderHelper
                                                 .notifyOrderPanelToRefresh();
 
-// 🖥 Update customer display with FRESH values
+                                         // 🖥 Update customer display with FRESH values
                                             final int orderId =
                                                 orderHelper
                                                     .activeOrderId ??
@@ -6108,7 +6108,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               ],
                             ),
                             SizedBox(height: 2),
-                            if (merchantDiscount >= 0.01)
+// Show merchant discount if any meaningful discount is applied
+                            if (merchantDiscount > 0.000000)
                               Row(
                                 mainAxisAlignment:
                                 MainAxisAlignment.spaceBetween,

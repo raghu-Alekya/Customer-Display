@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
-        android:label="Pinaka POS"
+        android:label="Grocery Pinaka"
         android:name=".DevApplication"
         android:icon="@mipmap/logo">
         <activity
