@@ -661,9 +661,51 @@ class OrderRepository {
       // ---------------------------------------------------------
 // ⭐ HANDLE MERCHANT DISCOUNT (AS LINE ITEM USING PRODUCT ID)
 // ---------------------------------------------------------
-      final dynamic discountRaw = offlineOrder['merchantDiscount'];
-      double merchantDiscount =
-          double.tryParse(discountRaw?.toString() ?? "0") ?? 0.0;
+//       final dynamic discountRaw = offlineOrder['merchantDiscount'];
+//       double merchantDiscount =
+//           double.tryParse(discountRaw?.toString() ?? "0") ?? 0.0;
+
+      double merchantDiscount = 0.0;
+
+      final String discountType =
+          offlineOrder['merchantDiscountType']?.toString() ?? '';
+
+      final double percentage =
+          double.tryParse(
+            offlineOrder['merchantDiscountPercentage']?.toString() ?? '0',
+          ) ??
+              0.0;
+
+      final double fixedDiscount =
+          double.tryParse(
+            offlineOrder['merchantDiscountFixed']?.toString() ?? '0',
+          ) ??
+              0.0;
+
+// Calculate latest gross from current line items
+      double latestGross = 0.0;
+
+      for (final li in lineItems) {
+        final total =
+            double.tryParse(li['total']?.toString() ?? '0') ?? 0.0;
+
+        // Skip negative discount rows
+        if (total > 0) {
+          latestGross += total;
+        }
+      }
+
+      if (discountType == 'percentage') {
+        merchantDiscount = (percentage / 100) * latestGross;
+      } else {
+        merchantDiscount = fixedDiscount;
+      }
+
+      merchantDiscount = double.parse(
+        merchantDiscount.toStringAsFixed(2),
+      );
+
+      debugPrint("🟢 Recalculated Merchant Discount → $merchantDiscount");
 
       final discountProductIds =
       (offlineOrder['merchantDiscountIds'] as List? ?? [])
@@ -1163,9 +1205,51 @@ class OrderRepository {
       // ---------------------------------------------------------
       // ⭐ HANDLE MERCHANT DISCOUNT (AS LINE ITEM USING PRODUCT ID)
       // ---------------------------------------------------------
-      final dynamic discountRaw = offlineOrder['merchantDiscount'];
-      double merchantDiscount =
-          double.tryParse(discountRaw?.toString() ?? "0") ?? 0.0;
+      // final dynamic discountRaw = offlineOrder['merchantDiscount'];
+      // double merchantDiscount =
+      //     double.tryParse(discountRaw?.toString() ?? "0") ?? 0.0;
+
+      double merchantDiscount = 0.0;
+
+      final String discountType =
+          offlineOrder['merchantDiscountType']?.toString() ?? '';
+
+      final double percentage =
+          double.tryParse(
+            offlineOrder['merchantDiscountPercentage']?.toString() ?? '0',
+          ) ??
+              0.0;
+
+      final double fixedDiscount =
+          double.tryParse(
+            offlineOrder['merchantDiscountFixed']?.toString() ?? '0',
+          ) ??
+              0.0;
+
+// Calculate latest gross from current line items
+      double latestGross = 0.0;
+
+      for (final li in lineItems) {
+        final total =
+            double.tryParse(li['total']?.toString() ?? '0') ?? 0.0;
+
+        // Skip negative discount rows
+        if (total > 0) {
+          latestGross += total;
+        }
+      }
+
+      if (discountType == 'percentage') {
+        merchantDiscount = (percentage / 100) * latestGross;
+      } else {
+        merchantDiscount = fixedDiscount;
+      }
+
+      merchantDiscount = double.parse(
+        merchantDiscount.toStringAsFixed(2),
+      );
+
+      debugPrint("🟢 Recalculated Merchant Discount → $merchantDiscount");
 
       final discountProductIds =
       (offlineOrder['merchantDiscountIds'] as List? ?? [])

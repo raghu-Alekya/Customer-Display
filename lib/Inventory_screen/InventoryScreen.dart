@@ -630,7 +630,7 @@ class _InventoryScreenState extends State<InventoryScreen>
 
     // ── Main product image ────────────────────────────────────────
     String mainImageUrl =
-        '';
+        'https://indigo.alektasolutions.com/wp-content/uploads/2026/05/no_image-16-1.png';
 
     if (_imageFile != null) {
       final uploadedUrl = await _uploadImageForProduct(

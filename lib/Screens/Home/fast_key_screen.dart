@@ -1508,6 +1508,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   Future<void> _showAddItemDialog() async {
     var size = MediaQuery.of(context).size;
+    final rootContext = this.context;
     searchController.clear();
     bool errorShown = false;
     isBulkAdding = true;
@@ -1890,45 +1891,110 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
                     Navigator.of(dialogContext).pop();
 
-                    Future.delayed(const Duration(milliseconds: 100),
-                            () async {
-                          isBulkAdding = true;
+                    Future.delayed(const Duration(milliseconds: 150), () async {
+                      debugPrint("🚀 Add Selected started");
 
-                          final existingItems = await fastKeyDBHelper
-                              .getFastKeyItems(_fastKeyTabId!);
-                          final existingIds = existingItems
-                              .map((e) =>
-                              e[AppDBConst.fastKeyProductId].toString())
-                              .toSet();
+                      isBulkAdding = true;
 
-                          for (var p in selectedCopy) {
-                            final pid = p['id'].toString();
-                            if (existingIds.contains(pid)) continue;
-                            selectedProduct = p;
-                            await _addFastKeyTabItem(
-                              p['title'],
-                              p['image'],
-                              p['price'],
-                            );
-                          }
+                      final existingItems =
+                      await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
 
-                          isBulkAdding = false;
-                          await _refreshFastKeyTabItems();
+                      final existingIds = existingItems
+                          .map((e) => e[AppDBConst.fastKeyProductId].toString())
+                          .toSet();
 
-                          // 🔥 Ensure Isar cache for newly added items
-                          for (final item in fastKeyProductItems) {
-                            final pid = int.tryParse(
-                                item[AppDBConst.fastKeyProductId]
-                                    ?.toString() ??
-                                    '');
-                            if (pid != null) {
-                              await _getCachedProductFromIsar(pid);
-                            }
-                          }
+                      debugPrint("📦 Existing IDs: $existingIds");
 
-                          await _resolveFastKeyMeta();
-                          if (mounted) setState(() {});
-                        });
+                      bool hasDuplicates = false;
+                      int addedCount = 0;
+
+                      for (var p in selectedCopy) {
+                        final pid = p['id'].toString();
+
+                        debugPrint("➡️ Checking product ID: $pid");
+
+                        if (existingIds.contains(pid)) {
+                          hasDuplicates = true;
+                          debugPrint("⚠️ Duplicate found: $pid");
+                          continue;
+                        }
+
+                        debugPrint("✅ Adding product: $pid");
+
+                        selectedProduct = p;
+
+                        await _addFastKeyTabItem(
+                          p['title'],
+                          p['image'],
+                          p['price'],
+                        );
+
+                        addedCount++;
+                      }
+
+                      debugPrint("📊 Added: $addedCount | Duplicates: $hasDuplicates");
+
+                      isBulkAdding = false;
+
+                      await _refreshFastKeyTabItems();
+
+                      for (final item in fastKeyProductItems) {
+                        final pid = int.tryParse(
+                          item[AppDBConst.fastKeyProductId]?.toString() ?? '',
+                        );
+                        if (pid != null) {
+                          await _getCachedProductFromIsar(pid);
+                        }
+                      }
+
+                      await _resolveFastKeyMeta();
+
+                      if (mounted) setState(() {});
+
+                      // ✅ IMPORTANT: use root context safety
+                      final scaffoldMessenger =
+                      ScaffoldMessenger.maybeOf(rootContext);
+
+                      debugPrint(
+                        "📢 ScaffoldMessenger found: ${scaffoldMessenger != null}",
+                      );
+
+                      debugPrint(
+                        "📊 Added: $addedCount | Duplicates: $hasDuplicates",
+                      );
+
+                      if (hasDuplicates) {
+                        debugPrint("📢 Showing duplicate snackbar");
+
+                        ScaffoldMessenger.of(rootContext).clearSnackBars();
+
+                        ScaffoldMessenger.of(rootContext).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "Items already exist in Fast Keys",
+                            ),
+                            backgroundColor: Colors.orange,
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
+                      }
+
+                      // if (addedCount > 0) {
+                      //   debugPrint("📢 Showing snackbar for added items");
+                      //
+                      //   ScaffoldMessenger.of(rootContext).clearSnackBars();
+                      //
+                      //   ScaffoldMessenger.of(rootContext).showSnackBar(
+                      //     SnackBar(
+                      //       content: Text(
+                      //         "$addedCount items added successfully",
+                      //       ),
+                      //       backgroundColor: Colors.green,
+                      //       duration: const Duration(seconds: 3),
+                      //     ),
+                      //   );
+                      // }
+                    });
                   }
                       : null,
                   child: const Text('Add Selected'),
