@@ -3195,4 +3195,33 @@ class OrderHelper {
 //     // Provider.of<YourProvider>(context, listen: false).refreshItems();
 //   }
 // }
+
+// Add this method in OrderHelper class
+  static Map<String, dynamic> buildLineItemForApi(Map<String, dynamic> item) {
+    final String itemType = (item[AppDBConst.itemType] ?? item['type'] ?? '').toString().toLowerCase();
+
+    // === CUSTOM ITEM PAYLOAD ===
+    if (itemType.contains('custom')) {
+      return {
+        "name": item[AppDBConst.itemName] ?? item['name'] ?? "Custom Item",
+        "quantity": item['quantity'] ?? item[AppDBConst.itemCount] ?? 1,
+        "subtotal": (item[AppDBConst.itemSumPrice] ?? item['price'] ?? 0.0).toStringAsFixed(2),
+        "total": (item[AppDBConst.itemSumPrice] ?? item['price'] ?? 0.0).toStringAsFixed(2),
+        "tax_class": item['tax_class'] ?? "grocery",
+        "tax_status": item['tax_status'] ?? "taxable",
+      };
+    }
+
+    // === NORMAL PRODUCT (Old code remains untouched) ===
+    return {
+      "product_id": item['product_id'] ?? item[AppDBConst.itemProductId],
+      "quantity": item['quantity'] ?? item[AppDBConst.itemCount] ?? 1,
+      "total": (item[AppDBConst.itemSumPrice] ?? item['price'] ?? 0.0).toStringAsFixed(2),
+      "subtotal": (item[AppDBConst.itemSumPrice] ?? item['price'] ?? 0.0).toStringAsFixed(2),
+      "name": item[AppDBConst.itemName] ?? item['name'],
+      "meta_data": item['meta_data'] ?? [],
+      // ... add any other fields you already have
+    };
+  }
+
 }

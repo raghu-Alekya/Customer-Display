@@ -1770,7 +1770,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       "merchant discount",
       "merchant-discount",
       "merchant_discount",
-      "md",
+      // "md",
     ]);
     if (resolved != null) return resolved;
 

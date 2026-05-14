@@ -210,16 +210,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
           }
         }
       } else {
-        print("❌ Failed to load custom items: ${response.reasonPhrase} (Status: ${response.statusCode})");
+        print(" Failed to load custom items: ${response.reasonPhrase} (Status: ${response.statusCode})");
       }
     } catch (e) {
-      print("❌ Error fetching custom item template: $e");
+      print("Error fetching custom item template: $e");
     }
   }
 
-
   // ==================== FETCH CATEGORIES WITH TAX ====================
-// ==================== FETCH CATEGORIES WITH TAX ====================
+
   Future<void> _fetchCategoriesWithTax() async {
     try {
       await UrlHelper.initializeBaseUrl();
