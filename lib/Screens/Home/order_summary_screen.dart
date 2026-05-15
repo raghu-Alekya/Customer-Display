@@ -547,6 +547,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   Map<String, dynamic> _order = {};
   bool couponPopupActive = false;
   bool _successPopupShown = false;
+  bool isAddButtonEnabled = true;
+  bool isButtonDisabled = false;
 
   final bool enableCardPayment = false;
   final bool enableWalletPayment = false;
@@ -2554,147 +2556,84 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     _mergeOrderSummaryLineItemsFromHive(orderItems, hiveOrder);
     await _mergeOrderSummaryLineItemsFromProductCache(orderItems);
   }
-  Future<void> _handleCustomerAddFromDisplay(
-      String contact,
-      ) async {
+
+  static const MethodChannel customerDisplayChannel =
+  MethodChannel(
+    'com.example.flutter_customer_display/sunmi_display',
+  );
+
+  Future<void> _handleCustomerAddFromDisplay(String contact) async {
     try {
-      print("STEP 1 - START");
-
-      final offlineBox =
-          StorageProvider.offlineOrders;
-
-      final localKey =
-      widget.offlineOrderId?.toString();
-
-      print("STEP 2 - localKey = $localKey");
+      final offlineBox = StorageProvider.offlineOrders;
+      final localKey = widget.offlineOrderId?.toString();
 
       if (localKey == null) {
         throw Exception("Offline order not found");
       }
 
-      final existing =
-      await offlineBox.get(localKey);
-
-      print("STEP 3 - existing = $existing");
+      final existing = await offlineBox.get(localKey);
 
       if (existing == null) {
         throw Exception("Order data missing");
       }
 
-      final offlineOrder =
-      Map<String, dynamic>.from(existing);
-
-      print("STEP 4 - syncing");
+      final offlineOrder = Map<String, dynamic>.from(existing);
 
       final syncResponse =
-      await orderBloc.syncSingleOfflineOrder(
-        offlineOrder,
-      );
-
-      print("STEP 5 - syncResponse = $syncResponse");
+      await orderBloc.syncSingleOfflineOrder(offlineOrder);
 
       if (syncResponse == null) {
         throw Exception("Sync failed");
       }
 
-      final int syncedOrderId =
-          syncResponse["id"] ?? 0;
+      final int syncedOrderId = syncResponse["id"] ?? 0;
 
-      print("STEP 6 - wooOrderId = $syncedOrderId");
-
-      final rawResponse =
-      await orderBloc.addLoyaltyPoints(
+      final rawResponse = await orderBloc.addLoyaltyPoints(
         orderId: syncedOrderId,
         contact: contact,
       );
 
-      print("STEP 7 - customer response = $rawResponse");
-
       final result = jsonDecode(rawResponse);
 
       if (result["success"] != true) {
-        throw Exception(
-          result["message"] ?? "Loyalty API failed",
-        );
+        throw Exception(result["message"]);
       }
 
       final data = result["data"] ?? {};
 
-      final int pts =
-          int.tryParse(
-            data["available_points"]
-                ?.toString() ?? "0",
-          ) ??
-              0;
+      final pts = int.tryParse(
+        data["available_points"]?.toString() ?? "0",
+      ) ?? 0;
 
-      final double redeemedAmt =
-          double.tryParse(
-            data["value_redeemed"]
-                ?.toString() ?? "0",
-          ) ??
-              0.0;
+      // final redeemedAmount =
+      //     (data["value_redeemed"] as num?)?.toDouble() ?? 0.0;
 
-      final double newPayable =
-          double.tryParse(
-            data["new_payable_amount"]
-                ?.toString() ?? "0",
-          ) ??
-              computedNetPayable;
+      print("SENDING TO CUSTOMER DISPLAY");
+      print("points=$pts");
+      // print("redeemedAmount=$redeemedAmount");
 
-      print("STEP 8 - points = $pts");
-      print("STEP 9 - redeemed = $redeemedAmt");
 
-      // 🔥 SAVE TO OFFLINE ORDER
-      offlineOrder["loyaltyContact"] = contact;
-      offlineOrder["pendingRedeemValue"] = redeemedAmt;
-      offlineOrder["availablePoints"] = pts;
-      offlineOrder["isRedeemApplied"] = false;
-
-      await offlineBox.put(
-        localKey,
-        offlineOrder,
+      // UPDATE CUSTOMER DISPLAY
+      await customerDisplayChannel.invokeMethod(
+        "customerDisplayResult",
+        {
+          "success": true,
+          "points": pts,
+          // "redeemedAmount": redeemedAmount,
+        },
       );
 
       setState(() {
         availablePoints = pts;
 
-        // store potential redeem value only
-        redeemedValue = redeemedAmt;
-
-        // DO NOT APPLY YET
-        isRedeemAppliedFromApi = false;
-
-        isRedeemActive = true;
+        // keep redeemed value
+        // redeemedValue = redeemedAmount;
 
         mobileController.text = contact;
       });
-      await CustomerDisplayHelper.updateCustomerDisplay(
-        syncedOrderId,
-        summaryEnabled: true,
-      );
-
-      print("FLUTTER redeemedValue before send = $redeemedValue");
-
-      // await _customerDisplayChannel.invokeMethod(
-      //   "customerDisplayResult",
-      //   {
-      //     "success": true,
-      //     "redeemedAmount": redeemedValue,
-      //   },
-      // );
-
-      print("FLUTTER customerDisplayResult sent");
 
     } catch (e) {
-      print("DISPLAY ERROR = $e");
-
-      // await _customerDisplayChannel.invokeMethod(
-      //   "customerDisplayResult",
-      //   {
-      //     "success": false,
-      //     "message": e.toString(),
-      //   },
-      // );
+      print("ERROR: $e");
     }
   }
   Future<void> _applyRedeemFromCustomerDisplay() async {
@@ -2712,147 +2651,217 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     //   redeemedValue: redeemedValue, // ADD
     // );
   }
+  double getAdjustedSummaryTax() {
+    double totalSubtotal = 0.0;
+    double totalDiscount = 0.0;
 
+    double _num(dynamic value) {
+      if (value is num) return value.toDouble();
+      return double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
+
+    print("========== TAX ADJUST START ==========");
+
+    for (var item in orderItems) {
+      final String itemName =
+          item['item_name']?.toString() ?? 'Unknown';
+
+      // ✅ SKIP EBT PRODUCTS
+      final bool isEbt =
+          item['is_ebt'] == true ||
+              item['ebt'] == true ||
+              item['isEBT'] == true ||
+              item['is_ebt_eligible'] == true;
+
+      if (isEbt) {
+        print("🚫 EBT ITEM SKIPPED: $itemName");
+        continue;
+      }
+
+      final double price = _num(item['item_price']);
+      final double qty = _num(item['items_count']);
+
+      final double itemSubtotal = price * qty;
+
+      final String discountType =
+          item['discount_type']?.toString().toLowerCase() ?? '';
+
+      double autoDiscount =
+          _num(item['auto_discount']) +
+              _num(item['auto_discount_total']) +
+              _num(item['autoDiscount']) +
+              _num(item['autoDiscountTotal']) +
+              _num(item['display_auto_discount']);
+
+      double comboDiscount =
+          _num(item['combo_discount_total']) +
+              _num(item['comboDiscountTotal']) +
+              _num(item['combo_discount']);
+
+      double mixMatchDiscount =
+          _num(item['mixmatch_discount_total']) +
+              _num(item['mixMatchDiscountTotal']) +
+              _num(item['mixmatch_discount']);
+
+      double multipackDiscount =
+          _num(item['multipack_discount_total']) +
+              _num(item['multipackDiscountTotal']) +
+              _num(item['multipack_discount']);
+
+      if (discountType == 'mixmatch' &&
+          autoDiscount > 0 &&
+          mixMatchDiscount == 0) {
+        mixMatchDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+
+      if (discountType == 'combo' &&
+          autoDiscount > 0 &&
+          comboDiscount == 0) {
+        comboDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+
+      if (discountType == 'multipack' &&
+          autoDiscount > 0 &&
+          multipackDiscount == 0) {
+        multipackDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+
+      final double itemDiscount =
+          autoDiscount +
+              comboDiscount +
+              mixMatchDiscount +
+              multipackDiscount;
+
+      totalSubtotal += itemSubtotal;
+      totalDiscount += itemDiscount;
+
+      print("🛒 ITEM: $itemName");
+      print("Subtotal: $itemSubtotal");
+      print("Discount: $itemDiscount");
+    }
+
+    final double taxableAmount =
+        totalSubtotal - totalDiscount;
+
+    final double rawTax = taxableAmount * 0.091;
+
+    final double roundedTax =
+    double.parse(rawTax.toStringAsFixed(2));
+
+    print("Total Subtotal = $totalSubtotal");
+    print("Total Discount = $totalDiscount");
+    print("Taxable Amount = $taxableAmount");
+    print("Raw Tax = $rawTax");
+    print("Final Tax = $roundedTax");
+
+    print("========== TAX ADJUST END ==========");
+
+    return roundedTax;
+  }
 
   @override
   void initState() {
     super.initState();
-    const MethodChannel _customerDisplayChannel =
-    MethodChannel(
+
+    const MethodChannel _customerDisplayChannel = MethodChannel(
       'com.example.flutter_customer_display/sunmi_display',
     );
 
-    _customerDisplayChannel.setMethodCallHandler(
-          (call) async {
-        print("📥 FLUTTER RECEIVED: ${call.method}");
+    _customerDisplayChannel.setMethodCallHandler((call) async {
+      print("=================================");
+      print("📥 FLUTTER RECEIVED: ${call.method}");
+      print("ARGS = ${call.arguments}");
 
-        if (call.method == "customerDisplayRedeemClicked") {
-          final String contact =
-              call.arguments["contact"] ?? "";
+      if (call.method == "customerDisplayPopupClosed") {
+        print("📥 POPUP CLOSED FROM CUSTOMER DISPLAY");
 
-          print("📱 REDEEM CONTACT = $contact");
+        if (mounted) {
+          setState(() {
+            isRedeemActive = false;
+            isAddLoading = false;
 
-          if (contact.isEmpty) return;
+            // keep phone number
+            // do NOT clear mobileController
 
-          // Step 1: fetch redeem info only
+            // keep validation based on existing number
+            isPhoneValid = mobileController.text.isNotEmpty;
+
+            // enable Add button
+            isButtonDisabled = false;
+          });
+        }
+
+        return;
+      }
+
+
+
+      if (call.method == "customerDisplayRedeemClicked") {
+        final String contact = call.arguments["contact"] ?? "";
+
+        print("📱 CONTACT = $contact");
+        // CLOSE POS KEYBOARD
+        FocusManager.instance.primaryFocus?.unfocus();
+
+
+        if (contact.isEmpty) {
+          if (mounted) {
+            setState(() {
+              isButtonDisabled = false;
+            });
+          }
+          return;
+        }
+
+        try {
+          if (mounted) {
+            setState(() {
+              isButtonDisabled = true;
+              isAddLoading = true;
+            });
+          }
+
           await _handleCustomerAddFromDisplay(contact);
-
-          // Step 2: apply redeem to summary
-          await _applyRedeemFromCustomerDisplay();
+          // CLOSE AGAIN after controller update
+          FocusManager.instance.primaryFocus?.unfocus();
 
           await _customerDisplayChannel.invokeMethod(
-            "updateRedeemAmount",
+            "customerDisplayResult",
             {
+              "success": true,
+              "points": availablePoints,
               "redeemedAmount": redeemedValue,
             },
           );
-          try {
 
-            final offlineBox =
-                StorageProvider.offlineOrders;
+        } catch (e) {
+          print("❌ ERROR = $e");
 
-            final localKey =
-            widget.offlineOrderId?.toString();
-
-            if (localKey == null) {
-              throw Exception("Offline order not found");
-            }
-
-            final existing =
-            await offlineBox.get(localKey);
-
-            if (existing == null) {
-              throw Exception("Order data missing");
-            }
-
-            final offlineOrder =
-            Map<String, dynamic>.from(existing);
-
-            // 1️⃣ SYNC
-            final syncResponse =
-            await orderBloc.syncSingleOfflineOrder(
-              offlineOrder,
-            );
-
-            if (syncResponse == null) {
-              throw Exception("Sync failed");
-            }
-
-            // 2️⃣ WOO ORDER ID
-            final int syncedOrderId =
-                syncResponse["id"] ?? 0;
-
-            if (syncedOrderId == 0) {
-              throw Exception("Woo order id missing");
-            }
-
-            // 3️⃣ CREATE CUSTOMER
-            final rawResponse =
-            await orderBloc.addLoyaltyPoints(
-              orderId: syncedOrderId,
-              contact: contact,
-            );
-
-            final result =
-            jsonDecode(rawResponse);
-
-            if (result["success"] == false) {
-              throw Exception(
-                result["message"] ??
-                    "Customer API failed",
-              );
-            }
-
-            final data =
-                result["data"] ?? {};
-
-            final pts =
-                int.tryParse(
-                  data["available_points"]
-                      ?.toString() ??
-                      "0",
-                ) ??
-                    0;
-
+          if (mounted) {
             setState(() {
-              loyaltyData = data;
-              availablePoints = pts;
-              isRedeemActive = true;
-              showCustomerInput = true;
-              mobileController.text = contact;
+              isButtonDisabled = false;
+              isAddLoading = false;
             });
-
-            offlineOrder["loyaltyContact"] =
-                contact;
-
-            await offlineBox.put(
-              localKey,
-              offlineOrder,
-            );
-
-            await _customerDisplayChannel
-                .invokeMethod(
-              "customerDisplayResult",
-              {
-                "success": true,
-                "points": pts,
-              },
-            );
-
-          } catch (e) {
-
-            await _customerDisplayChannel
-                .invokeMethod(
-              "customerDisplayResult",
-              {
-                "success": false,
-                "message": e.toString(),
-              },
-            );
           }
+
+          await _customerDisplayChannel.invokeMethod(
+            "customerDisplayResult",
+            {
+              "success": false,
+              "message": e.toString(),
+            },
+          );
         }
-      },
-    );
+      }
+
+      print("=================================");
+    });
+
+    // remaining initState code...
+
     ScannerGuard.isCouponPopupOpen= true;
 
     orderItems = widget.orderItems
@@ -2863,7 +2872,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     (widget.orderDiscount != 0) ? -(widget.orderDiscount.abs()) : 0.0;
     merchantDiscount =
     (widget.merchantDiscount != 0) ? -(widget.merchantDiscount.abs()) : 0.0;
-    tax = widget.orderTax;
+    tax = getAdjustedSummaryTax();
     orderId = widget.orderId;
     ebtTotal = widget.ebtAmount;
 
@@ -4900,12 +4909,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   void _showRedeemPointsSnackBar(BuildContext context) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          "Please remove redeemed points before going back",
+          "Loyalty applied, please remove and try again",
         ),
         duration: Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -5020,17 +5032,20 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
               final bool hasDiscount = discount > 0;
 
-              final bool hasRedeemPoints =
-                  loyaltyData != null &&
-                      availablePoints > 0 &&
-                      isRedeemActive == true;
+              final bool hasRedeemPoints = redeemedValue > 0;
 
-              // Redeem points check
+              if (kDebugMode) {
+                print("===== BACK BUTTON DEBUG =====");
+                print("redeemedValue(UI): $redeemedValue");
+                print("isRedeemAppliedFromApi: $isRedeemAppliedFromApi");
+                print("hasRedeemPoints: $hasRedeemPoints");
+                print("============================");
+              }
+
               if (hasRedeemPoints) {
                 _showRedeemPointsSnackBar(context);
                 return;
               }
-
               // Remaining balance
               final double effectiveRemaining =
               (_currentPaymentRemainingBalance != null &&
@@ -5393,14 +5408,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       // ======================================
                       // 7️⃣ UPDATE CUSTOMER DISPLAY
                       // ======================================
-                      final localOrderId = widget.offlineOrderId;
-
-                      if (localOrderId != null) {
-                        await CustomerDisplayHelper
-                            .updateCustomerDisplay(
-                          localOrderId,
-                        );
-                      }
+                      // ======================================
+// 7️⃣ DO NOT REFRESH CUSTOMER DISPLAY
+// ======================================
+                      print("Skipping customer display refresh after POS Add");
 
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -6695,7 +6706,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   onTap: isPaymentStarted
                       ? null
                       : () async {
-                    setState(() => redeemedValue = 0);
                     await _removeRedeemedAmount();
                   },
                   child: Padding(
@@ -6727,80 +6737,183 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Future<void> _removeRedeemedAmount() async {
-    // 🔴 Contact is mandatory for API
+
+    // 🔴 Contact is mandatory
     if (mobileController.text.trim().isEmpty) {
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Customer contact not found."),
           backgroundColor: Colors.red,
         ),
       );
+
       return;
     }
 
-    final String contact = mobileController.text.trim();
-    final int order = widget.orderId ?? widget.offlineOrderId ?? 0;
+    final String contact =
+    mobileController.text.trim();
+
+    // =====================================
+// GET WOO ORDER ID FROM HIVE
+// =====================================
+    final offlineBox =
+        StorageProvider.offlineOrders;
+
+    final localKey =
+    widget.offlineOrderId?.toString();
+
+    if (localKey == null) {
+      throw Exception("Offline order not found");
+    }
+
+    final existing =
+    await offlineBox.get(localKey);
+
+    if (existing == null) {
+      throw Exception("Order data missing");
+    }
+
+    final offlineOrder =
+    Map<String, dynamic>.from(
+      existing is Map ? existing : {},
+    );
+
+// 🔥 GET WOO ORDER ID
+    final int order =
+        int.tryParse(
+          offlineOrder["wooOrderId"]
+              ?.toString() ?? "0",
+        ) ??
+            0;
+
+    if (order == 0) {
+      throw Exception("Woo Order ID missing");
+    }
+
+    print("🟢 USING WOO ORDER ID: $order");
 
     setState(() => isSummaryLoading = true);
 
     try {
-      // 🔥 API is the SOURCE OF TRUTH
-      final rawRes = await OrderRepository().removeLoyaltyPoints(
+
+      // =====================================
+      // API CALL
+      // =====================================
+      final rawRes =
+      await OrderRepository()
+          .removeLoyaltyPoints(
         orderId: order,
         contact: contact,
       );
 
-      final result = jsonDecode(rawRes);
+      // =====================================
+      // SAFE RESPONSE
+      // =====================================
+      final result = rawRes is String
+          ? jsonDecode(rawRes)
+          : rawRes;
+
+      print("🟢 REMOVE RESPONSE: $result");
 
       if (result["success"] != true) {
-        throw Exception(result["message"] ?? "Unable to remove points");
+
+        throw Exception(
+          result["message"] ??
+              "Unable to remove points",
+        );
       }
 
-      final data = result["data"];
+      final data = result["data"] ?? {};
 
-      // 🧠 Update UI strictly from API response
+      // =====================================
+      // API VALUES
+      // =====================================
+      final double updatedOrderTotal =
+          double.tryParse(
+            data["order_total"]
+                ?.toString() ?? "0",
+          ) ??
+              computedNetPayable;
+
+      final int updatedPoints =
+          int.tryParse(
+            data["available_points"]?.toString() ?? "0",
+          ) ??
+              availablePoints;
+
+// UPDATE UI
       setState(() {
         redeemedValue = 0;
         isRedeemAppliedFromApi = false;
-
-        /// API-driven balance
-        balanceAmount =
-            (data["order_total"] as num?)?.toDouble() ?? balanceAmount;
-
-        /// Keep available points from API
-        availablePoints =
-            (data["available_points"] as num?)?.toInt() ?? availablePoints;
+        isRedeemActive = false;
+        loyaltyData = null;
+        availablePoints = updatedPoints;
+        computedNetPayable = updatedOrderTotal;
+        balanceAmount = updatedOrderTotal - tenderAmount;
       });
 
-      // 🧹 FORCE DELETE FROM HIVE
-      final String orderKey = order.toString();
-      await removeOfflineOrderRedeem(orderKey);
+// clear hive first
+      await removeOfflineOrderRedeem(localKey);
 
+// refresh display with clean data
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        widget.offlineOrderId!,
+      );
+
+// hide redeem row
+      await customerDisplayChannel.invokeMethod(
+        "customerDisplayResult",
+        {
+          "success": true,
+          "points": updatedPoints,
+          "redeemedAmount": 0.0,
+        },
+      );
+      // =====================================
+      // SUCCESS MESSAGE
+      // =====================================
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Redeemed points removed successfully."),
+
+        ScaffoldMessenger.of(context)
+            .showSnackBar(
+          SnackBar(
+            content: Text(
+              result["message"] ??
+                  "Redeemed points removed successfully.",
+            ),
             backgroundColor: Colors.green,
           ),
         );
       }
 
-      if (kDebugMode) {
-        print("🧹 Redeem removed → API + UI + Hive");
-      }
+      print("🧹 Redeem removed successfully");
+
     } catch (e) {
-      print("❌ Remove Loyalty Points Error: $e");
+
+      print("❌ Remove Loyalty Error: $e");
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Failed to remove redeemed points. Try again."),
+
+        ScaffoldMessenger.of(context)
+            .showSnackBar(
+          SnackBar(
+            content: Text(
+              e.toString()
+                  .replaceAll("Exception:", ""),
+            ),
             backgroundColor: Colors.red,
           ),
         );
       }
+
     } finally {
-      if (mounted) setState(() => isSummaryLoading = false);
+
+      if (mounted) {
+        setState(
+              () => isSummaryLoading = false,
+        );
+      }
     }
   }
 
@@ -7924,7 +8037,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   }
 
                                   // Direct back in all other cases
-                                  Navigator.of(context).pop();
+                                  // Navigator.of(context).pop();
                                   if (hasEbtItem) return; // block redeem
 
                                   if (!isRedeemActive) return;
@@ -8121,10 +8234,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                 TextConstants.Issuecoupon,
                                 "assets/coupon.png",
 
-                                // 🔥 Disable when coupon already applied
                                 isActive:
                                 !(offlineOrder?["coupon_applied"] == true ||
-                                    isCouponActive),
+                                    isCouponActive||
+                                    computedNetPayable < 0),
 
                                 onTap: () async {
                                   if (offlineOrder == null) {
@@ -8899,7 +9012,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         newDiscount =
             double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
       }
-      newTax = double.tryParse(result["tax"]?.toString() ?? "0") ?? 0.0;
+      newTax = getAdjustedSummaryTax();
       newTotal = double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
 
       offlineOrder["orderDiscount"] = couponLines.isEmpty ? 0.0 : newDiscount;
@@ -8918,6 +9031,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       setState(() {
         discount = newDiscount; // should become 0
         tax = newTax;
+
 
         NetTotal = grossTotal + discount + merchantDiscount;
         computedNetPayable = NetTotal + tax + cashbackFee;

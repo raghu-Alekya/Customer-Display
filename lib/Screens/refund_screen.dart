@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:intl/intl.dart';
@@ -357,7 +358,11 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> with Widg
             controller: searchController,
             focusNode: _searchFocusNode,
             textAlignVertical:
-            TextAlignVertical.center, // ⭐ centers hint & text vertically
+            TextAlignVertical.center,
+            keyboardType: TextInputType.number, // ✅ numeric keyboard
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly, // ✅ only digits allowed
+            ],// ⭐ centers hint & text vertically
             onSubmitted: (_) {
               FocusScope.of(context).unfocus();
             },

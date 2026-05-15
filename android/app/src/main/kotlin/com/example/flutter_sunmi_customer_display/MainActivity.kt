@@ -15,7 +15,7 @@ import android.widget.TextView
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import java.net.URL
+//import java.net.URL
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
@@ -36,6 +36,10 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.GridLayout
 import android.widget.Toast
+import java.net.HttpURLConnection
+import java.net.URL
+import android.app.Dialog
+import android.view.LayoutInflater
 
 class MainActivity : FlutterActivity() {
 
@@ -48,122 +52,24 @@ class MainActivity : FlutterActivity() {
     private val PAYMENT_CHANNEL = "sunmi_payment_channel"
     private var saleResultCallback: MethodChannel.Result? = null
     private var isOrderActive = false
+    private var authToken: String = ""
+//    private var redeemPointsTextView: TextView? = null
+
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        Log.d("CustomerDisplay", "🔧 configureFlutterEngine called")
 
-        // ================= DEVICE SERIAL CHANNEL =================
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "device_serial")
-            .setMethodCallHandler { call, result ->
-                if (call.method == "getSerial") {
-                    try {
-                        var serial = ""
 
-                        // ✅ METHOD 1: SUNMI SDK via reflection (no permissions needed)
-                        try {
-                            val systemProperties = Class.forName("android.os.SystemProperties")
-                            val getMethod = systemProperties.getMethod("get", String::class.java, String::class.java)
 
-                            val candidates = listOf(
-                                "ro.serialno",
-                                "ro.boot.serialno",
-                                "persist.sys.serialno",
-                                "ro.product.serial",
-                                "sys.sunmi.serialno",
-                                "ro.sunmi.serialno",
-                                "ro.boot.serialno"
-                            )
-
-                            for (prop in candidates) {
-                                val value = getMethod.invoke(null, prop, "") as? String ?: ""
-                                if (value.isNotEmpty() && value != "unknown" && value.length > 4) {
-                                    serial = value
-                                    Log.d("DeviceSerial", "✅ [Reflection] $prop = $serial")
-                                    break
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.w("DeviceSerial", "Reflection method failed: ${e.message}")
-                        }
-
-                        // ✅ METHOD 2: Shell exec with timeout fix
-                        if (serial.isEmpty()) {
-                            try {
-                                val process = Runtime.getRuntime().exec(arrayOf("getprop", "ro.serialno"))
-                                val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
-                                // Read BEFORE waitFor — this is the critical fix
-                                val value = reader.readLine()?.trim() ?: ""
-                                reader.close()
-                                process.destroy()
-
-                                if (value.isNotEmpty() && value != "unknown" && value.length > 4) {
-                                    serial = value
-                                    Log.d("DeviceSerial", "✅ [Shell] ro.serialno = $serial")
-                                }
-                            } catch (e: Exception) {
-                                Log.w("DeviceSerial", "Shell method failed: ${e.message}")
-                            }
-                        }
-
-                        // ✅ METHOD 3: Build.getSerial() with permission check
-                        if (serial.isEmpty()) {
-                            try {
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                    if (checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE)
-                                        == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                                        val value = android.os.Build.getSerial()
-                                        if (value.isNotEmpty() && value != "unknown") {
-                                            serial = value
-                                            Log.d("DeviceSerial", "✅ [Build] getSerial = $serial")
-                                        }
-                                    } else {
-                                        Log.w("DeviceSerial", "READ_PHONE_STATE not granted — requesting")
-                                        requestPermissions(
-                                            arrayOf(android.Manifest.permission.READ_PHONE_STATE),
-                                            1001
-                                        )
-                                    }
-                                } else {
-                                    @Suppress("DEPRECATION")
-                                    val value = android.os.Build.SERIAL
-                                    if (value.isNotEmpty() && value != "unknown") {
-                                        serial = value
-                                        Log.d("DeviceSerial", "✅ [Build legacy] = $serial")
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                Log.w("DeviceSerial", "Build.getSerial failed: ${e.message}")
-                            }
-                        }
-
-                        // ✅ METHOD 4: /proc/cmdline parse (works on many SUNMI models)
-                        if (serial.isEmpty()) {
-                            try {
-                                val cmdline = java.io.File("/proc/cmdline").readText()
-                                val match = Regex("androidboot\\.serialno=([A-Za-z0-9]+)").find(cmdline)
-                                val value = match?.groupValues?.get(1) ?: ""
-                                if (value.isNotEmpty() && value.length > 4) {
-                                    serial = value
-                                    Log.d("DeviceSerial", "✅ [cmdline] serialno = $serial")
-                                }
-                            } catch (e: Exception) {
-                                Log.w("DeviceSerial", "/proc/cmdline failed: ${e.message}")
-                            }
-                        }
-
-                        Log.d("DeviceSerial", "🎯 FINAL SERIAL → '$serial'")
-                        result.success(if (serial.isNotEmpty()) serial else "unknown_serial")
-
-                    } catch (e: Exception) {
-                        Log.e("DeviceSerial", "Critical: ${e.message}")
-                        result.success("unknown_serial")
-                    }
-                }
-            }
-
-        // ================= CUSTOMER DISPLAY CHANNEL =================
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
-            Log.d("CustomerDisplay", "📢 MethodChannel call → method=${call.method}, args=${call.arguments}")
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CHANNEL
+        ).setMethodCallHandler { call, result ->
+            Log.d(
+                "CustomerDisplay",
+                "📢 MethodChannel call → method=${call.method}, args=${call.arguments}"
+            )
 
             when (call.method) {
 
@@ -194,10 +100,35 @@ class MainActivity : FlutterActivity() {
                     currentStoreLogoUrl = storeLogoUrl
                     currentStoreBaseUrl = storeBaseUrl
 
+                    // --- Call the slideshow API first to see logs ---
                     if (customerDisplayPresentation == null) {
                         showWelcomeOnCustomerDisplay()
                     }
 
+// ✅ Prevent override during active order
+                    if (!isOrderActive) {
+
+                        customerDisplayPresentation?.showWelcomeLayout(
+                            storeId,
+                            storeName,
+                            storeLogoUrl,
+                            storeBaseUrl
+                        )
+
+                    } else {
+
+                        Log.d(
+                            "CustomerDisplay",
+                            "⛔ Skipping welcome update — order is active"
+                        )
+                    }
+
+                    // --- Show Welcome layout on customer display ---
+                    if (customerDisplayPresentation == null) {
+                        showWelcomeOnCustomerDisplay()
+                    }
+
+// ✅ Prevent override during active order
                     if (!isOrderActive) {
                         customerDisplayPresentation?.showWelcomeLayout(
                             storeId,
@@ -212,6 +143,7 @@ class MainActivity : FlutterActivity() {
                     result.success("Welcome updated with store")
                 }
 
+
                 "showCustomerData" -> {
                     val orderId = call.argument<Int>("orderId") ?: 0
                     val items = call.argument<List<Map<String, Any>>>("items") ?: emptyList()
@@ -225,17 +157,35 @@ class MainActivity : FlutterActivity() {
                     val orderTime = call.argument<String>("orderTime") ?: ""
                     val cashbackFee = call.argument<Double>("cashbackFee") ?: 0.0
                     val loyaltyContact = call.argument<String>("loyaltyContact") ?: ""
+                    val availablePoints = call.argument<Int>("availablePoints") ?: 0
                     val summaryEnabled = call.argument<Boolean>("summaryEnabled") ?: true
 
                     Log.d("CustomerDisplay", "☎ Loyalty Contact received: $loyaltyContact")
 
-                    Log.d("CustomerDisplay", "➡ showCustomerData invoked → orderId=$orderId, items=${items.size}, grossTotal=$grossTotal, discount=$discount, merchantDiscount=$merchantDiscount, netTotal=$netTotal, tax=$tax, netPayable=$netPayable")
+                    Log.d(
+                        "CustomerDisplay",
+                        "➡ showCustomerData invoked → orderId=$orderId, items=${items.size}, grossTotal=$grossTotal, discount=$discount, merchantDiscount=$merchantDiscount, netTotal=$netTotal, tax=$tax, netPayable=$netPayable"
+                    )
                     Log.d("CustomerDisplay", "➡ orderDate='$orderDate'")
                     Log.d("CustomerDisplay", "➡ orderTime='$orderTime'")
-
                     val success = showDataOnCustomerDisplay(
-                        orderId, currentStoreId, currentStoreName, currentStoreLogoUrl, items,
-                        grossTotal, discount, merchantDiscount, netTotal, tax, netPayable,orderDate, orderTime,cashbackFee,loyaltyContact,summaryEnabled
+                        orderId,
+                        currentStoreId,
+                        currentStoreName,
+                        currentStoreLogoUrl,
+                        items,
+                        grossTotal,
+                        discount,
+                        merchantDiscount,
+                        netTotal,
+                        tax,
+                        netPayable,
+                        orderDate,
+                        orderTime,
+                        cashbackFee,
+                        loyaltyContact,
+                        availablePoints,
+                        summaryEnabled
                     )
 
                     if (success) {
@@ -257,21 +207,83 @@ class MainActivity : FlutterActivity() {
                         result.error("NO_DISPLAY", "No secondary display found", null)
                     }
                 }
+                "enablePhoneInput" -> {
+                    Handler(Looper.getMainLooper()).post {
+                        customerDisplayPresentation?.enablePhoneInput()
+                    }
+                    result.success(true)
+                }
+                "customerDisplayResult" -> {
+
+                    val success =
+                        call.argument<Boolean>("success") ?: false
+
+                    val message =
+                        call.argument<String>("message") ?: ""
+
+                    val points =
+                        call.argument<Int>("points") ?: 0
+
+                    val redeemedAmount =
+                        call.argument<Double>("redeemedAmount") ?: 0.0
+
+                    Log.d(
+                        "CustomerDisplay",
+                        "📥 customerDisplayResult → success=$success points=$points"
+                    )
+
+                    if (!success) {
+
+                        Handler(Looper.getMainLooper()).post {
+                            Toast.makeText(
+                                this@MainActivity,
+                                if (message.isNotEmpty())
+                                    message
+                                else
+                                    "Something went wrong",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+
+                    } else {
+
+                        customerDisplayPresentation?.updateRedeemPopupPoints(points)
+
+                        if (redeemedAmount > 0) {
+                            customerDisplayPresentation?.showRedeemSummary(redeemedAmount)
+                        }
+//                        else {
+//                            customerDisplayPresentation?.hideRedeemSummary()
+//                        }
+                    }
+
+                    result.success(true)
+                }
 
                 "resetDisplay" -> {
                     Log.d("CustomerDisplay", "🔥 resetDisplay called")
 
                     isOrderActive = false
 
-                    val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+                    val displayManager =
+                        getSystemService(Context.DISPLAY_SERVICE)
+                                as DisplayManager
+
                     val displays = displayManager.displays
 
                     if (displays.size > 1) {
+
                         val secondaryDisplay = displays[1]
 
                         customerDisplayPresentation?.dismiss()
+
                         customerDisplayPresentation =
-                            CustomerDisplayPresentation(this, secondaryDisplay)
+                            CustomerDisplayPresentation(
+                                this@MainActivity,
+                                this@MainActivity,
+                                secondaryDisplay
+                            )
+
                         customerDisplayPresentation?.show()
 
                         customerDisplayPresentation?.showWelcomeLayout(
@@ -291,7 +303,6 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
-
         // ================= PAYMENT CHANNEL =================
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -327,6 +338,7 @@ class MainActivity : FlutterActivity() {
                         "➡ startVoid → amount=$amount, originOrderId=$originOrderId, originTxn=$originTransactionId"
                     )
 
+                    // ✅ Basic validation only
                     if (originOrderId.isNullOrEmpty() || originTransactionId.isNullOrEmpty()) {
                         result.error("INVALID_ARGS", "Missing origin order or transaction ID", null)
                         return@setMethodCallHandler
@@ -346,9 +358,11 @@ class MainActivity : FlutterActivity() {
                     startActivityForResult(intent, 9091)
                 }
 
+
                 else -> result.notImplemented()
             }
         }
+
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -375,9 +389,12 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         Log.d("CustomerDisplay", "➡ onResume called")
+//        showWelcomeOnCustomerDisplay()
     }
 
     private fun showWelcomeOnCustomerDisplay(): Boolean {
+
+        // ✅ BLOCK welcome if order is active
         if (isOrderActive) {
             Log.d("CustomerDisplay", "⛔ Ignoring Welcome — Order is active")
             return true
@@ -392,7 +409,11 @@ class MainActivity : FlutterActivity() {
 
             if (customerDisplayPresentation == null || customerDisplayPresentation?.display != secondaryDisplay) {
                 customerDisplayPresentation?.dismiss()
-                customerDisplayPresentation = CustomerDisplayPresentation(this, secondaryDisplay)
+                customerDisplayPresentation = CustomerDisplayPresentation(
+                    this@MainActivity,
+                    this@MainActivity,
+                    secondaryDisplay
+                )
                 customerDisplayPresentation?.show()
             }
             true
@@ -418,9 +439,12 @@ class MainActivity : FlutterActivity() {
         orderTime: String,
         cashbackFee: Double,
         loyaltyContact: String,
+        availablePoints: Int,
         summaryEnabled: Boolean
     ): Boolean {
+        // 🔥 ADD THIS LINE HERE (FIRST LINE)
         isOrderActive = true
+
 
         if (customerDisplayPresentation == null) {
             Log.d("CustomerDisplay", "CustomerDisplayPresentation null, recreating display")
@@ -430,7 +454,11 @@ class MainActivity : FlutterActivity() {
 
             if (displays.size > 1) {
                 val secondaryDisplay = displays[1]
-                customerDisplayPresentation = CustomerDisplayPresentation(this, secondaryDisplay)
+                customerDisplayPresentation = CustomerDisplayPresentation(
+                    this@MainActivity,
+                    this@MainActivity,
+                    secondaryDisplay
+                )
                 customerDisplayPresentation?.show()
             }
         }
@@ -451,7 +479,8 @@ class MainActivity : FlutterActivity() {
             orderTime,
             cashbackFee,
             loyaltyContact,
-            summaryEnabled
+            availablePoints,
+            summaryEnabled //✅
         )
 
         Log.d("CustomerDisplay", "✔ CustomerDisplayPresentation updated with order #$orderId")
@@ -459,44 +488,88 @@ class MainActivity : FlutterActivity() {
         return customerDisplayPresentation != null
     }
 
+
     private fun showThankYouOnCustomerDisplay(): Boolean {
-        val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+
+        val displayManager =
+            getSystemService(Context.DISPLAY_SERVICE)
+                    as DisplayManager
+
         val displays = displayManager.displays
 
-        Log.d("CustomerDisplay", "Detected displays: ${displays.size} for Thank You")
+        Log.d(
+            "CustomerDisplay",
+            "Detected displays: ${displays.size} for Thank You"
+        )
 
         return if (displays.size > 1) {
+
             val secondaryDisplay = displays[1]
 
-            Log.d("CustomerDisplay", "Secondary display found: ${secondaryDisplay.name}")
+            Log.d(
+                "CustomerDisplay",
+                "Secondary display found: ${secondaryDisplay.name}"
+            )
 
-            if (customerDisplayPresentation == null || customerDisplayPresentation?.display != secondaryDisplay) {
+            if (
+                customerDisplayPresentation == null ||
+                customerDisplayPresentation?.display != secondaryDisplay
+            ) {
+
                 customerDisplayPresentation?.dismiss()
-                customerDisplayPresentation = CustomerDisplayPresentation(this, secondaryDisplay)
+
+                customerDisplayPresentation =
+                    CustomerDisplayPresentation(
+                        this@MainActivity,
+                        this@MainActivity,
+                        secondaryDisplay
+                    )
+
                 customerDisplayPresentation?.show()
             }
 
+            // ✅ Show Thank You
             customerDisplayPresentation?.showThankYouLayout()
 
-            Log.d("CustomerDisplay", "✔ Thank You layout displayed")
+            Log.d(
+                "CustomerDisplay",
+                "✔ Thank You layout displayed"
+            )
 
             Handler(Looper.getMainLooper()).postDelayed({
-                Log.d("CustomerDisplay", "➡ Reverting back to Welcome")
+
+                Log.d(
+                    "CustomerDisplay",
+                    "➡ Reverting back to Welcome"
+                )
+
+                // ✅ NOW allow welcome
                 isOrderActive = false
-                customerDisplayPresentation?.resetFirstOrderShown()
+
+                customerDisplayPresentation
+                    ?.resetFirstOrderShown()
+
                 customerDisplayPresentation?.showWelcomeLayout(
                     currentStoreId,
                     currentStoreName,
                     currentStoreLogoUrl,
                     currentStoreBaseUrl
                 )
+
             }, 5000)
 
             true
+
         } else {
-            Log.e("CustomerDisplay", "❌ No secondary display available")
+
+            Log.e(
+                "CustomerDisplay",
+                "❌ No secondary display available"
+            )
+
             false
         }
+
     }
 
     override fun onDestroy() {
@@ -507,10 +580,10 @@ class MainActivity : FlutterActivity() {
 
     // ---------------------- CustomerDisplayPresentation ----------------------
     class CustomerDisplayPresentation(
+        private val mainActivity: MainActivity,
         context: Context,
         display: Display
     ) : Presentation(context, display) {
-
         private var firstOrderShown = false
 
         private lateinit var orderIdView: TextView
@@ -538,6 +611,15 @@ class MainActivity : FlutterActivity() {
         private val imageCache = mutableMapOf<String, Bitmap>()
         private val slideshowBitmapCache = mutableMapOf<String, Bitmap>()
         private var cachedSlideshowUrls = mutableListOf<String>()
+        private var redeemedAmount = 0.0
+        private var redeemPointsTextView: TextView? = null
+
+        private var availablePoints = 0
+        private var isCustomerLayoutActive = false
+        private var isRedeemPopupOpen = false
+        private var phoneInputUnlocked = false
+        private var keepSummaryVisible = false
+
 
         private lateinit var slideshowContainer: LinearLayout
 
@@ -549,8 +631,13 @@ class MainActivity : FlutterActivity() {
         }
 
         fun resetFirstOrderShown() {
+
             firstOrderShown = false
-            Log.d("CustomerDisplay", " firstOrderShown reset")
+
+            Log.d(
+                "CustomerDisplay",
+                "🔄 firstOrderShown reset"
+            )
         }
 
         fun updateWelcomeWithStore(
@@ -565,7 +652,8 @@ class MainActivity : FlutterActivity() {
             currentStoreLogoUrl = storeLogoUrl
             currentStoreBaseUrl = storeBaseUrl ?: ""
 
-            welcomeText.text = if (storeName.isNotEmpty()) "Welcome to $storeName" else "👋 Welcome to Pinaka"
+            welcomeText.text =
+                if (storeName.isNotEmpty()) "Welcome to $storeName" else "👋 Welcome to Pinaka"
 
             val footerText = findViewById<TextView>(R.id.footer_text)
             footerText?.visibility = if (storeName.isNotEmpty()) View.VISIBLE else View.GONE
@@ -596,6 +684,7 @@ class MainActivity : FlutterActivity() {
                 loadSlideshowFromApi(currentStoreBaseUrl)
             }
         }
+
         private fun loadSlideshowFromApi(storeBaseUrl: String) {
 
             // ✅ Use cached slideshow immediately
@@ -698,6 +787,7 @@ class MainActivity : FlutterActivity() {
 
             }.start()
         }
+
         private fun bindSlideshowViewSafely(): Boolean {
 
             return try {
@@ -884,6 +974,7 @@ class MainActivity : FlutterActivity() {
                 }
             })
         }
+
         fun showWelcomeLayout(
             storeId: String,
             storeName: String,
@@ -906,6 +997,8 @@ class MainActivity : FlutterActivity() {
             )
 
             Handler(Looper.getMainLooper()).post {
+                isCustomerLayoutActive = false
+                isRedeemPopupOpen = false
 
                 setContentView(R.layout.welcome_layout)
 
@@ -994,6 +1087,8 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+
+
 
         fun formatCurrency(value: Double): String {
             val formatter = NumberFormat.getCurrencyInstance(Locale.US)
@@ -1142,6 +1237,34 @@ class MainActivity : FlutterActivity() {
                 )
             }
         }
+        fun enablePhoneInput() {
+            Handler(Looper.getMainLooper()).post {
+                val emailInput = findViewById<EditText>(R.id.email_input)
+                val customKeypad = findViewById<GridLayout>(R.id.custom_keypad)
+
+                if (emailInput == null || customKeypad == null) return@post
+
+                phoneInputUnlocked = true
+
+                emailInput.isEnabled = true
+                emailInput.isFocusable = true
+                emailInput.isFocusableInTouchMode = true
+                emailInput.isClickable = true
+                emailInput.isCursorVisible = true
+                emailInput.showSoftInputOnFocus = false
+                emailInput.requestFocus()
+
+                emailInput.setOnClickListener {
+                    customKeypad.visibility = View.VISIBLE
+                }
+
+                customKeypad.visibility = View.VISIBLE
+
+                Log.d("CustomerDisplay", "Phone input enabled after checkout")
+            }
+        }
+
+
         fun updateCustomerData(
             orderId: Int,
             storeId: String?,
@@ -1158,8 +1281,15 @@ class MainActivity : FlutterActivity() {
             orderTime: String,
             cashbackFee: Double,
             loyaltyContact: String,
+            availablePoints: Int,
             summaryEnabled: Boolean
-        ) {  firstOrderShown = true
+        ) {
+
+            if (isRedeemPopupOpen) {
+                Log.d("CustomerDisplay", "Redeem popup open → skipping UI refresh")
+                return
+            }
+            firstOrderShown = true
             val defaultStoreId = "STORE001"
             val defaultStoreName = "Pinaka"
             val defaultStoreLogoUrl: String? = null
@@ -1178,10 +1308,21 @@ class MainActivity : FlutterActivity() {
             Log.d("CustomerDisplay", "📱 Displaying Customer Contact: $loyaltyContact")
             val showDiscountDetails = summaryEnabled
 
+//            if (!isCustomerLayoutActive && !isRedeemPopupOpen) {
+//                setContentView(R.layout.customer_display_layout)
+//                bindOrderViews()
+//                isCustomerLayoutActive = true
+//            }
+//            setContentView(R.layout.customer_display_layout)
+//            bindOrderViews()
+            if (!::orderIdView.isInitialized) {
+                Log.d("CustomerDisplay", "➡ First time loading customer display layout")
 
-            Log.d("CustomerDisplay", "➡ Showing Customer Display layout")
-            setContentView(R.layout.customer_display_layout)
-            bindOrderViews()
+                setContentView(R.layout.customer_display_layout)
+                bindOrderViews()
+            } else {
+                Log.d("CustomerDisplay", "➡ Reusing existing customer display layout")
+            }
 
             // ================= CUSTOMER INPUT + CUSTOM KEYPAD =================
 // ================= CUSTOMER INPUT + CUSTOM KEYPAD =================
@@ -1195,6 +1336,43 @@ class MainActivity : FlutterActivity() {
                 findViewById<GridLayout>(
                     R.id.custom_keypad
                 )
+            val addButton =
+                findViewById<Button>(R.id.btn_add_customer)
+
+//            add button//
+
+                    addButton.setOnClickListener {
+
+                        val customerValue =
+                            emailInput.text.toString().trim()
+
+                        if (customerValue.isEmpty()) {
+                            Toast.makeText(
+                                context,
+                                "Enter customer number",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@setOnClickListener
+                        }
+
+                        Log.d(
+                            "CustomerDisplay",
+                            "ADD CLICKED: $customerValue"
+                        )
+
+                        showRedeemPopup(customerValue)
+
+                        MethodChannel(
+                            mainActivity.flutterEngine!!
+                                .dartExecutor.binaryMessenger,
+                            "com.example.flutter_customer_display/sunmi_display"
+                        ).invokeMethod(
+                            "customerDisplayRedeemClicked",
+                            mapOf(
+                                "contact" to customerValue
+                            )
+                        )
+
 
 // ✅ Initially hide keypad
             customKeypad.visibility = View.GONE
@@ -1215,24 +1393,21 @@ class MainActivity : FlutterActivity() {
             )
 
 // ✅ Configure EditText
-            emailInput.isFocusable = true
-            emailInput.isFocusableInTouchMode = true
-            emailInput.isClickable = true
-            emailInput.isCursorVisible = true
-
-// ✅ Disable Android keyboard
-            emailInput.showSoftInputOnFocus = false
-
-// ✅ Open keypad only when tapped
-            emailInput.setOnClickListener {
-
-                customKeypad.visibility = View.VISIBLE
-
+            if (!phoneInputUnlocked) {
+                emailInput.isEnabled = false
+                emailInput.isFocusable = false
+                emailInput.isFocusableInTouchMode = false
+                emailInput.isClickable = false
+                emailInput.isCursorVisible = false
+                emailInput.showSoftInputOnFocus = false
+                emailInput.setOnClickListener(null)
+            }
+            }
                 Log.d(
                     "CustomerDisplay",
                     "⌨ Custom keypad opened"
                 )
-            }
+
 
 // ======================================================
 // APPEND FUNCTION
@@ -1282,40 +1457,40 @@ class MainActivity : FlutterActivity() {
 // SPECIAL KEYS
 // ======================================================
 
-            setupKey(R.id.key_at, "@")
-            setupKey(R.id.key_dot, ".")
-            setupKey(R.id.key_space, " ")
+//            setupKey(R.id.key_at, "@")
+//            setupKey(R.id.key_dot, ".")
+//            setupKey(R.id.key_space, " ")
 
 // ======================================================
 // ALPHABET KEYS
 // ======================================================
 
-            setupKey(R.id.key_a, "a")
-            setupKey(R.id.key_b, "b")
-            setupKey(R.id.key_c, "c")
-            setupKey(R.id.key_d, "d")
-            setupKey(R.id.key_e, "e")
-            setupKey(R.id.key_f, "f")
-            setupKey(R.id.key_g, "g")
-            setupKey(R.id.key_h, "h")
-            setupKey(R.id.key_i, "i")
-            setupKey(R.id.key_j, "j")
-            setupKey(R.id.key_k, "k")
-            setupKey(R.id.key_l, "l")
-            setupKey(R.id.key_m, "m")
-            setupKey(R.id.key_n, "n")
-            setupKey(R.id.key_o, "o")
-            setupKey(R.id.key_p, "p")
-            setupKey(R.id.key_q, "q")
-            setupKey(R.id.key_r, "r")
-            setupKey(R.id.key_s, "s")
-            setupKey(R.id.key_t, "t")
-            setupKey(R.id.key_u, "u")
-            setupKey(R.id.key_v, "v")
-            setupKey(R.id.key_w, "w")
-            setupKey(R.id.key_x, "x")
-            setupKey(R.id.key_y, "y")
-            setupKey(R.id.key_z, "z")
+//            setupKey(R.id.key_a, "a")
+//            setupKey(R.id.key_b, "b")
+//            setupKey(R.id.key_c, "c")
+//            setupKey(R.id.key_d, "d")
+//            setupKey(R.id.key_e, "e")
+//            setupKey(R.id.key_f, "f")
+//            setupKey(R.id.key_g, "g")
+//            setupKey(R.id.key_h, "h")
+//            setupKey(R.id.key_i, "i")
+//            setupKey(R.id.key_j, "j")
+//            setupKey(R.id.key_k, "k")
+//            setupKey(R.id.key_l, "l")
+//            setupKey(R.id.key_m, "m")
+//            setupKey(R.id.key_n, "n")
+//            setupKey(R.id.key_o, "o")
+//            setupKey(R.id.key_p, "p")
+//            setupKey(R.id.key_q, "q")
+//            setupKey(R.id.key_r, "r")
+//            setupKey(R.id.key_s, "s")
+//            setupKey(R.id.key_t, "t")
+//            setupKey(R.id.key_u, "u")
+//            setupKey(R.id.key_v, "v")
+//            setupKey(R.id.key_w, "w")
+//            setupKey(R.id.key_x, "x")
+//            setupKey(R.id.key_y, "y")
+//            setupKey(R.id.key_z, "z")
 
 // ======================================================
 // BACKSPACE
@@ -1343,26 +1518,9 @@ class MainActivity : FlutterActivity() {
 // ======================================================
 // DONE BUTTON
 // ======================================================
-
             findViewById<Button>(R.id.key_done)
                 .setOnClickListener {
-
-                    val customerValue =
-                        emailInput.text.toString()
-
-                    Log.d(
-                        "CustomerDisplay",
-                        "✅ Customer entered: $customerValue"
-                    )
-
-                    // ✅ Hide keypad
                     customKeypad.visibility = View.GONE
-
-                    Toast.makeText(
-                        context,
-                        "Customer Added",
-                        Toast.LENGTH_SHORT
-                    ).show()
                 }
             // Update store info
             updateStoreInfo(
@@ -1477,10 +1635,17 @@ class MainActivity : FlutterActivity() {
             // -----------------------------------------------------
             // CASE B: Items exist but tax = 0.0 → hide summary
             // -----------------------------------------------------
+//            summaryContainer.visibility =
+//                if (summaryEnabled) View.VISIBLE else View.GONE
+            if (items.isNotEmpty() || grossTotal > 0.0) {
+                keepSummaryVisible = true
+            }
+
             summaryContainer.visibility =
-                if (summaryEnabled) View.VISIBLE else View.GONE
-
-
+                if (keepSummaryVisible)
+                    View.VISIBLE
+                else
+                    View.GONE
             // -----------------------------------------------------
             // Items exist → Show list
             // -----------------------------------------------------
@@ -1514,7 +1679,6 @@ class MainActivity : FlutterActivity() {
                     (item["original_price"] as? Number)?.toDouble() ?: price
 
 
-
                 val discountValue =
                     (item["auto_discount"] as? Number)?.toDouble() ?: 0.0
 
@@ -1537,8 +1701,6 @@ class MainActivity : FlutterActivity() {
                 val hasDiscount = discountValue > 0
                 val originalTotal = price * qty
                 val discountedTotal = originalTotal - discountValue
-
-
 
 
                 // ✔ SAME CALCULATION
@@ -1806,12 +1968,25 @@ class MainActivity : FlutterActivity() {
             findViewById<TextView>(R.id.label_total_items).text = "Total Items : $totalItemCount"
             grossView.text = formatCurrency(grossTotal)
             discountView.text = formatCurrency(-discount)
+
             findViewById<TextView>(R.id.label_cashback_fee).text = "Cashback Fee"
-            findViewById<TextView>(R.id.value_cashback_fee).text = formatCurrency(cashbackFee)
+            findViewById<TextView>(R.id.value_cashback_fee).text =
+                formatCurrency(cashbackFee)
+
             merchantDiscountView.text = formatCurrency(-merchantDiscount)
             netTotalView.text = formatCurrency(netTotal)
             taxView.text = formatCurrency(tax)
-            netPayableView.text = "Total : ${formatCurrency(netPayable)}"
+
+// keep original total
+            netPayableView.text =
+                "Total : ${formatCurrency(netPayable)}"
+
+// show redeem row separately
+            if (redeemedAmount > 0) {
+                showRedeemSummary(redeemedAmount)
+            } else {
+                findViewById<LinearLayout>(R.id.redeem_row)?.visibility = View.GONE
+            }
             paymentDate.text = orderDate
             paymentTime.text = orderTime
             paymentDate.setTextColor(Color.WHITE)
@@ -1823,12 +1998,110 @@ class MainActivity : FlutterActivity() {
                 "✔ Order #$orderId totals updated, Total Items: $totalItemCount"
             )
         }
+
         private fun dpToPx(dp: Int): Int {
             return (dp * context.resources.displayMetrics.density).toInt()
         }
 
+        fun showRedeemSummary(amount: Double) {
 
+            Log.d("CustomerDisplay", "showRedeemSummary called amount=$amount")
+
+            redeemedAmount = amount
+
+            val summaryContainer =
+                findViewById<LinearLayout>(R.id.summary_container)
+
+            val redeemRow =
+                findViewById<LinearLayout>(R.id.redeem_row)
+
+            val redeemLabel =
+                findViewById<TextView>(R.id.label_redeem_amount)
+
+            val redeemValue =
+                findViewById<TextView>(R.id.value_redeem_amount)
+
+            Log.d("CustomerDisplay", "summaryContainer=$summaryContainer")
+            Log.d("CustomerDisplay", "redeemRow=$redeemRow")
+            Log.d("CustomerDisplay", "redeemLabel=$redeemLabel")
+            Log.d("CustomerDisplay", "redeemValue=$redeemValue")
+
+            summaryContainer?.visibility = View.VISIBLE
+            redeemRow?.visibility = View.VISIBLE
+            redeemLabel?.visibility = View.VISIBLE
+            redeemValue?.visibility = View.VISIBLE
+
+            redeemLabel?.text = "Redeemed Amount"
+            redeemValue?.text = formatCurrency(amount)
+        }
+        fun updateRedeemPopupPoints(points: Int) {
+
+            Handler(Looper.getMainLooper()).post {
+
+                Log.d("CustomerDisplay", "UPDATING POPUP POINTS = $points")
+                Log.d("CustomerDisplay", "redeemPointsTextView = $redeemPointsTextView")
+
+                if (redeemPointsTextView == null) {
+                    Log.e("CustomerDisplay", "TEXTVIEW NULL")
+                    return@post
+                }
+
+                redeemPointsTextView?.text = "Available Points: $points"
+                redeemPointsTextView?.visibility = View.VISIBLE
+                redeemPointsTextView?.invalidate()
+                redeemPointsTextView?.requestLayout()
+
+                Log.d(
+                    "CustomerDisplay",
+                    "TEXT AFTER UPDATE = ${redeemPointsTextView?.text}"
+                )
+            }
+        }
+        fun showRedeemPopup(contact: String) {
+            Handler(Looper.getMainLooper()).post {
+                isRedeemPopupOpen = true
+
+                val root = findViewById<FrameLayout>(android.R.id.content)
+
+                root.findViewWithTag<View>("redeem_popup")?.let {
+                    root.removeView(it)
+                }
+
+                val popupView = LayoutInflater.from(context).inflate(
+                    R.layout.redeem_popup_layout,
+                    root,
+                    false
+                )
+
+                popupView.tag = "redeem_popup"
+
+                redeemPointsTextView =
+                    popupView.findViewById<TextView>(R.id.txt_points)
+
+                redeemPointsTextView?.visibility = View.VISIBLE
+                redeemPointsTextView?.text = "Fetching points..."
+                popupView.findViewById<Button>(R.id.btn_ok)
+                    .setOnClickListener {
+                        isRedeemPopupOpen = false
+
+                        root.removeView(popupView)
+                        redeemPointsTextView = null
+
+                        MethodChannel(
+                            mainActivity.flutterEngine!!
+                                .dartExecutor.binaryMessenger,
+                            "com.example.flutter_customer_display/sunmi_display"
+                        ).invokeMethod(
+                            "customerDisplayPopupClosed",
+                            null
+                        )
+                    }
+                root.addView(popupView)
+            }
+        }
         fun showThankYouLayout() {
+            isCustomerLayoutActive = false
+            isRedeemPopupOpen = false
 
             setContentView(R.layout.thank_you_layout)
 

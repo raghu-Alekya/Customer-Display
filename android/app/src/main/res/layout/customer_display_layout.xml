@@ -559,6 +559,28 @@
                         android:textSize="18sp" />
                 </LinearLayout>
 
+                <LinearLayout
+                    android:id="@+id/redeem_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/label_redeem_amount"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="Redeemed Amount"
+                        android:visibility="gone"/>
+
+                    <TextView
+                        android:id="@+id/value_redeem_amount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:visibility="gone"/>
+                </LinearLayout>
+
                 <!-- Cashback Fee -->
                 <LinearLayout
                     android:id="@+id/row_cashback_fee"
@@ -644,37 +666,6 @@
                 <Button android:id="@+id/key_at" android:text="@"/>
                 <Button android:id="@+id/key_dot" android:text="."/>
 
-                <!-- Alphabets -->
-                <Button android:id="@+id/key_a" android:text="a"/>
-                <Button android:id="@+id/key_b" android:text="b"/>
-                <Button android:id="@+id/key_c" android:text="c"/>
-                <Button android:id="@+id/key_d" android:text="d"/>
-                <Button android:id="@+id/key_e" android:text="e"/>
-                <Button android:id="@+id/key_f" android:text="f"/>
-
-                <Button android:id="@+id/key_g" android:text="g"/>
-                <Button android:id="@+id/key_h" android:text="h"/>
-                <Button android:id="@+id/key_i" android:text="i"/>
-                <Button android:id="@+id/key_j" android:text="j"/>
-                <Button android:id="@+id/key_k" android:text="k"/>
-                <Button android:id="@+id/key_l" android:text="l"/>
-
-                <Button android:id="@+id/key_m" android:text="m"/>
-                <Button android:id="@+id/key_n" android:text="n"/>
-                <Button android:id="@+id/key_o" android:text="o"/>
-                <Button android:id="@+id/key_p" android:text="p"/>
-                <Button android:id="@+id/key_q" android:text="q"/>
-                <Button android:id="@+id/key_r" android:text="r"/>
-
-                <Button android:id="@+id/key_s" android:text="s"/>
-                <Button android:id="@+id/key_t" android:text="t"/>
-                <Button android:id="@+id/key_u" android:text="u"/>
-                <Button android:id="@+id/key_v" android:text="v"/>
-                <Button android:id="@+id/key_w" android:text="w"/>
-                <Button android:id="@+id/key_x" android:text="x"/>
-
-                <Button android:id="@+id/key_y" android:text="y"/>
-                <Button android:id="@+id/key_z" android:text="z"/>
 
                 <!-- Actions -->
                 <Button

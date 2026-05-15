@@ -340,20 +340,22 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
   void _fetchOrders() {
     debugPrint("OrdersScreen: Initiating fetch orders");
+    debugPrint("🚀 Fetch Orders Called");
 
     final String fetchCacheKey = _ordersFetchCacheKey();
-    final searchQuery = _searchController.text.trim();
-    // 🔥 IMPORTANT FIX
-    if (searchQuery.isEmpty) {
-      debugPrint("Search cleared → fetching full list");
-
-      // Optional but recommended: reset paging + local lists
-      _currentPage = 1;
-      _pageOrders = [];
-      _visibleOrders = [];
-      _orders = [];
-    }
-
+    final searchQuery = _searchController.text.trim(); // ✅ NO encoding
+    debugPrint("🔎 Search Query (RAW): $searchQuery");
+    debugPrint("📄 Current Page: $_currentPage");
+    // if (searchQuery.isEmpty || searchQuery == "")  {
+    //   debugPrint("Search cleared → fetching full list");
+    //   debugPrint("🧪 isEmpty check: ${searchQuery.isEmpty}");
+    //   // Optional but recommended: reset paging + local lists
+    //   _currentPage = 1;
+    //   _pageOrders = [];
+    //   _visibleOrders = [];
+    //   _orders = [];
+    // }
+    debugPrint("🔥 FETCH CALLED AT: ${DateTime.now()}");
     _fetchOrdersSubscription?.cancel();
     _loadingDelayTimer?.cancel();
     _loadingDelayTimer = null;
@@ -477,8 +479,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
       userId: selectedUserId,
       startDate: startDateFormatted,
       endDate: endDateFormatted,
-
-      // ✅ ADD THIS
       search: searchQuery,
     );
   }

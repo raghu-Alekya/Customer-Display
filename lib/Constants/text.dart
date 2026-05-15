@@ -298,7 +298,7 @@ class TextConstants {
   static const String endTime = "End Time";
   static const String time = "Time";
   static const String openingAmount = "Opening Amount";
-  static const String totalTransactions = "Total Transactions";
+  static const String totalTransactions = "Total Orders";
   static const String saleAmount = "Sale Amount";
   static const String closingAmount = "Closing Amount";
   static const String vendorPayouts = "Vendor Payouts";

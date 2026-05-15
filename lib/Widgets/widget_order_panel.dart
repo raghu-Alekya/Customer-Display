@@ -8,6 +8,7 @@ import 'package:dotted_line/dotted_line.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/svg.dart';
@@ -106,6 +107,11 @@ class RightOrderPanel extends StatefulWidget {
 
 class _RightOrderPanelState extends State<RightOrderPanel>
     with TickerProviderStateMixin, WidgetsBindingObserver {
+
+  static const MethodChannel customerDisplayChannel =
+  MethodChannel('com.example.flutter_customer_display/sunmi_display');
+
+
   Future<void> _agentDebugLog({
     required String hypothesisId,
     required String location,
@@ -129,6 +135,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         flush: true,
       );
     } catch (_) {}
+  }
+  Future<void> enablePhoneInput() async {
+    try {
+      await customerDisplayChannel.invokeMethod('enablePhoneInput');
+    } catch (e) {
+      print("Enable phone input error: $e");
+    }
   }
 
   List<Map<String, Object>> tabs = []; // List of order tabs
@@ -3898,85 +3911,86 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         children: [
           Column(
             children: [
-              Container(
-                color: themeHelper.themeMode == ThemeMode.dark
-                    ? ThemeNotifier.primaryBackground
-                    : null,
-                padding: const EdgeInsets.fromLTRB(10, 6, 16, 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "All updated discounts will be reflected after checkout.",
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white
-                            : const Color(0xFF1878DE),
+              InkWell(
+                onTap: () async {
+                  await enablePhoneInput();
+                },
+                child: Container(
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.primaryBackground
+                      : null,
+                  padding: const EdgeInsets.fromLTRB(10, 6, 16, 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "All updated discounts will be reflected after checkout.",
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : const Color(0xFF1878DE),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            SvgPicture.asset(
-                              'assets/svg/calendar.svg',
-                              width: 20,
-                              height: 20,
-                              color: Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? Colors.white
-                                  : Colors.black,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              DateFormat(TextConstants.dateFormat)
-                                  .format(DateTime.now()),
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).brightness ==
-                                        Brightness.dark
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              SvgPicture.asset(
+                                'assets/svg/calendar.svg',
+                                width: 20,
+                                height: 20,
+                                color: Theme.of(context).brightness == Brightness.dark
                                     ? Colors.white
                                     : Colors.black,
                               ),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            SvgPicture.asset(
-                              'assets/svg/clock.svg',
-                              width: 20,
-                              height: 20,
-                              color: Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? Colors.white
-                                  : Colors.black,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              DateFormat(TextConstants.timeFormat)
-                                  .format(DateTime.now()),
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).brightness ==
-                                        Brightness.dark
+                              const SizedBox(width: 4),
+                              Text(
+                                DateFormat(TextConstants.dateFormat)
+                                    .format(DateTime.now()),
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.white
+                                      : Colors.black,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Row(
+                            children: [
+                              SvgPicture.asset(
+                                'assets/svg/clock.svg',
+                                width: 20,
+                                height: 20,
+                                color: Theme.of(context).brightness == Brightness.dark
                                     ? Colors.white
                                     : Colors.black,
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
+                              const SizedBox(width: 4),
+                              Text(
+                                DateFormat(TextConstants.timeFormat)
+                                    .format(DateTime.now()),
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.white
+                                      : Colors.black,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
               if (tabs.isNotEmpty)
@@ -6676,11 +6690,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                       child: ElevatedButton(
                         onPressed: (orderItems.isNotEmpty && !_isPayBtnLoading)
                             ? () async {
-                                if (kDebugMode) {
-                                  debugPrint(" CHECK OUT BUTTON CLICKED ");
-                                }
+                          await enablePhoneInput();
 
-                                setState(() => _isPayBtnLoading = true);
+                          if (kDebugMode) {
+                            debugPrint(" CHECK OUT BUTTON CLICKED ");
+                          }
+
+                          setState(() => _isPayBtnLoading = true);
                                 // 🔥 ADD THIS LINE
                                 // await Future.delayed(Duration(milliseconds: 100));
 

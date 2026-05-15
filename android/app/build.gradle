@@ -1,54 +1,9 @@
-//plugins {
-//    id "com.android.application"
-//    id "org.jetbrains.kotlin.android"
-//    id "dev.flutter.flutter-gradle-plugin"
-//}
-//
-//// Force relocation of the build directory to the project root's build folder
-//// This works around cases where the Flutter Gradle plugin fails to redirect it automatically.
-//project.buildDir = "${rootProject.projectDir}/../build/${project.name}"
-//
-//android {
-//    namespace "com.example.flutter_sunmi_customer_display"
-//    compileSdk 35
-//    ndkVersion "26.1.10909125"
-//
-//    compileOptions {
-//        sourceCompatibility JavaVersion.VERSION_11
-//        targetCompatibility JavaVersion.VERSION_11
-//    }
-//
-//    kotlinOptions {
-//        jvmTarget = "11"
-//    }
-//
-//    defaultConfig {
-//        applicationId "com.example.flutter_sunmi_customer_display"
-//        minSdk 23
-//        targetSdk 35
-//        versionCode = flutter.versionCode
-//        versionName = flutter.versionName
-//    }
-//
-//    buildTypes {
-//        release {
-//            signingConfig signingConfigs.debug
-//            minifyEnabled false
-//            shrinkResources false
-//        }
-//    }
-//}
-//
-//flutter {
-//    source "../.."
-//}
-
-
 plugins {
     id "com.android.application"
     id "org.jetbrains.kotlin.android"
     id "dev.flutter.flutter-gradle-plugin"
 }
+
 
 import java.util.Properties
 import java.io.FileInputStream
@@ -76,10 +31,9 @@ android {
 
     defaultConfig {
         applicationId "com.pinaka.pos"
-        minSdkVersion flutter.minSdkVersion
+        minSdkVersion 23
         targetSdk 35
-//        versionCode 3
-//        versionName "1.0.3"
+
 
         versionCode = flutter.versionCode
         versionName = flutter.versionName
