@@ -482,7 +482,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // 🔥 HANDLE ALL INVALID ACTIVE ORDER CASES
     if (activeId != null && !visibleOrderIds.contains(activeId) && _initialRestoreDone) {
       if (kDebugMode) {
-        print("🟥 Active order $activeId is no longer visible → resetting");
+        print("🟥 Active order $activeId is no longer visible in $visibleOrderIds → resetting focus");
       }
 
       if (visibleOrderIds.isNotEmpty) {
@@ -590,158 +590,165 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
-    final int requestId = ++_fetchOrderItemsRequestId;
+  final int requestId = ++_fetchOrderItemsRequestId;
+  await orderHelper.loadData();
 
-    final activeId = orderHelper.activeOrderId;
-    // #region agent log
-    unawaited(_agentDebugLog(
-      hypothesisId: "H3",
-      location: "widget_order_panel.dart:fetchOrderItems:start",
-      message: "fetchOrderItems entry",
-      data: {
-        "activeOrderId": activeId,
-        "tabCount": tabs.length,
-        "hasActiveTab":
-        activeId != null && tabs.any((t) => t['orderId'] == activeId),
-      },
-    ));
-    // #endregion
+  final activeId = orderHelper.activeOrderId;
 
-    if (activeId == null) {
-      if (kDebugMode) {
-        print("⛔ fetchOrderItems — no active order, clearing list");
-      }
-      if (mounted) {
-        setState(() {
-          orderItems.clear();
-          _listVersion++;
-        });
-      }
-      return;
-    }
 
-    // Tabs can lag behind activeOrderId (e.g. while _getOrderTabs runs, or offline-only).
-    // Never clear the cart just because the tab bar has not caught up yet.
-    if (!_tabsContainActiveOrder(activeId)) {
-      if (kDebugMode) {
-        print(
-          "⚠️ fetchOrderItems — active order not in tab bar; still loading by id: $activeId",
-        );
-      }
-    }
+  if (activeId == null) {
+    if (mounted) setState(() => orderItems.clear());
+    return;
+  }
 
+  // #region agent log
+  unawaited(_agentDebugLog(
+    hypothesisId: "H3",
+    location: "widget_order_panel.dart:fetchOrderItems:start",
+    message: "fetchOrderItems entry",
+    data: {
+      "activeOrderId": activeId,
+      "tabCount": tabs.length,
+      "hasActiveTab":
+      activeId != null && tabs.any((t) => t['orderId'] == activeId),
+    },
+  ));
+  // #endregion
+
+  if (activeId == null) {
     if (kDebugMode) {
-      print("##### DEBUG: fetchOrderItems 112233");
+      print("⛔ fetchOrderItems — no active order, clearing list");
     }
-    if (orderHelper.activeOrderId != null) {
-      if (kDebugMode) {
-        print(
-            "##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
-      }
-      try {
-        final int oid = orderHelper.activeOrderId!;
-        // 1️⃣ Prefer offline storage; 2️⃣ SQLite — run both reads in parallel when offline may be empty.
-        final Future<List<Map<String, dynamic>>> offlineFuture =
-        orderHelper.getOrderItemsFromOffline(oid);
-        final Future<List<Map<String, dynamic>>> ordersFuture =
-        orderHelper.getOrderById(oid);
-        final offlineItems = await offlineFuture;
-        if (requestId != _fetchOrderItemsRequestId) return;
-        // #region agent log
-        unawaited(_agentDebugLog(
-          hypothesisId: "H3",
-          location: "widget_order_panel.dart:fetchOrderItems:offlineRead",
-          message: "offline items read",
-          data: {
-            "activeOrderId": orderHelper.activeOrderId,
-            "offlineItemCount": offlineItems.length,
-            "firstItemKeys": offlineItems.isNotEmpty
-                ? offlineItems.first.keys.take(8).toList()
-                : <String>[],
-          },
-        ));
-        // #endregion
-        if (offlineItems.isNotEmpty) {
-          if (kDebugMode) {
-            print(
-                "##### DEBUG: fetchOrderItems - Loaded ${offlineItems.length} items from offline storage");
-          }
-          if (mounted) {
-            setState(() {
-              if (requestId != _fetchOrderItemsRequestId) return;
-              orderItems = List<Map<String, dynamic>>.from(offlineItems);
-              _listVersion++;
-            });
-          }
-          return;
-        }
+    if (mounted) {
+      setState(() {
+        orderItems.clear();
+        _listVersion++;
+      });
+    }
+    return;
+  }
 
-        // 2️⃣ Fallback to SQLite (synced/API orders)
-        var orders = await ordersFuture;
-        if (requestId != _fetchOrderItemsRequestId) return;
-        if (orders.isEmpty) {
-          if (kDebugMode) {
-            print(
-                "##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
-          }
-          await orderHelper.clearPersistedCartSelection();
-          if (mounted) {
-            setState(() {
-              orderItems = []; // Clear items if no order exists
-            });
-          }
-          await _getOrderTabs(); // Refresh tabs to reflect no active order
-          return;
-        }
-
-        var order = orders.first;
-        if (kDebugMode) {
-          print("##### DEBUG: fetchOrderItems - Retrieved ${order.length}");
-          print(
-              "##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
-          print(
-              "##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
-        }
-        List<Map<String, dynamic>> items =
-        await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
-        if (requestId != _fetchOrderItemsRequestId) return;
-        if (kDebugMode) {
-          print(
-              "##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
-        }
-
-        if (mounted) {
-          setState(() {
-            if (requestId != _fetchOrderItemsRequestId) return;
-            orderItems =
-            List<Map<String, dynamic>>.from(items); // Create mutable copy
-            _listVersion++; // Build 1.0.214: Increment version when items change
-          });
-        }
-      } catch (e, s) {
-        if (kDebugMode) {
-          print("##### ERROR: fetchOrderItems failed - $e, Stack: $s");
-        }
-        if (mounted) {
-          setState(() {
-            orderItems = []; // Clear items on error
-          });
-        }
-      }
-    } else {
-      if (kDebugMode) {
-        print("##### DEBUG: fetchOrderItems - No active order, clearing items");
-      }
-      setState(() => _isLoading = false); // Build #1.0.104: Hide loader
-      if (mounted) {
-        setState(() {
-          orderItems = []; // Clear items if no active order
-          _listVersion++; // Build 1.0.214: Increment version when items change
-        });
-      }
+  // Tabs can lag behind activeOrderId (e.g. while _getOrderTabs runs, or offline-only).
+  // Never clear the cart just because the tab bar has not caught up yet.
+  if (!_tabsContainActiveOrder(activeId)) {
+    if (kDebugMode) {
+      print(
+        "⚠️ fetchOrderItems — active order not in tab bar; still loading by id: $activeId",
+      );
     }
   }
 
+  if (kDebugMode) {
+    print("##### DEBUG: fetchOrderItems 112233");
+  }
+  if (orderHelper.activeOrderId != null) {
+    if (kDebugMode) {
+      print(
+          "##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
+    }
+    try {
+      final int oid = orderHelper.activeOrderId!;
+      // 1️⃣ Prefer offline storage; 2️⃣ SQLite — run both reads in parallel when offline may be empty.
+      final Future<List<Map<String, dynamic>>> offlineFuture =
+      orderHelper.getOrderItemsFromOffline(oid);
+      final Future<List<Map<String, dynamic>>> ordersFuture =
+      orderHelper.getOrderById(oid);
+      final offlineItems = await offlineFuture;
+      if (requestId != _fetchOrderItemsRequestId) return;
+      // #region agent log
+      unawaited(_agentDebugLog(
+        hypothesisId: "H3",
+        location: "widget_order_panel.dart:fetchOrderItems:offlineRead",
+        message: "offline items read",
+        data: {
+          "activeOrderId": orderHelper.activeOrderId,
+          "offlineItemCount": offlineItems.length,
+          "firstItemKeys": offlineItems.isNotEmpty
+              ? offlineItems.first.keys.take(8).toList()
+              : <String>[],
+        },
+      ));
+      // #endregion
+      if (offlineItems.isNotEmpty) {
+        if (kDebugMode) {
+          print(
+              "##### DEBUG: fetchOrderItems - Loaded ${offlineItems.length} items from offline storage");
+        }
+        if (mounted) {
+          setState(() {
+            if (requestId != _fetchOrderItemsRequestId) return;
+            orderItems = List<Map<String, dynamic>>.from(offlineItems);
+            _listVersion++;
+          });
+        }
+        return;
+      }
+
+      // 2️⃣ Fallback to SQLite (synced/API orders)
+      var orders = await ordersFuture;
+      if (requestId != _fetchOrderItemsRequestId) return;
+      if (orders.isEmpty) {
+        if (kDebugMode) {
+          print(
+              "##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
+        }
+        await orderHelper.clearPersistedCartSelection();
+        if (mounted) {
+          setState(() {
+            orderItems = []; // Clear items if no order exists
+          });
+        }
+        await _getOrderTabs(); // Refresh tabs to reflect no active order
+        return;
+      }
+
+      var order = orders.first;
+      if (kDebugMode) {
+        print("##### DEBUG: fetchOrderItems - Retrieved ${order.length}");
+        print(
+            "##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
+        print(
+            "##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
+      }
+      List<Map<String, dynamic>> items =
+      await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
+      if (requestId != _fetchOrderItemsRequestId) return;
+      if (kDebugMode) {
+        print(
+            "##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
+      }
+
+      if (mounted) {
+        setState(() {
+          if (requestId != _fetchOrderItemsRequestId) return;
+          orderItems =
+          List<Map<String, dynamic>>.from(items); // Create mutable copy
+          _listVersion++; // Build 1.0.214: Increment version when items change
+        });
+      }
+    } catch (e, s) {
+      if (kDebugMode) {
+        print("##### ERROR: fetchOrderItems failed - $e, Stack: $s");
+      }
+      if (mounted) {
+        setState(() {
+          orderItems = []; // Clear items on error
+        });
+      }
+    }
+  } else {
+    if (kDebugMode) {
+      print("##### DEBUG: fetchOrderItems - No active order, clearing items");
+    }
+    setState(() => _isLoading = false); // Build #1.0.104: Hide loader
+    if (mounted) {
+      setState(() {
+        orderItems = []; // Clear items if no active order
+        _listVersion++; // Build 1.0.214: Increment version when items change
+      });
+    }
+  }
+}
   dynamic _convertToJsonSafe(dynamic value) {
     if (value == null) return null;
 
@@ -1245,43 +1252,76 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     });
   }
 
-  Future<void> _incrementExistingCustomItem(int orderId, String sku) async {
-    final box = StorageProvider.offlineOrders;
-    final raw = await box.get(orderId.toString());
-    if (raw == null) return;
+Future<void> _incrementExistingCustomItem(int orderId, String sku) async {
+  if (kDebugMode) print("🔄 Incrementing custom item: $sku for order $orderId");
 
-    final order = Map<String, dynamic>.from(raw);
-    final products = (order['products'] as List?)
-        ?.map((e) => Map<String, dynamic>.from(e))
-        .toList() ?? [];
-
-    final normalized = sku.toLowerCase().trim();
-
-    for (var item in products) {
-      final type = (item['item_type'] ?? item['type'] ?? '').toString().toLowerCase();
-      final itemSku = (item['sku'] ?? '').toString().toLowerCase().trim();
-
-      if (type.contains('custom') && itemSku == normalized) {
-        final qty = (item['quantity'] ?? item['items_count'] ?? 1) as int;
-        final newQty = qty + 1;
-
-        item['quantity'] = newQty;
-        item['items_count'] = newQty;
-        item['item_sum_price'] = (item['price'] ?? 0.0) * newQty;
-        break;
-      }
-    }
-
-    await box.put(orderId.toString(), order);
-    await orderHelper.loadData();
-    await fetchOrderItems();
-    OrderHelper.notifyOrderPanelToRefresh();
-    widget.refreshOrderList?.call();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Custom Item quantity increased"), backgroundColor: Colors.green),
-    );
+  final box = StorageProvider.offlineOrders;
+  final raw = await box.get(orderId.toString());
+  if (raw == null) {
+    print(" Order not found in offline storage");
+    return;
   }
+
+  final order = Map<String, dynamic>.from(raw);
+  List<dynamic> products = (order['products'] as List?) ?? [];
+
+  // Make deep mutable copy
+  products = products.map((e) => Map<String, dynamic>.from(e)).toList();
+
+  final normalized = sku.toLowerCase().trim();
+  bool updated = false;
+
+  for (var item in products) {
+    final type = (item['item_type'] ?? item['type'] ?? '').toString().toLowerCase();
+    final itemSku = (item['sku'] ?? '').toString().toLowerCase().trim();
+
+    if (type.contains('custom') && itemSku == normalized) {
+      final qty = (item['quantity'] ?? item['items_count'] ?? 1) as int;
+      final newQty = qty + 1;
+
+      item['quantity'] = newQty;
+      item['items_count'] = newQty;
+      item['item_sum_price'] = ((item['price'] ?? item['item_price'] ?? 0.0) as num) * newQty;
+
+      updated = true;
+      if (kDebugMode) print("✅ Incremented custom item to qty: $newQty");
+      break;
+    }
+  }
+
+  if (!updated) {
+    print("⚠️ Custom item not found for increment");
+    return;
+  }
+
+  // Save back to Hive
+  order['products'] = products;
+  await box.put(orderId.toString(), order);
+
+  // Force full refresh
+  await orderHelper.loadData();
+
+  // Critical: Force UI refresh
+  if (mounted) {
+    setState(() {
+      _listVersion++;
+    });
+  }
+
+  await fetchOrderItems(); // This should now pick up the updated Hive data
+
+  OrderHelper.notifyOrderPanelToRefresh();
+  widget.refreshOrderList?.call();
+
+  // if (mounted) {
+  //   ScaffoldMessenger.of(context).showSnackBar(
+  //     const SnackBar(
+  //       content: Text("Custom Item quantity increased"),
+  //       backgroundColor: Colors.green,
+  //     ),
+  //   );
+  // }
+}
 
   Future<void> _handleOrderPanelBarcode(String barcode) async {
     if (ScannerMutex.noOrderBusy) {
