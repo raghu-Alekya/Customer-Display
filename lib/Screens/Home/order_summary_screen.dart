@@ -584,6 +584,148 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return _paymentModeFromMethod(lastMethod ?? selectedPaymentMethod);
   }
 
+  /// NEW helper — extracts all discount amounts from one line item,
+  double _extractTotalDiscountForItem(Map<String, dynamic> item) {
+    double n(dynamic v) =>
+        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+
+    // Every key that has ever carried a discount amount in this codebase:
+    final double auto = n(item['auto_discount']) +
+        n(item['auto_discount_total']) +
+        n(item['autoDiscount']) +
+        n(item['autoDiscountTotal']) +
+        n(item['display_auto_discount']);
+
+    final double combo = n(item['combo_discount_total']) +
+        n(item['comboDiscountTotal']) +
+        n(item['combo_discount']);
+
+    final double mixMatch = n(item['mixmatch_discount_total']) +
+        n(item['mixMatchDiscountTotal']) +
+        n(item['mixmatch_discount']);
+
+    final double multipack = n(item['multipack_discount_total']) +
+        n(item['multipackDiscountTotal']) +
+        n(item['multipack_discount']);
+
+    final double merchant = n(item['merchant_discount']) +
+        n(item['merchantDiscount']) +
+        n(item['item_merchant_discount']);
+
+    // auto_discount regardless of type, so redistribute when needed.
+    final String dtype =
+    (item['discount_type'] ?? '').toString().toLowerCase();
+    double finalAuto = auto;
+    double finalCombo = combo;
+    double finalMix = mixMatch;
+    double finalMulti = multipack;
+
+    if (dtype == 'mixmatch' && auto > 0 && mixMatch == 0) {
+      finalMix = auto;
+      finalAuto = 0;
+    } else if (dtype == 'combo' && auto > 0 && combo == 0) {
+      finalCombo = auto;
+      finalAuto = 0;
+    } else if (dtype == 'multipack' && auto > 0 && multipack == 0) {
+      finalMulti = auto;
+      finalAuto = 0;
+    }
+
+    return finalAuto + finalCombo + finalMix + finalMulti + merchant;
+  }
+
+  Future<void> _recalculateTaxOnDiscountedItems() async {
+    if (orderItems.isEmpty) return;
+
+    double totalTax = 0.0;
+
+    for (final item in orderItems) {
+      // Skip non-product lines (coupons, payouts, cashback, discounts)
+      final String itemType =
+      (item['item_type'] ?? '').toString().toLowerCase();
+      final String itemName =
+      (item['item_name'] ?? '').toString().toLowerCase();
+      if (itemType.contains('discount') ||
+          itemType.contains('coupon') ||
+          itemType.contains('payout') ||
+          itemType.contains('cashback') ||
+          itemType.contains('loyalty') ||
+          itemName.contains('merchant discount')) {
+        continue;
+      }
+
+      final double unitPrice =
+      (item['item_price'] ?? item['price'] ?? 0.0).toDouble();
+      final int qty =
+      (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+      final double lineTotal = unitPrice * qty;
+
+      // ── Use new helper that normalises every discount key variant ──
+      final double totalDiscount = _extractTotalDiscountForItem(item);
+
+      final double taxableBase =
+      (lineTotal - totalDiscount).clamp(0.0, double.infinity);
+
+      // ── Tax rate resolution (try rate first, then amount) ──
+      double itemTaxAmount = 0.0;
+
+      final double taxRate = () {
+        if (item['tax_rate'] != null)
+          return (item['tax_rate'] as num).toDouble() / 100.0;
+        if (item['tax'] != null)
+          return (item['tax'] as num).toDouble() / 100.0;
+        if (item['tax_percent'] != null)
+          return (item['tax_percent'] as num).toDouble() / 100.0;
+        return 0.0;
+      }();
+
+      if (taxRate > 0) {
+        // Best case: rate is present — apply to discounted base
+        itemTaxAmount = taxableBase * taxRate;
+      } else {
+        // Fallback: a pre-computed tax amount is stored; scale it by
+        // the discount ratio so it reflects the new taxable base.
+        final double rawTax =
+        (item['item_tax'] ?? item['tax_amount'] ?? 0.0).toDouble();
+        if (rawTax > 0 && lineTotal > 0) {
+          final double discountRatio = taxableBase / lineTotal;
+          itemTaxAmount = rawTax * discountRatio;
+        }
+      }
+
+      totalTax += itemTaxAmount;
+
+      if (kDebugMode) {
+        print('TAX ITEM: ${item['item_name']} | '
+            'lineTotal=$lineTotal | '
+            'discount=$totalDiscount | '
+            'taxableBase=$taxableBase | '
+            'taxRate=$taxRate | '
+            'itemTax=${itemTaxAmount.toStringAsFixed(4)}');
+      }
+    }
+
+    totalTax = double.parse(totalTax.toStringAsFixed(2));
+
+    if (kDebugMode) {
+      print('── TAX RECALCULATION COMPLETE ──');
+      print('   Gross Total         : $grossTotal');
+      print('   Total Tax (new)     : $totalTax');
+      print('   Net Payable (new)   : '
+          '${(NetTotal + totalTax + cashbackFee).toStringAsFixed(2)}');
+    }
+
+    setState(() {
+      tax = totalTax;
+      NetTotal = grossTotal + discount + merchantDiscount;
+      computedNetPayable = NetTotal + tax + cashbackFee;
+      orderTotal = computedNetPayable;
+      if (tenderAmount <= 0) {
+        balanceAmount = computedNetPayable;
+      }
+    });
+  }
+
   static const bool offline_PAYMENT_SUCCESS = true; // ← toggle this
 
   bool _dialogGuard = false;
@@ -2558,16 +2700,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   @override
   void initState() {
     super.initState();
-    ScannerGuard.isCouponPopupOpen= true;
+    ScannerGuard.isCouponPopupOpen = true;
 
     orderItems = widget.orderItems
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
+
     grossTotal = widget.grossTotal;
-    discount =
-    (widget.orderDiscount != 0) ? -(widget.orderDiscount.abs()) : 0.0;
-    merchantDiscount =
-    (widget.merchantDiscount != 0) ? -(widget.merchantDiscount.abs()) : 0.0;
+    discount = (widget.orderDiscount != 0) ? -(widget.orderDiscount.abs()) : 0.0;
+    merchantDiscount = (widget.merchantDiscount != 0) ? -(widget.merchantDiscount.abs()) : 0.0;
     tax = widget.orderTax;
     orderId = widget.orderId;
     ebtTotal = widget.ebtAmount;
@@ -2577,13 +2718,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     cashbackFee = widget.cashbackFee;
     discountValue = widget.discountAmount;
 
+    // Initial totals calculation
+    NetTotal = grossTotal + discount + merchantDiscount;
+    computedNetPayable = NetTotal + tax + cashbackFee;
+    orderTotal = computedNetPayable;
+
     Future.delayed(Duration.zero, () async {
       final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
+
       if (await box.containsKey(key)) {
         final rawExisting = await box.get(key);
-        final existing =
-        Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+        final existing = Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+
         if (widget.ebtAmount > 0 && existing["originalEbt"] != widget.ebtAmount) {
           existing["originalEbt"] = widget.ebtAmount;
           existing["remainingEbt"] = widget.ebtAmount;
@@ -2594,6 +2741,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final offlineBox = StorageProvider.offlineOrders;
       final orderIdKey = (orderId ?? 0).toString();
+
       if (await offlineBox.containsKey(orderIdKey)) {
         final raw = await offlineBox.get(orderIdKey);
         offlineOrder = raw is Map ? Map<String, dynamic>.from(raw) : null;
@@ -2611,6 +2759,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Map<String, dynamic>.from(offlineOrder!["lastPayment"]),
             );
           }
+
           if (balanceAmount > 0) {
             _currentPaymentRemainingBalance = balanceAmount;
             _lastPaymentDetails = {
@@ -2635,36 +2784,40 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
 
       await _enrichOrderItemsFromHiveProducts();
+      await _recalculateTaxOnDiscountedItems();   // ← Important
 
       if (mounted) setState(() {});
 
       await _calculateBalanceFromPaymentHistory();
       await _printPaymentHistorySummary();
+
       if (_currentPaymentRemainingBalance != null) {
         print("\n ACTIVE PAYMENT SESSION DETECTED");
-        print(
-            "Remaining Balance: \$${_currentPaymentRemainingBalance!.toStringAsFixed(2)}");
+        print("Remaining Balance: \$${_currentPaymentRemainingBalance!.toStringAsFixed(2)}");
       } else {
         print("\n NO ACTIVE PAYMENT SESSION");
-        print(
-            "Starting fresh from balance: \$${balanceAmount.toStringAsFixed(2)}");
+        print("Starting fresh from balance: \$${balanceAmount.toStringAsFixed(2)}");
       }
+
       await retrySyncUnsyncedPayments();
+
+      // 🔥 IMPORTANT: Recalculate tax after discounts
+      // await _recalculateTaxOnDiscountedItems();
     });
 
+    // Second delayed block - keep existing logic
     Future.delayed(Duration.zero, () async {
       if (kDebugMode) {
         print("\n ORDER SUMMARY INITIALIZED");
         print("Order ID: $orderId");
       }
 
-      // Calculate balance from payment history first
       await _calculateBalanceFromPaymentHistory();
-
-      // Print payment history summary
       await _printPaymentHistorySummary();
-
       await retrySyncUnsyncedPayments();
+
+      // Extra safety call
+      await _recalculateTaxOnDiscountedItems();
     });
 
     Future.delayed(Duration.zero, () async {
@@ -2682,8 +2835,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           amountController.text != '${TextConstants.currencySymbol}0.00') {
         final value = '${TextConstants.currencySymbol}0.00';
         amountController.text = value;
-        amountController.selection =
-            TextSelection.collapsed(offset: value.length);
+        amountController.selection = TextSelection.collapsed(offset: value.length);
       }
     });
 
@@ -2694,14 +2846,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (!(await box.containsKey(key))) {
         await _createOfflineOrderEntry(key);
       } else {
-        // Load existing data
         final data = await _loadOfflineOrderData();
         if (data != null) {
-          // Restore state from Hive
           setState(() {
             tenderAmount = (data['tender_amount'] as num?)?.toDouble() ?? 0.0;
-            balanceAmount = (data['remaining_balance'] as num?)?.toDouble() ??
-                computedNetPayable;
+            balanceAmount = (data['remaining_balance'] as num?)?.toDouble() ?? computedNetPayable;
             changeAmount = (data['change_amount'] as num?)?.toDouble() ?? 0.0;
             payByCash = (data['pay_by_cash'] as num?)?.toDouble() ?? 0.0;
             payByCard = (data['pay_by_card'] as num?)?.toDouble() ?? 0.0;
@@ -2718,30 +2867,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final bool isNegativeOrder = widget.grossTotal < 0;
 
     print("🏷 q = $discountValue");
-
     print(" EBT Total in Summary Screen = $ebtTotal");
-
-    // Compute totals
-    NetTotal = grossTotal + discount + merchantDiscount;
-    computedNetPayable = NetTotal + tax + cashbackFee;
-
-    orderTotal = computedNetPayable;
-
     print(" Computed Net Payable (Order Total) = $orderTotal");
-    // Payment restoration is done in Future.delayed above (async storage)
-
-    // Show restored payment state
-    print("💵 Current Payment Breakdown:");
-    print("   → payByCash = $payByCash");
-    print("   → payByOther = $payByOther");
-    print("   → tenderAmount = $tenderAmount");
-    print("   → balanceAmount = $balanceAmount");
 
     // Redeem listener
     mobileController.addListener(() {
       setState(() {
         isMobileValid = RegExp(r'^[0-9]{10}$').hasMatch(mobileController.text);
-
         if (!isMobileValid) {
           isRedeemActive = false;
         }
@@ -2759,25 +2891,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         "\nCashback Fee: $cashbackFee"
         "\nNet Payable: ${widget.netPayable}");
 
-    for (var item in orderItems) {
-      print(jsonEncode(item));
-    }
-
-    print("💵 INITIAL PAYMENT STATE:");
-    print("   payByCash = $payByCash");
-    print("   payByOther = $payByOther");
-    print("   tenderAmount = $tenderAmount");
-    print("   balanceAmount = $balanceAmount");
-    print("   orderTotal = $orderTotal");
-
     if (!isNegativeOrder) {
-      _fetchPaymentsByOrderId(); // sale only
+      _fetchPaymentsByOrderId();
     } else {
-      //  payout → no API, no loading
       setState(() {
         isLoading = false;
         isSummaryLoading = false;
-        balanceAmount = widget.netPayable; // negative
+        balanceAmount = widget.netPayable;
       });
     }
   }

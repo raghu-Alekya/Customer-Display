@@ -189,9 +189,11 @@ class NavigationBar extends StatelessWidget {
                 ? () {}
                 : () async {
               final oh = OrderHelper();
-              if (oh.activeOrderId != null) {
+
+              if (oh.activeOrderId != null && (selectedSidebarIndex == 0 || selectedSidebarIndex == 1 || selectedSidebarIndex == 2)) {
                 await oh.saveLastActiveOrderId(oh.activeOrderId!);
               }
+
               if (!await _canNavigate(0)) return;
               lastSelectedIndex = 0;
               onSidebarItemSelected(0);

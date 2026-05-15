@@ -1592,16 +1592,32 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
     // Fallback: some orders store merchant discount at order-level only
     // (without a dedicated discount line item in orderItems).
+    // if (merchantDiscount == 0) {
+    //   final dynamic rawMerchantDiscount = order[AppDBConst.merchantDiscount] ??
+    //       order['merchantDiscount'] ??
+    //       order['merchant_discount'] ??
+    //       0.0;
+    //   final double orderLevelMerchantDiscount = (rawMerchantDiscount is num)
+    //       ? rawMerchantDiscount.toDouble()
+    //       : (double.tryParse(rawMerchantDiscount.toString()) ?? 0.0);
+    //   if (orderLevelMerchantDiscount != 0) {
+    //     merchantDiscount = -orderLevelMerchantDiscount.abs();
+    //   }
+    // }
+
     if (merchantDiscount == 0) {
-      final dynamic rawMerchantDiscount = order[AppDBConst.merchantDiscount] ??
+      final dynamic rawFallback =
           order['merchantDiscount'] ??
-          order['merchant_discount'] ??
-          0.0;
-      final double orderLevelMerchantDiscount = (rawMerchantDiscount is num)
-          ? rawMerchantDiscount.toDouble()
-          : (double.tryParse(rawMerchantDiscount.toString()) ?? 0.0);
-      if (orderLevelMerchantDiscount != 0) {
-        merchantDiscount = -orderLevelMerchantDiscount.abs();
+              order[AppDBConst.merchantDiscount] ??
+              order['merchant_discount'];
+      if (rawFallback != null) {
+        final double rawVal = (rawFallback is num)
+            ? rawFallback.toDouble()
+            : (double.tryParse(rawFallback.toString()) ?? 0.0);
+        // Accept any non-zero value, no matter how small
+        if (rawVal.abs() > 0) {
+          merchantDiscount = -rawVal.abs();
+        }
       }
     }
 
@@ -1818,7 +1834,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     // Always store as negative for matching formatting standards (-$5.00)
     uiOrderDiscount = (orderDiscount != 0) ? -orderDiscount.abs() : 0.0;
     uiMerchantDiscount =
-        (merchantDiscount != 0) ? -merchantDiscount.abs() : 0.0;
+    (merchantDiscount != 0) ? -merchantDiscount.abs() : 0.0;
     uiOrderTax = orderTax;
     uiNetPayable = netPayable;
     uiCashbackFee = cashbackFee;
@@ -3087,7 +3103,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                             : Colors.grey)),
                                           ],
                                         ),
-                                        if (uiMerchantDiscount != 0)
+                                        if (merchantDiscount > 0.000001)
                                           Row(
                                             mainAxisAlignment:
                                                 MainAxisAlignment.spaceBetween,
@@ -3104,7 +3120,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                 ],
                                               ),
                                               Text(
-                                                "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}",
+                                                "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(6)}",
                                                 style: TextStyle(
                                                     color: Colors.blue,
                                                     fontSize: 14),

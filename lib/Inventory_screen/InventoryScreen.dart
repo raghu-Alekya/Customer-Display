@@ -2289,7 +2289,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                           decoration: BoxDecoration(
                             color: isDark
                                 ? const Color(0xFFDAC14A)
-                                : const Color(0xFFFFFBEB), // ✅ updated color
+                                : const Color(0xFFFFFBEB),
                             borderRadius: const BorderRadius.only(
                               topLeft: Radius.circular(12),
                               topRight: Radius.circular(12),
@@ -2414,26 +2414,38 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                       }),
                                                     ],
                                                     style:
-                                                        priceTextStyle, // ✅ SAME STYLE
+                                                        priceTextStyle,
                                                     decoration: InputDecoration(
                                                       prefixText: '\$ ',
                                                       hintText: '0.00',
-                                                      hintStyle: priceTextStyle
-                                                          .copyWith(
-                                                              color: Colors
-                                                                  .grey), // ✅ FIX
+                                                      hintStyle: priceTextStyle.copyWith(
+                                                        color: Colors.grey,
+                                                      ),
                                                       isDense: true,
                                                       filled: true,
-                                                      fillColor:
-                                                          isPriceStockDisabled
-                                                              ? disabledFill
-                                                              : Colors
-                                                                  .transparent,
-                                                      border:
-                                                          const OutlineInputBorder(),
-                                                      contentPadding:
-                                                          const EdgeInsets
-                                                              .symmetric(
+                                                      fillColor: isPriceStockDisabled
+                                                          ? disabledFill
+                                                          : Colors.transparent,
+
+                                                      // 👇 Border colors
+                                                      enabledBorder: OutlineInputBorder(
+                                                        borderSide: BorderSide(
+                                                          color: Colors.grey,
+                                                        ),
+                                                      ),
+                                                      focusedBorder: OutlineInputBorder(
+                                                        borderSide: BorderSide(
+                                                          color: Colors.grey,
+                                                          width: 1.5,
+                                                        ),
+                                                      ),
+                                                      disabledBorder: OutlineInputBorder(
+                                                        borderSide: BorderSide(
+                                                          color: Colors.grey.shade400,
+                                                        ),
+                                                      ),
+
+                                                      contentPadding: const EdgeInsets.symmetric(
                                                         horizontal: 8,
                                                         vertical: 8,
                                                       ),
@@ -2508,27 +2520,38 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                     decoration: InputDecoration(
                                                       prefixText: '\$ ',
                                                       hintText: '0.00',
-                                                      hintStyle: priceTextStyle
-                                                          .copyWith(
-                                                              color: Colors
-                                                                  .grey), // ✅ FIX
-                                                      filled: true,
+                                                      hintStyle: priceTextStyle.copyWith(
+                                                        color: Colors.grey,
+                                                      ),
                                                       isDense: true,
-                                                      fillColor:
-                                                          isPriceStockDisabled
-                                                              ? disabledFill
-                                                              : Colors
-                                                                  .transparent,
-                                                      border:
-                                                          const OutlineInputBorder(),
-                                                      contentPadding:
-                                                          const EdgeInsets
-                                                              .symmetric(
+                                                      filled: true,
+                                                      fillColor: isPriceStockDisabled
+                                                          ? disabledFill
+                                                          : Colors.transparent,
+
+                                                      // 👇 Border colors
+                                                      enabledBorder: OutlineInputBorder(
+                                                        borderSide: BorderSide(
+                                                          color: Colors.grey,
+                                                        ),
+                                                      ),
+                                                      focusedBorder: OutlineInputBorder(
+                                                        borderSide: BorderSide(
+                                                          color: Colors.grey,
+                                                          width: 1.5,
+                                                        ),
+                                                      ),
+                                                      disabledBorder: OutlineInputBorder(
+                                                        borderSide: BorderSide(
+                                                          color: Colors.grey.shade400,
+                                                        ),
+                                                      ),
+
+                                                      contentPadding: const EdgeInsets.symmetric(
                                                         horizontal: 8,
                                                         vertical: 8,
                                                       ),
-                                                    ),
-                                                  ),
+                                                    ),                                                  ),
                                                 ),
                                               ],
                                             ),
@@ -2635,7 +2658,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                           enabled: !isPriceStockDisabledStock,
                                           keyboardType: TextInputType.number,
 
-                                          // ✅ LEFT ALIGN TEXT
+                                          //  LEFT ALIGN TEXT
                                           textAlign: TextAlign.left,
 
                                           style: TextStyle(
@@ -3642,10 +3665,37 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                         fillColor: isDark
                                                             ? const Color(0xFF252837)
                                                             : const Color(0xFFF8F9FA),
+
                                                         border: OutlineInputBorder(
-                                                            borderRadius: BorderRadius.circular(6)),
+                                                          borderRadius: BorderRadius.circular(6),
+                                                        ),
+
+                                                        enabledBorder: OutlineInputBorder(
+                                                          borderRadius: BorderRadius.circular(6),
+                                                          borderSide: const BorderSide(
+                                                            color: Colors.grey,
+                                                          ),
+                                                        ),
+
+                                                        focusedBorder: OutlineInputBorder(
+                                                          borderRadius: BorderRadius.circular(6),
+                                                          borderSide: const BorderSide(
+                                                            color: Colors.grey,
+                                                            width: 1.5,
+                                                          ),
+                                                        ),
+
+                                                        disabledBorder: OutlineInputBorder(
+                                                          borderRadius: BorderRadius.circular(6),
+                                                          borderSide: BorderSide(
+                                                            color: Colors.grey.shade400,
+                                                          ),
+                                                        ),
+
                                                         contentPadding: const EdgeInsets.symmetric(
-                                                            horizontal: 12, vertical: 0),
+                                                          horizontal: 12,
+                                                          vertical: 0,
+                                                        ),
                                                       ),
                                                       style: const TextStyle(fontSize: 14),
                                                     ),
@@ -4290,9 +4340,40 @@ class _InventoryScreenState extends State<InventoryScreen>
                                             decoration: InputDecoration(
                                               hintText: '0',
                                               filled: true,
-                                              fillColor: isDark ? const Color(0xFF252837) : const Color(0xFFF8F9FA),
-                                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                                              fillColor: isDark
+                                                  ? const Color(0xFF252837)
+                                                  : const Color(0xFFF8F9FA),
+
+                                              border: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+
+                                              enabledBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(6),
+                                                borderSide: const BorderSide(
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+
+                                              focusedBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(6),
+                                                borderSide: const BorderSide(
+                                                  color: Colors.grey,
+                                                  width: 1.5,
+                                                ),
+                                              ),
+
+                                              disabledBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(6),
+                                                borderSide: BorderSide(
+                                                  color: Colors.grey.shade400,
+                                                ),
+                                              ),
+
+                                              contentPadding: const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 0,
+                                              ),
                                             ),
                                             style: const TextStyle(fontSize: 14),
                                           ),
@@ -4337,12 +4418,42 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               }),
                                             ],
                                             decoration: InputDecoration(
-                                              prefixText: '\$ ',
                                               hintText: '0.00',
                                               filled: true,
-                                              fillColor: isDark ? const Color(0xFF252837) : const Color(0xFFF8F9FA),
-                                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                                              fillColor: isDark
+                                                  ? const Color(0xFF252837)
+                                                  : const Color(0xFFF8F9FA),
+
+                                              border: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+
+                                              enabledBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(6),
+                                                borderSide: const BorderSide(
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+
+                                              focusedBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(6),
+                                                borderSide: const BorderSide(
+                                                  color: Colors.grey,
+                                                  width: 1.5,
+                                                ),
+                                              ),
+
+                                              disabledBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(6),
+                                                borderSide: BorderSide(
+                                                  color: Colors.grey.shade400,
+                                                ),
+                                              ),
+
+                                              contentPadding: const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 0,
+                                              ),
                                             ),
                                             style: TextStyle(
                                               fontSize: 12,
@@ -4387,12 +4498,42 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               }),
                                             ],
                                             decoration: InputDecoration(
-                                              prefixText: '\$ ',
                                               hintText: '0.00',
                                               filled: true,
-                                              fillColor: isDark ? const Color(0xFF252837) : const Color(0xFFF8F9FA),
-                                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                                              fillColor: isDark
+                                                  ? const Color(0xFF252837)
+                                                  : const Color(0xFFF8F9FA),
+
+                                              border: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+
+                                              enabledBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(6),
+                                                borderSide: const BorderSide(
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+
+                                              focusedBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(6),
+                                                borderSide: const BorderSide(
+                                                  color: Colors.grey,
+                                                  width: 1.5,
+                                                ),
+                                              ),
+
+                                              disabledBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(6),
+                                                borderSide: BorderSide(
+                                                  color: Colors.grey.shade400,
+                                                ),
+                                              ),
+
+                                              contentPadding: const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 0,
+                                              ),
                                             ),
                                             style: TextStyle(
                                               fontSize: 12,

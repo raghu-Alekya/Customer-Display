@@ -144,7 +144,6 @@ class CategoryBarWithAllButton extends StatelessWidget {
                 onTap: onAllTapped,
               ),
 
-              // ── Recent chips — shown ALWAYS when list has items ───────────
               if (recentCategories.isNotEmpty) ...[
                 const SizedBox(width: 6),
                 Container(
@@ -1909,15 +1908,16 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   final Set<String> _hiddenCategoryNames = {
     "promotions",
     "uncategorized",
-    "default"
+    "default",
+    "custom product",
   };
 
-  List<CategoryModel> get visibleCategories {
-    return categories.where((c) {
-      final name = c.name.toLowerCase().trim();
-      return !_hiddenCategoryNames.contains(name);
-    }).toList();
-  }
+  // List<CategoryModel> get visibleCategories {
+  //   return categories.where((c) {
+  //     final name = c.name.toLowerCase().trim();
+  //     return !_hiddenCategoryNames.contains(name);
+  //   }).toList();
+  // }
 
   void _hideAutoLoadingDialog() {
     if (Navigator.of(context, rootNavigator: true).canPop()) {
@@ -2654,9 +2654,29 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     await prefs.setInt('lastSelectedCategoryIndex', index);
   }
 
+  bool _shouldHideCategory(CategoryModel category) {
+    final String name = category.name.toLowerCase().trim();
+    final String slug = (category.slug ?? '').toLowerCase().trim();
+
+    if (_hiddenCategoryNames.contains(name)) return true;
+    if (slug == 'custom-product') return true;
+
+    return false;
+  }
+
+  List<CategoryModel> get visibleCategories {
+    return categories.where((c) => !_shouldHideCategory(c)).toList();
+  }
+
   void _addToRecent(CategoryModel category) {
+    // Do NOT add hidden categories to recent list
+    if (_shouldHideCategory(category)) {
+      return;
+    }
+
     _recentCategories.removeWhere((c) => c.id == category.id);
     _recentCategories.insert(0, category);
+
     if (_recentCategories.length > _maxRecentCategories) {
       _recentCategories.removeRange(
           _maxRecentCategories, _recentCategories.length);

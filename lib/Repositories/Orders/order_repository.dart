@@ -890,26 +890,133 @@ class OrderRepository {
             .toString()
             .toLowerCase();
 
-        // 🔥🔥 CUSTOM ITEM SPECIAL HANDLING - Exact format requested
-        if (itemType.contains('custom')) {
-          final String name = item[AppDBConst.itemName] ?? item['name'] ?? "Custom Item";
-          final int qty = (item['quantity'] ?? item[AppDBConst.itemCount] ?? 1) as int;
-          final double itemTotal = (item[AppDBConst.itemSumPrice] ??
-              item['price'] ?? 0.0) as double;
 
-          lineItems.add({
+
+        if (itemType.contains('custom')) {
+          final String name =
+              item[AppDBConst.itemName] ?? item['name'] ?? "Custom Item";
+
+          final int qty =
+          (item['quantity'] ?? item[AppDBConst.itemCount] ?? 1) as int;
+
+          final double price =
+          (item['price'] ?? item[AppDBConst.itemPrice] ?? 0.0) as double;
+
+          final double total = price * qty;
+
+          final dynamic pidRaw = item['product_id'] ??
+              item['selectedProductId'] ??
+              item['server_item_id'] ??
+              item['id'];
+
+          final int? productId =
+          pidRaw != null ? int.tryParse(pidRaw.toString()) : null;
+
+          final int finalProductId = productId ?? 60303;
+
+          final String sku = item['sku']?.toString() ?? '';
+
+          //  Get stored tax slug directly
+          final String taxClass = (
+                  item['pos_tax_class'] ??
+                  ''
+          ).toString();
+
+          final Map<String, dynamic> customLineItem = {
+            "product_id": finalProductId,
             "name": name,
             "quantity": qty,
-            "subtotal": itemTotal.toStringAsFixed(2),
-            "total": itemTotal.toStringAsFixed(2),
-            "tax_class": item['tax_class'] ?? "grocery",
-            "tax_status": item['tax_status'] ?? "taxable",
-            "type": "custom",
-          });
+            "subtotal": total.toStringAsFixed(2),
+            "total": total.toStringAsFixed(2),
 
-          debugPrint("✅ Custom Item Sent in Payload → $name");
-          continue; // Skip normal product logic
+            //  SEND EXACTLY LIKE API FORMAT
+            "tax_class": taxClass,
+
+            "type": "custom",
+          };
+
+          if (sku.isNotEmpty) {
+            customLineItem["sku"] = sku;
+          }
+
+          lineItems.add(customLineItem);
+          continue;
         }
+
+
+        // if (itemType.contains('custom')) {
+        //
+        //   final String name =
+        //       item[AppDBConst.itemName] ??
+        //           item['name'] ??
+        //           "Custom Item";
+        //
+        //   final int qty =
+        //   (item['quantity'] ??
+        //       item[AppDBConst.itemCount] ??
+        //       1) as int;
+        //
+        //   final double price =
+        //   ((item['price'] ??
+        //       item[AppDBConst.itemPrice] ??
+        //       0.0) as num).toDouble();
+        //
+        //   final double total = price * qty;
+        //
+        //   final dynamic pidRaw =
+        //       item['product_id'] ??
+        //           item['selectedProductId'] ??
+        //           item['server_item_id'] ??
+        //           item['id'];
+        //
+        //   final int? productId =
+        //   pidRaw != null
+        //       ? int.tryParse(pidRaw.toString())
+        //       : null;
+        //
+        //   final int finalProductId = productId ?? 60303;
+        //
+        //   final String sku =
+        //       item['sku']?.toString() ?? '';
+        //
+        //   // RAW TAX CLASS FROM DB
+        //   final String rawTaxClass =
+        //   (item['pos_tax_class'] ?? '')
+        //       .toString()
+        //       .trim()
+        //       .toLowerCase();
+        //
+        //   // NORMALIZE FOR WOOCOMMERCE
+        //   String normalizedTaxClass = rawTaxClass;
+        //
+        //   // WooCommerce standard class = EMPTY STRING
+        //   if (rawTaxClass == 'standard') {
+        //     normalizedTaxClass = '';
+        //   }
+        //
+        //   final Map<String, dynamic> customLineItem = {
+        //     "product_id": finalProductId,
+        //     "name": name,
+        //     "quantity": qty,
+        //     "subtotal": total.toStringAsFixed(2),
+        //     "total": total.toStringAsFixed(2),
+        //     "tax_status": "taxable",
+        //     "type": "custom",
+        //   };
+        //
+        //   // ONLY SEND tax_class IF NOT EMPTY
+        //   if (normalizedTaxClass.isNotEmpty) {
+        //     customLineItem["tax_class"] =
+        //         normalizedTaxClass;
+        //   }
+        //
+        //   if (sku.isNotEmpty) {
+        //     customLineItem["sku"] = sku;
+        //   }
+        //
+        //   lineItems.add(customLineItem);
+        //   continue;
+        // }
 
         // ---------------------------------------------------------
         // 🔍 DETECT PRODUCT ID FIRST (Normal Product Path)
@@ -3071,6 +3178,7 @@ class OrderRepository {
         if (pid == null || pid == 0) {
           // 🔹 CUSTOM ITEM
           lineItems.add({
+            item["id"] ??
             "name": item["name"] ?? "Custom Item",
             "quantity": qty,
             "price": price.toStringAsFixed(2),
@@ -3205,7 +3313,7 @@ class OrderRepository {
     final List<String> deletedSkus = [];
 
     debugPrint(
-      "📤 DELETE SYNC PAYLOAD:\n${JsonEncoder.withIndent('  ').convert(body)}",
+      " DELETE SYNC PAYLOAD:\n${JsonEncoder.withIndent('  ').convert(body)}",
       wrapWidth: 9000,
     );
 
@@ -3219,12 +3327,12 @@ class OrderRepository {
       final int? wooOrderId = result?["order_id"];
 
       if (wooOrderId != null) {
-        // 🔥 CLEAN LOCAL PRODUCT CACHE
+        //  CLEAN LOCAL PRODUCT CACHE
         for (final sku in deletedSkus) {
           await _deleteProductLocally(sku);
         }
 
-        print("🧹 All deleted products removed from local cache");
+        print(" All deleted products removed from local cache");
       }
 
       return {
@@ -3232,7 +3340,7 @@ class OrderRepository {
         "wooOrderId": wooOrderId,
       };
     } catch (e) {
-      print("❌ Delete Sync Error: $e");
+      print("Delete Sync Error: $e");
       return {
         "success": false,
         "wooOrderId": null,
@@ -3248,7 +3356,7 @@ class OrderRepository {
       final response = raw is String ? jsonDecode(raw) : raw;
 
       if (kDebugMode) {
-        print("🧾 Tax API Response: $response");
+        print(" Tax API Response: $response");
       }
 
       if (response["success"] == true) {
@@ -3258,7 +3366,7 @@ class OrderRepository {
 
       return [];
     } catch (e) {
-      print("❌ Error fetching taxes: $e");
+      print(" Error fetching taxes: $e");
       return [];
     }
   }

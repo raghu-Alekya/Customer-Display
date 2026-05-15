@@ -3200,19 +3200,36 @@ class OrderHelper {
   static Map<String, dynamic> buildLineItemForApi(Map<String, dynamic> item) {
     final String itemType = (item[AppDBConst.itemType] ?? item['type'] ?? '').toString().toLowerCase();
 
-    // === CUSTOM ITEM PAYLOAD ===
     if (itemType.contains('custom')) {
-      return {
-        "name": item[AppDBConst.itemName] ?? item['name'] ?? "Custom Item",
-        "quantity": item['quantity'] ?? item[AppDBConst.itemCount] ?? 1,
-        "subtotal": (item[AppDBConst.itemSumPrice] ?? item['price'] ?? 0.0).toStringAsFixed(2),
-        "total": (item[AppDBConst.itemSumPrice] ?? item['price'] ?? 0.0).toStringAsFixed(2),
-        "tax_class": item['tax_class'] ?? "grocery",
-        "tax_status": item['tax_status'] ?? "taxable",
+      final int productId = int.tryParse(
+          item['product_id']?.toString() ?? item[AppDBConst.itemProductId]?.toString() ?? '0'
+      ) ?? 60303;
+
+      final String taxStatus = (item['tax_status']?.toString() ?? 'none').toLowerCase();
+
+      final String name = item[AppDBConst.itemName] ?? item['name'] ?? "Custom Item";
+      final int quantity = item['quantity'] ?? item[AppDBConst.itemCount] ?? 1;
+      final double sumPrice = (item[AppDBConst.itemSumPrice] ?? item['price'] ?? 0.0).toDouble();
+
+      final Map<String, dynamic> line = {
+        "product_id": productId,
+        "name": name,
+        "quantity": quantity,
+        "subtotal": sumPrice.toStringAsFixed(2),
+        "total": sumPrice.toStringAsFixed(2),
+        "tax_status": taxStatus,
+        "type": "custom",
       };
+
+      final String sku = item['sku']?.toString() ?? '';
+      if (sku.isNotEmpty) {
+        line["sku"] = sku;
+      }
+
+      return line;
     }
 
-    // === NORMAL PRODUCT (Old code remains untouched) ===
+    // Normal product (unchanged)
     return {
       "product_id": item['product_id'] ?? item[AppDBConst.itemProductId],
       "quantity": item['quantity'] ?? item[AppDBConst.itemCount] ?? 1,
@@ -3220,8 +3237,8 @@ class OrderHelper {
       "subtotal": (item[AppDBConst.itemSumPrice] ?? item['price'] ?? 0.0).toStringAsFixed(2),
       "name": item[AppDBConst.itemName] ?? item['name'],
       "meta_data": item['meta_data'] ?? [],
-      // ... add any other fields you already have
     };
   }
+
 
 }

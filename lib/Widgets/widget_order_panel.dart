@@ -291,7 +291,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
 
     //  Ignore floating point noise
-    return result < 0.01 ? 0.0 : result;
+    return result < 1e-6 ? 0.0 : result;
+
   }
 
   // Build #1.0.104: created this function for initial call & while back to this screen
@@ -3010,13 +3011,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final Map<String, dynamic> offlineOrder =
     Map<String, dynamic>.from(rawOfflineOrder);
 
-    // ============================
-    // 🛑 CHECK: LAST ITEM + MERCHANT DISCOUNT
-    // ============================
-
-    // ============================
-// 🛑 CHECK: MERCHANT DISCOUNT WHEN DELETING ITEMS
-// ============================
     double productsTotal =
     ((offlineOrder['products'] as List?) ?? []).fold(0.0, (sum, p) {
       final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
@@ -6108,8 +6102,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               ],
                             ),
                             SizedBox(height: 2),
-// Show merchant discount if any meaningful discount is applied
-                            if (merchantDiscount > 0.000000)
+            // Show merchant discount if any meaningful discount is applied
+                            if (merchantDiscount > 0.000001)
                               Row(
                                 mainAxisAlignment:
                                 MainAxisAlignment.spaceBetween,
@@ -6126,9 +6120,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,
                                           )),
-                                      merchantDiscount
-                                          .toStringAsFixed(2) ==
-                                          '0.00'
+                                      merchantDiscount <= 0.000001
                                           ? SizedBox()
                                           : GestureDetector(
                                         onTap: () async {
