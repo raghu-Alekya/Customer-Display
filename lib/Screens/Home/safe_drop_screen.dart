@@ -190,37 +190,6 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
       });
     });
   }
-  bool _hasEnteredValues() {
-    return _denomControllers.values.any((controller) {
-      final value = double.tryParse(controller.text) ?? 0;
-      return value > 0;
-    });
-  }
-  Future<bool> _handleBack() async {
-    if (_hasEnteredValues()) {
-      bool shouldProceed = false;
-
-      await CustomDialog.showAreYouSure(
-        context,
-        description: "You have entered cash values. Do you want to discard and go back?",
-        confirmText: "Yes, Confirm",
-        cancelText: "No, Keep it",
-        confirm: () {
-          shouldProceed = true;
-          Navigator.of(context).pop();
-        },
-      );
-
-      if (shouldProceed) {
-        Navigator.of(context).maybePop(); // for back button
-      }
-
-      return shouldProceed;
-    } else {
-      Navigator.of(context).maybePop();
-      return true;
-    }
-  }
 
   //Build #1.0.74, Added: Fetch safe denominations from AssetDBHelper
   Future<void> _fetchSafeDenominations() async {
@@ -255,7 +224,37 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
     _safeDropBloc.dispose();
     super.dispose();
   }
+  bool _hasEnteredValues() {
+    return _denomControllers.values.any((controller) {
+      final value = double.tryParse(controller.text) ?? 0;
+      return value > 0;
+    });
+  }
+  Future<bool> _handleBack() async {
+    if (_hasEnteredValues()) {
+      bool shouldProceed = false;
 
+      await CustomDialog.showAreYouSure(
+        context,
+        description: "You have entered cash values. Do you want to discard and go back?",
+        confirmText: "Yes, Confirm",
+        cancelText: "No, Keep it",
+        confirm: () {
+          shouldProceed = true;
+          Navigator.of(context).pop();
+        },
+      );
+
+      if (shouldProceed) {
+        Navigator.of(context).maybePop(); // for back button
+      }
+
+      return shouldProceed;
+    } else {
+      Navigator.of(context).maybePop();
+      return true;
+    }
+  }
   // Modified: Calculate totals based on dynamic denominations
   void _calculateTotals() {
     int notes = 0;
@@ -947,7 +946,8 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
                                   children: [
                                     /// Back button on top-left
                                     InkWell(
-                                      onTap: _handleBack,
+                                      onTap: () =>
+                                          Navigator.of(context).pop(),
                                       child: Container(
                                         padding:
                                         const EdgeInsets.symmetric(
@@ -1150,11 +1150,15 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
                           : const Color(0xFFF3F2F2),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
+                        borderSide: _activeController == controller
+                            ? const BorderSide(color: Colors.grey, width: 2)
+                            : BorderSide.none,
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
+                        borderSide: _activeController == controller
+                            ? const BorderSide(color: Colors.grey, width: 2)
+                            : BorderSide.none,
                       ),
                     ),
                     style: const TextStyle(

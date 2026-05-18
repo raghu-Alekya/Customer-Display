@@ -8968,98 +8968,80 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     try {
       final box = StorageProvider.offlineOrders;
 
-      final String orderKey =
-          widget.orderId?.toString() ?? widget.offlineOrderId?.toString() ?? "";
+      final String orderKey = widget.orderId?.toString() ??
+          widget.offlineOrderId?.toString() ??
+          orderId?.toString() ??
+          "";
 
       if (orderKey.isEmpty) return;
 
       final rawOrder = await box.get(orderKey);
-      final offlineOrder = Map<String, dynamic>.from(
-        rawOrder is Map ? rawOrder : {},
-      );
+      if (rawOrder == null) return;
 
-      if (offlineOrder.isEmpty) return;
+      final offlineOrder = Map<String, dynamic>.from(rawOrder);
 
       setState(() => isSummaryLoading = true);
 
-      // 🔥 CLEAR COUPON BEFORE SYNC
-      offlineOrder["coupon_response"] = {"coupons": []};
+      // ✅ CRITICAL: Fully clear coupon data
+      offlineOrder.remove("coupon_response");
+      offlineOrder.remove("applied_coupons");
+      offlineOrder.remove("coupon_applied");
+      offlineOrder.remove("orderDiscount");
+      offlineOrder.remove("tax_discount");
+      offlineOrder.remove("grand_total");
+
+      // Re-initialize clean coupon_response with only issued coupons (if any)
+      offlineOrder["coupon_response"] = {
+        "coupons": [], // Start fresh
+        "available_coupons": [],
+      };
 
       await box.put(orderKey, offlineOrder);
 
-      // 🔥 CALL SAME SYNC METHOD
-      final result =
-      await OrderRepository().syncSingleOfflineOrder(offlineOrder);
-
-      if (result == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Unable to remove coupon"),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-      final List couponLines = result["coupon_lines"] ?? [];
-
-      double newDiscount;
-      double newTax;
-      double newTotal;
-      if (couponLines.isEmpty) {
-        print("🟡 No coupons → force discount 0");
-        newDiscount = 0.0;
-      } else {
-        newDiscount =
-            double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
-      }
-      newTax = getAdjustedSummaryTax();
-      newTotal = double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
-
-      offlineOrder["orderDiscount"] = couponLines.isEmpty ? 0.0 : newDiscount;
-      offlineOrder["tax_discount"] = newTax;
-      offlineOrder["grand_total"] = newTotal;
-      offlineOrder["coupon_applied"] = false;
-      offlineOrder["applied_coupons"] = [];
-      offlineOrder["coupon_response"] = {"coupons": []};
-      await box.put(orderKey, offlineOrder);
-
-      await CustomerDisplayHelper.updateCustomerDisplay(
-        int.tryParse(orderKey) ?? 0,
-        summaryEnabled: true,
-      );
-
+      // Reset local state
       setState(() {
-        discount = newDiscount; // should become 0
-        tax = newTax;
-
-
-        NetTotal = grossTotal + discount + merchantDiscount;
+        discount = 0.0;
+        discountValue = 0.0;
+        couponDiscount = 0.0;
+        tax = widget.orderTax; // restore original tax
+        NetTotal = grossTotal + merchantDiscount;
         computedNetPayable = NetTotal + tax + cashbackFee;
-
-        orderTotal = newTotal;
-        balanceAmount = newTotal - tenderAmount;
-
+        orderTotal = computedNetPayable;
+        balanceAmount = computedNetPayable - tenderAmount;
         isCouponAppliedFromApi = false;
       });
 
-      print("🗑 Coupon Removed");
-      print("➡ Discount: $newDiscount");
-      print("➡ Tax: $newTax");
-      print("➡ Total: $newTotal");
+      // Optional: Sync to server to remove coupon from Woo side
+      try {
+        await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+      } catch (e) {
+        print("⚠️ Sync after coupon removal failed (but local clear succeeded): $e");
+      }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Coupon removed successfully"),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Coupon removed successfully"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+
+      print("🗑️ Coupon fully removed and cleaned from Hive for order: $orderKey");
     } catch (e) {
-      print("❌ Remove coupon error: $e");
+      print("❌ Error removing coupon: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Failed to remove coupon: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       setState(() => isSummaryLoading = false);
     }
   }
-
   void _openCouponPopup() {
     ScannerGuard.isCouponPopupOpen = true;
 
@@ -9241,29 +9223,53 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Future<void> _applyCoupon(String code) async {
-    code = code.trim();
+    code = code.trim().toLowerCase(); // Normalize for comparison
     if (code.isEmpty) return;
 
     try {
       final box = StorageProvider.offlineOrders;
       final String orderKey = widget.orderId?.toString() ??
-          widget.offlineOrderId?.toString() ?? "";
+          widget.offlineOrderId?.toString() ??
+          orderId?.toString() ??
+          "";
 
       if (orderKey.isEmpty) return;
 
       final rawOrder = await box.get(orderKey);
-      Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(
-        rawOrder is Map ? rawOrder : {},
-      );
+      if (rawOrder == null) return;
 
-      if (offlineOrder.isEmpty) return;
+      Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(rawOrder);
 
       setState(() => isSummaryLoading = true);
 
-      // ✅ BACKUP original coupon_response BEFORE any modification
+      // === STRICT DUPLICATE CHECK ===
+      final dynamic cr = offlineOrder["coupon_response"];
+      if (cr is Map) {
+        final List<dynamic> coupons = cr["coupons"] as List? ?? [];
+
+        for (final dynamic item in coupons) {
+          if (item is Map) {
+            final Map<String, dynamic> couponMap = Map<String, dynamic>.from(item);
+            final String existingCode = (couponMap["code"]?.toString() ?? "").trim().toLowerCase();
+
+            if (existingCode == code) {
+              // Coupon is currently active
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Coupon already applied"),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+          }
+        }
+      }
+
+      // Backup before modification
       final dynamic originalCouponResponse = offlineOrder["coupon_response"];
 
-      // === 1. Merge only the new redeem coupon ===
+      // Add new redeem coupon
       offlineOrder["coupon_response"] =
           _mergeRedeemIntoCouponResponse(offlineOrder["coupon_response"], code);
 
@@ -9276,17 +9282,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       await box.put(orderKey, offlineOrder);
 
-      // === 2. Try sync with server ===
+      // Sync to server
       final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
 
       if (result == null || result is! Map<String, dynamic>) {
-        // ✅ RESTORE original coupon_response on failure
+        // Restore on failure
         offlineOrder["coupon_response"] = originalCouponResponse;
         await box.put(orderKey, offlineOrder);
 
         String errorMsg = "Invalid coupon or unable to apply";
-        if (result is Map && result?['code'] == 'invalid_coupon') {
-          errorMsg = result?['message'] ?? errorMsg;
+        if (result is Map<String, dynamic>) {
+          if (result['code'] == 'invalid_coupon') {
+            errorMsg = result['message']?.toString() ?? errorMsg;
+          }
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -9295,7 +9303,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return;
       }
 
-      // === 3. Success ===
+      // === SUCCESS ===
       final double newDiscount = double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
       final double newTax = double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
       final double newTotal = double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
@@ -9304,7 +9312,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       offlineOrder["tax_discount"] = newTax;
       offlineOrder["grand_total"] = newTotal;
       offlineOrder["coupon_applied"] = true;
-      offlineOrder["applied_coupons"] = [{"code": code, "amount": newDiscount}];
+      offlineOrder["applied_coupons"] = [{"code": code.toUpperCase(), "amount": newDiscount}];
 
       if (result.containsKey("id")) {
         offlineOrder["wooOrderId"] = result["id"];
@@ -9337,20 +9345,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     } catch (e) {
       print("❌ Apply coupon error: $e");
 
-      // ✅ RESTORE on exception too
+      // Restore on exception
       try {
         final box = StorageProvider.offlineOrders;
         final String orderKey = widget.orderId?.toString() ??
             widget.offlineOrderId?.toString() ?? "";
         if (orderKey.isNotEmpty) {
-          final rawOrder = await box.get(orderKey);
-          if (rawOrder is Map) {
-            final order = Map<String, dynamic>.from(rawOrder);
-            // If coupon_response was corrupted, restore to only issued coupons
+          final raw = await box.get(orderKey);
+          if (raw is Map) {
+            final order = Map<String, dynamic>.from(raw);
             final cr = order["coupon_response"];
             if (cr is Map) {
               final map = Map<String, dynamic>.from(cr);
-              final coupons = (map['coupons'] as List? ?? []);
+              final coupons = (map['coupons'] as List?) ?? [];
               map['coupons'] = coupons.where((c) {
                 if (c is! Map) return false;
                 return !_couponHiveEntryIsRedeem(Map<String, dynamic>.from(c));
@@ -9369,7 +9376,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       setState(() => isSummaryLoading = false);
     }
   }
-
   /// Remove previously failed/invalid redeem coupons before syncing
   void _cleanInvalidRedeemCoupons(Map<String, dynamic> offlineOrder, String currentCode) {
     final cr = offlineOrder['coupon_response'];
@@ -9380,31 +9386,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final cleaned = <Map<String, dynamic>>[];
 
-    for (final c in coupons) {
+    for (final dynamic c in coupons) {
       if (c is! Map) continue;
-
       final couponMap = Map<String, dynamic>.from(c);
       final isRedeem = _couponHiveEntryIsRedeem(couponMap);
 
       if (!isRedeem) {
-        // Always keep issued (generate_type: false) coupons
         cleaned.add(couponMap);
-      } else {
-        // For ALL redeem coupons: only keep the one currently being tried
-        // This ensures only ONE redeem coupon is ever sent to Woo at a time
-        final code = couponMap['code']?.toString().trim();
-        if (code == currentCode) {
-          cleaned.add(couponMap);
-        }
-        // Drop all other redeem coupons (including previously valid ones)
-        // If new coupon succeeds, it becomes the active redeem coupon
+      } else if (couponMap['code']?.toString().trim() == currentCode) {
+        cleaned.add(couponMap); // keep only current one
       }
     }
 
     map['coupons'] = cleaned;
     offlineOrder['coupon_response'] = map;
   }
-
   // Future<void> _applyCoupon(String code) async {
   //   try {
   //     final box = StorageProvider.offlineOrders;

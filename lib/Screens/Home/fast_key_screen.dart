@@ -635,60 +635,27 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     if (kDebugMode) {
       print("FastKey Screen _loadFastKeyTabItems $_fastKeyTabId");
     }
+
     if (_fastKeyTabId == null) {
       setState(() {
-        //Build #1.0.68
         isItemsLoading = false;
       });
-      return;
-    }
-    await _awaitMergedProductCacheReadyForFastKeys();
-    if (FastKeyDBHelper.isFastkeyLoaded) {
-      ///stops loading every time
-      final items = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
-      final preparedItems = await _prepareFastKeyItemsForInitialUi(items);
-      if (kDebugMode) {
-        print(
-            "FastKey Screen _loadFastKeyTabItems loading items: ${items.length}");
-      }
-      if (mounted) {
-        setState(() {
-          fastKeyProductItems = preparedItems;
-          reorderedIndices = List.filled(fastKeyProductItems.length, null);
-          isItemsLoading = false;
-        });
-      }
       return;
     }
 
-    var tabs =
-    await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
-    if (tabs.isEmpty) {
-      setState(() {
-        fastKeyProductItems = [];
-        isItemsLoading = false;
-      });
+    await _awaitMergedProductCacheReadyForFastKeys();
+
+    // ALWAYS CHECK LOCAL DB FIRST
+    final cachedItems = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
+
+    if (cachedItems.isNotEmpty) {
       if (kDebugMode) {
-        print(
-            "FastKey Screen _loadFastKeyTabItems selected tab is empty: ${tabs.length}");
+        print("✅ Loading FastKey items from LOCAL DB CACHE");
       }
-      return;
-    }
-    fastKeyProductItems.clear(); //Build #1.0.78: Clear existing items
-    var fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
-    if (kDebugMode) {
-      print(
-          "FastKey Screen _loadFastKeyTabItems selected tab server id: $fastKeyServerId");
-    }
-    await _fastKeyProductBloc
-        .fetchProductsByFastKeyId(_fastKeyTabId ?? 1, fastKeyServerId)
-        .whenComplete(() async {
-      final items = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
-      final preparedItems = await _prepareFastKeyItemsForInitialUi(items);
-      if (kDebugMode) {
-        print(
-            "FastKey Screen _loadFastKeyTabItems loading items: ${items.length}");
-      }
+
+      final preparedItems =
+      await _prepareFastKeyItemsForInitialUi(cachedItems);
+
       if (mounted) {
         setState(() {
           fastKeyProductItems = preparedItems;
@@ -696,7 +663,51 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           isItemsLoading = false;
         });
       }
-    });
+
+      return;
+    }
+
+    // CACHE MISS → API
+    final tabs =
+    await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId!);
+
+    if (tabs.isEmpty) {
+      if (mounted) {
+        setState(() {
+          fastKeyProductItems = [];
+          isItemsLoading = false;
+        });
+      }
+
+      if (kDebugMode) {
+        print("❌ No FastKey tab found");
+      }
+
+      return;
+    }
+
+    final fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
+
+    if (kDebugMode) {
+      print("🌐 Cache miss → Fetching FastKey items from API");
+    }
+
+    await _fastKeyProductBloc.fetchProductsByFastKeyId(
+      _fastKeyTabId!,
+      fastKeyServerId,
+    );
+
+    final apiItems = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
+    final preparedItems =
+    await _prepareFastKeyItemsForInitialUi(apiItems);
+
+    if (mounted) {
+      setState(() {
+        fastKeyProductItems = preparedItems;
+        reorderedIndices = List.filled(fastKeyProductItems.length, null);
+        isItemsLoading = false;
+      });
+    }
   }
 
   Future<List<Map<String, dynamic>>> _prepareFastKeyItemsForInitialUi(

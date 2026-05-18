@@ -43,36 +43,44 @@ class FastKeyProductRepository {  // Build #1.0.15
   Future<FastKeyProductsResponse> getProductsByFastKeyId(int fastKeyId) async {
     final cacheKey = "fastkey_products_$fastKeyId";
 
-    // ✅ 1. Always check cache first
     final cachedData = await CacheHelper.getData(cacheKey);
 
     if (cachedData != null) {
-      if (kDebugMode) print("✅ Loaded FastKey $fastKeyId from CACHE");
+      if (kDebugMode) {
+        print("✅ Loaded FastKey $fastKeyId from CACHE");
+      }
       return FastKeyProductsResponse.fromJson(cachedData);
     }
 
-    // ❌ Only if cache NOT found → call API
-    if (kDebugMode) print("🌐 Calling API for FastKey $fastKeyId");
+    if (kDebugMode) {
+      print("🌐 Cache miss → Calling API for FastKey $fastKeyId");
+    }
 
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.fastKeys}${EndUrlConstants.getFastKeyProductsEndUrl}$fastKeyId";
+    final url =
+        "${UrlHelper.componentVersionUrl}"
+        "${UrlMethodConstants.fastKeys}"
+        "${EndUrlConstants.getFastKeyProductsEndUrl}"
+        "$fastKeyId";
 
     final response = await _helper.get(url, true);
 
+    dynamic responseData;
+
     if (response is String) {
-      final responseData = json.decode(response);
-
-      // ✅ Save separately per FastKey
-      await CacheHelper.saveData(cacheKey, responseData);
-
-      return FastKeyProductsResponse.fromJson(responseData);
+      responseData = json.decode(response);
     } else if (response is Map<String, dynamic>) {
-
-      await CacheHelper.saveData(cacheKey, response);
-
-      return FastKeyProductsResponse.fromJson(response);
+      responseData = response;
     } else {
-      throw Exception("Unexpected response type in GET");
+      throw Exception("Unexpected API response type");
     }
+
+    await CacheHelper.saveData(cacheKey, responseData);
+
+    if (kDebugMode) {
+      print("💾 Saved FastKey $fastKeyId to CACHE");
+    }
+
+    return FastKeyProductsResponse.fromJson(responseData);
   }
   // Build #1.0.89: Added this method for deleteProductFromFastKey API
   Future<FastKeyProductResponse> deleteProductFromFastKey(int fastkeyId, int productId) async {
