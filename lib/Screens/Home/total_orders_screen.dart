@@ -1020,8 +1020,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                     panelDate ?? '', // Build #1.0.226: updated values
                     formattedTime: panelTime ?? '',
                     quantities: quantities,
-                    activeOrderId: OrderHelper().activeOrderId ??
-                        OrderHelper().selectedOrderId,
+                    activeOrderId: OrderHelper().selectedOrderId ??
+                        OrderHelper().activeOrderId,
                     previewLineItemsFromApi:
                     _previewLineItemsForSelectedOrder(),
                     previewOrderFromApi: _previewOrderForSelectedOrder(),
@@ -1510,8 +1510,8 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                     panelDate ?? '', // Build #1.0.226: updated values
                     formattedTime: panelTime ?? '',
                     quantities: quantities,
-                    activeOrderId: OrderHelper().activeOrderId ??
-                        OrderHelper().selectedOrderId,
+                    activeOrderId: OrderHelper().selectedOrderId ??
+                        OrderHelper().activeOrderId,
                     previewLineItemsFromApi:
                     _previewLineItemsForSelectedOrder(),
                     previewOrderFromApi: _previewOrderForSelectedOrder(),
@@ -1606,9 +1606,9 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
       panelTime = DateFormat('hh:mm a').format(now);
     }
 
-    if (OrderHelper().activeOrderId != orderId) {
-      // Create or switch to order tab in RightOrderPanel
-      await OrderHelper().setActiveOrder(orderId);
+    if (OrderHelper().selectedOrderId != orderId) {
+      // Create or switch to order tab in RightOrderPanel view only
+      OrderHelper().selectedOrderId = orderId;
       // Notify RightOrderPanel to refresh
       // Set the state with the selected order's ID
       setState(() {
