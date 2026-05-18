@@ -29,7 +29,6 @@ import '../../Widgets/ManualPriceDialog.dart';
 import '../../Widgets/weighing_scale_widget.dart';
 import '../../Widgets/widget_logs_toast.dart';
 import '../../Widgets/widget_category_list.dart';
-// ── NEW imports ──
 import '../../Widgets/widget_nested_grid_layout.dart';
 import '../../Widgets/widget_order_panel.dart';
 import '../../Widgets/widget_sub_category.dart';
@@ -56,9 +55,11 @@ import 'package:provider/provider.dart';
 
 import 'isar_payments/local_payments_db_helper.dart';
 
-// ✅ FIX: Minimum age of a cached Indigo entry before a background refresh is
-// allowed.  Prevents a refresh from firing on every single cache hit.
 const _indigoBgRefreshThreshold = Duration(minutes: 30);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CategoryBarWithAllButton
+// ─────────────────────────────────────────────────────────────────────────────
 
 class CategoryBarWithAllButton extends StatelessWidget {
   final bool isLoading;
@@ -68,15 +69,8 @@ class CategoryBarWithAllButton extends StatelessWidget {
   final int? selectedCategoryIndex;
   final int? editingCategoryIndex;
   final ScrollController scrollController;
-
-  /// true  = grid visible (Screen 1)
-  /// false = subcategory cards visible (Screen 2/3)
   final bool showCategoryGrid;
-
-  /// Most-recently visited categories, most-recent first (max 5).
-  /// Shown always beside All.
   final List<CategoryModel> recentCategories;
-
   final bool isAddButtonEnabled;
   final VoidCallback onAllTapped;
   final Function(int uiIndex) onCategoryTapped;
@@ -125,19 +119,18 @@ class CategoryBarWithAllButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color:
-                isDark ? const Color(0x25CCC8C8) : const Color(0x50BDB9B9),
+                color: isDark
+                    ? const Color(0x25CCC8C8)
+                    : const Color(0x50BDB9B9),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
-          padding:
-          const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // ── "All" button ──────────────────────────────────────────────
               _AllChip(
                 isDark: isDark,
                 isActive: showCategoryGrid,
@@ -158,9 +151,8 @@ class CategoryBarWithAllButton extends StatelessWidget {
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: recentCategories.map((cat) {
-                        final uiIndex =
-                        visibleCategories.indexWhere((v) => v.id == cat.id);
-                        // Highlighted only when drilling in AND this is active
+                        final uiIndex = visibleCategories
+                            .indexWhere((v) => v.id == cat.id);
                         final bool isSelected = !showCategoryGrid &&
                             selectedCategoryIndex != null &&
                             selectedCategoryIndex! < allCategories.length &&
@@ -183,7 +175,6 @@ class CategoryBarWithAllButton extends StatelessWidget {
                 ),
               ],
 
-              // No recents yet → push All to left
               if (recentCategories.isEmpty) const Spacer(),
             ],
           ),
@@ -192,6 +183,10 @@ class CategoryBarWithAllButton extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CategoryGridOverlay
+// ─────────────────────────────────────────────────────────────────────────────
 
 class CategoryGridOverlay extends StatelessWidget {
   final List<Map<String, dynamic>> categoryListItems;
@@ -255,13 +250,15 @@ class CategoryGridOverlay extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SubCategoryCardRow / SubCategoryPillBar
+// ─────────────────────────────────────────────────────────────────────────────
+
 class SubCategoryCardRow extends StatelessWidget {
   final List<Map<String, dynamic>> subCategoryListItems;
   final int? selectedIndex;
   final Function(int) onCardTapped;
   final bool isLoading;
-
-  /// e.g. "Vegetables" — shown as "Vegetables >" before the cards
   final String? breadcrumbLabel;
 
   const SubCategoryCardRow({
@@ -291,7 +288,6 @@ class SubCategoryCardRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // ── Breadcrumb: "Vegetables  >" ────────────────────────────────────
         if (breadcrumbLabel != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -320,7 +316,6 @@ class SubCategoryCardRow extends StatelessWidget {
             ),
           ),
 
-        // ── Scrollable image cards ─────────────────────────────────────────
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -337,8 +332,8 @@ class SubCategoryCardRow extends StatelessWidget {
                   onTap: () => onCardTapped(index),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? const Color(0xFFFFE5E5)
@@ -367,13 +362,11 @@ class SubCategoryCardRow extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Thumbnail
                         ClipRRect(
                           borderRadius: BorderRadius.circular(6),
                           child: _buildImage(imgPath, 42),
                         ),
                         const SizedBox(width: 10),
-                        // Name
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 88),
                           child: Text(
@@ -465,6 +458,10 @@ class SubCategoryPillBar extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// _AllChip
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _AllChip extends StatelessWidget {
   final bool isDark;
   final bool isActive;
@@ -522,6 +519,10 @@ class _AllChip extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _RecentCategoryChip
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _RecentCategoryChip extends StatelessWidget {
   final CategoryModel category;
@@ -619,6 +620,10 @@ class _RecentCategoryChip extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// _CategoryGridCard
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _CategoryGridCard extends StatelessWidget {
   final String title;
   final String image;
@@ -712,6 +717,10 @@ class _CategoryGridCard extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Indigo Models
+// ─────────────────────────────────────────────────────────────────────────────
+
 class IndigoCategoryModel {
   final int id;
   final String name;
@@ -798,7 +807,8 @@ class IndigoCategoryBasedProducts {
     List<IndigoTag> tagList = [];
     if (json['tags'] != null && json['tags'] is List) {
       tagList = (json['tags'] as List)
-          .map((t) => IndigoTag.fromJson(Map<String, dynamic>.from(t as Map)))
+          .map((t) =>
+          IndigoTag.fromJson(Map<String, dynamic>.from(t as Map)))
           .toList();
     }
 
@@ -905,7 +915,7 @@ class IndigoTaxRate {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// INDIGO REPOSITORIES
+// Indigo Repositories
 // ─────────────────────────────────────────────────────────────────────────────
 
 class IndigoCategoryRepository {
@@ -916,7 +926,7 @@ class IndigoCategoryRepository {
         '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.categories}'
             '?page=1&per_page=100&hide_empty=true&parent=$parentCategoryId');
 
-    if (kDebugMode) print(" Indigo categoriess URL: $url");
+    if (kDebugMode) print("Indigo categories URL: $url");
 
     final response =
     await http.get(url, headers: {"Authorization": "Bearer $token"});
@@ -958,7 +968,9 @@ class IndigoCategoryBasedProductsRepository {
 
     if (response.statusCode == 200) {
       List data = jsonDecode(response.body);
-      return data.map((e) => IndigoCategoryBasedProducts.fromJson(e)).toList();
+      return data
+          .map((e) => IndigoCategoryBasedProducts.fromJson(e))
+          .toList();
     } else {
       throw Exception("Failed to load products");
     }
@@ -981,7 +993,7 @@ class IndigoCategoryBasedProductsRepository {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ISAR CACHE KEY HELPERS
+// Isar cache key helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 String _indigoSubCatKey(int parentId) => "indigo_subcategories_$parentId";
@@ -1009,10 +1021,6 @@ class _IndigoCategoryRepositoryWithCache {
       if (_isStale(entry.timestamp)) {
         _scheduleRefresh(
             cacheKey, () => _fetchAndWriteToIsar(parentCategoryId));
-      } else {
-        if (kDebugMode)
-          print(
-              "⏱️ [Indigo] Sub-cat cache is fresh, skipping BG refresh (parent: $parentCategoryId)");
       }
       return _decodeCategories(entry.json);
     }
@@ -1047,14 +1055,9 @@ class _IndigoCategoryRepositoryWithCache {
         final existing = await _readEntryFromIsar(_indigoSubCatKey(id));
         if (existing == null) {
           await _fetchAndWriteToIsar(id);
-          if (kDebugMode)
-            print("🔥 [Indigo] Pre-warmed sub-categories (parent: $id)");
         } else if (_isStale(existing.timestamp)) {
           _scheduleRefresh(
               _indigoSubCatKey(id), () => _fetchAndWriteToIsar(id));
-        } else {
-          if (kDebugMode)
-            print("⏱️ [Indigo] Pre-warm skipped (cache fresh) for parent: $id");
         }
       } catch (e) {
         if (kDebugMode) print("⚠️ [Indigo] Pre-warm failed (parent: $id): $e");
@@ -1067,13 +1070,9 @@ class _IndigoCategoryRepositoryWithCache {
       final isar = await IsarService.instance;
       return await isar.isarCacheEntrys.where().keyEqualTo(key).findFirst();
     } catch (e) {
-      if (kDebugMode) print(" [Indigo] Isar read error ($key): $e");
+      if (kDebugMode) print("[Indigo] Isar read error ($key): $e");
       return null;
     }
-  }
-
-  Future<String?> _readFromIsar(String key) async {
-    return (await _readEntryFromIsar(key))?.json;
   }
 
   Future<void> _writeToIsar(String key, String jsonStr) async {
@@ -1088,7 +1087,7 @@ class _IndigoCategoryRepositoryWithCache {
         );
       });
     } catch (e) {
-      if (kDebugMode) print(" [Indigo] Isar write error ($key): $e");
+      if (kDebugMode) print("[Indigo] Isar write error ($key): $e");
     }
   }
 
@@ -1096,21 +1095,17 @@ class _IndigoCategoryRepositoryWithCache {
     try {
       final List<dynamic> raw = json.decode(jsonStr);
       return raw
-          .map(
-              (e) => IndigoCategoryModel.fromJson(Map<String, dynamic>.from(e)))
+          .map((e) =>
+          IndigoCategoryModel.fromJson(Map<String, dynamic>.from(e)))
           .toList();
     } catch (e) {
-      if (kDebugMode) print(" [Indigo] Decode error (categories): $e");
+      if (kDebugMode) print("[Indigo] Decode error (categories): $e");
       return [];
     }
   }
 
   void _scheduleRefresh(String key, Future<void> Function() work) {
-    if (_inFlightRefreshes.containsKey(key)) {
-      if (kDebugMode)
-        print(" [Indigo] BG refresh already in-flight for [$key], skipping");
-      return;
-    }
+    if (_inFlightRefreshes.containsKey(key)) return;
     final task = work().whenComplete(() => _inFlightRefreshes.remove(key));
     _inFlightRefreshes[key] = task;
   }
@@ -1140,10 +1135,6 @@ class _IndigoProductRepositoryWithCache {
         print("📦 [Indigo] Isar hit: products (category: $categoryId)");
       if (_isStale(entry.timestamp)) {
         _scheduleRefresh(cacheKey, () => _fetchAndWriteToIsar(categoryId));
-      } else {
-        if (kDebugMode)
-          print(
-              "⏱️ [Indigo] Product cache is fresh, skipping BG refresh (category: $categoryId)");
       }
       return _decodeProducts(entry.json);
     }
@@ -1152,7 +1143,7 @@ class _IndigoProductRepositoryWithCache {
     } catch (e) {
       if (kDebugMode)
         print(
-            " [Indigo] API failed & no cache for products (category: $categoryId): $e");
+            "[Indigo] API failed & no cache for products (category: $categoryId): $e");
       return [];
     }
   }
@@ -1160,14 +1151,14 @@ class _IndigoProductRepositoryWithCache {
   Future<List<IndigoCategoryBasedProducts>> _fetchAndWriteToIsar(
       int categoryId) async {
     if (kDebugMode)
-      print(" [Indigo] Fetching products from API (category: $categoryId)");
+      print("[Indigo] Fetching products from API (category: $categoryId)");
     final products = await _remote.fetchProducts(categoryId);
     final jsonStr = json.encode(products.map((p) => p.toJson()).toList());
     await _writeToIsar(_indigoProductKey(categoryId), jsonStr);
     TopBar.notifyMergedProductCacheMayHaveChanged();
     if (kDebugMode)
       print(
-          " [Indigo] Cached ${products.length} products (category: $categoryId)");
+          "[Indigo] Cached ${products.length} products (category: $categoryId)");
     return products;
   }
 
@@ -1177,19 +1168,13 @@ class _IndigoProductRepositoryWithCache {
         final existing = await _readEntryFromIsar(_indigoProductKey(id));
         if (existing == null) {
           await _fetchAndWriteToIsar(id);
-          if (kDebugMode)
-            print(" [Indigo] Pre-warmed products (category: $id)");
         } else if (_isStale(existing.timestamp)) {
           _scheduleRefresh(
               _indigoProductKey(id), () => _fetchAndWriteToIsar(id));
-        } else {
-          if (kDebugMode)
-            print(
-                "⏱️ [Indigo] Pre-warm skipped (cache fresh) for category: $id");
         }
       } catch (e) {
         if (kDebugMode)
-          print(" [Indigo] Pre-warm products failed (category: $id): $e");
+          print("[Indigo] Pre-warm products failed (category: $id): $e");
       }
     }
   }
@@ -1199,13 +1184,9 @@ class _IndigoProductRepositoryWithCache {
       final isar = await IsarService.instance;
       return await isar.isarCacheEntrys.where().keyEqualTo(key).findFirst();
     } catch (e) {
-      if (kDebugMode) print(" [Indigo] Isar read error ($key): $e");
+      if (kDebugMode) print("[Indigo] Isar read error ($key): $e");
       return null;
     }
-  }
-
-  Future<String?> _readFromIsar(String key) async {
-    return (await _readEntryFromIsar(key))?.json;
   }
 
   Future<void> _writeToIsar(String key, String jsonStr) async {
@@ -1220,7 +1201,7 @@ class _IndigoProductRepositoryWithCache {
         );
       });
     } catch (e) {
-      if (kDebugMode) print(" [Indigo] Isar write error ($key): $e");
+      if (kDebugMode) print("[Indigo] Isar write error ($key): $e");
     }
   }
 
@@ -1232,17 +1213,13 @@ class _IndigoProductRepositoryWithCache {
           Map<String, dynamic>.from(e)))
           .toList();
     } catch (e) {
-      if (kDebugMode) print(" [Indigo] Decode error (products): $e");
+      if (kDebugMode) print("[Indigo] Decode error (products): $e");
       return [];
     }
   }
 
   void _scheduleRefresh(String key, Future<void> Function() work) {
-    if (_inFlightRefreshes.containsKey(key)) {
-      if (kDebugMode)
-        print("⏳ [Indigo] BG refresh already in-flight for [$key], skipping");
-      return;
-    }
+    if (_inFlightRefreshes.containsKey(key)) return;
     final task = work().whenComplete(() => _inFlightRefreshes.remove(key));
     _inFlightRefreshes[key] = task;
   }
@@ -1254,7 +1231,7 @@ class _IndigoProductRepositoryWithCache {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SCREEN
+// CategoriesScreen
 // ─────────────────────────────────────────────────────────────────────────────
 
 class CategoriesScreen extends StatefulWidget {
@@ -1292,10 +1269,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   final ScrollController _categoryScrollController = ScrollController();
   bool _hasAutoTappedOnce = false;
 
-  // ── controls whether the full category grid is visible ───────────────────
   bool _showCategoryGrid = true;
 
-  // ── recently visited categories, most-recent FIRST, max 5 shown ──────────
   final List<CategoryModel> _recentCategories = [];
   static const int _maxRecentCategories = 5;
 
@@ -1318,23 +1293,21 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   late OrderBloc orderBloc;
   int _refreshCounter = 0;
   bool _isAutoLoading = false;
+
+  // ── In-flight guards — only block CONCURRENT calls for the same id ─────────
+  // These are cleared by _forceReloadCurrentView() after a product refresh.
   int? _inFlightSubCategoryParentId;
   int? _inFlightProductCategoryId;
   int? _inFlightIndigoSubParentId;
   int? _inFlightIndigoProductCategoryId;
-  int? _lastLoadedSubCategoryParentId;
-  int? _lastLoadedProductCategoryId;
-  int? _lastLoadedIndigoSubParentId;
-  int? _lastLoadedIndigoProductCategoryId;
-  final Set<int> _loadedProductCategoryIds = {};
-  final Set<int> _loadedSubCategoryParentIds = {};
-  final Set<int> _loadedIndigoSubParentIds = {};
-  final Set<int> _loadedIndigoProductCategoryIds = {};
 
-  // ✅ Guards _preWarmAllIndigoData() from running more than once per session.
+  // ── "last loaded" tracking — REMOVED the persistent set guards ────────────
+  // Previously _loadedProductCategoryIds / _loadedIndigoProductCategoryIds
+  // prevented any reload after the first load. They are intentionally gone so
+  // that _forceReloadCurrentView() can trigger a fresh Isar read after refresh.
+
   bool _indigoPreWarmDone = false;
 
-  // ── Indigo state ──────────────────────────────────────────────────────────
   final _IndigoCategoryRepositoryWithCache _indigoCategoryRepo =
   _IndigoCategoryRepositoryWithCache(IndigoCategoryRepository());
   final _IndigoProductRepositoryWithCache _indigoProductRepo =
@@ -1354,28 +1327,62 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   final Map<int, Map<String, dynamic>> _productMetaCache = {};
   bool _isProductMetaCacheLoaded = false;
 
-  /// Prevents stacked add-to-order work when the user taps products very quickly.
   bool _productAddTapInFlight = false;
   List<Map<String, dynamic>> tabs = [];
-  List<Map<String, dynamic>> orderItems = [];  //
+  List<Map<String, dynamic>> orderItems = [];
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // ── NEW: Default category product helpers ─────────────────────────────────
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /// Isar key under which "default" category products are stored.
   static const String _defaultCatIsarKey = 'indigo_default_category_products';
-
-  /// In-memory cache so repeat calls within the same session are instant.
   final Map<String, Map<String, dynamic>> _dynamicProductMemCache = {};
 
-  /// Called once after top-level categories load.
-  /// Finds any category with slug == "default" or name == "Default",
-  /// fetches its products via the Indigo product repo, and stores them
-  /// in Isar under [_defaultCatIsarKey].
+  // ─────────────────────────────────────────────────────────────────────────
+  // FIX: Force-reload the currently visible product grid after a refresh.
+  // Called by TopBar.onRefreshCompleted.
+  // ─────────────────────────────────────────────────────────────────────────
 
+  Future<void> _forceReloadCurrentView() async {
+    if (!mounted) return;
 
-  /// STRONG FIX: Preserve selected order when returning from Orders tab
+    if (kDebugMode) print("🔄 [Categories] _forceReloadCurrentView triggered");
+
+    // 1. Bust ALL in-flight guards so the load methods don't bail early.
+    _inFlightIndigoSubParentId = null;
+    _inFlightIndigoProductCategoryId = null;
+    _inFlightSubCategoryParentId = null;
+    _inFlightProductCategoryId = null;
+
+    // 2. Re-trigger the currently visible Indigo sub-category products.
+    if (!_showCategoryGrid &&
+        _selectedCategoryIndex != null &&
+        _selectedCategoryIndex! < categories.length) {
+      final int parentId = categories[_selectedCategoryIndex!].id;
+
+      // Re-load sub-categories so the pill bar reflects any new additions.
+      await _loadIndigoSubCategories(parentId);
+
+      // Load the currently selected sub-category's products.
+      final int targetId = (_selectedIndigoSubCategoryIndex != null &&
+          _indigoSubCategories.isNotEmpty &&
+          _selectedIndigoSubCategoryIndex! < _indigoSubCategories.length)
+          ? _indigoSubCategories[_selectedIndigoSubCategoryIndex!].id
+          : parentId;
+
+      await _loadIndigoProductsBySubCategory(targetId);
+
+      // Also refresh the standard product list if a sub-category is selected.
+      if (_selectedSubCategoryIndex != null &&
+          subCategories.isNotEmpty &&
+          _selectedSubCategoryIndex! < subCategories.length) {
+        _loadProductsByCategory(subCategories[_selectedSubCategoryIndex!].id);
+      }
+    }
+
+    if (kDebugMode) print("✅ [Categories] _forceReloadCurrentView done");
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Order helpers
+  // ─────────────────────────────────────────────────────────────────────────
+
   Future<void> _preserveSelectedOrder() async {
     if (!mounted) return;
 
@@ -1384,7 +1391,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
 
     await orderHelper.loadData();
 
-    // Build visible orders (exclude paid ones)
     final List<int> visibleOrderIds = [];
     for (final order in orderHelper.orders) {
       final int? orderId = _normalizeOrderId(
@@ -1392,7 +1398,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       );
       if (orderId == null || orderId <= 0) continue;
 
-      // Hide if payment has started
       final payments = await LocalPaymentDBHelper.instance
           .getPaymentsByOrderId(orderId, userId: orderHelper.activeUserId);
 
@@ -1401,23 +1406,15 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       }
     }
 
-    // If previously selected order is still visible → KEEP IT
     if (visibleOrderIds.contains(currentlyActive)) {
-      if (kDebugMode) {
-        print("✅ _preserveSelectedOrder: Successfully kept Order $currentlyActive");
-      }
-      OrderHelper.notifyOrderPanelToRefresh();   // Force RightOrderPanel to respect it
+      OrderHelper.notifyOrderPanelToRefresh();
       return;
     }
 
-    // Fallback only if selected order disappeared
     if (visibleOrderIds.isNotEmpty) {
       final fallbackId = visibleOrderIds.last;
       await orderHelper.setActiveOrder(fallbackId);
       await orderHelper.saveLastActiveOrderId(fallbackId);
-      if (kDebugMode) {
-        print("⚠️ Order $currentlyActive no longer valid → fallback to $fallbackId");
-      }
     } else {
       await orderHelper.setActiveOrder(null);
       if (mounted) setState(() => orderItems.clear());
@@ -1426,23 +1423,17 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     OrderHelper.notifyOrderPanelToRefresh();
   }
 
-  // =============================================================
-  // ORDER PANEL INTEGRATION HELPERS (Added for CategoriesScreen)
-  // =============================================================
-
   int? _normalizeOrderId(dynamic value) {
     if (value == null) return null;
     if (value is int) return value;
     if (value is num) return value.toInt();
-    if (value is String) {
-      return int.tryParse(value);
-    }
+    if (value is String) return int.tryParse(value);
     return null;
   }
 
   List<int> _getVisibleOrderIds() {
     final List<int> visibleOrderIds = [];
-    for (final t in tabs) {           // ← 'tabs' will be declared below
+    for (final t in tabs) {
       final id = _normalizeOrderId(t['orderId']);
       if (id != null && id > 0) {
         visibleOrderIds.add(id);
@@ -1451,10 +1442,13 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     return visibleOrderIds;
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Default category product helpers
+  // ─────────────────────────────────────────────────────────────────────────
+
   Future<void> _preLoadDefaultCategoryProducts(
       List<CategoryModel> cats) async {
     try {
-      // Find the "default" / "Default" category in the loaded list
       CategoryModel? defaultCat;
       for (final c in cats) {
         final slug = (c.slug ?? '').toLowerCase().trim();
@@ -1471,8 +1465,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         return;
       }
 
-      // Already cached → nothing to do (stale check reuses _indigoProductRepo
-      // internal logic, so we just bail if the Isar key already exists)
       final isar = await IsarService.instance;
       final existing = await isar.isarCacheEntrys
           .where()
@@ -1485,14 +1477,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         return;
       }
 
-      if (kDebugMode)
-        print(
-            '🌍 [Default] Fetching products for "default" category id: ${defaultCat.id}');
-
-      // Reuse the existing Indigo product repo (already has auth + Isar caching)
       final products = await _indigoProductRepo.fetchProducts(defaultCat.id);
-
-      // Persist a flat list of toJson() maps under our dedicated key
       final jsonStr = json.encode(products.map((p) => p.toJson()).toList());
       await isar.writeTxn(() async {
         await isar.isarCacheEntrys.put(
@@ -1505,100 +1490,16 @@ class _CategoriesScreenState extends State<CategoriesScreen>
 
       if (kDebugMode)
         print(
-            '💾 [Default] Cached ${products.length} products from "default" category (id: ${defaultCat.id})');
+            '💾 [Default] Cached ${products.length} products from "default" category');
     } catch (e) {
       if (kDebugMode)
         print('⚠️ [Default] Failed to pre-load default products: $e');
     }
   }
 
-  /// Searches [_defaultCatIsarKey] in Isar for a product whose
-  /// name / sku / slug matches any of [tokens] (case-insensitive).
-  /// Returns a normalised product map compatible with the order flow,
-  /// or null when nothing matches.
-  // Future<Map<String, dynamic>?> _findDynamicProductByTokens(
-  //     List<String> tokens) async {
-  //   try {
-  //     // 1️⃣ Check in-memory cache first
-  //     for (final token in tokens) {
-  //       final t = token.toLowerCase();
-  //       for (final entry in _dynamicProductMemCache.entries) {
-  //         if (entry.key.contains(t)) return entry.value;
-  //       }
-  //     }
-  //
-  //     // 2️⃣ Read from Isar
-  //     final isar = await IsarService.instance;
-  //     final entry = await isar.isarCacheEntrys
-  //         .where()
-  //         .keyEqualTo(_defaultCatIsarKey)
-  //         .findFirst();
-  //     if (entry == null) {
-  //       if (kDebugMode)
-  //         print(
-  //             '⚠️ [Default] $_defaultCatIsarKey not found in Isar — no real data yet');
-  //       return null;
-  //     }
-  //
-  //     final List<dynamic> raw = json.decode(entry.json);
-  //
-  //     for (final item in raw) {
-  //       if (item is! Map) continue;
-  //       final map = Map<String, dynamic>.from(item);
-  //
-  //       final name = (map['name'] ?? '').toString().toLowerCase();
-  //       final sku = (map['sku'] ?? '').toString().toLowerCase();
-  //       // "slug" may not be present in IndigoCategoryBasedProducts.toJson()
-  //       // so also check categories list slugs as a fallback
-  //       final slug = (map['slug'] ?? '').toString().toLowerCase();
-  //
-  //       for (final token in tokens) {
-  //         final t = token.toLowerCase();
-  //         if (name.contains(t) || sku.contains(t) || slug.contains(t)) {
-  //           if (kDebugMode)
-  //             print(
-  //                 '✅ [Default] Matched "$token" → ${map['name']} (id: ${map['id']})');
-  //
-  //           // Build a normalised map that the order-flow already understands
-  //           final normalised = <String, dynamic>{
-  //             'fast_key_product_id': map['id'],
-  //             'fast_key_item_name': map['name'],
-  //             'fast_key_item_image':
-  //             (map['images'] is List && (map['images'] as List).isNotEmpty)
-  //                 ? (map['images'] as List).first
-  //                 : '',
-  //             'fast_key_item_price': map['price'] ?? '0',
-  //             'fast_key_item_sku': map['sku'] ?? '',
-  //             'fast_key_item_min_age': 0,
-  //             'has_age_restriction': false,
-  //             'fast_key_item_tags': <Map<String, dynamic>>[],
-  //             'variations': <dynamic>[],
-  //             'type': map['type'] ?? 'simple',
-  //             'is_ebt_eligible': false,
-  //           };
-  //
-  //           // Store in memory so next call is instant
-  //           _cacheDynamicProduct(normalised);
-  //           return normalised;
-  //         }
-  //       }
-  //     }
-  //
-  //     if (kDebugMode)
-  //       print(
-  //           '🔍 [Default] No product matched tokens $tokens in default category cache');
-  //     return null;
-  //   } catch (e) {
-  //     if (kDebugMode)
-  //       print('⚠️ [Default] _findDynamicProductByTokens error: $e');
-  //     return null;
-  //   }
-  // }
-
   Future<Map<String, dynamic>?> _findDynamicProductByTokens(
       List<String> tokens,
       ) async {
-    // 1️⃣ In‑memory cache check
     for (final token in tokens) {
       final t = token.toLowerCase();
       for (final entry in _dynamicProductMemCache.entries) {
@@ -1606,7 +1507,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       }
     }
 
-    // 2️⃣ Read from Isar
     final isar = await IsarService.instance;
     final entry = await isar.isarCacheEntrys
         .where()
@@ -1617,14 +1517,17 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     if (entry != null) {
       raw = json.decode(entry.json);
     } else {
-      // ⚠️ Cache missing – try to fetch the Default category on the spot
       if (kDebugMode) print('⚠️ [Default] Cache empty, fetching now...');
       final defaultCat = categories.firstWhere(
-            (c) => c.slug?.toLowerCase() == 'default' || c.name.toLowerCase() == 'default',
+            (c) =>
+        c.slug?.toLowerCase() == 'default' ||
+            c.name.toLowerCase() == 'default',
         orElse: () => throw Exception('Default category not found'),
       );
-      final freshProducts = await _indigoProductRepo.fetchProducts(defaultCat.id);
-      final jsonStr = json.encode(freshProducts.map((p) => p.toJson()).toList());
+      final freshProducts =
+      await _indigoProductRepo.fetchProducts(defaultCat.id);
+      final jsonStr =
+      json.encode(freshProducts.map((p) => p.toJson()).toList());
       await isar.writeTxn(() async {
         await isar.isarCacheEntrys.put(
           IsarCacheEntry()
@@ -1636,7 +1539,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       raw = json.decode(jsonStr);
     }
 
-    // 3️⃣ Search raw list for matching token
     for (final item in raw) {
       if (item is! Map) continue;
       final map = Map<String, dynamic>.from(item);
@@ -1655,7 +1557,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     return null;
   }
 
-  Map<String, dynamic> _buildNormalisedProductMap(Map<String, dynamic> rawMap) {
+  Map<String, dynamic> _buildNormalisedProductMap(
+      Map<String, dynamic> rawMap) {
     return {
       'fast_key_product_id': rawMap['id'],
       'fast_key_item_name': rawMap['name'],
@@ -1674,15 +1577,12 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     };
   }
 
-  /// Stores a resolved product in the in-memory cache keyed by lower-case name.
   void _cacheDynamicProduct(Map<String, dynamic> product) {
     final name =
     (product['fast_key_item_name'] ?? '').toString().toLowerCase();
     if (name.isNotEmpty) _dynamicProductMemCache[name] = product;
   }
 
-  /// Builds a minimal fallback map when the real product is not found in cache.
-  /// Used only as last resort — real data is always preferred.
   Map<String, dynamic> _buildFallbackDynamicProduct({
     required int id,
     required String name,
@@ -1702,8 +1602,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         'is_ebt_eligible': false,
       };
 
-  /// Returns the real Cashback product from the "default" category cache.
-  /// Falls back to a dummy only when the category has not been fetched yet.
   Future<Map<String, dynamic>?> _getCashbackProductFromIsar() async {
     final resolved = await _findDynamicProductByTokens([
       "cashback",
@@ -1720,9 +1618,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       sku: "CASHBACK-DYNAMIC",
     );
     _cacheDynamicProduct(fallback);
-    if (kDebugMode) {
-      print("⚠️ Cashback product missing in cache → using fallback map");
-    }
     return fallback;
   }
 
@@ -1733,7 +1628,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     if (discountProduct == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Discount product not found. Please sync categories.')),
+          const SnackBar(
+              content: Text(
+                  'Discount product not found. Please sync categories.')),
         );
       }
       return;
@@ -1742,12 +1639,11 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     final orderId = await orderHelper.ensureOrderExists();
     if (orderId == null) return;
 
-    // Add as a line item with negative total
     await orderHelper.addItemToOrder(
       null,
       discountProduct['fast_key_item_name'],
       discountProduct['fast_key_item_image'],
-      -discountAmount,   //  negative amount
+      -discountAmount,
       1,
       discountProduct['fast_key_item_sku'],
       orderId,
@@ -1761,15 +1657,12 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     );
   }
 
-  /// Returns the real Merchant Discount product from the "default" category cache.
-  /// Falls back to a dummy only when the category has not been fetched yet.
   Future<Map<String, dynamic>?> _getDiscountProductFromIsar() async {
     final resolved = await _findDynamicProductByTokens([
       "discount",
       "merchant discount",
       "merchant-discount",
       "merchant_discount",
-      // "md",
     ]);
     if (resolved != null) return resolved;
 
@@ -1779,9 +1672,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       sku: "MERCHANT-DISCOUNT-DYNAMIC",
     );
     _cacheDynamicProduct(fallback);
-    if (kDebugMode) {
-      print("Discount product missing in cache → using fallback map");
-    }
     return fallback;
   }
 
@@ -1912,13 +1802,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     "custom product",
   };
 
-  // List<CategoryModel> get visibleCategories {
-  //   return categories.where((c) {
-  //     final name = c.name.toLowerCase().trim();
-  //     return !_hiddenCategoryNames.contains(name);
-  //   }).toList();
-  // }
-
   void _hideAutoLoadingDialog() {
     if (Navigator.of(context, rootNavigator: true).canPop()) {
       Navigator.of(context, rootNavigator: true).pop();
@@ -1938,12 +1821,18 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     reorderedIndices = List.filled(categoryProducts.length, null);
     _loadTopLevelCategories();
 
-    // Preserve selected order AFTER everything is loaded
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Future.delayed(const Duration(milliseconds: 1200)); // give time for RightOrderPanel to init
+      await Future.delayed(const Duration(milliseconds: 1200));
       if (mounted) await _preserveSelectedOrder();
     });
 
+    // ── FIX: Register the refresh callback so TopBar can trigger a UI reload.
+    // This MUST be in CategoriesScreen.initState, not in TopBar.initState,
+    // because _forceReloadCurrentView() is a method of _CategoriesScreenState.
+    TopBar.onRefreshCompleted = () async {
+      if (!mounted) return;
+      await _forceReloadCurrentView();
+    };
   }
 
   @override
@@ -1951,35 +1840,43 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     super.didChangeDependencies();
   }
 
+  @override
+  void dispose() {
+    // ── FIX: Clear the callback so TopBar doesn't call into a disposed state.
+    TopBar.onRefreshCompleted = null;
+
+    _categoryBloc.dispose();
+    orderBloc.dispose();
+    fastKeyTabIdNotifier.dispose();
+    _categoryScrollController.dispose();
+    super.dispose();
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
-  // Indigo full pre-warm
+  // Indigo pre-warm
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _preWarmAllIndigoData() async {
-    if (_indigoPreWarmDone) {
-      if (kDebugMode)
-        print("⏱️ [Indigo] Pre-warm already done this session, skipping");
-      return;
-    }
+    if (_indigoPreWarmDone) return;
     _indigoPreWarmDone = true;
-
     if (kDebugMode) {
-      print(
-          "⏱️ [Indigo] Full-tree pre-warm disabled — on-demand loads only (saves server)");
+      print("⏱️ [Indigo] Full-tree pre-warm disabled — on-demand loads only");
     }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Indigo UI loaders
+  // FIX: Only skip if a fetch is ACTIVELY IN FLIGHT for this exact id.
+  //      The old "already loaded" set guards are removed so _forceReloadCurrentView
+  //      can always re-read fresh data from Isar after a product refresh.
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _loadIndigoSubCategories(int parentCategoryId) async {
     if (!mounted) return;
+
+    // Only skip concurrent duplicate calls — not previous loads.
     if (_inFlightIndigoSubParentId == parentCategoryId) return;
-    if (_lastLoadedIndigoSubParentId == parentCategoryId &&
-        _loadedIndigoSubParentIds.contains(parentCategoryId)) {
-      return;
-    }
+
     _inFlightIndigoSubParentId = parentCategoryId;
     try {
       if (_indigoSubCategories.isEmpty) {
@@ -2006,12 +1903,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         }
       });
 
-      _loadedIndigoSubParentIds.add(parentCategoryId);
-      _lastLoadedIndigoSubParentId = parentCategoryId;
-
       if (kDebugMode)
         print(
-            " [UI] Loaded ${cats.length} Indigo sub-categories for parent $parentCategoryId");
+            "[UI] Loaded ${cats.length} Indigo sub-categories for parent $parentCategoryId");
 
       if (!_isAutoLoading) {
         if (cats.isNotEmpty) {
@@ -2029,11 +1923,10 @@ class _CategoriesScreenState extends State<CategoriesScreen>
 
   Future<void> _loadIndigoProductsBySubCategory(int categoryId) async {
     if (!mounted) return;
+
+    // Only skip concurrent duplicate calls — not previous loads.
     if (_inFlightIndigoProductCategoryId == categoryId) return;
-    if (_lastLoadedIndigoProductCategoryId == categoryId &&
-        _loadedIndigoProductCategoryIds.contains(categoryId)) {
-      return;
-    }
+
     _inFlightIndigoProductCategoryId = categoryId;
     try {
       setState(() {
@@ -2047,11 +1940,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         _indigoProducts = products;
         _isLoadingIndigoProducts = false;
       });
-      _loadedIndigoProductCategoryIds.add(categoryId);
-      _lastLoadedIndigoProductCategoryId = categoryId;
       if (kDebugMode)
         print(
-            " [UI] Loaded ${products.length} Indigo products for sub-category $categoryId");
+            "[UI] Loaded ${products.length} Indigo products for sub-category $categoryId");
     } finally {
       if (_inFlightIndigoProductCategoryId == categoryId) {
         _inFlightIndigoProductCategoryId = null;
@@ -2102,7 +1993,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           return;
         }
 
-        if (kDebugMode) print(" TAP [Indigo]: ${product.name}");
+        if (kDebugMode) print("TAP [Indigo]: ${product.name}");
 
         final Map<String, dynamic> item = {
           'fast_key_product_id': product.id,
@@ -2139,11 +2030,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           }
         }
 
-        if (kDebugMode && tags.isNotEmpty) {
-          print(
-              "Tags for ${product.name}: ${tags.map((t) => "${t['name']} (${t['slug']})").join(", ")}");
-        }
-
         int minAge = 0;
         for (final t in tags) {
           final slug = (t["slug"] ?? "").toString().trim();
@@ -2172,8 +2058,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         }
 
         final bool hasAgeRestriction = minAge >= 18;
-        if (kDebugMode && hasAgeRestriction)
-          print("→ Age restriction DETECTED: $minAge+  → ${product.name}");
 
         final String productName = product.name;
         bool isEbtEligible = item["is_ebt_eligible"] == true ||
@@ -2214,8 +2098,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           minAge = int.tryParse(minAgeSource?.toString() ?? "0") ?? 0;
 
         final box = StorageProvider.offlineOrders;
-        int activeOrderId =
-            orderHelper.activeOrderId ?? (await box.get('lastOrderId')) ?? 1000;
+        int activeOrderId = orderHelper.activeOrderId ??
+            (await box.get('lastOrderId')) ??
+            1000;
         if (orderHelper.activeOrderId == null) {
           orderHelper.activeOrderId = activeOrderId;
           await box.put('lastOrderId', activeOrderId);
@@ -2231,7 +2116,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               hiveOrder["age_verified"]?.toString().toLowerCase() == "true";
           if (!alreadyVerified) {
             final prov = AgeVerificationProvider();
-            final isVerified = await prov.verifyAge(context, minAge: minAge);
+            final isVerified =
+            await prov.verifyAge(context, minAge: minAge);
             if (!isVerified) return;
             hiveOrder["age_verified"] = true;
             await box.put(orderKey, hiveOrder);
@@ -2357,7 +2243,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                     ? map["image"]["src"]
                     : (map["image"] is String ? map["image"] : "");
                 map["name"] =
-                (map["name"] is Map && map["name"]["rendered"] != null)
+                (map["name"] is Map &&
+                    map["name"]["rendered"] != null)
                     ? map["name"]["rendered"]
                     : (map["name"] is String
                     ? map["name"]
@@ -2442,8 +2329,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               isEbtEligible: isEbtEligible,
               onItemAdded: () async => _refreshOrderList());
         }
-        if (kDebugMode)
-          print("🎉 [Indigo] Product flow completed → $productName");
       } catch (e, s) {
         if (kDebugMode) {
           print("❌ [Indigo] ERROR: $e");
@@ -2461,7 +2346,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     }
   }
 
-  Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
+  Future<Map<String, dynamic>?> _getCachedProductFromIsar(
+      int productId) async {
     try {
       if (_productMetaCache.isNotEmpty) {
         return _productMetaCache[productId];
@@ -2481,7 +2367,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         for (final product in products) {
           if (product is! Map) continue;
           final map = Map<String, dynamic>.from(product);
-          final dynamic idRaw = map['fast_key_product_id'] ?? map['id'];
+          final dynamic idRaw =
+              map['fast_key_product_id'] ?? map['id'];
           final int? id = int.tryParse(idRaw?.toString() ?? '');
           if (id != null) {
             _productMetaCache[id] = map;
@@ -2511,7 +2398,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       return decoded
           .whereType<Map>()
           .map<Map<String, dynamic>>((v) {
-        final map = v.map((key, value) => MapEntry(key.toString(), value));
+        final map =
+        v.map((key, value) => MapEntry(key.toString(), value));
         final attrs = map["attributes"];
         final String fallbackName = attrs is List
             ? attrs
@@ -2527,9 +2415,11 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               : (fallbackName.isNotEmpty
               ? fallbackName
               : "Unnamed Variant"),
-          "price": (map["price"] ?? map["regular_price"] ?? "0").toString(),
+          "price":
+          (map["price"] ?? map["regular_price"] ?? "0").toString(),
           "sku": map["sku"] ?? "",
-          "image": (map["image"] is Map && map["image"]["src"] != null)
+          "image":
+          (map["image"] is Map && map["image"]["src"] != null)
               ? map["image"]["src"]
               : (map["image"] is String ? map["image"] : ""),
         };
@@ -2560,9 +2450,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     while (mounted && isLoadingNestedContent && stopwatch.elapsed < timeout) {
       await Future.delayed(const Duration(milliseconds: 100));
     }
-    if (isLoadingNestedContent && kDebugMode) {
-      print("⚠️ Nested loading timed out after ${timeout.inSeconds}s");
-    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -2584,9 +2471,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     if (!mounted) return;
     _scrollToCategory(tapIndex);
     await Future.delayed(const Duration(milliseconds: 250));
-    if (kDebugMode) {
-      print("🚀 Auto warm (single category) → ${categories[tapIndex].name}");
-    }
     _onCategoryTapped(tapIndex);
     await _waitForNestedLoadingOrTimeout();
     await Future.delayed(const Duration(milliseconds: 300));
@@ -2606,7 +2490,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           : parentCategoryId;
       _loadIndigoProductsBySubCategory(targetCategoryId);
     }
-    if (kDebugMode) print("✅ Auto load completed; pagination enabled");
   }
 
   Future<void> _loadLastSelectedCategory() async {
@@ -2643,7 +2526,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     final position = _categoryScrollController.position;
     final double itemWidth = ResponsiveLayout.getHeight(80) + 10;
     final double screenWidth = MediaQuery.of(context).size.width;
-    double offset = (index * itemWidth) - (screenWidth / 2) + (itemWidth / 2);
+    double offset =
+        (index * itemWidth) - (screenWidth / 2) + (itemWidth / 2);
     offset = offset.clamp(position.minScrollExtent, position.maxScrollExtent);
     _categoryScrollController.animateTo(offset,
         duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
@@ -2657,10 +2541,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   bool _shouldHideCategory(CategoryModel category) {
     final String name = category.name.toLowerCase().trim();
     final String slug = (category.slug ?? '').toLowerCase().trim();
-
     if (_hiddenCategoryNames.contains(name)) return true;
     if (slug == 'custom-product') return true;
-
     return false;
   }
 
@@ -2669,14 +2551,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   }
 
   void _addToRecent(CategoryModel category) {
-    // Do NOT add hidden categories to recent list
-    if (_shouldHideCategory(category)) {
-      return;
-    }
-
+    if (_shouldHideCategory(category)) return;
     _recentCategories.removeWhere((c) => c.id == category.id);
     _recentCategories.insert(0, category);
-
     if (_recentCategories.length > _maxRecentCategories) {
       _recentCategories.removeRange(
           _maxRecentCategories, _recentCategories.length);
@@ -2702,11 +2579,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         if (response.status == Status.COMPLETED && response.data != null) {
           categories = response.data!.categories;
 
-          // ── NEW: Pre-load products from the "Default" category into Isar ──
-          // This feeds _getCashbackProductFromIsar and _getDiscountProductFromIsar
-          // with real API data instead of fallback dummy maps.
           _preLoadDefaultCategoryProducts(categories);
-          // ─────────────────────────────────────────────────────────────────
 
           setState(() {
             isLoading = false;
@@ -2741,16 +2614,11 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         isLoading = false;
         isLoadingNestedContent = false;
       });
-      if (kDebugMode) print("⚠️ _loadTopLevelCategories timed out");
     }
   }
 
   Future<void> _loadSubCategories(int parentId) async {
     if (_inFlightSubCategoryParentId == parentId) return;
-    if (_lastLoadedSubCategoryParentId == parentId &&
-        _loadedSubCategoryParentIds.contains(parentId)) {
-      return;
-    }
     _inFlightSubCategoryParentId = parentId;
     _categoryBloc.fetchCategories(parentId);
     try {
@@ -2768,7 +2636,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
             isLoadingNestedContent = false;
           });
 
-          // Auto-select first subcategory pill
           if (subCategories.isNotEmpty && !_isAutoLoading) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) _onSubCategoryTapped(0);
@@ -2779,8 +2646,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               subCategories.isEmpty) {
             _loadProductsByCategory(parentId);
           }
-          _loadedSubCategoryParentIds.add(parentId);
-          _lastLoadedSubCategoryParentId = parentId;
           break;
         }
         if (response.status == Status.ERROR) {
@@ -2791,7 +2656,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     } on TimeoutException {
       if (!mounted) return;
       setState(() => isLoadingNestedContent = false);
-      if (kDebugMode) print("⚠️ _loadSubCategories timed out for $parentId");
     } finally {
       if (_inFlightSubCategoryParentId == parentId) {
         _inFlightSubCategoryParentId = null;
@@ -2801,10 +2665,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
 
   Future<void> _loadProductsByCategory(int categoryId) async {
     if (_inFlightProductCategoryId == categoryId) return;
-    if (_lastLoadedProductCategoryId == categoryId &&
-        _loadedProductCategoryIds.contains(categoryId)) {
-      return;
-    }
     _inFlightProductCategoryId = categoryId;
     setState(() {
       isLoadingNestedContent = true;
@@ -2837,7 +2697,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                       ageRestrictedLower,
               orElse: () => <String, dynamic>{},
             );
-            int minAge = int.tryParse(ageTag["slug"]?.toString() ?? "0") ?? 0;
+            int minAge =
+                int.tryParse(ageTag["slug"]?.toString() ?? "0") ?? 0;
             if (minAge == 0 && ageTag.isNotEmpty) minAge = 18;
 
             final bool isEbtEligible = tags.any((t) {
@@ -2873,8 +2734,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
             isShowingSubCategories = false;
             isLoadingNestedContent = false;
           });
-          _loadedProductCategoryIds.add(categoryId);
-          _lastLoadedProductCategoryId = categoryId;
           break;
         }
         if (response.status == Status.ERROR) {
@@ -2885,8 +2744,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     } on TimeoutException {
       if (!mounted) return;
       setState(() => isLoadingNestedContent = false);
-      if (kDebugMode)
-        print("⚠️ _loadProductsByCategory timed out for $categoryId");
     } finally {
       if (_inFlightProductCategoryId == categoryId) {
         _inFlightProductCategoryId = null;
@@ -2929,7 +2786,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           .findFirst();
       return any == null;
     } catch (e) {
-      if (kDebugMode) print("_isProductCacheEmpty error: $e");
       return true;
     }
   }
@@ -2998,39 +2854,17 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     try {
       _updateOrderSubscription?.cancel();
       StreamSubscription? subscription;
-      Stopwatch? addProductStopwatch;
-      if (Misc.enableUILogMessages) addProductStopwatch = Stopwatch()..start();
       subscription = orderBloc.updateOrderStream.listen((response) async {
         if (!mounted) {
           subscription?.cancel();
           return;
         }
         if (response.status == Status.LOADING) {
-          const Center(child: CircularProgressIndicator());
+          // loading
         } else if (response.status == Status.COMPLETED) {
-          if (kDebugMode) print("Item added to order $dbOrderId via API");
-          if (Misc.showDebugSnackBar) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(
-                    "Item '${selectedProduct[AppDBConst.fastKeyItemName]}' added to order"),
-                backgroundColor: Colors.green,
-                duration: const Duration(seconds: 2)));
-          }
-          if (Misc.enableUILogMessages && addProductStopwatch != null) {
-            addProductStopwatch.stop();
-            globalProcessSteps.add(ProcessStep(
-                name: TextConstants.addProductToOrder,
-                timeTaken: addProductStopwatch.elapsedMilliseconds / 1000.0));
-          }
-          if (Misc.enableUILogMessages)
-            refreshUIStopwatch = Stopwatch()..start();
           _refreshOrderList();
           subscription?.cancel();
         } else if (response.status == Status.ERROR) {
-          if (Misc.enableUILogMessages && addProductStopwatch != null) {
-            addProductStopwatch.stop();
-            globalProcessSteps.clear();
-          }
           _refreshOrderList();
           subscription?.cancel();
         }
@@ -3077,38 +2911,12 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   void _refreshOrderList() {
     if (!mounted) return;
     setState(() => _refreshCounter++);
-    if (Misc.enableUILogMessages && refreshUIStopwatch != null) {
-      refreshUIStopwatch?.stop();
-      globalProcessSteps.add(ProcessStep(
-          name: TextConstants.refreshDBUITime,
-          timeTaken: refreshUIStopwatch!.elapsedMilliseconds / 1000.0));
-    }
-    if (Misc.enableUILogMessages && globalProcessSteps.isNotEmpty) {
-      showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (dialogContext) => LogsToast(
-              steps: globalProcessSteps,
-              onClose: () {
-                globalProcessSteps.clear();
-                Navigator.of(dialogContext).pop();
-              }));
-    }
   }
 
   bool get showBackButton => currentCategoryLevel >= 2;
 
-  @override
-  void dispose() {
-    _categoryBloc.dispose();
-    orderBloc.dispose();
-    fastKeyTabIdNotifier.dispose();
-    _categoryScrollController.dispose();
-    super.dispose();
-  }
-
   // ─────────────────────────────────────────────────────────────────────────
-  // INDIGO SECTION UI
+  // Indigo section UI
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildIndigoSection() {
@@ -3166,7 +2974,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Color(0xFFE74C3C)),
+                            strokeWidth: 2,
+                            color: Color(0xFFE74C3C)),
                       ),
                     ),
                   )
@@ -3187,7 +2996,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                                   'assets/default.png';
 
                           return Padding(
-                            padding: const EdgeInsets.only(right: 8),
+                            padding:
+                            const EdgeInsets.only(right: 8),
                             child: GestureDetector(
                               onTap: () {
                                 setState(() =>
@@ -3197,8 +3007,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                                     _indigoSubCategories[index].id);
                               },
                               child: AnimatedContainer(
-                                duration:
-                                const Duration(milliseconds: 180),
+                                duration: const Duration(
+                                    milliseconds: 180),
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 7),
                                 decoration: BoxDecoration(
@@ -3214,7 +3024,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                                         ? const Color(0xFFFE6464)
                                         : isDark
                                         ? Colors.white12
-                                        : const Color(0xFFDDDDDD),
+                                        : const Color(
+                                        0xFFDDDDDD),
                                     width: isSelected ? 1.5 : 1.0,
                                   ),
                                 ),
@@ -3230,8 +3041,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                                           width: 28,
                                           height: 28,
                                           fit: BoxFit.cover,
-                                          errorBuilder:
-                                              (_, __, ___) =>
+                                          errorBuilder: (_, __,
+                                              ___) =>
                                           const Icon(
                                               Icons.image,
                                               size: 28))
@@ -3504,9 +3315,11 @@ class _CategoriesScreenState extends State<CategoriesScreen>
             onModeChanged: () async {
               String newLayout;
               if (sidebarPosition == SidebarPosition.left) {
-                newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
+                newLayout =
+                    SharedPreferenceTextConstants.navRightOrderLeft;
               } else if (sidebarPosition == SidebarPosition.right) {
-                newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
+                newLayout =
+                    SharedPreferenceTextConstants.navBottomOrderLeft;
               } else {
                 newLayout = orderPanelPosition == OrderPanelPosition.left
                     ? SharedPreferenceTextConstants.navBottomOrderRight
@@ -3520,8 +3333,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
             },
             onProductSelected: (product) async {
               try {
-                if (kDebugMode)
-                  print("###### serverOrderId: ${orderHelper.activeOrderId}");
                 _refreshOrderList();
               } catch (e, s) {
                 if (kDebugMode)
@@ -3593,7 +3404,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CARD WIDGETS
+// Card widgets
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _IndigoSubCategoryCard extends StatelessWidget {
@@ -3606,8 +3417,8 @@ class _IndigoSubCategoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
-    final cardBg = isDark ?  Color(0xFF26253A) : const Color(0xFFF3F4F8);
+    final cardBg =
+    isDark ? const Color(0xFF26253A) : const Color(0xFFF3F4F8);
     final borderColor =
     isDark ? const Color(0xFF3A3A52) : const Color(0xFFE8EAF0);
     final textColor = isDark ? Colors.white : const Color(0xFF2C3E50);
@@ -3683,7 +3494,6 @@ class _IndigoProductCard extends StatelessWidget {
     });
 
     final bool hasVariants = product.type == 'variable';
-
     final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);
 
     return GestureDetector(
@@ -3749,7 +3559,8 @@ class _IndigoProductCard extends StatelessWidget {
                         ],
                         if (isEbt)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 1),
                             decoration: BoxDecoration(
                               color: Colors.green.shade600,
                               borderRadius: BorderRadius.circular(4),

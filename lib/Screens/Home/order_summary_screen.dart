@@ -588,48 +588,117 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   double _extractTotalDiscountForItem(Map<String, dynamic> item) {
     double n(dynamic v) => v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
 
-    // Priority 1: Direct POS auto discount from meta (most accurate)
     double posAuto = n(item['_pos_auto_discount']) +
         n(item['auto_discount']) +
         n(item['autoDiscount']) +
         n(item['auto_discount_total']) +
         n(item['display_auto_discount']);
 
-    // Priority 2: Other discount types
     double combo = n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
     double multipack = n(item['multipack_discount_total']) + n(item['multipackDiscountTotal']);
     double mixmatch = n(item['mixmatch_discount_total']);
 
-    // Use discount_type to avoid double counting
+    // ✅ ADD: proportional share of order-level coupon discount
+    double couponShare = _proportionalCouponDiscountForItem(item);
+
     final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
 
+    double lineDiscount;
     if (dtype == 'auto' || dtype.isEmpty) {
-      return posAuto;
+      lineDiscount = posAuto;
     } else if (dtype == 'combo' || dtype == 'mixmatch') {
-      return combo > 0 ? combo : posAuto;
+      lineDiscount = combo > 0 ? combo : posAuto;
     } else if (dtype == 'multipack') {
-      return multipack > 0 ? multipack : posAuto;
+      lineDiscount = multipack > 0 ? multipack : posAuto;
+    } else {
+      lineDiscount = posAuto + combo + multipack + mixmatch;
     }
 
-    return posAuto + combo + multipack + mixmatch;
+    return lineDiscount + couponShare; // ✅ Include coupon share
+  }
+// ═══════════════════════════════════════════════════════════════════════════
+// TAX RECALCULATION FIX
+// Replace the existing _recalculateTaxOnDiscountedItems method with this one.
+//
+// Root cause: the old guard `if (widget.orderTax > 0.01) { tax = widget.orderTax; return; }`
+// was trusting the panel's pre-discount tax value and bailing out before
+// recalculating, so auto-discounts and coupon discounts never reduced the tax.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FIX: Tax not displaying correctly in OrderSummaryScreen
+//
+// ROOT CAUSE:
+// OrderScreenPanel correctly computes uiOrderTax = 1.27 (from Woo API).
+// It passes orderTax: uiOrderTax to OrderSummaryScreen.
+// BUT inside OrderSummaryScreen._recalculateTaxOnDiscountedItems(), the method
+// recalculates tax from line items — and the line items passed from
+// OrderScreenPanel (built from SQLite rows via fetchOrderItems) do NOT carry
+// tax_rate / item_tax keys, so recalculation returns 0.0 and overwrites the
+// correct 1.27.
+//
+// FIX STRATEGY (zero breakage):
+// In _recalculateTaxOnDiscountedItems(), if the recalculated total is 0 but
+// the passed widget.orderTax is > 0, keep the server value. Only override when
+// items actually produce a non-zero recalculated tax (meaning they have
+// discount keys that require adjustment).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHANGE 1 — Replace _recalculateTaxOnDiscountedItems() in order_summary_screen.dart
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Add this helper at the top of _OrderSummaryScreenState
+  double _proportionalCouponDiscountForItem(Map<String, dynamic> item) {
+    // Only distribute coupon discount across real product lines
+    final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+    final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
+    if (itemType.contains('discount') || itemType.contains('coupon') ||
+        itemType.contains('payout') || itemType.contains('cashback') ||
+        itemName.contains('merchant discount')) return 0.0;
+
+    final double couponDisc = discount.abs(); // discount is already negative
+    if (couponDisc <= 0 || grossTotal <= 0) return 0.0;
+
+    // Distribute proportionally by line item's gross contribution
+    double unitPrice = (item['item_price'] ?? item['price'] ?? 0).toDouble();
+    int qty = (item['items_count'] ?? item['quantity'] ?? 1) is num
+        ? (item['items_count'] ?? item['quantity'] ?? 1).toInt()
+        : 1;
+    double lineGross = unitPrice * qty;
+
+    return (lineGross / grossTotal) * couponDisc;
   }
 
   Future<void> _recalculateTaxOnDiscountedItems() async {
-    if (widget.orderTax > 0.01) {
-      tax = widget.orderTax; // Trust panel value first
-      // _ensureTaxConsistency();
-      return;
-    }
     if (orderItems.isEmpty) return;
 
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    double toDouble(dynamic v) =>
+        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+
+    double resolveTaxRate(Map<String, dynamic> item) {
+      for (final key in ['tax_rate', 'tax', 'tax_percent']) {
+        final raw = item[key];
+        if (raw != null) {
+          final r = toDouble(raw);
+          if (r > 0) return r / 100.0;
+        }
+      }
+      return 0.0;
+    }
+
+    double lineDiscount(Map<String, dynamic> item) =>
+        _extractTotalDiscountForItem(item);
+
+    // ── Walk product lines ──────────────────────────────────────────────────────
     double totalTax = 0.0;
+    bool anyItemHasDiscountOrTaxRate = false;
 
     for (final item in orderItems) {
-      // Skip non-product lines (coupons, payouts, cashback, discounts)
-      final String itemType =
-      (item['item_type'] ?? '').toString().toLowerCase();
-      final String itemName =
-      (item['item_name'] ?? '').toString().toLowerCase();
+      final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+      final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
+
       if (itemType.contains('discount') ||
           itemType.contains('coupon') ||
           itemType.contains('payout') ||
@@ -639,77 +708,110 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         continue;
       }
 
-      final double unitPrice =
-      (item['item_price'] ?? item['price'] ?? 0.0).toDouble();
-      final int qty =
-      (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+      final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+      final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
       final double lineTotal = unitPrice * qty;
 
-      // ── Use new helper that normalises every discount key variant ──
-      final double totalDiscount = _extractTotalDiscountForItem(item);
+      final double discount = lineDiscount(item);
+      final double taxableBase = (lineTotal - discount).clamp(0.0, double.infinity);
 
-      final double taxableBase =
-      (lineTotal - totalDiscount).clamp(0.0, double.infinity);
+      // Track whether this order's items actually carry discount or tax-rate data.
+      // If none do, recalculation is meaningless — server value is authoritative.
+      if (discount > 0) anyItemHasDiscountOrTaxRate = true;
 
-      // ── Tax rate resolution (try rate first, then amount) ──
-      double itemTaxAmount = 0.0;
-
-      final double taxRate = () {
-        if (item['tax_rate'] != null)
-          return (item['tax_rate'] as num).toDouble() / 100.0;
-        if (item['tax'] != null)
-          return (item['tax'] as num).toDouble() / 100.0;
-        if (item['tax_percent'] != null)
-          return (item['tax_percent'] as num).toDouble() / 100.0;
-        return 0.0;
-      }();
+      double itemTax = 0.0;
+      final double taxRate = resolveTaxRate(item);
 
       if (taxRate > 0) {
-        // Best case: rate is present — apply to discounted base
-        itemTaxAmount = taxableBase * taxRate;
+        anyItemHasDiscountOrTaxRate = true;
+        itemTax = taxableBase * taxRate;
       } else {
-        // Fallback: a pre-computed tax amount is stored; scale it by
-        // the discount ratio so it reflects the new taxable base.
-        final double rawTax =
-        (item['item_tax'] ?? item['tax_amount'] ?? 0.0).toDouble();
+        final double rawTax = toDouble(item['item_tax'] ?? item['tax_amount']);
         if (rawTax > 0 && lineTotal > 0) {
-          final double discountRatio = taxableBase / lineTotal;
-          itemTaxAmount = rawTax * discountRatio;
+          anyItemHasDiscountOrTaxRate = true;
+          itemTax = rawTax * (taxableBase / lineTotal);
         }
       }
 
-      totalTax += itemTaxAmount;
-
-      if (kDebugMode) {
-        print('TAX ITEM: ${item['item_name']} | '
-            'lineTotal=$lineTotal | '
-            'discount=$totalDiscount | '
-            'taxableBase=$taxableBase | '
-            'taxRate=$taxRate | '
-            'itemTax=${itemTaxAmount.toStringAsFixed(4)}');
-      }
+      totalTax += itemTax;
     }
 
     totalTax = double.parse(totalTax.toStringAsFixed(2));
 
-    if (kDebugMode) {
-      print('── TAX RECALCULATION COMPLETE ──');
-      print('   Gross Total         : $grossTotal');
-      print('   Total Tax (new)     : $totalTax');
-      print('   Net Payable (new)   : '
-          '${(NetTotal + totalTax + cashbackFee).toStringAsFixed(2)}');
+    // ── Decision: use recalculated value vs server value ───────────────────────
+    //
+    // Only override the server tax when the items ACTUALLY provided enough data
+    // for a meaningful recalculation (discount keys or tax_rate keys were present).
+    //
+    // When items come from SQLite (e.g. opened from OrderScreenPanel) without
+    // those keys, totalTax will be 0.0 while widget.orderTax = 1.27 (from Woo).
+    // In that case we keep the server value.
+    //
+    // When items DO have discount keys (e.g. auto_discount on a line),
+    // the recalculated value is used because it reflects the post-discount tax.
+
+    final double serverTax = widget.orderTax; // passed in from OrderScreenPanel
+
+    final double finalTax;
+
+    if (!anyItemHasDiscountOrTaxRate) {
+      // No discount/rate data on items → trust the server value entirely.
+      finalTax = serverTax > 0 ? serverTax : totalTax;
+      if (kDebugMode) {
+        print('── TAX: No item-level discount/rate data found.');
+        print('   Using server tax: $finalTax (recalc would have been $totalTax)');
+      }
+    } else if (totalTax <= 0 && serverTax > 0) {
+      // Items had discount keys but recalc still produced 0 (edge case) →
+      // fall back to server value to avoid showing $0.00 tax incorrectly.
+      finalTax = serverTax;
+      if (kDebugMode) {
+        print('── TAX: Recalc = 0 but server tax = $serverTax → using server value.');
+      }
+    } else {
+      // Normal case: items had data and recalc produced a meaningful value.
+      finalTax = totalTax;
+      if (kDebugMode) {
+        print('── TAX: Using recalculated value: $finalTax');
+      }
     }
 
+    if (kDebugMode) {
+      print('── TAX RECALCULATION COMPLETE ──');
+      print('   Gross Total        : $grossTotal');
+      print('   Discount           : $discount');
+      print('   Merchant Discount  : $merchantDiscount');
+      print('   Server Tax (passed): $serverTax');
+      print('   Recalculated Tax   : $totalTax');
+      print('   Final Tax Used     : $finalTax');
+      print('   Cashback Fee       : $cashbackFee');
+      print('   Net Payable        : ${(grossTotal + discount + merchantDiscount + finalTax + cashbackFee).toStringAsFixed(2)}');
+    }
+
+    // ── Only setState when value actually changed ──────────────────────────────
+    final bool taxChanged = (finalTax - tax).abs() > 0.005;
+    if (!taxChanged) {
+      if (kDebugMode) print('   Tax unchanged ($tax) — skipping setState');
+      return;
+    }
+
+    final double newNetTotal = grossTotal + discount + merchantDiscount;
+    final double newNetPayable = newNetTotal + finalTax + cashbackFee;
+
     setState(() {
-      tax = totalTax;
-      NetTotal = grossTotal + discount + merchantDiscount;
-      computedNetPayable = NetTotal + tax + cashbackFee;
-      orderTotal = computedNetPayable;
+      tax = finalTax;
+      NetTotal = newNetTotal;
+      computedNetPayable = newNetPayable;
+      orderTotal = newNetPayable;
+
+      // Only reset balanceAmount when no payment has been made yet,
+      // so an in-progress partial payment is not disrupted.
       if (tenderAmount <= 0) {
-        balanceAmount = computedNetPayable;
+        balanceAmount = newNetPayable;
       }
     });
   }
+
 
   static const bool offline_PAYMENT_SUCCESS = true; // ← toggle this
 
@@ -4697,8 +4799,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           content: Text(
             "Coupon already applied. Remove coupon to go back.",
           ),
-          duration: Duration(seconds: 3),
+          duration: Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.red,
+
         ),
       );
   }
@@ -7435,7 +7539,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                         ),
                                       ],
                                     )
-// Otherwise show the main balance
+                  // Otherwise show the main balance
                                   else
                                     Container(
                                       padding: const EdgeInsets.only(
@@ -8583,96 +8687,195 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //     setState(() => isSummaryLoading = false);
   //   }
   // }
+
+  double getAdjustedSummaryTax() {
+    double totalSubtotal = 0.0;
+    double totalDiscount = 0.0;
+
+    double _num(dynamic value) {
+      if (value is num) return value.toDouble();
+      return double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
+
+    print("========== TAX ADJUST START ==========");
+
+    for (var item in orderItems) {
+      final String itemName =
+          item['item_name']?.toString() ?? 'Unknown';
+
+      // ✅ SKIP EBT PRODUCTS
+      final bool isEbt =
+          item['is_ebt'] == true ||
+              item['ebt'] == true ||
+              item['isEBT'] == true ||
+              item['is_ebt_eligible'] == true;
+
+      if (isEbt) {
+        print("🚫 EBT ITEM SKIPPED: $itemName");
+        continue;
+      }
+
+      final double price = _num(item['item_price']);
+      final double qty = _num(item['items_count']);
+
+      final double itemSubtotal = price * qty;
+
+      final String discountType =
+          item['discount_type']?.toString().toLowerCase() ?? '';
+
+      double autoDiscount =
+          _num(item['auto_discount']) +
+              _num(item['auto_discount_total']) +
+              _num(item['autoDiscount']) +
+              _num(item['autoDiscountTotal']) +
+              _num(item['display_auto_discount']);
+
+      double comboDiscount =
+          _num(item['combo_discount_total']) +
+              _num(item['comboDiscountTotal']) +
+              _num(item['combo_discount']);
+
+      double mixMatchDiscount =
+          _num(item['mixmatch_discount_total']) +
+              _num(item['mixMatchDiscountTotal']) +
+              _num(item['mixmatch_discount']);
+
+      double multipackDiscount =
+          _num(item['multipack_discount_total']) +
+              _num(item['multipackDiscountTotal']) +
+              _num(item['multipack_discount']);
+
+      if (discountType == 'mixmatch' &&
+          autoDiscount > 0 &&
+          mixMatchDiscount == 0) {
+        mixMatchDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+
+      if (discountType == 'combo' &&
+          autoDiscount > 0 &&
+          comboDiscount == 0) {
+        comboDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+
+      if (discountType == 'multipack' &&
+          autoDiscount > 0 &&
+          multipackDiscount == 0) {
+        multipackDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+
+      final double itemDiscount =
+          autoDiscount +
+              comboDiscount +
+              mixMatchDiscount +
+              multipackDiscount;
+
+      totalSubtotal += itemSubtotal;
+      totalDiscount += itemDiscount;
+
+      print("🛒 ITEM: $itemName");
+      print("Subtotal: $itemSubtotal");
+      print("Discount: $itemDiscount");
+    }
+
+    final double taxableAmount =
+        totalSubtotal - totalDiscount;
+
+    final double rawTax = taxableAmount * 0.091;
+
+    final double roundedTax =
+    double.parse(rawTax.toStringAsFixed(2));
+
+    print("Total Subtotal = $totalSubtotal");
+    print("Total Discount = $totalDiscount");
+    print("Taxable Amount = $taxableAmount");
+    print("Raw Tax = $rawTax");
+    print("Final Tax = $roundedTax");
+
+    print("========== TAX ADJUST END ==========");
+
+    return roundedTax;
+  }
+
   Future<void> _removeAppliedCoupon() async {
     try {
       final box = StorageProvider.offlineOrders;
 
-      final String orderKey =
-          widget.orderId?.toString() ?? widget.offlineOrderId?.toString() ?? "";
+      final String orderKey = widget.orderId?.toString() ??
+          widget.offlineOrderId?.toString() ??
+          orderId?.toString() ??
+          "";
 
       if (orderKey.isEmpty) return;
 
       final rawOrder = await box.get(orderKey);
-      final offlineOrder = Map<String, dynamic>.from(
-        rawOrder is Map ? rawOrder : {},
-      );
+      if (rawOrder == null) return;
 
-      if (offlineOrder.isEmpty) return;
+      final offlineOrder = Map<String, dynamic>.from(rawOrder);
 
       setState(() => isSummaryLoading = true);
 
-      // 🔥 CLEAR COUPON BEFORE SYNC
-      offlineOrder["coupon_response"] = {"coupons": []};
+      // ✅ CRITICAL: Fully clear coupon data
+      offlineOrder.remove("coupon_response");
+      offlineOrder.remove("applied_coupons");
+      offlineOrder.remove("coupon_applied");
+      offlineOrder.remove("orderDiscount");
+      offlineOrder.remove("tax_discount");
+      offlineOrder.remove("grand_total");
+
+      // Re-initialize clean coupon_response with only issued coupons (if any)
+      offlineOrder["coupon_response"] = {
+        "coupons": [], // Start fresh
+        "available_coupons": [],
+      };
 
       await box.put(orderKey, offlineOrder);
 
-      // 🔥 CALL SAME SYNC METHOD
-      final result =
-      await OrderRepository().syncSingleOfflineOrder(offlineOrder);
-
-      if (result == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Unable to remove coupon"),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-      final List couponLines = result["coupon_lines"] ?? [];
-
-      double newDiscount;
-      double newTax;
-      double newTotal;
-      if (couponLines.isEmpty) {
-        print("🟡 No coupons → force discount 0");
-        newDiscount = 0.0;
-      } else {
-        newDiscount =
-            double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
-      }
-      newTax = double.tryParse(result["tax"]?.toString() ?? "0") ?? 0.0;
-      newTotal = double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
-
-      offlineOrder["orderDiscount"] = couponLines.isEmpty ? 0.0 : newDiscount;
-      offlineOrder["tax_discount"] = newTax;
-      offlineOrder["grand_total"] = newTotal;
-      offlineOrder["coupon_applied"] = false;
-      offlineOrder["applied_coupons"] = [];
-      offlineOrder["coupon_response"] = {"coupons": []};
-      await box.put(orderKey, offlineOrder);
-
-      await CustomerDisplayHelper.updateCustomerDisplay(
-        int.tryParse(orderKey) ?? 0,
-        summaryEnabled: true,
-      );
-
+      // Reset local state
       setState(() {
-        discount = newDiscount; // should become 0
-        tax = newTax;
-
-        NetTotal = grossTotal + discount + merchantDiscount;
+        discount = 0.0;
+        discountValue = 0.0;
+        couponDiscount = 0.0;
+        tax = widget.orderTax; // restore original tax
+        NetTotal = grossTotal + merchantDiscount;
         computedNetPayable = NetTotal + tax + cashbackFee;
-
-        orderTotal = newTotal;
-        balanceAmount = newTotal - tenderAmount;
-
+        orderTotal = computedNetPayable;
+        balanceAmount = computedNetPayable - tenderAmount;
         isCouponAppliedFromApi = false;
       });
 
-      print("🗑 Coupon Removed");
-      print("➡ Discount: $newDiscount");
-      print("➡ Tax: $newTax");
-      print("➡ Total: $newTotal");
+      await _recalculateTaxOnDiscountedItems();
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Coupon removed successfully"),
-          backgroundColor: Colors.green,
-        ),
-      );
+
+      // Optional: Sync to server to remove coupon from Woo side
+      try {
+        await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+      } catch (e) {
+        print("⚠️ Sync after coupon removal failed (but local clear succeeded): $e");
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Coupon removed successfully"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+
+      print("🗑️ Coupon fully removed and cleaned from Hive for order: $orderKey");
     } catch (e) {
-      print("❌ Remove coupon error: $e");
+      print("❌ Error removing coupon: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Failed to remove coupon: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       setState(() => isSummaryLoading = false);
     }
@@ -8859,47 +9062,53 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Future<void> _applyCoupon(String code) async {
-    code = code.trim();
+    code = code.trim().toLowerCase(); // Normalize for comparison
     if (code.isEmpty) return;
 
     try {
       final box = StorageProvider.offlineOrders;
       final String orderKey = widget.orderId?.toString() ??
-          widget.offlineOrderId?.toString() ?? "";
+          widget.offlineOrderId?.toString() ??
+          orderId?.toString() ??
+          "";
 
       if (orderKey.isEmpty) return;
 
       final rawOrder = await box.get(orderKey);
-      Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(
-        rawOrder is Map ? rawOrder : {},
-      );
+      if (rawOrder == null) return;
 
-      if (offlineOrder.isEmpty) return;
+      Map<String, dynamic> offlineOrder = Map<String, dynamic>.from(rawOrder);
 
       setState(() => isSummaryLoading = true);
 
-      // ✅ CHECK DUPLICATE BEFORE ANY MODIFICATION
-      final dynamic originalCr = offlineOrder["coupon_response"];
-      if (originalCr is Map) {
-        final coupons = originalCr["coupons"] as List? ?? [];
-        for (final c in coupons) {
-          if (c is Map && c["code"]?.toString().trim() == code) {
-            // Already applied (either as redeem or issued)
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Coupon already applied"),
-                backgroundColor: Colors.orange,
-              ),
-            );
-            return;
+      // === STRICT DUPLICATE CHECK ===
+      final dynamic cr = offlineOrder["coupon_response"];
+      if (cr is Map) {
+        final List<dynamic> coupons = cr["coupons"] as List? ?? [];
+
+        for (final dynamic item in coupons) {
+          if (item is Map) {
+            final Map<String, dynamic> couponMap = Map<String, dynamic>.from(item);
+            final String existingCode = (couponMap["code"]?.toString() ?? "").trim().toLowerCase();
+
+            if (existingCode == code) {
+              // Coupon is currently active
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Coupon already applied"),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
           }
         }
       }
 
-      // ✅ BACKUP original coupon_response BEFORE any modification
+      // Backup before modification
       final dynamic originalCouponResponse = offlineOrder["coupon_response"];
 
-      // === 1. Merge only the new redeem coupon ===
+      // Add new redeem coupon
       offlineOrder["coupon_response"] =
           _mergeRedeemIntoCouponResponse(offlineOrder["coupon_response"], code);
 
@@ -8912,17 +9121,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       await box.put(orderKey, offlineOrder);
 
-      // === 2. Try sync with server ===
+      // Sync to server
       final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
 
       if (result == null || result is! Map<String, dynamic>) {
-        // ✅ RESTORE original coupon_response on failure
+        // Restore on failure
         offlineOrder["coupon_response"] = originalCouponResponse;
         await box.put(orderKey, offlineOrder);
 
         String errorMsg = "Invalid coupon or unable to apply";
-        if (result is Map && result?['code'] == 'invalid_coupon') {
-          errorMsg = result?['message'] ?? errorMsg;
+        if (result is Map<String, dynamic>) {
+          if (result['code'] == 'invalid_coupon') {
+            errorMsg = result['message']?.toString() ?? errorMsg;
+          }
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -8931,7 +9142,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return;
       }
 
-      // === 3. Success ===
+      // === SUCCESS ===
       final double newDiscount = double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
       final double newTax = double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
       final double newTotal = double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
@@ -8940,7 +9151,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       offlineOrder["tax_discount"] = newTax;
       offlineOrder["grand_total"] = newTotal;
       offlineOrder["coupon_applied"] = true;
-      offlineOrder["applied_coupons"] = [{"code": code, "amount": newDiscount}];
+      offlineOrder["applied_coupons"] = [{"code": code.toUpperCase(), "amount": newDiscount}];
 
       if (result.containsKey("id")) {
         offlineOrder["wooOrderId"] = result["id"];
@@ -8966,6 +9177,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         isCouponAppliedFromApi = true;
       });
 
+      await _recalculateTaxOnDiscountedItems();
+
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Coupon applied successfully"), backgroundColor: Colors.green),
       );
@@ -8973,20 +9187,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     } catch (e) {
       print("❌ Apply coupon error: $e");
 
-      // ✅ RESTORE on exception too
+      // Restore on exception
       try {
         final box = StorageProvider.offlineOrders;
         final String orderKey = widget.orderId?.toString() ??
             widget.offlineOrderId?.toString() ?? "";
         if (orderKey.isNotEmpty) {
-          final rawOrder = await box.get(orderKey);
-          if (rawOrder is Map) {
-            final order = Map<String, dynamic>.from(rawOrder);
-            // If coupon_response was corrupted, restore to only issued coupons
+          final raw = await box.get(orderKey);
+          if (raw is Map) {
+            final order = Map<String, dynamic>.from(raw);
             final cr = order["coupon_response"];
             if (cr is Map) {
               final map = Map<String, dynamic>.from(cr);
-              final coupons = (map['coupons'] as List? ?? []);
+              final coupons = (map['coupons'] as List?) ?? [];
               map['coupons'] = coupons.where((c) {
                 if (c is! Map) return false;
                 return !_couponHiveEntryIsRedeem(Map<String, dynamic>.from(c));
@@ -9016,24 +9229,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final cleaned = <Map<String, dynamic>>[];
 
-    for (final c in coupons) {
+    for (final dynamic c in coupons) {
       if (c is! Map) continue;
-
       final couponMap = Map<String, dynamic>.from(c);
       final isRedeem = _couponHiveEntryIsRedeem(couponMap);
 
       if (!isRedeem) {
-        // Always keep issued (generate_type: false) coupons
         cleaned.add(couponMap);
-      } else {
-        // For ALL redeem coupons: only keep the one currently being tried
-        // This ensures only ONE redeem coupon is ever sent to Woo at a time
-        final code = couponMap['code']?.toString().trim();
-        if (code == currentCode) {
-          cleaned.add(couponMap);
-        }
-        // Drop all other redeem coupons (including previously valid ones)
-        // If new coupon succeeds, it becomes the active redeem coupon
+      } else if (couponMap['code']?.toString().trim() == currentCode) {
+        cleaned.add(couponMap); // keep only current one
       }
     }
 
@@ -9041,135 +9245,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     offlineOrder['coupon_response'] = map;
   }
 
-  // Future<void> _applyCoupon(String code) async {
-  //   try {
-  //     final box = StorageProvider.offlineOrders;
-  //
-  //     final String orderKey =
-  //         widget.orderId?.toString() ?? widget.offlineOrderId?.toString() ?? "";
-  //
-  //     if (orderKey.isEmpty) return;
-  //
-  //     final rawOrder = await box.get(orderKey);
-  //
-  //     final offlineOrder = Map<String, dynamic>.from(
-  //       rawOrder is Map ? rawOrder : {},
-  //     );
-  //
-  //     if (offlineOrder.isEmpty) return;
-  //
-  //     // Store coupon locally (redeem: generate_type true; keep issued coupons if any)
-  //
-  //     offlineOrder["coupon_response"] =
-  //         _mergeRedeemIntoCouponResponse(offlineOrder["coupon_response"], code);
-  //
-  //     // ✅ Use LOCAL order ID instead of Woo ID for syncing
-  //
-  //     final int? localOrderId = int.tryParse(orderKey);
-  //
-  //     if (localOrderId != null) {
-  //       offlineOrder["id"] = localOrderId; // critical for local sync
-  //     }
-  //
-  //     await box.put(orderKey, offlineOrder);
-  //
-  //     setState(() => isSummaryLoading = true);
-  //
-  //     // Send to repository with local ID
-  //
-  //     final result =
-  //     await OrderRepository().syncSingleOfflineOrder(offlineOrder);
-  //
-  //     if (result == null || result is! Map) {
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         const SnackBar(
-  //           content: Text("Invalid coupon or unable to apply"),
-  //           backgroundColor: Colors.red,
-  //         ),
-  //       );
-  //
-  //       return;
-  //     }
-  //
-  //     // ⭐ Extract values from repository response
-  //
-  //     final double newDiscount =
-  //         double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
-  //
-  //     final double newTax =
-  //         double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
-  //
-  //     final double newTotal =
-  //         double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
-  //
-  //     // Update offline order fields
-  //
-  //     offlineOrder["orderDiscount"] = newDiscount;
-  //
-  //     offlineOrder["tax_discount"] = newTax;
-  //
-  //     offlineOrder["grand_total"] = newTotal;
-  //
-  //     offlineOrder["coupon_applied"] = true;
-  //
-  //     offlineOrder["applied_coupons"] = [
-  //       {"code": code, "amount": newDiscount}
-  //     ];
-  //
-  //     // ✅ Store Woo info if returned, but do NOT send Woo ID next time
-  //
-  //     if (result.containsKey("id")) {
-  //       offlineOrder["wooOrderId"] = result["id"];
-  //
-  //       offlineOrder["wooStatus"] =
-  //           result["status"]?.toString().toLowerCase() ?? '';
-  //
-  //       offlineOrder["synced"] = true;
-  //
-  //       offlineOrder["sync_at"] = DateTime.now().toIso8601String();
-  //     }
-  //
-  //     _enrichRedeemCouponIdsFromWoo(offlineOrder, result, code);
-  //
-  //     await box.put(orderKey, offlineOrder);
-  //
-  //     // 🔥 Update display
-  //
-  //     await CustomerDisplayHelper.updateCustomerDisplay(
-  //       localOrderId!,
-  //       summaryEnabled: true,
-  //     );
-  //
-  //     setState(() {
-  //       // Enforce negative sign for display consistency (-$5.00)
-  //       discount = (newDiscount != 0) ? -(newDiscount.abs()) : 0.0;
-  //       tax = newTax;
-  //
-  //       // Use algebraic sum
-  //       NetTotal = grossTotal + discount + merchantDiscount;
-  //       computedNetPayable = NetTotal + tax + cashbackFee;
-  //       orderTotal = newTotal;
-  //
-  //       balanceAmount = newTotal;
-  //
-  //       isCouponAppliedFromApi = true;
-  //     });
-  //
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       const SnackBar(
-  //         content: Text("Coupon applied successfully"),
-  //         backgroundColor: Colors.green,
-  //       ),
-  //     );
-  //
-  //     print(
-  //         "✅ Coupon Applied (local ID $localOrderId): Discount $newDiscount, Tax $newTax, Total $newTotal");
-  //   } catch (e) {
-  //     print("❌ Apply coupon error: $e");
-  //   } finally {
-  //     setState(() => isSummaryLoading = false);
-  //   }
-  // }
 
   Widget _buildAmountDisplay(
       String label,

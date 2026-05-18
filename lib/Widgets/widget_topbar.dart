@@ -38,13 +38,10 @@ import 'ManualPriceDialog.dart';
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 
 // ══════════════════════════════════════════════════════════════════════════════
-// NATIVE SCALE CHANNELS — talks to UsbSerialManager.kt via MethodChannel/EventChannel
+// NATIVE SCALE CHANNELS
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// MethodChannel for start / stop / reconnect commands.
 const _scaleMethodChannel = MethodChannel('magellan_scale');
-
-/// EventChannel stream that carries JSON events from UsbSerialManager.kt.
 const _scaleEventChannel = EventChannel('magellan_scale/events');
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -201,9 +198,7 @@ class _PinBoxFieldState extends State<_PinBoxField> {
         maxLength: 6,
         autofocus: true,
         keyboardType: TextInputType.number,
-        inputFormatters: [
-          FilteringTextInputFormatter.digitsOnly,
-        ],
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         obscureText: _obscure,
         enableSuggestions: false,
         autocorrect: false,
@@ -259,19 +254,19 @@ class TopBar extends StatefulWidget {
     super.key,
   });
 
+  // ── Static helpers ──────────────────────────────────────────────────────────
+
   static void clearUserCache() {
     _TopBarState.clearUserDataCache();
   }
 
-  /// Bumped when merged product data (Isar/Hive) may have changed — Fast Keys
-  /// listens to refresh EBT badges without a fixed delay.
+  /// Bumped when merged product data (Isar/Hive) may have changed.
   static final ValueNotifier<int> mergedProductCacheRevision =
   ValueNotifier<int>(0);
 
   static Completer<void>? _firstMergedReloadCompleter;
   static bool _mergedReloadCompletedOnce = false;
 
-  /// Waits until TopBar's first merged-cache load finishes (or no-op if already done).
   static Future<void> waitForFirstMergedProductCacheReload() async {
     if (_mergedReloadCompletedOnce) return;
     _firstMergedReloadCompleter ??= Completer<void>();
@@ -292,17 +287,20 @@ class TopBar extends StatefulWidget {
     mergedProductCacheRevision.value++;
   }
 
-  /// Call when Indigo/category caches (or other writers) update merged product data.
   static void notifyMergedProductCacheMayHaveChanged() {
     mergedProductCacheRevision.value++;
   }
 
-  /// Same merged Isar/storage product list used by the TopBar search overlay
-  /// (Indigo caches, `all_products_list`, and `products_*` keys).
   static Future<List<dynamic>> mergedCachedProductsForSearch() async {
     final unique = await _TopBarState._uniqueProductsFromAllCaches();
     return unique.values.toList();
   }
+
+  // ── FIX: Static callback registered by CategoriesScreen. ───────────────────
+  // TopBar calls this after a successful product refresh so CategoriesScreen
+  // can bust its Indigo UI-state guards and reload the visible product grid.
+  // CategoriesScreen sets this in its initState and clears it in dispose().
+  static VoidCallback? onRefreshCompleted;
 
   @override
   State<TopBar> createState() => _TopBarState();
@@ -339,23 +337,16 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
   bool _dialogOpen = false;
 
-  // ── IN-MEMORY API SEARCH CACHE ─────────────────────────────────────────────
-  // Key: normalised query string  →  Value: list of product maps from API
-  // Lives only for the session; cleared when TopBar is disposed.
   static final Map<String, List<Map<String, dynamic>>> _apiSearchCache = {};
-
-  // ── SEARCH LOADING STATE ───────────────────────────────────────────────────
   bool _isApiSearchLoading = false;
 
-  // ── SCALE — native EventChannel listener ───────────────────────────────────
   StreamSubscription<dynamic>? _scaleSubscription;
-
   bool _isConnecting = false;
   String _scaleStatus = 'Disconnected';
 
   WeightProvider? _weightProvider;
 
-  // ── CACHED USER DATA ────────────────────────────────────────────────────────
+  // ── Cached user data (static so it survives hot-reloads) ───────────────────
   static Map<String, dynamic>? _cachedUserData;
   static bool _isUserDataLoaded = false;
   static Future<Map<String, dynamic>?>? _initialUserFuture;
@@ -365,6 +356,13 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     _isUserDataLoaded = false;
     _initialUserFuture = null;
     TopBar.resetMergedProductCacheSignals();
+    if (kDebugMode) print("🧹 TopBar user data cache cleared");
+  }
+
+  static void clearUserCache() {
+    _cachedUserData = null;
+    _isUserDataLoaded = false;
+    _initialUserFuture = null;
     if (kDebugMode) print("🧹 TopBar user data cache cleared");
   }
 
@@ -382,7 +380,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
     _loadCachedProducts();
 
-    // Defer Provider access until after first build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _weightProvider = Provider.of<WeightProvider>(context, listen: false);
@@ -409,6 +406,10 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         userRole = _cachedUserData![AppDBConst.userRole] as String?;
       }
     }
+
+    // NOTE: TopBar does NOT set TopBar.onRefreshCompleted here.
+    // That callback is set by CategoriesScreen in its own initState so that
+    // the callback correctly points to _CategoriesScreenState methods.
   }
 
   @override
@@ -418,28 +419,22 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       _clearSearchUiState();
     }
   }
+
   @override
   void didChangeMetrics() {
     final bottomInset = WidgetsBinding.instance.window.viewInsets.bottom;
-
-    // Detect ONLY when keyboard goes from OPEN → CLOSED
     if (_lastBottomInset > 0 && bottomInset == 0) {
       if (_searchFocusNode.hasFocus) {
         _searchFocusNode.unfocus();
       }
     }
-
     _lastBottomInset = bottomInset;
-  }
-  static void clearUserCache() {
-    _cachedUserData = null;
-    _isUserDataLoaded = false;
-    _initialUserFuture = null;
-    if (kDebugMode) print("🧹 TopBar user data cache cleared");
   }
 
   @override
   void dispose() {
+    // Do NOT clear TopBar.onRefreshCompleted here — CategoriesScreen owns it
+    // and clears it in its own dispose().
     _debounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _searchController.removeListener(_onSearchChanged);
@@ -449,13 +444,13 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     _orderBloc.dispose();
     _removeOverlay();
     _stopScale();
-    _apiSearchCache.clear(); // clear session search cache on dispose
+    _apiSearchCache.clear();
     super.dispose();
     TopBar.clearUserCache();
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // SCALE — Native EventChannel listener
+  // SCALE
   // ══════════════════════════════════════════════════════════════════════════════
 
   void _listenToScale() {
@@ -467,7 +462,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         try {
           final Map<String, dynamic> data = jsonDecode(event as String);
           final String type = data['type'] as String? ?? '';
-
           _scaleLog('📡 Native event: $event');
 
           switch (type) {
@@ -475,11 +469,12 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               final status = data['status'] as String? ?? '';
               final message = data['message'] as String? ?? '';
               _scaleLog('📊 Status: $status — $message');
-              if (mounted)
+              if (mounted) {
                 setState(() {
                   _scaleStatus = message;
                   _isConnecting = status == 'connecting';
                 });
+              }
               _weightProvider?.setConnected(status == 'connected');
               if (status == 'disconnected' || status == 'error') {
                 _weightProvider?.updateWeight(0.0);
@@ -520,24 +515,62 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       onError: (e) {
         _scaleLog('❌ EventChannel error: $e');
         _weightProvider?.setConnected(false);
-        if (mounted)
+        if (mounted) {
           setState(() {
             _scaleStatus = 'Channel error';
             _isConnecting = false;
           });
+        }
       },
       onDone: () {
         _scaleLog('⚠️ EventChannel closed.');
         _weightProvider?.setConnected(false);
-        if (mounted)
+        if (mounted) {
           setState(() {
             _scaleStatus = 'Disconnected';
             _isConnecting = false;
           });
+        }
       },
       cancelOnError: false,
     );
   }
+
+  void _scaleLog(String msg) {
+    if (kDebugMode) debugPrint('[Scale] $msg');
+  }
+
+  void _stopScale() {
+    _scaleSubscription?.cancel();
+    _scaleSubscription = null;
+    try {
+      _scaleMethodChannel.invokeMethod('stop');
+    } catch (_) {}
+    _weightProvider?.setConnected(false);
+    _weightProvider?.updateWeight(0.0);
+  }
+
+  Future<void> _reconnectScale() async {
+    _scaleLog('🔄 Reconnecting...');
+    if (mounted) {
+      setState(() {
+        _isConnecting = true;
+        _scaleStatus = 'Reconnecting...';
+      });
+    }
+    try {
+      await _scaleMethodChannel.invokeMethod('reconnect');
+    } catch (e) {
+      _scaleLog('❌ Reconnect error: $e');
+    }
+    if (_scaleSubscription == null) {
+      _listenToScale();
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // PRODUCT REFRESH
+  // ══════════════════════════════════════════════════════════════════════════════
 
   Future<void> refreshProducts() async {
     try {
@@ -545,7 +578,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
       final isar = await IsarService.instance;
 
-      // ── 1. Get auth token ──────────────────────────────────────────────────
+      // ── 1. Auth token ──────────────────────────────────────────────────────
       final db = await DBHelper.instance.database;
       final result = await db.query(
         AppDBConst.userTable,
@@ -580,11 +613,11 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       }
 
       final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-      if (kDebugMode) print(' API Response: ${response.body}');
+      if (kDebugMode) print('API Response: ${response.body}');
 
       final List<dynamic> changes = decoded['changes'] ?? [];
       if (changes.isEmpty) {
-        if (kDebugMode) print(' No changes from API');
+        if (kDebugMode) print('No changes from API');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -593,10 +626,15 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
             ),
           );
         }
+        // ── FIX: Still reload the UI even when server says "no changes" so
+        // that previously cached data is always shown after a refresh tap.
+        TopBar.notifyMergedProductCacheMayHaveChanged();
+        await _reloadAllProductsFromIsar();
+        TopBar.onRefreshCompleted?.call();
         return;
       }
 
-      // ── 2-B. Extract last event_version from the changes list ──────────────
+      // ── 2-B. Extract last event_version ───────────────────────────────────
       int? lastEventVersion;
       for (final change in changes) {
         final dynamic rawVersion = change['event_version'];
@@ -610,16 +648,15 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         }
       }
       if (kDebugMode) {
-        print(' Last event_version from changes: $lastEventVersion');
+        print('Last event_version from changes: $lastEventVersion');
       }
 
-      // ── 3. Split changes by event_type ─────────────────────────────────────
+      // ── 3. Split by event_type ─────────────────────────────────────────────
       final List<Map<String, dynamic>> toUpsert = [];
       final List<int> toDelete = [];
 
       for (final change in changes) {
         if (change['post_type'] != 'product') continue;
-
         final String eventType =
         (change['event_type'] as String? ?? '').toLowerCase();
 
@@ -630,7 +667,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               : int.tryParse(rawId?.toString() ?? '');
           if (id != null) {
             toDelete.add(id);
-            if (kDebugMode) print(' Queued DELETE for product id=$id');
+            if (kDebugMode) print('Queued DELETE for product id=$id');
           }
         } else if (eventType == 'created' ||
             eventType == 'updated' ||
@@ -638,7 +675,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           if (change['data'] is Map) {
             toUpsert.add(Map<String, dynamic>.from(change['data'] as Map));
             if (kDebugMode) {
-              print(' Queued ${eventType.toUpperCase()} for product '
+              print('Queued ${eventType.toUpperCase()} for product '
                   'id=${change['data']['id']} name="${change['data']['name']}"');
             }
           }
@@ -647,7 +684,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
       if (kDebugMode) {
         print(
-            ' Changes → upsert: ${toUpsert.length}, delete: ${toDelete.length}');
+            'Changes → upsert: ${toUpsert.length}, delete: ${toDelete.length}');
       }
 
       // ── 4. Helpers ─────────────────────────────────────────────────────────
@@ -701,10 +738,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         if (kDebugMode && minAge > 0) {
           print('🔞 Product id=${p['id']} "${p['name']}" → '
               'age restricted, minAge=$minAge');
-        }
-        if (kDebugMode) {
-          print(' Product id=${p['id']} tags: '
-              '${originalTags.map((t) => '${t['name']}(${t['slug']})').toList()}');
         }
 
         final List<dynamic> images = (p['images'] as List?) ?? [];
@@ -772,9 +805,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
       // ── 5. Single Isar write transaction ───────────────────────────────────
       await isar.writeTxn(() async {
-        // ════════════════════════════════════════════════════════════════════
-        // 5-A  DELETED
-        // ════════════════════════════════════════════════════════════════════
+        // ── 5-A  DELETED ────────────────────────────────────────────────────
         for (final productId in toDelete) {
           if (kDebugMode) print('Processing DELETE for product $productId…');
 
@@ -823,9 +854,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
             print('  ✅ Product $productId fully deleted from Isar');
         }
 
-        // ════════════════════════════════════════════════════════════════════
-        // 5-B  CREATED / UPDATED
-        // ════════════════════════════════════════════════════════════════════
+        // ── 5-B  CREATED / UPDATED ──────────────────────────────────────────
         final Map<int, List<Map<String, dynamic>>> categoryProductMap = {};
 
         for (final productData in toUpsert) {
@@ -864,7 +893,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           final int catId = mapEntry.key;
           final List<Map<String, dynamic>> updatedProducts = mapEntry.value;
 
-          // ── products_<catId> ─────────────────────────────────────────────
+          // products_<catId>
           final String categoryKey = 'products_$catId';
           final IsarCacheEntry? existing = await isar.isarCacheEntrys
               .where()
@@ -892,14 +921,12 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
             if (idx >= 0) {
               cachedList[idx] = {...cachedList[idx], ...updated};
               if (kDebugMode) {
-                print('♻️  Upserted $productId → $categoryKey | '
-                    'tags=${(updated['tags'] as List?)?.map((t) => '${t['name']}(${t['slug']})').toList()}');
+                print('♻️  Upserted $productId → $categoryKey');
               }
             } else {
               cachedList.add(updated);
               if (kDebugMode) {
-                print('➕ Inserted $productId → $categoryKey | '
-                    'tags=${(updated['tags'] as List?)?.map((t) => '${t['name']}(${t['slug']})').toList()}');
+                print('➕ Inserted $productId → $categoryKey');
               }
             }
           }
@@ -911,7 +938,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               ..timestamp = DateTime.now(),
           );
 
-          // ── indigo_products_<catId> ──────────────────────────────────────
+          // indigo_products_<catId>
           final String indigoKey = 'indigo_products_$catId';
           final IsarCacheEntry? indigoExisting = await isar.isarCacheEntrys
               .where()
@@ -951,7 +978,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               ..timestamp = DateTime.now(),
           );
 
-          // ── Clean up sku_* for each upserted product ─────────────────────
+          // Clean up sku_* for each upserted product
           for (final updated in updatedProducts) {
             final int productId = updated['fast_key_product_id'] as int? ?? 0;
             if (productId != 0) {
@@ -965,7 +992,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       }); // end writeTxn
 
       if (kDebugMode) {
-        print(' Isar sync complete — '
+        print('Isar sync complete — '
             'upserted: ${toUpsert.length}, deleted: ${toDelete.length}');
       }
 
@@ -1005,9 +1032,13 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         }
       }
 
-      // ── 6. Invalidate in-memory caches ─────────────────────────────────────
+      // ── 6. Invalidate in-memory caches & notify CategoriesScreen ──────────
       TopBar.notifyMergedProductCacheMayHaveChanged();
       await _reloadAllProductsFromIsar();
+
+      // ── FIX: Fire the callback so CategoriesScreen busts its Indigo UI
+      // guards and reloads the currently visible product grid from Isar.
+      TopBar.onRefreshCompleted?.call();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1033,41 +1064,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // SCALE — HELPERS
-  // ══════════════════════════════════════════════════════════════════════════════
-
-  void _scaleLog(String msg) {
-    if (kDebugMode) debugPrint('[Scale] $msg');
-  }
-
-  void _stopScale() {
-    _scaleSubscription?.cancel();
-    _scaleSubscription = null;
-    try {
-      _scaleMethodChannel.invokeMethod('stop');
-    } catch (_) {}
-    _weightProvider?.setConnected(false);
-    _weightProvider?.updateWeight(0.0);
-  }
-
-  Future<void> _reconnectScale() async {
-    _scaleLog('🔄 Reconnecting...');
-    if (mounted)
-      setState(() {
-        _isConnecting = true;
-        _scaleStatus = 'Reconnecting...';
-      });
-    try {
-      await _scaleMethodChannel.invokeMethod('reconnect');
-    } catch (e) {
-      _scaleLog('❌ Reconnect error: $e');
-    }
-    if (_scaleSubscription == null) {
-      _listenToScale();
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════════
   // SEARCH
   // ══════════════════════════════════════════════════════════════════════════════
 
@@ -1075,7 +1071,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     try {
       await _reloadAllProductsFromIsar();
     } catch (e) {
-      if (kDebugMode) print(" _loadCachedProducts error: $e");
+      if (kDebugMode) print("_loadCachedProducts error: $e");
       if (mounted) setState(() => _cacheLoaded = true);
       TopBar._onTopBarMergedReloadCycleFinished();
     }
@@ -1173,7 +1169,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
   Future<void> _reloadAllProductsFromIsar() async {
     try {
       final uniqueProducts = await _uniqueProductsFromAllCaches();
-
       if (mounted) {
         setState(() {
           _cachedProducts = uniqueProducts.values.toList();
@@ -1211,15 +1206,10 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     final q = _searchController.text.trim();
     if (_searchFocusNode.hasFocus && q.length >= 3 && _overlayEntry == null) {
       _showSearchResultsOverlay();
-    } else if (!_searchFocusNode.hasFocus &&
-        _searchController.text.isEmpty) {
+    } else if (!_searchFocusNode.hasFocus && _searchController.text.isEmpty) {
       _removeOverlay();
     }
   }
-
-  // ══════════════════════════════════════════════════════════════════════════════
-  // SEARCH — API + LOCAL MERGE (replaces old _onSearchChanged)
-  // ══════════════════════════════════════════════════════════════════════════════
 
   void _onSearchChanged() {
     if (_debounce?.isActive ?? false) _debounce?.cancel();
@@ -1230,7 +1220,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       return;
     }
 
-    // 500 ms debounce — faster than the old 2-second delay
     _debounce = Timer(const Duration(milliseconds: 500), () async {
       final q = _searchController.text.toLowerCase().trim();
       if (q.isEmpty || q.length < 3) {
@@ -1239,7 +1228,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         return;
       }
 
-      // 1. Show overlay immediately with whatever is already in local cache
       if (_overlayEntry == null) {
         _showSearchResultsOverlay();
       } else {
@@ -1247,7 +1235,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       }
       if (mounted) setState(() {});
 
-      // 2. Hit the WooCommerce API (uses in-memory cache for repeated queries)
       await _searchProductsFromApi(q);
 
       if (!mounted) return;
@@ -1256,9 +1243,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     });
   }
 
-  // ── API product search with session-level in-memory caching ───────────────
   Future<void> _searchProductsFromApi(String query) async {
-    // Already fetched this exact query this session → instant
     if (_apiSearchCache.containsKey(query)) {
       if (kDebugMode) print('⚡ API search cache hit for "$query"');
       _mergeApiResults(_apiSearchCache[query]!);
@@ -1287,17 +1272,13 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
       if (response.statusCode != 200) {
         if (kDebugMode) {
-          print(
-              '⚠️ API search ${response.statusCode}: ${response.body}');
+          print('⚠️ API search ${response.statusCode}: ${response.body}');
         }
         return;
       }
 
-      final List<dynamic> decoded =
-      jsonDecode(response.body) as List<dynamic>;
+      final List<dynamic> decoded = jsonDecode(response.body) as List<dynamic>;
 
-      // Normalise each API product into the same map shape used by
-      // _buildLocalResultsList — no existing code needs to change.
       final List<Map<String, dynamic>> apiProducts = decoded
           .whereType<Map>()
           .map<Map<String, dynamic>>((p) {
@@ -1316,8 +1297,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         })
             .toList();
 
-        final List<dynamic> rawCategories =
-            (p['categories'] as List?) ?? [];
+        final List<dynamic> rawCategories = (p['categories'] as List?) ?? [];
 
         return {
           'fast_key_product_id': p['id'],
@@ -1347,12 +1327,10 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         };
       }).toList();
 
-      // Store in session cache — same query next time costs 0 API calls
       _apiSearchCache[query] = apiProducts;
 
       if (kDebugMode) {
-        print(
-            '✅ API returned ${apiProducts.length} products for "$query"');
+        print('✅ API returned ${apiProducts.length} products for "$query"');
       }
 
       _mergeApiResults(apiProducts);
@@ -1363,8 +1341,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     }
   }
 
-  // Merges API results into _cachedProducts without overwriting existing Isar
-  // entries — deduplicates by product ID, Isar data takes priority.
   void _mergeApiResults(List<Map<String, dynamic>> apiProducts) {
     if (apiProducts.isEmpty) return;
 
@@ -1501,10 +1477,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       final normalizedQuery = _normalize(q);
       if (normalizedQuery.isEmpty) return true;
 
-      final nameRaw = _resolveName(p);
-      final skuRaw = _resolveSku(p);
-      final normalizedName = _normalize(nameRaw);
-      final normalizedSku = _normalize(skuRaw);
+      final normalizedName = _normalize(_resolveName(p));
+      final normalizedSku = _normalize(_resolveSku(p));
 
       if (normalizedName.contains(normalizedQuery) ||
           normalizedSku.contains(normalizedQuery)) {
@@ -1542,26 +1516,21 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         return na.compareTo(nb);
       });
 
-    // Show a slim loading indicator at the top while API fetch is in progress
     if (list.isEmpty && _isApiSearchLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-
     if (list.isEmpty) return const Center(child: Text("No products found"));
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Thin progress bar while API is still loading more results
-        if (_isApiSearchLoading)
-          const LinearProgressIndicator(minHeight: 2),
+        if (_isApiSearchLoading) const LinearProgressIndicator(minHeight: 2),
         Flexible(
           child: ListView.builder(
             shrinkWrap: true,
             itemCount: list.length,
             itemBuilder: (context, i) {
               final p = list[i];
-
               final name = _resolveName(p);
               final price = _resolvePrice(p);
               final sku = _resolveSku(p);
@@ -1638,11 +1607,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
                         }
                         return SKU.Tags();
                       }).toList();
-
-                      if (kDebugMode) {
-                        print("🏷️ Tags enriched from cache for product "
-                            "${fullProduct.id}: ${fullProduct.tags?.map((t) => t.name).toList()}");
-                      }
                     } else {
                       final isar = await IsarService.instance;
                       final entries = await isar.isarCacheEntrys
@@ -1654,7 +1618,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
                       for (final entry in entries) {
                         final List<dynamic> cached = jsonDecode(entry.json);
                         final match = cached.firstWhere(
-                              (item) => ((item["fast_key_product_id"] ??
+                              (item) =>
+                          ((item["fast_key_product_id"] ??
                               item["product_id"] ??
                               item["id"])
                               ?.toString() ==
@@ -1675,12 +1640,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
                               }
                               return SKU.Tags();
                             }).toList();
-
-                            if (kDebugMode) {
-                              print(
-                                  "🏷️ Tags enriched via fallback scan for product "
-                                      "${fullProduct.id}");
-                            }
                           }
                           break;
                         }
@@ -1688,7 +1647,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
                     }
                   } catch (e) {
                     debugPrint(
-                        "❌ Tag enrichment failed for product ${fullProduct.id}: $e");
+                        "❌ Tag enrichment failed for product $productId: $e");
                   }
 
                   _handleProductTap(fullProduct);
@@ -1702,13 +1661,14 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // VARIANT CACHE HELPER
+  // VARIANT HELPERS
   // ══════════════════════════════════════════════════════════════════════════════
 
   Future<List<Map<String, dynamic>>> _getVariantsFromCache(
       int productId) async {
     try {
       final productBox = StorageProvider.productCache;
+
       List<Map<String, dynamic>> _normalizeVariants(dynamic raw) {
         if (raw is! List || raw.isEmpty) return <Map<String, dynamic>>[];
         return raw
@@ -1781,8 +1741,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       final token = await _getAuthTokenFromDb();
       final url = Uri.parse(
           "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations");
-      final response = await http
-          .get(url, headers: {"Authorization": "Bearer $token"});
+      final response =
+      await http.get(url, headers: {"Authorization": "Bearer $token"});
       if (response.statusCode != 200) return <Map<String, dynamic>>[];
 
       final decoded = jsonDecode(response.body);
@@ -1857,11 +1817,9 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     _searchFocusNode.unfocus();
     _removeOverlay();
     await WidgetsBinding.instance.endOfFrame;
-
     if (!mounted) return;
 
     try {
-      // ── 2. Ensure an active order exists ──────────────────────────────────
       final ensuredOrderId = await orderHelper.ensureOrderExists();
       if (ensuredOrderId == null) {
         if (kDebugMode) print("❌ Failed to create or restore order");
@@ -1875,10 +1833,9 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       final Map<String, dynamic> rawOrder =
       Map<String, dynamic>.from(raw is Map ? raw : {});
 
-      // ── 3. Resolve product tags ────────────────────────────────────────────
       final List<SKU.Tags> tags = product.tags ?? [];
 
-      // ── 4. Age verification ───────────────────────────────────────────────
+      // Age verification
       final bool hasAgeRestriction =
       tags.any((t) => t.name == TextConstants.age_restricted);
 
@@ -1894,28 +1851,22 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           final int minAge =
               int.tryParse(ageTag.slug?.toString() ?? "0") ?? 0;
 
-          if (kDebugMode) print("🔞 Age verification required (min $minAge)");
-
           _dialogOpen = true;
           final prov = AgeVerificationProvider();
           final ok = await prov.verifyAge(context, minAge: minAge);
           _dialogOpen = false;
 
           if (!mounted) return;
-          if (!ok) {
-            if (kDebugMode) print("❌ Age verification failed or cancelled");
-            return;
-          }
+          if (!ok) return;
 
           rawOrder["age_verified"] = true;
           await offlineBox.put(activeOrderId, rawOrder);
-          if (kDebugMode) print("✅ Age verified — order updated");
         }
       }
 
       if (!mounted) return;
 
-      // ── 5. Resolve EBT eligibility ─────────────────────────────────────────
+      // EBT eligibility
       bool isEbtEligible = false;
       try {
         final isar = await IsarService.instance;
@@ -1939,10 +1890,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
                 rawEbt == 1 ||
                 rawEbt?.toString() == "1" ||
                 rawEbt?.toString().toLowerCase() == "true";
-            if (kDebugMode) {
-              print(
-                  "🥗 EBT → ${match["fast_key_item_name"]} | $isEbtEligible");
-            }
             break;
           }
         }
@@ -1963,19 +1910,16 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
       if (!mounted) return;
 
-      // ── 6. Parse unit price ────────────────────────────────────────────────
       final double unitPrice = (product.price is num)
           ? (product.price as num).toDouble()
           : double.tryParse(product.price?.toString() ?? "0") ?? 0.0;
 
-      // ── 7. PRODUCE → Auto Weight & Price dialog ────────────────────────────
+      // Produce
       final bool hasProduceTag = tags.any((t) =>
       t.slug?.toLowerCase() == "produce" ||
           t.name?.toLowerCase() == "produce");
 
       if (hasProduceTag) {
-        if (kDebugMode) print("🌿 Produce detected → AutoWeightPriceDialog");
-
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted) return;
 
@@ -1999,17 +1943,10 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         }
 
         if (!mounted) return;
-
-        if (result == null) {
-          if (kDebugMode) print("⚠️ Auto weight cancelled");
-          return;
-        }
+        if (result == null) return;
 
         final double finalPrice = (result["finalPrice"] as num).toDouble();
         final double weightValue = (result["weight"] as num).toDouble();
-        if (kDebugMode) {
-          print("⚖️ Weight: $weightValue lb  |  Price: \$$finalPrice");
-        }
 
         setState(() => isAddingItemLoading = true);
 
@@ -2040,7 +1977,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         return;
       }
 
-      // ── 8. VARIANTS ────────────────────────────────────────────────────────
+      // Variants
       List<Map<String, dynamic>> variants =
       await _getVariantsFromCache(product.id!);
       if (variants.isEmpty) {
@@ -2060,8 +1997,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       if (!mounted) return;
 
       if (hasVariants) {
-        if (kDebugMode)
-          print("🔀 Variants (${variants.length}) → VariantsDialog");
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted) return;
 
@@ -2113,7 +2048,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         return;
       }
 
-      // ── 9. VARIABLE PRICE ──────────────────────────────────────────────────
+      // Variable price
       final bool hasVariablePriceTag = tags.any((t) =>
       t.slug?.toLowerCase() == "variable-product" ||
           t.slug?.toLowerCase() == "variable" ||
@@ -2131,7 +2066,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           final savedPrice = rawOrder[savedPriceKey];
           finalPrice =
               double.tryParse(savedPrice?.toString() ?? "") ?? unitPrice;
-          if (kDebugMode) print("💲 Variable price re-used: \$$finalPrice");
         } else {
           await WidgetsBinding.instance.endOfFrame;
           if (!mounted) return;
@@ -2150,24 +2084,18 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           }
 
           if (!mounted) return;
-          if (enteredPrice == null) {
-            if (kDebugMode) print("⚠️ Variable price entry cancelled");
-            return;
-          }
+          if (enteredPrice == null) return;
 
           finalPrice = enteredPrice;
           rawOrder[variableKey] = true;
           rawOrder[savedPriceKey] = finalPrice;
           await offlineBox.put(activeOrderId, rawOrder);
-          if (kDebugMode) print("💲 Variable price entered: \$$finalPrice");
         }
       }
 
       if (!mounted) return;
 
-      // ── 10. SIMPLE PRODUCT ────────────────────────────────────────────────
-      if (kDebugMode)
-        print("🛒 Simple add → ${product.name} @ \$$finalPrice");
+      // Simple product
       setState(() => isAddingItemLoading = true);
 
       await orderHelper.addItemToOrder(
@@ -2305,8 +2233,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
                         const SizedBox(height: 8),
                         const Text(
                           "You are not authorized to access this feature.",
-                          style: TextStyle(
-                              fontSize: 11, color: Colors.red),
+                          style:
+                          TextStyle(fontSize: 11, color: Colors.red),
                         ),
                       ],
                       const SizedBox(height: 20),
@@ -2414,7 +2342,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          // ── Logo ────────────────────────────────────────────────────────────
           SvgPicture.asset(
             themeHelper.themeMode == ThemeMode.dark
                 ? 'assets/svg/app_logo.svg'
@@ -2424,7 +2351,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           ),
           const SizedBox(width: 80),
 
-          // ── Search bar ───────────────────────────────────────────────────────
+          // Search bar
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -2477,7 +2404,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           ),
           const SizedBox(width: 50),
 
-          // ── Scale weight display ─────────────────────────────────────────────
+          // Scale weight display
           Consumer<WeightProvider>(
             builder: (context, weightProvider, _) {
               final bool connected = weightProvider.isConnected;
@@ -2584,35 +2511,24 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               );
             },
           ),
+
           if (widget.screen == Screen.SHIFT) ...[
             const SizedBox(width: 10),
-
             GestureDetector(
               onTap: () async {
-                if (kDebugMode) {
-                  print("Logout from TopBar");
-                }
-
                 showDialog(
                   context: context,
                   barrierDismissible: false,
-                  builder: (_) => const Center(
-                    child: CircularProgressIndicator(),
-                  ),
+                  builder: (_) =>
+                  const Center(child: CircularProgressIndicator()),
                 );
 
                 await LogoutBloc(LogoutRepository()).performLogout();
-
                 await UserDbHelper().logout();
                 await PinakaPreferences.clearUserPreferences();
                 TopBar.clearUserCache();
 
-                if (kDebugMode) {
-                  print("#### User data cleared during logout");
-                }
-
                 Navigator.of(context).pop();
-
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (_) => LoginScreen()),
@@ -2631,18 +2547,14 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
                         : const Color(0xFFF1F1F3),
                   ),
                 ),
-                child: const Icon(
-                  Icons.logout,
-                  size: 24,
-                  color: Colors.grey,
-                ),
+                child: const Icon(Icons.logout, size: 24, color: Colors.grey),
               ),
             ),
           ],
 
           const SizedBox(width: 16),
 
-          // ── Cash drawer ──────────────────────────────────────────────────────
+          // Cash drawer
           GestureDetector(
             onTap: () async {
               final isAuthorized =
@@ -2682,7 +2594,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           ),
           const SizedBox(width: 16),
 
-          // ── Mode toggle ──────────────────────────────────────────────────────
+          // Mode toggle
           GestureDetector(
             onTap: widget.onModeChanged,
             child: Container(
@@ -2713,7 +2625,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           ),
           const SizedBox(width: 16),
 
-          // ── Theme toggle ─────────────────────────────────────────────────────
+          // Theme toggle
           GestureDetector(
             onTap: () {
               themeHelper.setThemeMode(
@@ -2750,7 +2662,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           ),
           const SizedBox(width: 16),
 
-          // ── Notifications ────────────────────────────────────────────────────
+          // Notifications
           Container(
             decoration: BoxDecoration(
               color: themeHelper.themeMode == ThemeMode.dark
@@ -2774,7 +2686,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           ),
           const SizedBox(width: 16),
 
-          // ── Refresh ──────────────────────────────────────────────────────────
+          // Refresh
           IconButton(
             icon: isLoading
                 ? const SizedBox(
@@ -2786,7 +2698,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
             onPressed: isLoading ? null : refreshProducts,
           ),
 
-          // ── User chip ────────────────────────────────────────────────────────
+          // User chip
           Container(
             height: 45,
             padding:

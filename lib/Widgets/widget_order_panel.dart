@@ -5642,7 +5642,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                                       TextOverflow.ellipsis,
                                                                       style:
                                                                       TextStyle(
-                                                                        fontSize: 12,
+                                                                        fontSize: 14,
                                                                         fontWeight: FontWeight.bold,
                                                                         color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
                                                                       ),
@@ -5712,7 +5712,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                           .ellipsis,
                                                       style: TextStyle(
                                                           fontSize:
-                                                          10,
+                                                          12,
                                                           color: themeHelper.themeMode ==
                                                               ThemeMode
                                                                   .dark
@@ -5743,7 +5743,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                           .ellipsis,
                                                       style: TextStyle(
                                                           fontSize:
-                                                          10,
+                                                          12,
                                                           color: Color(
                                                               0xFFFE6464)),
                                                     ),
@@ -5822,7 +5822,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                                 .textDark
                                                                 : Colors
                                                                 .black54,
-                                                            fontSize: 12,
+                                                            fontSize: 14,
                                                             fontWeight:
                                                             FontWeight
                                                                 .bold,
@@ -5861,7 +5861,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                               .textDark
                                                               : Colors
                                                               .black54,
-                                                          fontSize: 12,
+                                                          fontSize: 14,
                                                           fontWeight:
                                                           FontWeight
                                                               .bold,
@@ -5982,7 +5982,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                 Text(
                                                   "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
                                                   style: const TextStyle(
-                                                    fontSize: 12,
+                                                    fontSize: 14,
                                                     color: Colors.grey,
                                                     decoration:
                                                     TextDecoration

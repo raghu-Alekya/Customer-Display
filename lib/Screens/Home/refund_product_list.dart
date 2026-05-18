@@ -46,7 +46,9 @@ class _RefundScreenState extends State<RefundScreen> {
   late CompletedOrder selectedOrder;
   bool _showFullSummary = true;
   double? editedRefundAmount;
+  String? _disabledPaymentType;
   bool _isProcessingPayment = false;
+  bool _isRefundCompleted = false;
   // double merchantDiscount = 0;
   void _toggleSummary() {
     setState(() {
@@ -454,7 +456,9 @@ class _RefundScreenState extends State<RefundScreen> {
                                               SizedBox(width: 0),
 
                                               GestureDetector(
-                                                onTap: () {
+                                                onTap: _isRefundCompleted
+                                                    ? null
+                                                    : () {
                                                   setState(() {
                                                     final bool allSelected = selectableRefundCount > 0 &&
                                                         selectedSelectableCount == selectableRefundCount;
@@ -581,7 +585,7 @@ class _RefundScreenState extends State<RefundScreen> {
                                                 return Opacity(
                                                   opacity: isPayoutOrCashback ? 0.4 : 1,
                                                   child: IgnorePointer(
-                                                    ignoring: isDiscount || isPayoutOrCashback,
+                                                    ignoring: isDiscount || isPayoutOrCashback || _isRefundCompleted,
                                                     child: InkWell(
                                                       onTap: () {
                                                         setState(() {
@@ -1493,7 +1497,9 @@ class _RefundScreenState extends State<RefundScreen> {
                   width: 1,
                 ),
                 value: isChecked,
-                onChanged: (bool? value) {
+                onChanged: _isRefundCompleted
+                    ? null
+                    : (bool? value) {
                   setState(() {
                     if (value == true) {
                       selectedItems.add({
@@ -1578,30 +1584,31 @@ class _RefundScreenState extends State<RefundScreen> {
 
   Widget _paymentButton(String type) {
     final bool isSelected = selectedPayment == type;
-    final Color color = paymentColors[type] ?? Colors.green; // fallback
+    final bool isDisabled = _disabledPaymentType == type;
+    final Color color = paymentColors[type] ?? Colors.green;
 
     return Expanded(
       child: GestureDetector(
-        onTap: () async {
-          if (_isProcessingPayment) return;
-
-          _isProcessingPayment = true;
-
+        onTap: isDisabled
+            ? null
+            : () async {
           try {
-            print("=========== REFUND DEBUG START ===========");
-
             if (type == "Cash") {
-
               if (selectedItems.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Please select at least one product to refund.'),
+                    content: Text(
+                      'Please select at least one product to refund.',
+                    ),
+                    backgroundColor: Colors.red,
                   ),
                 );
                 return;
               }
 
-              setState(() => selectedPayment = type);
+              setState(() {
+                selectedPayment = type;
+              });
 
               final bool isFullRefund =
                   selectedItems.length == selectedOrder.items.length;
@@ -1612,16 +1619,16 @@ class _RefundScreenState extends State<RefundScreen> {
 
               if (isPartialRefund) {
                 refundItems = selectedItems.map((item) {
-                  final lineItem = selectedOrder.items
-                      .firstWhere((e) => e.id == item['order_item_id']);
-
-                  final double refundAmount = double.parse(
-                    (lineItem.total + lineItem.totalTax).toStringAsFixed(2),
+                  final lineItem = selectedOrder.items.firstWhere(
+                        (e) => e.id == item['order_item_id'],
                   );
 
                   return RefundItem(
                     orderItemId: lineItem.id,
-                    orderItemAmount: refundAmount,
+                    orderItemAmount: double.parse(
+                      (lineItem.total + lineItem.totalTax)
+                          .toStringAsFixed(2),
+                    ),
                   );
                 }).toList();
               }
@@ -1633,7 +1640,7 @@ class _RefundScreenState extends State<RefundScreen> {
                 refundType: refundType,
                 items: refundItems,
               );
-              /// ✅ SHOW LOADER
+
               showDialog(
                 context: context,
                 barrierDismissible: false,
@@ -1642,18 +1649,21 @@ class _RefundScreenState extends State<RefundScreen> {
                 ),
               );
 
-              final result = await CompletedOrdersRepository(baseUrl: '').refundOrder(
+              final result =
+              await CompletedOrdersRepository(baseUrl: '').refundOrder(
                 orderId: selectedOrder.orderId,
                 refundType: refundType,
                 items: refundItems?.map((e) => e.toJson()).toList(),
               );
-              /// ✅ HIDE LOADER
-              Navigator.pop(context);
+
+              Navigator.of(context, rootNavigator: true).pop();
 
               if (result["success"] == false) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(result["message"] ?? "Refund not allowed"),
+                    content: Text(
+                      result["message"] ?? "Refund not allowed",
+                    ),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -1669,78 +1679,53 @@ class _RefundScreenState extends State<RefundScreen> {
                 ),
               );
 
+              // disable ONLY when ADD clicked
               if (refundAmount != null) {
+                setState(() {
+                  _disabledPaymentType = type;
+                });
+
                 await showDialog<void>(
                   context: context,
                   barrierDismissible: false,
-                  builder: (_) => PaymentSuccessDialog(amount: refundAmount),
+                  builder: (_) => PaymentSuccessDialog(
+                    amount: refundAmount,
+                  ),
                 );
 
                 setState(() {
                   editedRefundAmount = refundAmount;
                   isConfirmEnabled = true;
+                  _isRefundCompleted = true;
                 });
-
-                OrderHelper.setManualRefundAmount(
-                  orderId: selectedOrder.orderId,
-                  amount: refundAmount,
-                );
               }
             }
-
-          } finally {
-            _isProcessingPayment = false; // ✅ ALWAYS resets (even on return/error)
+          } catch (e) {
+            print("Refund error: $e");
           }
         },
-        child: Container(
-          height: 45,
-          decoration: BoxDecoration(
-            color: isSelected ? color : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: color,
-              width: 1.5,
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              /// Circle Indicator (filled as before)
-              Container(
-                width: 16, // Slightly larger to fit the outer white border
-                height: 16,
-                margin: const EdgeInsets.only(right: 8),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected ? Colors.white : color, // Outer border
-                    width: 1,
-                  ),
-                ),
-                child: Center(
-                  child: Container(
-                    width: 10, // Inner colored circle
-                    height: 10,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isSelected ? color : Colors.transparent, // Fill only if selected
-                      border: isSelected
-                          ? Border.all(color: Colors.white, width: 6) // Optional: white inner border
-                          : null,
-                    ),
-                  ),
-                ),
+        child: Opacity(
+          opacity: isDisabled ? 0.6 : 1,
+          child: Container(
+            height: 45,
+            decoration: BoxDecoration(
+              color: isSelected ? color : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isDisabled ? Colors.grey : color,
+                width: 1.5,
               ),
-              // Text
-              Text(
-                type,
+            ),
+            child: Center(
+              child: Text(
+                type, // always show Cash/Card/Wallet
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   color: isSelected ? Colors.white : color,
                   fontSize: 16,
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),

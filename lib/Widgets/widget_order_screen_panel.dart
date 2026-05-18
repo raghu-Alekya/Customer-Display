@@ -3094,14 +3094,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                               TextConstants.taxText,
                                               style: TextStyle(
                                                   fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
+                                                  fontSize: 15,
                                                   color: Colors.grey),
                                             ),
                                             Text(
                                                 "${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}",
                                                 style: TextStyle(
                                                     fontWeight: FontWeight.bold,
-                                                    fontSize: 12,
+                                                    fontSize: 15,
                                                     color:
                                                         themeHelper.themeMode ==
                                                                 ThemeMode.dark
@@ -3118,14 +3118,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                 TextConstants.merchantDiscount,
                                                 style: TextStyle(
                                                   color: Colors.blue,
-                                                  fontSize: 14,
+                                                  fontSize: 15,
                                                 ),
                                               ),
                                               Text(
                                                 "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}",
                                                 style: TextStyle(
                                                   color: Colors.blue,
-                                                  fontSize: 14,
+                                                  fontSize: 15,
                                                   fontWeight: FontWeight.w600,
                                                 ),
                                               ),
@@ -3142,7 +3142,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                 TextConstants.cashbackFee,
                                                 style: const TextStyle(
                                                   color: Color(0xFF55CBCD),
-                                                  fontSize: 14,
+                                                  fontSize: 15,
                                                   fontWeight: FontWeight.w500,
                                                 ),
                                               ),
@@ -3150,7 +3150,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                 "${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}",
                                                 style: const TextStyle(
                                                   color: Color(0xFF55CBCD),
-                                                  fontSize: 14,
+                                                  fontSize: 15,
                                                   fontWeight: FontWeight.w600,
                                                 ),
                                               ),

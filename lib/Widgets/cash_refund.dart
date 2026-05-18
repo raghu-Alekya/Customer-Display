@@ -37,7 +37,7 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
     amount = widget.refundAmount.toStringAsFixed(2);
 
     // Fetch refund total from API
-    fetchRefundTotal();
+    // fetchRefundTotal();
   }
 
   Future<void> fetchRefundTotal() async {
@@ -70,54 +70,13 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
     }
   }
   void addDigit(String value) {
-    if (totalRefund <= 0) return;
-
-    // Append digit (max 6-7 digits optional safety)
-    String newDigits = amountDigits + value;
-
-    // Remove leading zeros
-    newDigits = newDigits.replaceFirst(RegExp(r'^0+'), '');
-    if (newDigits.isEmpty) newDigits = "0";
-
-    // Convert to decimal
-    double parsed = double.parse(newDigits) / 100;
-
-    // 🚫 Limit check
-    if (parsed > totalRefund) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            "Max refund allowed is \$${totalRefund.toStringAsFixed(2)}",
-          ),
-          duration: const Duration(seconds: 1),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      amountDigits = newDigits;
-      amount = parsed.toStringAsFixed(2);
-    });
+    return; // disable editing
   }
   void clearAmount() {
-    setState(() {
-      amountDigits = "0";
-      amount = "0.00";
-    });
+    return; // disable editing
   }
   void removeDigit() {
-    if (amountDigits.length <= 1) {
-      amountDigits = "0";
-    } else {
-      amountDigits = amountDigits.substring(0, amountDigits.length - 1);
-    }
-
-    double parsed = double.parse(amountDigits) / 100;
-
-    setState(() {
-      amount = parsed.toStringAsFixed(2);
-    });
+    return; // disable editing
   }
   Widget _keyButton(String text,
       {Color? bgColor, Color? textColor, VoidCallback? onTap}) {
@@ -215,31 +174,35 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
                       const SizedBox(width: 10),
 
                       SizedBox(
-                        width: 220, // match keypad width
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-                          alignment: Alignment.centerLeft,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(6),
-                            color: Theme.of(context).brightness == Brightness.dark
+                        width: 220,
+                        child: TextField(
+                          controller: TextEditingController(
+                            text:
+                            '${(double.tryParse(amount) ?? 0.0) < 0 ? '-' : ''}\$${(double.tryParse(amount) ?? 0.0).abs().toStringAsFixed(2)}',
+                          ),
+                          readOnly: true,              // prevents typing
+                          enableInteractiveSelection: false, // prevents copy/paste/select
+                          showCursor: false,           // hides cursor
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: Theme.of(context).brightness == Brightness.dark
                                 ? const Color(0xFF353845)
                                 : Colors.white,
-                            border: Border.all(
-                              color: Theme.of(context).brightness == Brightness.dark
-                                  ? const Color(0xFF3A3A3A)
-                                  : const Color(0xFFE0E0E0),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(6),
+                              borderSide: BorderSide(
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? const Color(0xFF3A3A3A)
+                                    : const Color(0xFFE0E0E0),
+                              ),
                             ),
                           ),
-                          child: Text(
-                            '${(double.tryParse(amount) ?? 0.0) < 0 ? '-' : ''}\$${(double.tryParse(amount) ?? 0.0).abs().toStringAsFixed(2)}',
-                            textAlign: TextAlign.left,
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white
-                                  : const Color(0xFF3D4F7C),
-                            ),
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white
+                                : const Color(0xFF3D4F7C),
                           ),
                         ),
                       ),
@@ -297,8 +260,7 @@ class _CashRefundDialogState extends State<CashRefundDialog> {
                               : const Color(0xFF3D4F7C),
                           textColor: Colors.white,
                           onTap: () async {
-                            final enteredAmount = double.tryParse(amount) ?? 0.0;
-                            Navigator.pop(context, enteredAmount);
+                            Navigator.pop(context, widget.refundAmount);
                           },
                         ),
                       ],
