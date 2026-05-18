@@ -586,55 +586,40 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
   /// NEW helper — extracts all discount amounts from one line item,
   double _extractTotalDiscountForItem(Map<String, dynamic> item) {
-    double n(dynamic v) =>
-        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+    double n(dynamic v) => v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
 
-    // Every key that has ever carried a discount amount in this codebase:
-    final double auto = n(item['auto_discount']) +
-        n(item['auto_discount_total']) +
+    // Priority 1: Direct POS auto discount from meta (most accurate)
+    double posAuto = n(item['_pos_auto_discount']) +
+        n(item['auto_discount']) +
         n(item['autoDiscount']) +
-        n(item['autoDiscountTotal']) +
+        n(item['auto_discount_total']) +
         n(item['display_auto_discount']);
 
-    final double combo = n(item['combo_discount_total']) +
-        n(item['comboDiscountTotal']) +
-        n(item['combo_discount']);
+    // Priority 2: Other discount types
+    double combo = n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
+    double multipack = n(item['multipack_discount_total']) + n(item['multipackDiscountTotal']);
+    double mixmatch = n(item['mixmatch_discount_total']);
 
-    final double mixMatch = n(item['mixmatch_discount_total']) +
-        n(item['mixMatchDiscountTotal']) +
-        n(item['mixmatch_discount']);
+    // Use discount_type to avoid double counting
+    final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
 
-    final double multipack = n(item['multipack_discount_total']) +
-        n(item['multipackDiscountTotal']) +
-        n(item['multipack_discount']);
-
-    final double merchant = n(item['merchant_discount']) +
-        n(item['merchantDiscount']) +
-        n(item['item_merchant_discount']);
-
-    // auto_discount regardless of type, so redistribute when needed.
-    final String dtype =
-    (item['discount_type'] ?? '').toString().toLowerCase();
-    double finalAuto = auto;
-    double finalCombo = combo;
-    double finalMix = mixMatch;
-    double finalMulti = multipack;
-
-    if (dtype == 'mixmatch' && auto > 0 && mixMatch == 0) {
-      finalMix = auto;
-      finalAuto = 0;
-    } else if (dtype == 'combo' && auto > 0 && combo == 0) {
-      finalCombo = auto;
-      finalAuto = 0;
-    } else if (dtype == 'multipack' && auto > 0 && multipack == 0) {
-      finalMulti = auto;
-      finalAuto = 0;
+    if (dtype == 'auto' || dtype.isEmpty) {
+      return posAuto;
+    } else if (dtype == 'combo' || dtype == 'mixmatch') {
+      return combo > 0 ? combo : posAuto;
+    } else if (dtype == 'multipack') {
+      return multipack > 0 ? multipack : posAuto;
     }
 
-    return finalAuto + finalCombo + finalMix + finalMulti + merchant;
+    return posAuto + combo + multipack + mixmatch;
   }
 
   Future<void> _recalculateTaxOnDiscountedItems() async {
+    if (widget.orderTax > 0.01) {
+      tax = widget.orderTax; // Trust panel value first
+      // _ensureTaxConsistency();
+      return;
+    }
     if (orderItems.isEmpty) return;
 
     double totalTax = 0.0;
@@ -2722,6 +2707,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     NetTotal = grossTotal + discount + merchantDiscount;
     computedNetPayable = NetTotal + tax + cashbackFee;
     orderTotal = computedNetPayable;
+    merchantDiscount = widget.merchantDiscount < 0 ? widget.merchantDiscount : -widget.merchantDiscount.abs();
 
     Future.delayed(Duration.zero, () async {
       final box = StorageProvider.offlineOrders;
@@ -6007,23 +5993,52 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     // Pending/offline orders may use *_total or camelCase keys.
-    double autoDiscount = _num(orderItem['auto_discount']) +
-        _num(orderItem['auto_discount_total']) +
-        _num(orderItem['autoDiscount']) +
-        _num(orderItem['autoDiscountTotal']) +
-        _num(orderItem['display_auto_discount']);
+    double autoDiscount =
+    _num(orderItem['auto_discount']) != 0
+        ? _num(orderItem['auto_discount'])
+        : _num(orderItem['auto_discount_total']) != 0
+        ? _num(orderItem['auto_discount_total'])
+        : _num(orderItem['autoDiscount']) != 0
+        ? _num(orderItem['autoDiscount'])
+        : _num(orderItem['autoDiscountTotal']) != 0
+        ? _num(orderItem['autoDiscountTotal'])
+        : _num(orderItem['display_auto_discount']);
 
-    double comboDiscount = _num(orderItem['combo_discount_total']) +
-        _num(orderItem['comboDiscountTotal']) +
-        _num(orderItem['combo_discount']);
+    // double comboDiscount = _num(orderItem['combo_discount_total']) +
+    //     _num(orderItem['comboDiscountTotal']) +
+    //     _num(orderItem['combo_discount']);
+    //
+    // double mixMatchDiscount = _num(orderItem['mixmatch_discount_total']) +
+    //     _num(orderItem['mixMatchDiscountTotal']) +
+    //     _num(orderItem['mixmatch_discount']);
+    //
+    // double multipackDiscount = _num(orderItem['multipack_discount_total']) +
+    //     _num(orderItem['multipackDiscountTotal']) +
+    //     _num(orderItem['multipack_discount']);
 
-    double mixMatchDiscount = _num(orderItem['mixmatch_discount_total']) +
-        _num(orderItem['mixMatchDiscountTotal']) +
-        _num(orderItem['mixmatch_discount']);
+    double comboDiscount = [
+      orderItem['combo_discount_total'],
+      orderItem['comboDiscountTotal'],
+      orderItem['combo_discount'],
+    ]
+        .map((e) => _num(e))
+        .firstWhere((v) => v != 0, orElse: () => 0);
 
-    double multipackDiscount = _num(orderItem['multipack_discount_total']) +
-        _num(orderItem['multipackDiscountTotal']) +
-        _num(orderItem['multipack_discount']);
+    double mixMatchDiscount = [
+      orderItem['mixmatch_discount_total'],
+      orderItem['mixMatchDiscountTotal'],
+      orderItem['mixmatch_discount'],
+    ]
+        .map((e) => _num(e))
+        .firstWhere((v) => v != 0, orElse: () => 0);
+
+    double multipackDiscount = [
+      orderItem['multipack_discount_total'],
+      orderItem['multipackDiscountTotal'],
+      orderItem['multipack_discount'],
+    ]
+        .map((e) => _num(e))
+        .firstWhere((v) => v != 0, orElse: () => 0);
 
     /// 🔥 FIX: backend sometimes moves discount into auto_discount
     if (discountType == 'mixmatch' &&
@@ -8863,6 +8878,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       setState(() => isSummaryLoading = true);
 
+      // ✅ CHECK DUPLICATE BEFORE ANY MODIFICATION
+      final dynamic originalCr = offlineOrder["coupon_response"];
+      if (originalCr is Map) {
+        final coupons = originalCr["coupons"] as List? ?? [];
+        for (final c in coupons) {
+          if (c is Map && c["code"]?.toString().trim() == code) {
+            // Already applied (either as redeem or issued)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Coupon already applied"),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            return;
+          }
+        }
+      }
+
       // ✅ BACKUP original coupon_response BEFORE any modification
       final dynamic originalCouponResponse = offlineOrder["coupon_response"];
 
@@ -10038,6 +10071,57 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
+
+  Future<void> deleteOrderWithItems(int orderId) async {
+    final db = await DBHelper.instance.database;
+
+    // 0. Fetch and print order items before deletion
+    final List<Map<String, dynamic>> items = await db.query(
+      AppDBConst.purchasedItemsTable,
+      where: '${AppDBConst.orderIdForeignKey} = ?',
+      whereArgs: [orderId],
+    );
+
+    if (items.isNotEmpty) {
+      print("🗑️ Deleting Order #$orderId - Items:");
+      for (var item in items) {
+        print("   - ${item[AppDBConst.itemName]} | "
+            "Qty: ${item[AppDBConst.itemCount]} | "
+            "Price: ${item[AppDBConst.itemPrice]} | "
+            "Total: ${item[AppDBConst.itemSumPrice]}");
+      }
+    } else {
+      print("🗑️ Order #$orderId has no items (or items already deleted).");
+    }
+
+    // 1. Delete order items
+    await db.delete(
+      AppDBConst.purchasedItemsTable,
+      where: '${AppDBConst.orderIdForeignKey} = ?',
+      whereArgs: [orderId],
+    );
+
+    // 2. Delete order row
+    await db.delete(
+      AppDBConst.orderTable,
+      where: '${AppDBConst.orderServerId} = ?',
+      whereArgs: [orderId],
+    );
+
+    // 3. Delete Isar payments (currently commented out)
+    // await LocalPaymentDBHelper.instance.deletePaymentsByOrderId(orderId);
+
+    // 4. Delete Hive entry
+    final box = StorageProvider.offlineOrders;
+    await box.delete(orderId.toString());
+
+    // 5. Refresh in-memory orders
+    await OrderHelper().loadData();
+    OrderHelper.notifyOrderPanelToRefresh();
+
+    print("✅ Order $orderId completely deleted (including ${items.length} items).");
+  }
+
   Future<void> _syncCurrentOfflineOrder() async {
     final String orderKey = widget.orderId?.toString() ??
         widget.offlineOrderId?.toString() ??
@@ -10085,15 +10169,39 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           }
 
           // Clean up Hive
-          if (wooStatus == 'completed') {
-            await box.delete(orderKey);
-            print("✅ Order $orderKey synced & deleted (completed)");
-          } else {
+          // if (wooStatus == 'completed' || wooStatus == 'processing' || wooStatus == 'pending') {
+          //   await box.delete(orderKey);
+          //   await deleteOrderWithItems(localOrderId!);  // ✅ FULL DELETE
+          //
+          //   print("✅ Order $orderKey synced & deleted (completed)");
+          // } else {
+          //   order['wooOrderId'] = wooOrderId;
+          //   order['wooStatus'] = wooStatus;
+          //   order['synced'] = true;
+          //   order['sync_at'] = DateTime.now().toIso8601String();
+          //   await box.put(orderKey, order);
+          // }
+
+          if (wooStatus == 'completed' || wooStatus == 'processing' || wooStatus == 'pending') {
+            // ✅ Instead, update the local order status to match Woo
+            order['order_status'] = wooStatus;
             order['wooOrderId'] = wooOrderId;
-            order['wooStatus'] = wooStatus;
             order['synced'] = true;
             order['sync_at'] = DateTime.now().toIso8601String();
             await box.put(orderKey, order);
+
+            // Also update SQLite order status
+            final db = await DBHelper.instance.database;
+            await db.update(
+              AppDBConst.orderTable,
+              {AppDBConst.orderStatus: wooStatus},
+              where: '${AppDBConst.orderServerId} = ?',
+              whereArgs: [localOrderId],
+            );
+
+
+
+            print("✅ Order $orderKey status updated to $wooStatus (kept locally)");
           }
 
         } else if (retryCount < maxRetries) {
@@ -10119,6 +10227,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             order['coupon_response'] = cr;
             order['coupon_lines'] = []; // clear for next attempt
             order['coupon_applied'] = keptCoupons.isNotEmpty;
+
+
 
             print("🔄 Removed failing coupons. Retrying sync...");
             await box.put(orderKey, order); // save cleaned version

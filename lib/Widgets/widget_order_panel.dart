@@ -22,6 +22,7 @@ import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 import 'package:pinaka_pos/Models/Search/product_search_model.dart';
 import 'package:pinaka_pos/Models/Search/product_variation_model.dart';
 import 'package:pinaka_pos/Providers/Auth/product_variation_provider.dart';
+import 'package:pinaka_pos/Repositories/Search/product_search_repository.dart';
 import 'package:pinaka_pos/Screens/Home/order_summary_screen.dart';
 import 'package:pinaka_pos/Widgets/scanner_guard.dart';
 import 'package:pinaka_pos/Widgets/weighing_scale_widget.dart';
@@ -63,7 +64,6 @@ import '../Models/Orders/orders_model.dart';
 import '../Providers/Age/age_verification_provider.dart';
 import '../Repositories/Auth/store_validation_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
-import '../Repositories/Search/product_search_repository.dart';
 import '../Screens/Home/add_screen.dart';
 import '../Screens/Home/edit_product_screen.dart';
 import '../Utilities/svg_images_utility.dart';
@@ -171,6 +171,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
   /// True only after restore + fetch complete; prevents showing stale order items when switching from Orders/Apps.
   bool _initialRestoreDone = false;
+
+  int _currentOrderVersion = 0;
 
   void _toggleSummary() {
     setState(() {
@@ -291,8 +293,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
 
     //  Ignore floating point noise
-    return result < 1e-6 ? 0.0 : result;
-
+    return result < 0.01 ? 0.0 : result;
   }
 
   // Build #1.0.104: created this function for initial call & while back to this screen
@@ -348,20 +349,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       OrderHelper.isOrderPanelLoaded = false;
       fetchOrdersData();
     }
-    // if (mounted) {
-    //  if(tabs.isNotEmpty){ // Build #1.0.104: Adding this conditions for old orderId's are showing before sync api call
-    //    _getOrderTabs(); // Build #1.0.10 : Reload tabs when the widget updates (e.g., after item selection)
-    //  }
-    // }
-    ///Build #1.0.170: Fixed -  Order Cart Flickering When Clicking on Fast Keys
-    // Only trigger loading if refreshKey changed (indicating an external update like item add/delete)
-    // This prevents unnecessary loading/flickering on unrelated parent rebuilds (e.g., time changes or screen switches)
     if (widget.refreshKey != oldWidget.refreshKey &&
         mounted &&
         !_isFetchingInitialData) {
-      // Build #1.0.128: hOnly update if not in initial fetch
-      setState(() => _isLoading =
-      true); // Build #1.0.131: show loader in order panel after selecting item/product
+      setState(() => _isLoading = true);
       if (kDebugMode) {
         print("##### _isFetchingInitialData : $_isFetchingInitialData");
       }
@@ -372,6 +363,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       print("##### OrderPanel didUpdateWidget");
     }
   }
+
   // Build #1.0.10: Fetches the list of order tabs from OrderHelper
   Future<void> _getOrderTabs() async {
     if (kDebugMode) {
@@ -480,7 +472,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final int? activeId = orderHelper.activeOrderId;
 
 // 🔥 HANDLE ALL INVALID ACTIVE ORDER CASES
-    if (activeId != null && !visibleOrderIds.contains(activeId) && _initialRestoreDone) {
+    if (activeId != null && !visibleOrderIds.contains(activeId)) {
       if (kDebugMode) {
         print("🟥 Active order $activeId is no longer visible → resetting");
       }
@@ -593,6 +585,20 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final int requestId = ++_fetchOrderItemsRequestId;
 
     final activeId = orderHelper.activeOrderId;
+
+    // FIX: Immediately clear orderItems when there is no active order
+    if (activeId == null) {
+      if (kDebugMode) print(" fetchOrderItems — no active order, clearing list");
+      if (mounted) {
+        setState(() {
+          orderItems.clear();
+          _listVersion++;
+          _currentOrderVersion++; // FIX2: increment version
+        });
+      }
+      return;
+    }
+
     // #region agent log
     unawaited(_agentDebugLog(
       hypothesisId: "H3",
@@ -606,19 +612,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       },
     ));
     // #endregion
-
-    if (activeId == null) {
-      if (kDebugMode) {
-        print("⛔ fetchOrderItems — no active order, clearing list");
-      }
-      if (mounted) {
-        setState(() {
-          orderItems.clear();
-          _listVersion++;
-        });
-      }
-      return;
-    }
 
     // Tabs can lag behind activeOrderId (e.g. while _getOrderTabs runs, or offline-only).
     // Never clear the cart just because the tab bar has not caught up yet.
@@ -661,6 +654,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           },
         ));
         // #endregion
+
+        // FIX: Verify that active order hasn't changed while fetching
+        if (orderHelper.activeOrderId != oid) {
+          if (kDebugMode) print("⚠️ Active order changed during fetch, discarding results");
+          return;
+        }
+
         if (offlineItems.isNotEmpty) {
           if (kDebugMode) {
             print(
@@ -671,6 +671,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               if (requestId != _fetchOrderItemsRequestId) return;
               orderItems = List<Map<String, dynamic>>.from(offlineItems);
               _listVersion++;
+              _currentOrderVersion++; // FIX2
             });
           }
           return;
@@ -679,6 +680,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         // 2️⃣ Fallback to SQLite (synced/API orders)
         var orders = await ordersFuture;
         if (requestId != _fetchOrderItemsRequestId) return;
+        // FIX: Double-check active order ID again after await
+        if (orderHelper.activeOrderId != oid) return;
+
         if (orders.isEmpty) {
           if (kDebugMode) {
             print(
@@ -705,6 +709,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         List<Map<String, dynamic>> items =
         await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
         if (requestId != _fetchOrderItemsRequestId) return;
+        if (orderHelper.activeOrderId != oid) return;
+
         if (kDebugMode) {
           print(
               "##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
@@ -826,6 +832,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         if (mounted) {
           setState(() {
             orderItems = [];
+            _currentOrderVersion++; // FIX2: increment version when switching tabs
           });
         }
         await orderHelper.setActiveOrder(selectedOrderId);
@@ -1227,62 +1234,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   //   _onBarcodeScannedCallback.call(barcode);
   // }
   // final GlobalKey<BarcodeKeyboardListenerState> _scannerKey = GlobalKey();//Build #1.0.268: 2. create global key
-
-  Future<bool> _isCustomItemAlreadyInOrder(int orderId, String sku) async {
-    final box = StorageProvider.offlineOrders;
-    final raw = await box.get(orderId.toString());
-    if (raw == null) return false;
-
-    final order = Map<String, dynamic>.from(raw);
-    final products = (order['products'] as List?) ?? [];
-
-    final normalized = sku.toLowerCase().trim();
-
-    return products.any((item) {
-      final type = (item['item_type'] ?? item['type'] ?? '').toString().toLowerCase();
-      final itemSku = (item['sku'] ?? '').toString().toLowerCase().trim();
-      return type.contains('custom') && itemSku == normalized;
-    });
-  }
-
-  Future<void> _incrementExistingCustomItem(int orderId, String sku) async {
-    final box = StorageProvider.offlineOrders;
-    final raw = await box.get(orderId.toString());
-    if (raw == null) return;
-
-    final order = Map<String, dynamic>.from(raw);
-    final products = (order['products'] as List?)
-        ?.map((e) => Map<String, dynamic>.from(e))
-        .toList() ?? [];
-
-    final normalized = sku.toLowerCase().trim();
-
-    for (var item in products) {
-      final type = (item['item_type'] ?? item['type'] ?? '').toString().toLowerCase();
-      final itemSku = (item['sku'] ?? '').toString().toLowerCase().trim();
-
-      if (type.contains('custom') && itemSku == normalized) {
-        final qty = (item['quantity'] ?? item['items_count'] ?? 1) as int;
-        final newQty = qty + 1;
-
-        item['quantity'] = newQty;
-        item['items_count'] = newQty;
-        item['item_sum_price'] = (item['price'] ?? 0.0) * newQty;
-        break;
-      }
-    }
-
-    await box.put(orderId.toString(), order);
-    await orderHelper.loadData();
-    await fetchOrderItems();
-    OrderHelper.notifyOrderPanelToRefresh();
-    widget.refreshOrderList?.call();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Custom Item quantity increased"), backgroundColor: Colors.green),
-    );
-  }
-
   Future<void> _handleOrderPanelBarcode(String barcode) async {
     if (ScannerMutex.noOrderBusy) {
       print("🚫 BLOCKED BY ScannerMutex.noOrderBusy");
@@ -1373,31 +1324,51 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
       SKU.ProductBySkuResponse? product;
       bool foundOffline = false;
-      Map<String, dynamic>? resolvedProductMap;   // Added for safety
+      // unused local normalizedSku was removed
 
-      // ====================== CUSTOM ITEM LOGIC (Added Here) ======================
-      // Check if product is still null after all resolution attempts
-      if (product == null) {
-        final bool alreadyExists = await _isCustomItemAlreadyInOrder(activeOrderId, normalizedBarcode);
+// The synchronous backend validation that bypassed cache was removed to restore instantaneous scanning speeds.
 
-        if (alreadyExists) {
-          // ✅ INCREMENT EXISTING CUSTOM ITEM
-          await _incrementExistingCustomItem(activeOrderId, normalizedBarcode);
-          _isLoading = false;
-          if (mounted) setState(() {});
-          return;
-        } else {
-          // NEW CUSTOM ITEM → Open Dialog
-          _isLoading = false;
-          if (mounted) setState(() {});
-          await _openCustomItemDialog(context, trimmedBarcode);
-          return;
-        }
-      }
-
+//             // 🔥 FAST DELETION VALIDATION
+//             final isar = await IsarService.instance;
+//
+//             final cachedEntries = await isar.isarCacheEntrys
+//                 .where()
+//                 .filter()
+//                 .keyStartsWith("products_")
+//                 .findAll();
+//
+//             bool existsInCache = false;
+//
+//             for (final entry in cachedEntries) {
+//               final List<dynamic> products = json.decode(entry.json);
+//
+//               for (final p in products) {
+//                 final sku = (p["sku"] ?? "").toString().toLowerCase();
+//
+//                 if (sku == normalizedBarcode.toLowerCase()) {
+//                   existsInCache = true;
+//                   break;
+//                 }
+//               }
+//
+//               if (existsInCache) break;
+//             }
+//
+// // 🔥 IF NOT FOUND → OPEN CUSTOM ITEM POPUP
+//             if (!existsInCache) {
+//               print("🔄 Product removed from backend → opening Custom Item popup");
+//
+//               _isLoading = false;
+//               if (mounted) setState(() {});
+//
+//               await _openCustomItemDialog(context, trimmedBarcode);
+//               return;
+//             }
       // ---------------------------------------------------------------------------
       // 1️⃣ MEMORY CACHE
       // ---------------------------------------------------------------------------
+// 1️⃣ MEMORY CACHE
+// ---------------------------------------------------------------------------
       try {
         final memoryData = OrderHelper.getFromCache(trimmedBarcode);
 
@@ -1414,75 +1385,121 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
           Map<String, dynamic> productMap;
 
+          // Case A → stored as {products:[{...}]}
           if (memoryData is Map &&
               memoryData["products"] is List &&
               memoryData["products"].isNotEmpty) {
             productMap = Map<String, dynamic>.from(memoryData["products"][0]);
 
+            // 🔐 Restore meta_data safely
             if (productMap["meta_data"] is List) {
               productMap["meta_data"] =
               List<Map<String, dynamic>>.from(productMap["meta_data"]);
             }
 
+            // 🔐 Restore tags safely
             if (productMap["tags"] is List) {
               productMap["tags"] =
               List<Map<String, dynamic>>.from(productMap["tags"]);
             }
-          } else {
-            productMap = Map<String, dynamic>.from(memoryData);
           }
 
+          // Case B → stored as flat map
+          else {
+            productMap = Map<String, dynamic>.from(memoryData);
+          }
+          // 🔥 FIX FOR CUSTOM ITEM RE-SCAN 🔥
           if (productMap.containsKey('product') &&
               productMap['product'] is Map<String, dynamic>) {
             productMap = Map<String, dynamic>.from(productMap['product']);
           }
 
+// ✅ STORE FINAL MAP FOR LATER USE
           resolvedProductMap = productMap;
 
           if (kDebugMode) {
             print("💾 Extracted productMap from memory → $productMap");
             try {
               print("💾 productMap JSON → ${jsonEncode(productMap)}");
-            } catch (_) {}
+            } catch (_) {
+              print("💾 productMap not JSON encodable");
+            }
+            // ⭐⭐⭐ ADD THESE THREE ⭐⭐⭐
+            print("🖼 MEMORY productMap['images'] → ${productMap['images']}");
+
+            if (productMap['images'] is List &&
+                productMap['images'].isNotEmpty) {
+              print("🖼 MEMORY image src → ${productMap['images'][0]['src']}");
+            } else {
+              print("🖼 MEMORY image src → NONE");
+            }
           }
 
           product = SKU.ProductBySkuResponse.fromJson(productMap);
           foundOffline = true;
+
+          if (kDebugMode) {
+            print(
+                "🧠 MEMORY → PRODUCT → name=${product?.name}, price=${product?.price}, sku=${product?.sku}");
+          }
         }
       } catch (e, s) {
         print("❌ MEMORY CACHE ERROR → $e");
         print("📌 STACKTRACE → $s");
       }
 
-      // ---------------------------------------------------------------------------
-      // 2️⃣ PRODUCT CACHE (Custom Items + Normal SKU)
-      // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 2️⃣ PRODUCT CACHE (Custom Items + Normal SKU)
+// ---------------------------------------------------------------------------
       try {
         if (product == null) {
-          final cached = await productBox.get(cacheKey);
+          final cached = await productBox.get(cacheKey); // <-- await here
 
           if (cached != null) {
             if (kDebugMode) {
               print("💽 HIVE productCache[$cacheKey] RAW → $cached");
+              try {
+                print("💽 HIVE JSON → ${jsonEncode(cached)}");
+              } catch (_) {
+                print("💽 HIVE map not JSON encodable");
+              }
             }
 
             List<dynamic> items = [];
 
             if (cached is Map && cached["products"] is List) {
-              items = List<dynamic>.from(cached["products"]);
+              items = List<dynamic>.from(cached["products"]); // safe copy
             }
 
             if (items.isNotEmpty) {
               final productMap = Map<String, dynamic>.from(items[0]);
+
+              if (kDebugMode) {
+                print("💽 Extracted productMap from Hive → $productMap");
+                try {
+                  print("💽 productMap JSON → ${jsonEncode(productMap)}");
+                } catch (_) {
+                  print("💽 productMap not JSON encodable");
+                }
+              }
+
               product = SKU.ProductBySkuResponse.fromJson(productMap);
               resolvedProductMap = productMap;
               foundOffline = true;
+
+              if (kDebugMode) {
+                print(
+                    "🟢 productCache → PRODUCT → name=${product?.name}, price=${product?.price}");
+              }
             }
           }
         }
       } catch (e, s) {
         print("❌ PRODUCT CACHE ERROR → $e");
+        print("📌 STACKTRACE → $s");
       }
+      // Removed redundant auto-increment logic.
+      // All scans now proceed to product resolution below.
 
       // ---------------------------------------------------------------------------
       // 4️⃣ FULL LIST CACHE
@@ -1522,6 +1539,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             await productBox.put(cacheKey, {
               "products": products.map((p) {
                 final map = p.toJson();
+
+                // 🔥 FIX: Persist tags
                 map["tags"] = p.tags
                     ?.map((t) => {
                   "id": t.id,
@@ -1529,12 +1548,15 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                   "slug": t.slug,
                 })
                     .toList();
+
+                // 🔥 Also persist meta_data if present
                 map["meta_data"] = p.metaData
                     ?.map((m) => {
                   "key": m.key,
                   "value": m.value,
                 })
                     .toList();
+
                 return map;
               }).toList(),
             });
@@ -1547,27 +1569,33 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
 
       // ---------------------------------------------------------------------------
-      // 6️⃣ STILL NULL → CUSTOM ITEM POPUP   (This part is now protected by above logic)
+      // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
       // ---------------------------------------------------------------------------
+      // 6️⃣ STILL NULL → CUSTOM ITEM POPUP
       if (product == null) {
+        // ❌ Block only if scanner or age flow is active
         if (_ageVerificationActive || isDriverLicense) {
           if (kDebugMode) {
             print("🚫 Custom Item popup BLOCKED (DL / Age / Locked)");
           }
+
           _isLoading = false;
           if (mounted) setState(() {});
           return;
         }
 
+        // ✅ Stop loader BEFORE opening popup
         _isLoading = false;
         if (mounted) setState(() {});
 
+        // ✅ PASS BARCODE HERE
         await _openCustomItemDialog(context, trimmedBarcode);
+
         return;
       }
 
       // ---------------------------------------------------------------------------
-      // 7️⃣ EXTRACT PRODUCT DATA  (Your original code continues unchanged)
+      // 7️⃣ EXTRACT PRODUCT DATA
       // ---------------------------------------------------------------------------
       final bool isCustomItem =
           product.id == null || product.id == 0 || product.type == 'custom';
@@ -1583,12 +1611,15 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           : (product.sku ?? trimmedBarcode);
 
       final productPrice = isCustomItem
-          ? double.tryParse(resolvedProductMap?['price']?.toString() ?? '0') ?? 0.0
+          ? double.tryParse(
+        resolvedProductMap?['price']?.toString() ?? '0',
+      ) ??
+          0.0
           : double.tryParse(product.price?.toString() ?? '0') ?? 0.0;
 
       final int? selectedVariationId =
       (product.variations != null && product.variations!.isNotEmpty)
-          ? null
+          ? null // variant not selected yet
           : null;
 
       final taxStatus = isCustomItem
@@ -1598,14 +1629,18 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           ? (resolvedProductMap?['tax_class'] ?? '').toString()
           : (product.taxClass ?? '');
       final taxRate = isCustomItem
-          ? double.tryParse(resolvedProductMap?['tax_rate']?.toString() ?? '0') ?? 0.0
+          ? double.tryParse(
+          resolvedProductMap?['tax_rate']?.toString() ?? '0') ??
+          0.0
           : 0.0;
 
+// 🖼 Image
       String image = "";
       if ((product.images ?? []).isNotEmpty) {
         image = product.images!.first.src ?? "";
       }
 
+// 🧠 Metadata & Tags
       final metaData = product.metaData ?? [];
       final tags = product.tags ?? [];
 
@@ -3011,6 +3046,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final Map<String, dynamic> offlineOrder =
     Map<String, dynamic>.from(rawOfflineOrder);
 
+    // ============================
+    // 🛑 CHECK: LAST ITEM + MERCHANT DISCOUNT
+    // ============================
+
+    // ============================
+// 🛑 CHECK: MERCHANT DISCOUNT WHEN DELETING ITEMS
+// ============================
     double productsTotal =
     ((offlineOrder['products'] as List?) ?? []).fold(0.0, (sum, p) {
       final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
@@ -3859,6 +3901,16 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
     // 🚨🚨🚨 CRITICAL FIX: EARLY RETURN WHEN NO ACTIVE ORDER 🚨🚨🚨
     if (orderHelper.activeOrderId == null) {
+      if (orderItems.isNotEmpty && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && orderHelper.activeOrderId == null && orderItems.isNotEmpty) {
+            setState(() {
+              orderItems.clear();
+              _currentOrderVersion++;
+            });
+          }
+        });
+      }
       return Stack(
         children: [
           Column(
@@ -4046,6 +4098,34 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       return oid == activeId || oid.toString() == activeId.toString();
     });
     final rawOfflineOrder = idx >= 0 ? orderHelper.orders[idx] : null;
+
+    // FIX: If we have an order but its ID does NOT match activeId, treat as no order
+    if (rawOfflineOrder != null && activeId != null) {
+      final orderIdFromMap = rawOfflineOrder['order_id'] ?? rawOfflineOrder['id'] ?? rawOfflineOrder[AppDBConst.orderServerId];
+      final bool idsMatch = orderIdFromMap != null && (orderIdFromMap == activeId || orderIdFromMap.toString() == activeId.toString());
+      if (!idsMatch) {
+        if (kDebugMode) print("⚠️ buildCurrentOrder: retrieved order ID does not match activeId, ignoring");
+        if (mounted) {
+          setState(() {
+            orderItems.clear();
+            _currentOrderVersion++;
+          });
+        }
+        // Continue with empty totals (rawOfflineOrder will be ignored)
+      }
+    }
+    if (rawOfflineOrder != null && activeId != null) {
+      final orderIdFromMap = rawOfflineOrder['order_id'] ?? rawOfflineOrder['id'] ?? rawOfflineOrder[AppDBConst.orderServerId];
+      final bool idsMatch = orderIdFromMap != null && (orderIdFromMap == activeId || orderIdFromMap.toString() == activeId.toString());
+      if (!idsMatch) {
+        if (kDebugMode) print("⚠️ buildCurrentOrder: retrieved order ID does not match activeId, ignoring");
+        // Force reset local orderItems and treat as empty
+        if (mounted) setState(() => orderItems = []);
+        // Continue with empty totals (rawOfflineOrder will be ignored)
+      } else {
+        // Proceed normally with this rawOfflineOrder
+      }
+    }
 
     // Only derive from orderHelper after restore+fetch; prevents stale items when switching from Orders/Apps.
     if (rawOfflineOrder != null && _initialRestoreDone) {
@@ -4335,9 +4415,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         offlineOrder['merchantDiscount'] = merchantDiscount;
       }
 
-      // final isPercentageDiscount =
-      //     (offlineOrder['merchantDiscountIsPercentage'] as bool?) ?? false;
-      // print("🔥 FINAL orderTax CALCULATED from Hive products = $orderTax");
+      final isPercentageDiscount =
+          (offlineOrder['merchantDiscountIsPercentage'] as bool?) ?? false;
+      print("🔥 FINAL orderTax CALCULATED from Hive products = $orderTax");
 
       netTotal = grossTotal - orderDiscount - merchantDiscount;
       netPayable = netTotal + orderTax + cashbackFee;
@@ -4363,8 +4443,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         print("   payoutTotal: $payoutTotal");
         print("   cashbackTotal: $cashbackTotal");
         print("   grossTotal: $grossTotal");
-        // print(
-        //     "   merchantDiscount: $merchantDiscount (${isPercentageDiscount ? 'Percentage' : 'Fixed'})");
+        print(
+            "   merchantDiscount: $merchantDiscount (${isPercentageDiscount ? 'Percentage' : 'Fixed'})");
         print("   netTotal: $netTotal");
         print("   netPayable: $netPayable");
         print("🧾 Offline items for UI → ${jsonEncode(orderItems)}");
@@ -5054,7 +5134,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                 index <
                                                     productsLen +
                                                         customLen) {
-                                              final custom = customItems[index - productsLen];
+                                              final custom = customItems[
+                                              index - productsLen];
                                               final price = double.tryParse(custom[
                                               'custom_item_price']
                                                   ?.toString() ??
@@ -5224,7 +5305,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             offlineOrder['order_tax'] =
                                                 orderTax;
 
-                                   // Update net_total / net_payable
+// Update net_total / net_payable
                                             offlineOrder['gross_total'] =
                                                 grossTotal;
                                             offlineOrder['net_total'] =
@@ -5243,7 +5324,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             OrderHelper
                                                 .notifyOrderPanelToRefresh();
 
-                                         // 🖥 Update customer display with FRESH values
+// 🖥 Update customer display with FRESH values
                                             final int orderId =
                                                 orderHelper
                                                     .activeOrderId ??
@@ -6102,8 +6183,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               ],
                             ),
                             SizedBox(height: 2),
-            // Show merchant discount if any meaningful discount is applied
-                            if (merchantDiscount > 0.000001)
+                            if (merchantDiscount >= 0.01)
                               Row(
                                 mainAxisAlignment:
                                 MainAxisAlignment.spaceBetween,
@@ -6120,7 +6200,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,
                                           )),
-                                      merchantDiscount <= 0.000001
+                                      merchantDiscount
+                                          .toStringAsFixed(2) ==
+                                          '0.00'
                                           ? SizedBox()
                                           : GestureDetector(
                                         onTap: () async {
@@ -6428,22 +6510,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             SizedBox(height: 2),
                             Builder(
                               builder: (_) {
-                                debugPrint("🧾 ===== ORDER PANEL TAX DEBUG =====");
-                                debugPrint("orderTax (displayed): $orderTax");
-                                debugPrint("orderTax (toStringAsFixed): ${orderTax.toStringAsFixed(2)}");
-
-                                // 🔍 If you have item-level tax
-                                double sumItemTax = 0.0;
-                                for (final item in orderItems) {
-                                  final t = (item['item_tax'] ?? item['tax_after_discount'] ?? 0.0);
-                                  sumItemTax += (t as num).toDouble();
-                                }
-
-                                debugPrint("sum of item_tax: $sumItemTax");
-                                debugPrint("sum of item_tax (rounded): ${sumItemTax.toStringAsFixed(2)}");
-
-                                debugPrint("🧾 ===== END TAX DEBUG =====");
-                                return const SizedBox.shrink();
+                                print(
+                                    "🔥 SUMMARY → cashbackFee = $cashbackFee");
+                                return SizedBox.shrink();
                               },
                             ),
                             if (cashbackFee > 0)
@@ -6960,41 +7029,14 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             final verify = await box.get(localKey);
                             debugPrint("🧠 STORED ORDER AFTER SAVE:");
                             debugPrint(jsonEncode(verify));
-                            debugPrint("👉 BEFORE CustomerDisplay");
-                            final order = verify is Map ? Map<String, dynamic>.from(verify) : {};
-// ✅ correct variable
-                            debugPrint("FINAL TAX BEFORE NAV: $totalTaxAfterDiscount");
-
-// ✅ correct source
-                            debugPrint("TAX FROM HIVE: ${order['order_tax']}");
                             await CustomerDisplayHelper
                                 .updateCustomerDisplay(
                                 frozenCheckoutOrderId,
                                 summaryEnabled: true);
-                            debugPrint("👉 AFTER CustomerDisplay");
+
                             // =======================================================
                             // 🔹 NAVIGATE TO SUMMARY SCREEN
                             // =======================================================
-                            debugPrint("\n🟢🟢🟢 CHECKOUT → NAVIGATION DATA 🟢🟢🟢");
-
-                            debugPrint("🧾 ITEMS COUNT: ${summaryItems.length}");
-
-                            debugPrint("💰 grossAfterDiscount: $grossAfterDiscount");
-                            debugPrint("💸 orderDiscount: $orderDiscount");
-                            debugPrint("🏷 merchantDiscount: $merchantDiscount");
-
-                            debugPrint("🧮 totalTaxAfterDiscount (RAW): $totalTaxAfterDiscount");
-                            debugPrint("🧮 totalTaxAfterDiscount (ROUNDED): ${roundTaxHalfUp(totalTaxAfterDiscount)}");
-
-                            debugPrint("💵 netPayable: ${grossAfterDiscount + totalTaxAfterDiscount}");
-
-                            debugPrint("🎁 cashbackFee: $cashbackFee");
-                            debugPrint("🥬 ebtAmount: $totalEbtAfterDiscount");
-                            debugPrint("🏷 discountAmount: $discountAmount");
-
-                            debugPrint("🆔 orderId: ${serverOrderId ?? frozenCheckoutOrderId}");
-
-                            debugPrint("🟢🟢🟢 END CHECKOUT DATA 🟢🟢🟢\n");
                             final result = await Navigator.push(
                               context,
                               PageRouteBuilder(
@@ -7250,7 +7292,3 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 //   );
 // }
 }
-
-// extension on Box {
-//   void clearCache() {}
-// }

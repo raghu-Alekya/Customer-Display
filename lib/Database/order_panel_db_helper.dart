@@ -3241,4 +3241,34 @@ class OrderHelper {
   }
 
 
+  Future<void> deleteOrderWithItems(int orderId) async {
+    final db = await DBHelper.instance.database;
+
+    // 1. Delete order items (purchased_items_table)
+    await db.delete(
+      AppDBConst.purchasedItemsTable,
+      where: '${AppDBConst.orderIdForeignKey} = ?',
+      whereArgs: [orderId],
+    );
+
+    // 2. Delete the order itself
+    await db.delete(
+      AppDBConst.orderTable,
+      where: '${AppDBConst.orderServerId} = ?',
+      whereArgs: [orderId],
+    );
+
+    // 3. Also clean up Isar payments and Hive offline data
+    // await LocalPaymentDBHelper.instance.deletePaymentsByOrderId(orderId);
+    final box = StorageProvider.offlineOrders;
+    await box.delete(orderId.toString());
+
+    // 4. Refresh in-memory lists
+    await loadData();
+    notifyOrderPanelToRefresh();
+
+    print("✅ Order $orderId and all items deleted.");
+  }
+
+
 }

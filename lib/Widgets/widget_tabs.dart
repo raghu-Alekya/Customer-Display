@@ -1481,11 +1481,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: DropdownButton<String>(
-                          // ✅ This ensures value always exists in items list
-                          value: (_selectedCategoryName == "Custom Product" ||
-                              _categoriesList.isEmpty ||
+
+                          value: (_categoriesList.isEmpty ||
+                              _selectedCategoryName == "Select Category" ||
                               !_categoriesList.any((cat) =>
-                              cat['name']?.toString() == _selectedCategoryName))
+                              cat['name']?.toString().trim() == _selectedCategoryName.trim()))
                               ? "Select Category"
                               : _selectedCategoryName,
 
@@ -3956,6 +3956,27 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       return;
     }
 
+    // ── Category Validation ──────────────────────────────────────  ← ADD HERE
+    // ── Category Validation ──────────────────────────────────────
+    if (_selectedCategoryName.trim() == "Select Category" ||
+        _selectedCategoryName.trim().isEmpty ||
+        !_categoriesList.any((cat) =>
+        cat['name']?.toString().trim() == _selectedCategoryName.trim())) {
+      setState(() {
+        _customItemPrice = "0.00";
+        _customItemPriceController.text = "${TextConstants.currencySymbol}0.00";
+        _isEnteringItemPrice = false;
+      });
+      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+        const SnackBar(
+          content: Text("Please select a category before adding"),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isCustomItemLoading = true);
 
     try {
@@ -4052,10 +4073,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       }
 
       if (alreadyExists) {
-        setState(() => _isCustomItemLoading = false);
+        setState(() {
+          _isCustomItemLoading = false;
+          _customItemPrice = "0.00";
+          _customItemPriceController.text =
+          "${TextConstants.currencySymbol}0.00";
+          _isEnteringItemPrice = false;
+        });
 
-        ScaffoldMessenger.of(widget.scaffoldMessengerContext)
-            .showSnackBar(
+        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
             content: Text(
               "This item is already added. Create a new order to add it again.",
@@ -4152,6 +4178,22 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         _customItemPriceController.clear();
         _skuController.clear();
         _isEnteringItemPrice = false;
+
+        // FIX: Do NOT blindly reset category — keep user's last selection
+        // ── Category Validation ─────────────────────────────────
+        if (_selectedCategoryName.trim() == "Select Category" ||
+            _selectedCategoryName.trim().isEmpty) {
+          ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+            const SnackBar(
+              content: Text("Please select a category before adding"),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+
+        setState(() => _isCustomItemLoading = true);
       });
 
       await _orderHelper.loadData();
@@ -4179,6 +4221,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       );
     }
   }
+
   ///  Converts any deeply nested Map/List from Hive into JSON-safe Map<String, dynamic>
   dynamic _convertToJsonSafe(dynamic value) {
     if (value == null) return null;

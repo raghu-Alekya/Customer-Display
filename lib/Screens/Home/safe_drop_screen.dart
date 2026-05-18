@@ -1150,11 +1150,15 @@ Future<bool> _handleBack() async {
                           : const Color(0xFFF3F2F2),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
+                        borderSide: _activeController == controller
+                            ? const BorderSide(color: Colors.grey, width: 2)
+                            : BorderSide.none,
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
+                        borderSide: _activeController == controller
+                            ? const BorderSide(color: Colors.grey, width: 2)
+                            : BorderSide.none,
                       ),
                     ),
                     style: const TextStyle(

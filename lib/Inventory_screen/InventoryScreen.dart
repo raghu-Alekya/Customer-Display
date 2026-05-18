@@ -74,6 +74,11 @@ class _InventoryScreenState extends State<InventoryScreen>
   dynamic _selectedTax;
   final List<dynamic> _selectedTags = [];
 
+  // Add these with your other state variables
+  int _categoryDropdownKey = 0;
+  int _productTypeDropdownKey = 0;
+  int _taxDropdownKey = 0;
+
   // Flags
   bool _hasVariablePrice = false;
   bool _manageStock = true;
@@ -1157,6 +1162,11 @@ class _InventoryScreenState extends State<InventoryScreen>
       _selectedItemSlug = null;
 
       _fieldErrors.clear();
+
+      // ✅ INCREMENT THESE to force dropdowns to fully rebuild
+      _categoryDropdownKey++;
+      _productTypeDropdownKey++;
+      _taxDropdownKey++;
     });
 
     _updateAttributeControllers();
@@ -2050,21 +2060,21 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   const SizedBox(height: 6),
 
                                   Container(
-                                    height: 44, // FIXED HEIGHT
+                                    height: 44,
                                     decoration: BoxDecoration(
                                       color: isDark
                                           ? const Color(0xFF252837)
                                           : Colors.white,
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
-                                        color: isDark
-                                            ? const Color(0xFF3B4259)
-                                            : const Color(0xFFE0E0E0),
+                                        color: _skuFocusNode.hasFocus
+                                            ? Colors.grey.shade400
+                                            : const Color(0xFFE0E0E0), // normal light border
+                                        width: _skuFocusNode.hasFocus ? 1.5 : 1,
                                       ),
                                     ),
                                     child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.center,
+                                      crossAxisAlignment: CrossAxisAlignment.center,
                                       children: [
                                         Expanded(
                                           child: TextFormField(
@@ -2088,48 +2098,45 @@ class _InventoryScreenState extends State<InventoryScreen>
                                               border: InputBorder.none,
                                               isDense: true,
                                               contentPadding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 14),
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 14,
+                                              ),
                                             ),
                                           ),
                                         ),
 
-                                        /// GENERATE BUTTON (Centered, disabled when SKU present)
                                         InkWell(
-                                          onTap:
-                                              _skuController.text.trim().isEmpty
-                                                  ? () {
-                                                      setState(() {
-                                                        _skuController.text =
-                                                            '${DateTime.now().millisecondsSinceEpoch}';
-                                                      });
-                                                    }
-                                                  : null,
+                                          onTap: _skuController.text.trim().isEmpty
+                                              ? () {
+                                            setState(() {
+                                              _skuController.text =
+                                              '${DateTime.now().millisecondsSinceEpoch}';
+                                            });
+                                          }
+                                              : null,
                                           child: Container(
                                             height: double.infinity,
                                             alignment: Alignment.center,
                                             padding: const EdgeInsets.symmetric(
-                                                horizontal: 20),
+                                              horizontal: 20,
+                                            ),
                                             decoration: BoxDecoration(
-                                              gradient: _skuController.text
-                                                      .trim()
-                                                      .isEmpty
-                                                  ? LinearGradient(
-                                                      colors: [
-                                                        Color(0xFFE91E63),
-                                                        Color(0xFFFF8A80),
-                                                      ],
-                                                      begin: Alignment.topLeft,
-                                                      end:
-                                                          Alignment.bottomRight,
-                                                    )
+                                              gradient: _skuController.text.trim().isEmpty
+                                                  ? const LinearGradient(
+                                                colors: [
+                                                  Color(0xFFE91E63),
+                                                  Color(0xFFFF8A80),
+                                                ],
+                                                begin: Alignment.topLeft,
+                                                end: Alignment.bottomRight,
+                                              )
                                                   : LinearGradient(
-                                                      colors: [
-                                                        Colors.grey.shade400,
-                                                        Colors.grey.shade500,
-                                                      ],
-                                                    ),
-                                              borderRadius: BorderRadius.only(
+                                                colors: [
+                                                  Colors.grey.shade400,
+                                                  Colors.grey.shade500,
+                                                ],
+                                              ),
+                                              borderRadius: const BorderRadius.only(
                                                 topRight: Radius.circular(8),
                                                 bottomRight: Radius.circular(8),
                                               ),
@@ -2147,7 +2154,6 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       ],
                                     ),
                                   ),
-
                                   const SizedBox(height: 6),
 
                                   /// PRODUCT NAME
@@ -2224,6 +2230,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   SizedBox(
                                     height: 48,
                                     child: InventoryCategoriesDropdown(
+                                      key: ValueKey('category_$_categoryDropdownKey'), // ✅ ADD THIS
                                       onCategorySelected: (category) {
                                         setState(() {
                                           _selectedCategory = category;
@@ -2249,6 +2256,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                   SizedBox(
                                     height: 48,
                                     child: InventoryGetProductTypesWidget(
+                                      key: ValueKey('productType_$_productTypeDropdownKey'), // ✅ ADD THIS
                                       onTypeSelected: (selectedType) {
                                         setState(() {
                                           _selectedProductType = selectedType;
@@ -2627,6 +2635,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       SizedBox(
                                         height: fieldHeight,
                                         child: InventoryTaxDropdownWidget(
+                                          key: ValueKey('tax_$_taxDropdownKey'), // ✅ ADD THIS
                                           onTaxSelected: (tax) {
                                             setState(() => _selectedTax = tax);
                                           },
@@ -2760,105 +2769,83 @@ class _InventoryScreenState extends State<InventoryScreen>
               Expanded(
                 flex: 5,
                 child: Container(
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E3A5F) : Colors.white,
-
-                    // ✅ SAME radius everywhere
+                  child: Material(
+                    color: isDark ? const Color(0xFF1E1E2D) : Colors.white,
+                    elevation: 2,
                     borderRadius: BorderRadius.circular(12),
-
-                    // ✅ BORDER
-                    border: Border.all(
-                      color: isDark ? Colors.white12 : Colors.grey.shade300,
-                      width: 1,
-                    ),
-
-                    // ✅ SHADOW
-                    boxShadow: [
-                      BoxShadow(
-                        color: isDark
-                            ? Colors.black.withOpacity(0.3)
-                            : Colors.grey.withOpacity(0.15),
-                        blurRadius: 8,
-                        spreadRadius: 0,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      // 🔷 HEADER
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? const Color(0xFF4180DD)
-                              : const Color(0xFFEFF6FF),
-
-                          // ✅ MATCH SAME RADIUS
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(12),
-                            topRight: Radius.circular(12),
+                    child: Column(
+                      children: [
+                        // 🔷 HEADER
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 10,
                           ),
-                        ),
-                        child: Row(
-                          children: [
-                            Text(
-                              "Variant's",
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: isDark ? Colors.white : Colors.black87,
-                              ),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? const Color(0xFF4180DD)
+                                : const Color(0xFFEFF6FF),
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(12),
+                              topRight: Radius.circular(12),
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '(Optional)',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w400,
-                                color: isDark ? Colors.white54 : Colors.black45,
-                              ),
-                            ),
-                            const Spacer(),
-                            if (_variants.isNotEmpty)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color:
-                                      const Color(0xFF2196F3).withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                "Variant's",
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.white : Colors.black87,
                                 ),
-                                child: Text(
-                                  '${_variants.length} added',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF2196F3),
-                                    fontWeight: FontWeight.w600,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '(Optional)',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w400,
+                                  color: isDark ? Colors.white54 : Colors.black45,
+                                ),
+                              ),
+                              const Spacer(),
+                              if (_variants.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF2196F3).withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    '${_variants.length} added',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF2196F3),
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
 
-                      const SizedBox(height: 12),
+                        const SizedBox(height: 12),
 
-                      // ⚪ BODY
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _buildVariantContent(isDark),
+                        // ⚪ BODY
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: _buildVariantContent(isDark),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              )
+              ),
             ],
           ),
         ),
@@ -3235,7 +3222,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Variants are only available when Product Type is "Variable"',
+                          'Variants are only available when Product Type is "Variants"',
                           style: TextStyle(
                             color: isDark
                                 ? Colors.red.shade300
@@ -3751,10 +3738,30 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                         fillColor: isDark
                                                             ? const Color(0xFF252837)
                                                             : const Color(0xFFF8F9FA),
+
                                                         border: OutlineInputBorder(
-                                                            borderRadius: BorderRadius.circular(6)),
+                                                          borderRadius: BorderRadius.circular(6),
+                                                        ),
+
+                                                        enabledBorder: OutlineInputBorder(
+                                                          borderRadius: BorderRadius.circular(6),
+                                                          borderSide: const BorderSide(
+                                                            color: Color(0xFFE0E0E0),
+                                                          ),
+                                                        ),
+
+                                                        focusedBorder: OutlineInputBorder(
+                                                          borderRadius: BorderRadius.circular(6),
+                                                          borderSide: const BorderSide(
+                                                            color: Color(0xFF9E9E9E),
+                                                            width: 2,
+                                                          ),
+                                                        ),
+
                                                         contentPadding: const EdgeInsets.symmetric(
-                                                            horizontal: 12, vertical: 0),
+                                                          horizontal: 12,
+                                                          vertical: 0,
+                                                        ),
                                                       ),
                                                       style: TextStyle(
                                                         fontSize: 12,
@@ -3810,10 +3817,30 @@ class _InventoryScreenState extends State<InventoryScreen>
                                                         fillColor: isDark
                                                             ? const Color(0xFF252837)
                                                             : const Color(0xFFF8F9FA),
+
                                                         border: OutlineInputBorder(
-                                                            borderRadius: BorderRadius.circular(6)),
+                                                          borderRadius: BorderRadius.circular(6),
+                                                        ),
+
+                                                        enabledBorder: OutlineInputBorder(
+                                                          borderRadius: BorderRadius.circular(6),
+                                                          borderSide: const BorderSide(
+                                                            color: Color(0xFFE0E0E0),
+                                                          ),
+                                                        ),
+
+                                                        focusedBorder: OutlineInputBorder(
+                                                          borderRadius: BorderRadius.circular(6),
+                                                          borderSide: const BorderSide(
+                                                            color: Color(0xFF9E9E9E),
+                                                            width: 2,
+                                                          ),
+                                                        ),
+
                                                         contentPadding: const EdgeInsets.symmetric(
-                                                            horizontal: 12, vertical: 0),
+                                                          horizontal: 12,
+                                                          vertical: 0,
+                                                        ),
                                                       ),
                                                       style: TextStyle(
                                                         fontSize: 12,
@@ -3892,60 +3919,62 @@ class _InventoryScreenState extends State<InventoryScreen>
                                             ),
                                           ),
                                         ),
-                                        const SizedBox(width: 12),
+                                        const SizedBox(width: 8),
+
                                         if (isLastAttr)
-                                          TextButton.icon(
-                                            onPressed: () => setState(() =>
-                                                _variantAttributes.add({
-                                                  'attribute': null,
-                                                  'attributeItem': null,
-                                                  'selectedSlug': null,
-                                                })),
-                                            icon: const Icon(Icons.add_circle_outline,
-                                                size: 18, color: Color(0xFF2196F3)),
-                                            label: const Text(
-                                              'Add',
-                                              style: TextStyle(
-                                                fontSize: 14,
+                                          InkWell(
+                                            onTap: () => setState(() => _variantAttributes.add({
+                                              'attribute': null,
+                                              'attributeItem': null,
+                                              'selectedSlug': null,
+                                            })),
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(10),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFF2196F3).withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border.all(
+                                                  color: const Color(0xFF2196F3).withOpacity(0.3),
+                                                ),
+                                              ),
+                                              child: const Icon(
+                                                Icons.add,
+                                                size: 20,
                                                 color: Color(0xFF2196F3),
-                                                fontWeight: FontWeight.w500,
-                                                decoration: TextDecoration.underline,
-                                                decorationColor: Color(0xFF2196F3),
                                               ),
                                             ),
-                                            style: TextButton.styleFrom(
-                                              padding: const EdgeInsets.symmetric(
-                                                  horizontal: 4, vertical: 4),
-                                            ),
                                           ),
+
                                         if (!isLastAttr && _variantAttributes.length > 1)
-                                          Padding(
-                                            padding: const EdgeInsets.only(left: 8),
-                                            child: InkWell(
-                                              onTap: () => setState(() {
-                                                _variantAttributes.removeAt(attrIdx);
-                                                if (_activeAddItemAttrIdx == attrIdx) {
-                                                  _showUnitNameInput = false;
-                                                  _activeAddItemAttrIdx = -1;
-                                                }
-                                              }),
-                                              child: Container(
-                                                padding: const EdgeInsets.all(10),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFFEF5350).withOpacity(0.1),
-                                                  borderRadius: BorderRadius.circular(8),
-                                                  border: Border.all(
-                                                      color: const Color(0xFFEF5350).withOpacity(0.3)),
+                                          InkWell(
+                                            onTap: () => setState(() {
+                                              _variantAttributes.removeAt(attrIdx);
+                                              if (_activeAddItemAttrIdx == attrIdx) {
+                                                _showUnitNameInput = false;
+                                                _activeAddItemAttrIdx = -1;
+                                              }
+                                            }),
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(10),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFEF5350).withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border.all(
+                                                  color: const Color(0xFFEF5350).withOpacity(0.5),
                                                 ),
-                                                child: const Icon(Icons.delete_outline,
-                                                    size: 20, color: Color(0xFFEF5350)),
+                                              ),
+                                              child: const Icon(
+                                                Icons.delete_outline,
+                                                size: 20,
+                                                color: Color(0xFFEF5350),
                                               ),
                                             ),
                                           ),
                                       ],
                                     ),
                                   ),
-
                                   // Unit name input (unchanged)
                                   if (_showUnitNameInput && _activeAddItemAttrIdx == attrIdx)
                                     Container(
@@ -4640,9 +4669,10 @@ class _InventoryScreenState extends State<InventoryScreen>
                               const SizedBox(width: 12),
 
                               // Add / Remove button
+                              // ✅ Both Add and Delete use identical size, padding, and structure
                               if (isLast)
-                                TextButton.icon(
-                                  onPressed: () {
+                                InkWell(
+                                  onTap: () {
                                     setState(() {
                                       _variantAttributes.add({
                                         'attribute': null,
@@ -4651,42 +4681,48 @@ class _InventoryScreenState extends State<InventoryScreen>
                                       });
                                     });
                                   },
-                                  icon: const Icon(Icons.add_circle_outline, size: 18, color: Color(0xFF2196F3)),
-                                  label: const Text(
-                                    'Add',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Color(0xFF2196F3),
-                                      fontWeight: FontWeight.w500,
-                                      decoration: TextDecoration.underline,
-                                      decorationColor: Color(0xFF2196F3),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF2196F3).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: const Color(0xFF2196F3).withOpacity(0.3),
+                                      ),
                                     ),
-                                  ),
-                                  style: TextButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                    child: const Icon(
+                                      Icons.add,
+                                      size: 20,
+                                      color: Color(0xFF2196F3),
+                                    ),
                                   ),
                                 ),
                               if (!isLast && _variantAttributes.length > 1)
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 8),
-                                  child: InkWell(
-                                    onTap: () {
-                                      setState(() {
-                                        _variantAttributes.removeAt(idx);
-                                        if (_activeAddItemAttrIdx == idx) {
-                                          _showUnitNameInput = false;
-                                          _activeAddItemAttrIdx = -1;
-                                        }
-                                      });
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(10),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFEF5350).withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: const Color(0xFFEF5350).withOpacity(0.3)),
+                                InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _variantAttributes.removeAt(idx);
+                                      if (_activeAddItemAttrIdx == idx) {
+                                        _showUnitNameInput = false;
+                                        _activeAddItemAttrIdx = -1;
+                                      }
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEF5350).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: const Color(0xFFEF5350).withOpacity(0.3),
                                       ),
-                                      child: const Icon(Icons.delete_outline, size: 20, color: Color(0xFFEF5350)),
+                                    ),
+                                    child: const Icon(
+                                      Icons.delete_outline,
+                                      size: 20,
+                                      color: Color(0xFFEF5350),
                                     ),
                                   ),
                                 ),

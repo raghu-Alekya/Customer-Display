@@ -1587,7 +1587,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     if (kDebugMode) {
       print("### Evaluated Summary Discounts:");
       print("### orderDiscount (Coupon): $orderDiscount");
-      print("### merchantDiscount: $merchantDiscount");
+      print("### merchantDiscounttttttt: $merchantDiscount");
     }
 
     // Fallback: some orders store merchant discount at order-level only
@@ -1833,8 +1833,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     uiGrossTotal = grossTotal;
     // Always store as negative for matching formatting standards (-$5.00)
     uiOrderDiscount = (orderDiscount != 0) ? -orderDiscount.abs() : 0.0;
-    uiMerchantDiscount =
-    (merchantDiscount != 0) ? -merchantDiscount.abs() : 0.0;
+    // After calculating merchantDiscount
+    uiMerchantDiscount = (merchantDiscount != 0)
+        ? -merchantDiscount.abs()
+        : 0.0;
+
+// Force positive display value for UI (most apps show discount as positive number with "-")
+    final double displayMerchantDiscount = uiMerchantDiscount.abs();
+
     uiOrderTax = orderTax;
     uiNetPayable = netPayable;
     uiCashbackFee = cashbackFee;
@@ -3103,31 +3109,28 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                             : Colors.grey)),
                                           ],
                                         ),
-                                        if (merchantDiscount > 0.000001)
+                                        // === MERCHANT DISCOUNT ROW (Corrected) ===
+                                        if (uiMerchantDiscount.abs() > 0.000001)
                                           Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                             children: [
-                                              Row(
-                                                children: [
-                                                  Text(
-                                                    TextConstants
-                                                        .merchantDiscount,
-                                                    style: TextStyle(
-                                                        color: Colors.blue,
-                                                        fontSize: 14),
-                                                  ),
-                                                ],
+                                              Text(
+                                                TextConstants.merchantDiscount,
+                                                style: TextStyle(
+                                                  color: Colors.blue,
+                                                  fontSize: 14,
+                                                ),
                                               ),
                                               Text(
-                                                "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(6)}",
+                                                "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}",
                                                 style: TextStyle(
-                                                    color: Colors.blue,
-                                                    fontSize: 14),
+                                                  color: Colors.blue,
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
                                               ),
                                             ],
                                           ),
-
                                         SizedBox(height: 2),
 
                                         if (cashbackFee > 0)
@@ -3608,12 +3611,15 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                               "Name: ${item[AppDBConst.itemName]} "
                                               "Price: ${item[AppDBConst.itemPrice]} "
                                               "Qty: ${item[AppDBConst.itemCount]} "
-                                              "DiscountType: ${item['discount_type']} "
+                                                  "orderTaxxxxxxxx: $orderTax} "
+
+                                                  "DiscountType: ${item['discount_type']} "
                                               "AutoDiscount: ${item['auto_discount']} "
                                               "ComboDiscount: ${item['combo_discount_total']} "
                                               "MixMatchDiscount: ${item['mixmatch_discount_total']} "
                                               "MultipackDiscount: ${item['multipack_discount_total']}");
                                         }
+
 
                                         final result = await Navigator.push(
                                           context,
@@ -3627,7 +3633,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                               orderDiscount: orderDiscount,
                                               merchantDiscount:
                                                   merchantDiscount,
-                                              orderTax: orderTax,
+                                              orderTax: uiOrderTax,
                                               netPayable: netPayable.toDouble(),
                                               orderId: frozenSummaryOrderId,
                                               offlineOrderId:
