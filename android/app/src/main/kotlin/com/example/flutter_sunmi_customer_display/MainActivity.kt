@@ -158,7 +158,7 @@ class MainActivity : FlutterActivity() {
                     val cashbackFee = call.argument<Double>("cashbackFee") ?: 0.0
                     val loyaltyContact = call.argument<String>("loyaltyContact") ?: ""
                     val availablePoints = call.argument<Int>("availablePoints") ?: 0
-                    val summaryEnabled = call.argument<Boolean>("summaryEnabled") ?: true
+                    val summaryEnabled = call.argument<Boolean>("summaryEnabled") ?: false
 
                     Log.d("CustomerDisplay", "☎ Loyalty Contact received: $loyaltyContact")
 
@@ -229,12 +229,13 @@ class MainActivity : FlutterActivity() {
 
                     Log.d(
                         "CustomerDisplay",
-                        "📥 customerDisplayResult → success=$success points=$points"
+                        "📥 customerDisplayResult → success=$success points=$points redeemedAmount=$redeemedAmount"
                     )
 
-                    if (!success) {
+                    Handler(Looper.getMainLooper()).post {
 
-                        Handler(Looper.getMainLooper()).post {
+                        if (!success) {
+
                             Toast.makeText(
                                 this@MainActivity,
                                 if (message.isNotEmpty())
@@ -243,36 +244,34 @@ class MainActivity : FlutterActivity() {
                                     "Something went wrong",
                                 Toast.LENGTH_LONG
                             ).show()
+
+                        } else {
+
+                            customerDisplayPresentation?.updateRedeemPopupPoints(points)
+
+                            if (redeemedAmount > 0) {
+                                customerDisplayPresentation?.showRedeemSummary(redeemedAmount)
+                            } else {
+                                customerDisplayPresentation?.hideRedeemSummary()
+                            }
                         }
-
-                    } else {
-
-                        customerDisplayPresentation?.updateRedeemPopupPoints(points)
-
-                        if (redeemedAmount > 0) {
-                            customerDisplayPresentation?.showRedeemSummary(redeemedAmount)
-                        }
-//                        else {
-//                            customerDisplayPresentation?.hideRedeemSummary()
-//                        }
                     }
 
                     result.success(true)
                 }
-
                 "resetDisplay" -> {
                     Log.d("CustomerDisplay", "🔥 resetDisplay called")
 
                     isOrderActive = false
 
+                    customerDisplayPresentation?.resetCustomerLayoutState()
+
                     val displayManager =
-                        getSystemService(Context.DISPLAY_SERVICE)
-                                as DisplayManager
+                        getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
 
                     val displays = displayManager.displays
 
                     if (displays.size > 1) {
-
                         val secondaryDisplay = displays[1]
 
                         customerDisplayPresentation?.dismiss()
@@ -619,6 +618,7 @@ class MainActivity : FlutterActivity() {
         private var isRedeemPopupOpen = false
         private var phoneInputUnlocked = false
         private var keepSummaryVisible = false
+        private var currentDisplayedOrderId = -1
 
 
         private lateinit var slideshowContainer: LinearLayout
@@ -638,6 +638,33 @@ class MainActivity : FlutterActivity() {
                 "CustomerDisplay",
                 "🔄 firstOrderShown reset"
             )
+        }
+        fun hideRedeemSummary() {
+
+            Log.d("CustomerDisplay", "hideRedeemSummary called")
+
+            redeemedAmount = 0.0
+
+            val redeemRow =
+                findViewById<LinearLayout>(R.id.redeem_row)
+
+            val redeemValue =
+                findViewById<TextView>(R.id.value_redeem_amount)
+
+            redeemRow?.visibility = View.GONE
+            redeemValue?.text = formatCurrency(0.0)
+        }
+
+        fun resetCustomerLayoutState() {
+            isCustomerLayoutActive = false
+            firstOrderShown = false
+            isRedeemPopupOpen = false
+            phoneInputUnlocked = false
+            keepSummaryVisible = false
+            redeemedAmount = 0.0
+            currentDisplayedOrderId = -1
+
+            Log.d("CustomerDisplay", "🔄 Customer layout state reset")
         }
 
         fun updateWelcomeWithStore(
@@ -981,24 +1008,14 @@ class MainActivity : FlutterActivity() {
             storeLogoUrl: String?,
             storeBaseUrl: String? = null
         ) {
-
-            // ✅ BLOCK only while order screen active
-            if (firstOrderShown) {
-                Log.d(
-                    "CustomerDisplay",
-                    "⛔ Skipping welcome — order already shown"
-                )
-                return
-            }
-
-            Log.d(
-                "CustomerDisplay",
-                "➡ Switching back to Welcome layout"
-            )
+            Log.d("CustomerDisplay", "➡ Switching back to Welcome layout")
 
             Handler(Looper.getMainLooper()).post {
                 isCustomerLayoutActive = false
                 isRedeemPopupOpen = false
+                firstOrderShown = false
+                currentDisplayedOrderId = -1
+                redeemedAmount = 0.0// IMPORTANT RESET
 
                 setContentView(R.layout.welcome_layout)
 
@@ -1009,85 +1026,42 @@ class MainActivity : FlutterActivity() {
 
                 welcomeText = findViewById(R.id.welcome_text)
 
-                val footerText =
-                    findViewById<TextView>(R.id.footer_text)
-
-                val logoView =
-                    findViewById<ImageView>(R.id.welcome_logo)
-
-                slideshowImageView =
-                    findViewById(R.id.slideshow_image)
+                val footerText = findViewById<TextView>(R.id.footer_text)
+                val logoView = findViewById<ImageView>(R.id.welcome_logo)
+                slideshowImageView = findViewById(R.id.slideshow_image)
 
                 welcomeText.text =
-                    if (storeName.isNotEmpty())
-                        "Welcome to $storeName"
-                    else
-                        "👋 Welcome to Pinaka"
+                    if (storeName.isNotEmpty()) "Welcome to $storeName"
+                    else "👋 Welcome to Pinaka"
 
                 footerText.visibility =
-                    if (storeName.isNotEmpty())
-                        View.VISIBLE
-                    else
-                        View.GONE
+                    if (storeName.isNotEmpty()) View.VISIBLE
+                    else View.GONE
 
-                // ✅ Load logo
                 if (!storeLogoUrl.isNullOrEmpty()) {
-
                     Thread {
-
                         try {
-
-                            val input =
-                                URL(storeLogoUrl).openStream()
-
-                            val bitmap =
-                                BitmapFactory.decodeStream(input)
+                            val bitmap = BitmapFactory.decodeStream(URL(storeLogoUrl).openStream())
 
                             Handler(Looper.getMainLooper()).post {
-
                                 logoView.setImageBitmap(bitmap)
                             }
 
                         } catch (e: Exception) {
-
                             Handler(Looper.getMainLooper()).post {
-
-                                logoView.setImageResource(
-                                    R.drawable.pinaka_logo
-                                )
+                                logoView.setImageResource(R.drawable.pinaka_logo)
                             }
                         }
-
                     }.start()
-
                 } else {
-
-                    logoView.setImageResource(
-                        R.drawable.pinaka_logo
-                    )
+                    logoView.setImageResource(R.drawable.pinaka_logo)
                 }
 
-                // ✅ DON'T recreate handler
-                // ✅ DON'T stop slideshow
-                // ✅ reuse cached slideshow
-
-                if (
-                    currentStoreBaseUrl.isNotEmpty() &&
-                    storeName.isNotEmpty()
-                ) {
-
+                if (currentStoreBaseUrl.isNotEmpty() && storeName.isNotEmpty()) {
                     loadSlideshowFromApi(currentStoreBaseUrl)
-
-                } else {
-
-                    Log.d(
-                        "CustomerDisplay",
-                        "⚠ No slideshow URL available"
-                    )
                 }
             }
         }
-
 
 
         fun formatCurrency(value: Double): String {
@@ -1239,11 +1213,16 @@ class MainActivity : FlutterActivity() {
         }
         fun enablePhoneInput() {
             Handler(Looper.getMainLooper()).post {
+
                 val emailInput = findViewById<EditText>(R.id.email_input)
                 val customKeypad = findViewById<GridLayout>(R.id.custom_keypad)
 
-                if (emailInput == null || customKeypad == null) return@post
+                if (emailInput == null || customKeypad == null) {
+                    Log.e("CustomerDisplay", "emailInput/customKeypad not found")
+                    return@post
+                }
 
+                // enable only after checkout
                 phoneInputUnlocked = true
 
                 emailInput.isEnabled = true
@@ -1252,19 +1231,20 @@ class MainActivity : FlutterActivity() {
                 emailInput.isClickable = true
                 emailInput.isCursorVisible = true
                 emailInput.showSoftInputOnFocus = false
-                emailInput.requestFocus()
 
                 emailInput.setOnClickListener {
+                    Log.d("CustomerDisplay", "Email clicked → opening keypad")
                     customKeypad.visibility = View.VISIBLE
                 }
 
-                customKeypad.visibility = View.VISIBLE
+                emailInput.setOnTouchListener { _, _ ->
+                    customKeypad.visibility = View.VISIBLE
+                    false
+                }
 
                 Log.d("CustomerDisplay", "Phone input enabled after checkout")
             }
         }
-
-
         fun updateCustomerData(
             orderId: Int,
             storeId: String?,
@@ -1285,11 +1265,42 @@ class MainActivity : FlutterActivity() {
             summaryEnabled: Boolean
         ) {
 
+            firstOrderShown = true
+
+// detect new order BEFORE popup check
+            if (currentDisplayedOrderId != -1 &&
+                currentDisplayedOrderId != orderId
+            ) {
+                Log.d(
+                    "CustomerDisplay",
+                    "🆕 New order detected → clearing redeem state"
+                )
+
+                redeemedAmount = 0.0
+                isRedeemPopupOpen = false
+                keepSummaryVisible = false
+
+                hideRedeemSummary()
+            }
+
+            currentDisplayedOrderId = orderId
+            keepSummaryVisible = summaryEnabled
+//
+//            keepSummaryVisible = summaryEnabled
+//
+//            if (!summaryEnabled) {
+//                findViewById<LinearLayout>(R.id.summary_container)?.visibility = View.GONE
+//                findViewById<LinearLayout>(R.id.redeem_row)?.visibility = View.GONE
+//            }
+
+// same order + popup open → skip refresh
             if (isRedeemPopupOpen) {
-                Log.d("CustomerDisplay", "Redeem popup open → skipping UI refresh")
+                Log.d(
+                    "CustomerDisplay",
+                    "Redeem popup open for same order → skip refresh"
+                )
                 return
             }
-            firstOrderShown = true
             val defaultStoreId = "STORE001"
             val defaultStoreName = "Pinaka"
             val defaultStoreLogoUrl: String? = null
@@ -1315,75 +1326,40 @@ class MainActivity : FlutterActivity() {
 //            }
 //            setContentView(R.layout.customer_display_layout)
 //            bindOrderViews()
-            if (!::orderIdView.isInitialized) {
-                Log.d("CustomerDisplay", "➡ First time loading customer display layout")
+            if (!isCustomerLayoutActive ||
+                findViewById<EditText>(R.id.email_input) == null) {
+                Log.d("CustomerDisplay", "➡ Switching to customer display layout")
 
                 setContentView(R.layout.customer_display_layout)
                 bindOrderViews()
+                isCustomerLayoutActive = true
             } else {
-                Log.d("CustomerDisplay", "➡ Reusing existing customer display layout")
+                Log.d("CustomerDisplay", "➡ Reusing existing customer layout")
             }
 
             // ================= CUSTOMER INPUT + CUSTOM KEYPAD =================
 // ================= CUSTOMER INPUT + CUSTOM KEYPAD =================
 
+            // ================= CUSTOMER INPUT + CUSTOM KEYPAD =================
+
             val emailInput =
-                findViewById<android.widget.EditText>(
-                    R.id.email_input
-                )
+                findViewById<EditText>(R.id.email_input)
 
             val customKeypad =
-                findViewById<GridLayout>(
-                    R.id.custom_keypad
-                )
+                findViewById<GridLayout>(R.id.custom_keypad)
+
             val addButton =
                 findViewById<Button>(R.id.btn_add_customer)
 
-//            add button//
+// hide keypad only before checkout
+            if (!phoneInputUnlocked) {
+                customKeypad.visibility = View.GONE
+            }
 
-                    addButton.setOnClickListener {
-
-                        val customerValue =
-                            emailInput.text.toString().trim()
-
-                        if (customerValue.isEmpty()) {
-                            Toast.makeText(
-                                context,
-                                "Enter customer number",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            return@setOnClickListener
-                        }
-
-                        Log.d(
-                            "CustomerDisplay",
-                            "ADD CLICKED: $customerValue"
-                        )
-
-                        showRedeemPopup(customerValue)
-
-                        MethodChannel(
-                            mainActivity.flutterEngine!!
-                                .dartExecutor.binaryMessenger,
-                            "com.example.flutter_customer_display/sunmi_display"
-                        ).invokeMethod(
-                            "customerDisplayRedeemClicked",
-                            mapOf(
-                                "contact" to customerValue
-                            )
-                        )
-
-
-// ✅ Initially hide keypad
-            customKeypad.visibility = View.GONE
-
-// ✅ Restore loyalty contact
+// restore contact
             if (loyaltyContact.isNotEmpty()) {
-
                 emailInput.setText(loyaltyContact)
-
             } else {
-
                 emailInput.setText("")
             }
 
@@ -1392,23 +1368,75 @@ class MainActivity : FlutterActivity() {
                 "📱 Loyalty Contact displayed: ${emailInput.text}"
             )
 
-// ✅ Configure EditText
+            emailInput.showSoftInputOnFocus = false
+
+// enable only after checkout
             if (!phoneInputUnlocked) {
+
                 emailInput.isEnabled = false
                 emailInput.isFocusable = false
                 emailInput.isFocusableInTouchMode = false
                 emailInput.isClickable = false
                 emailInput.isCursorVisible = false
-                emailInput.showSoftInputOnFocus = false
-                emailInput.setOnClickListener(null)
+
+                emailInput.setOnTouchListener(null)
+
+            } else {
+
+                emailInput.isEnabled = true
+
+                // IMPORTANT: prevent Android keyboard
+                emailInput.isFocusable = false
+                emailInput.isFocusableInTouchMode = false
+                emailInput.isClickable = true
+                emailInput.isCursorVisible = false
+
+                emailInput.setOnTouchListener { _, _ ->
+
+                    Log.d(
+                        "CustomerDisplay",
+                        "⌨ Custom keypad opened"
+                    )
+
+                    customKeypad.visibility = View.VISIBLE
+
+                    true
+                }
             }
-            }
+
+// add button
+            addButton.setOnClickListener {
+
+                val customerValue =
+                    emailInput.text.toString().trim()
+
+                if (customerValue.isEmpty()) {
+                    Toast.makeText(
+                        context,
+                        "Enter customer number",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@setOnClickListener
+                }
+
                 Log.d(
                     "CustomerDisplay",
-                    "⌨ Custom keypad opened"
+                    "ADD CLICKED: $customerValue"
                 )
 
+                showRedeemPopup(customerValue)
 
+                MethodChannel(
+                    mainActivity.flutterEngine!!
+                        .dartExecutor.binaryMessenger,
+                    "com.example.flutter_customer_display/sunmi_display"
+                ).invokeMethod(
+                    "customerDisplayRedeemClicked",
+                    mapOf(
+                        "contact" to customerValue
+                    )
+                )
+            }
 // ======================================================
 // APPEND FUNCTION
 // ======================================================
@@ -1551,6 +1579,8 @@ class MainActivity : FlutterActivity() {
                 slideshowImageView.setBackgroundColor(Color.WHITE)
             }
             val summaryContainer = findViewById<LinearLayout>(R.id.summary_container)
+            summaryContainer.visibility =
+                if (summaryEnabled) View.VISIBLE else View.GONE
 
             // -----------------------------------------------------
             // CASE A: Empty cart (items empty OR grossTotal = 0.0)
@@ -1637,9 +1667,7 @@ class MainActivity : FlutterActivity() {
             // -----------------------------------------------------
 //            summaryContainer.visibility =
 //                if (summaryEnabled) View.VISIBLE else View.GONE
-            if (items.isNotEmpty() || grossTotal > 0.0) {
-                keepSummaryVisible = true
-            }
+            keepSummaryVisible = summaryEnabled
 
             summaryContainer.visibility =
                 if (keepSummaryVisible)

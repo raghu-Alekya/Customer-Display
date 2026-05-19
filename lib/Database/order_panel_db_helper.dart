@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:pinaka_pos/Database/user_db_helper.dart';
 import 'package:pinaka_pos/Repositories/Orders/order_repository.dart';
@@ -2832,6 +2833,29 @@ class OrderHelper {
       // tax: tax,
       // total: total,
       // );
+
+      await const MethodChannel(
+        'com.example.flutter_customer_display/sunmi_display',
+      ).invokeMethod(
+        'showCustomerData',
+        {
+          'orderId': orderId,
+          'items': products,
+          'grossTotal': subtotal,
+          'discount': (updatedOrder['discount'] as num?)?.toDouble() ?? 0.0,
+          'merchantDiscount': (updatedOrder['merchant_discount'] as num?)?.toDouble() ?? 0.0,
+          'netTotal': (updatedOrder['net_total'] as num?)?.toDouble() ?? subtotal,
+          'tax': tax,
+          'netPayable': total,
+          'orderDate': updatedOrder['order_date']?.toString() ?? '',
+          'orderTime': updatedOrder['order_time']?.toString() ?? '',
+          'cashbackFee': (updatedOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
+          'loyaltyContact': updatedOrder['loyalty_contact']?.toString() ?? '',
+          'availablePoints': (updatedOrder['available_points'] as num?)?.toInt() ?? 0,
+          'summaryEnabled': true,
+        },
+      );
+
 
       notifyOrderPanelToRefresh();
       if (onItemAdded != null) onItemAdded();

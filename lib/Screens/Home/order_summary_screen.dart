@@ -642,6 +642,193 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
   // Add this method to calculate actual balance from payment history
 
+  // Future<void> _calculateBalanceFromPaymentHistory() async {
+  //   try {
+  //     if (orderId == null || orderId == 0) {
+  //       setState(() {
+  //         balanceAmount = computedNetPayable;
+  //         _currentPaymentRemainingBalance = null;
+  //         _lastPaymentDetails = null;
+  //       });
+  //       return;
+  //     }
+  //
+  //     final payments =
+  //     await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
+  //     final box = StorageProvider.offlineOrders;
+  //     final key = orderId.toString();
+  //     final rawStored = await box.get(key);
+  //     final stored = Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
+  //     final double originalEbt =
+  //         (stored["originalEbt"] as num?)?.toDouble() ?? ebtTotal;
+  //
+  //     if (payments.isEmpty) {
+  //       final double remainingEbt =
+  //           (stored["remainingEbt"] as num?)?.toDouble() ?? originalEbt;
+  //       setState(() {
+  //         balanceAmount = computedNetPayable;
+  //         _currentPaymentRemainingBalance = null;
+  //         _lastPaymentDetails = null;
+  //         payByEbt = 0.0;
+  //         ebtTotal = remainingEbt;
+  //       });
+  //       return;
+  //     }
+  //
+  //     payments.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  //
+  //     double totalPaid = 0.0;
+  //     double runningBalance = computedNetPayable;
+  //     LocalPayment? lastPayment;
+  //     double previousBalance = computedNetPayable;
+  //
+  //     print("\n📊 PAYMENT HISTORY PROGRESSION FOR ORDER #$orderId:");
+  //     print("=" * 60);
+  //     print("Starting Balance: \$${computedNetPayable.toStringAsFixed(2)}");
+  //     print("-" * 60);
+  //
+  //     // Track balance progression
+  //     for (var i = 0; i < payments.length; i++) {
+  //       final payment = payments[i];
+  //       final paymentAmount = payment.amount;
+  //
+  //       double balanceBeforePayment = runningBalance;
+  //       totalPaid += paymentAmount;
+  //       runningBalance -= paymentAmount;
+  //       if (runningBalance < 0) runningBalance = 0.0;
+  //
+  //       lastPayment = payment;
+  //
+  //       print(
+  //           "Payment ${i + 1}: ${payment.paymentMethod} - \$${paymentAmount.toStringAsFixed(2)}");
+  //       print("  Balance Before: \$${balanceBeforePayment.toStringAsFixed(2)}");
+  //       print("  Balance After: \$${runningBalance.toStringAsFixed(2)}");
+  //       print("  " + "-" * 40);
+  //
+  //       previousBalance = balanceBeforePayment; // Store for next iteration
+  //     }
+  //
+  //     // for (var i = 0; i < payments.length; i++) {
+  //     //   final payment = payments[i];
+  //     //   final paymentAmount = payment.amount;
+  //     //   final isVoid = paymentAmount < 0; // or payment.status == 'void'
+  //     //
+  //     //   double balanceBeforePayment = runningBalance;
+  //     //
+  //     //   if (isVoid) {
+  //     //     runningBalance -= paymentAmount; // subtract negative = add back
+  //     //   } else {
+  //     //     runningBalance -= paymentAmount;
+  //     //     totalPaid += paymentAmount; // only count actual paid towards totalPaid
+  //     //   }
+  //     //
+  //     //   if (runningBalance < 0) runningBalance = 0.0;
+  //     //
+  //     //   lastPayment = payment;
+  //     //
+  //     //   print("Payment ${i + 1}: ${payment.paymentMethod} - \$${paymentAmount.toStringAsFixed(2)}"
+  //     //       "${isVoid ? ' (VOID)' : ''}");
+  //     //   print("  Balance Before: \$${balanceBeforePayment.toStringAsFixed(2)}");
+  //     //   print("  Balance After: \$${runningBalance.toStringAsFixed(2)}");
+  //     //   print("  " + "-" * 40);
+  //     //
+  //     //   previousBalance = balanceBeforePayment;
+  //     // }
+  //
+  //     double actualRemaining = computedNetPayable - totalPaid;
+  //     if (actualRemaining < 0) actualRemaining = 0.0;
+  //
+  //     print("\n📈 FINAL SUMMARY:");
+  //     print("Total Paid: \$${totalPaid.toStringAsFixed(2)}");
+  //     print("Remaining Balance: \$${actualRemaining.toStringAsFixed(2)}");
+  //     print(
+  //         "Previous Balance Before Last Payment: \$${previousBalance.toStringAsFixed(2)}");
+  //     print("=" * 60);
+  //
+  //     // Set last payment details with progression info
+  //     if (lastPayment != null) {
+  //       _lastPaymentDetails = {
+  //         'amount': lastPayment.amount,
+  //         'method': lastPayment.paymentMethod,
+  //         'remainingBalance': actualRemaining,
+  //         'previousBalance': previousBalance, //  ADD THIS
+  //         'datetime': lastPayment.datetime,
+  //         'paymentId': lastPayment.id,
+  //         'totalPaid': totalPaid, //  ADD THIS
+  //         'paymentNumber': payments.length, //  ADD THIS
+  //       };
+  //     }
+  //
+  //     setState(() {
+  //       tenderAmount = totalPaid;
+  //       balanceAmount = actualRemaining;
+  //
+  //       if (actualRemaining > 0) {
+  //         _currentPaymentRemainingBalance = actualRemaining;
+  //       } else {
+  //         _currentPaymentRemainingBalance = null;
+  //       }
+  //
+  //       // Payment method totals
+  //       payByCash = payments
+  //           .where((p) =>
+  //       p.paymentMethod.toLowerCase() ==
+  //           TextConstants.cash.toLowerCase())
+  //           .fold(0.0, (sum, p) => sum + p.amount);
+  //
+  //       payByCard = payments
+  //           .where((p) =>
+  //       p.paymentMethod.toLowerCase() ==
+  //           TextConstants.card.toLowerCase())
+  //           .fold(0.0, (sum, p) => sum + p.amount);
+  //
+  //       payByEbt = payments
+  //           .where((p) =>
+  //       p.paymentMethod.toLowerCase() ==
+  //           TextConstants.ebtText.toLowerCase())
+  //           .fold(0.0, (sum, p) => sum + p.amount);
+  //
+  //       payByOther = payments
+  //           .where((p) =>
+  //       p.paymentMethod.toLowerCase() !=
+  //           TextConstants.cash.toLowerCase() &&
+  //           p.paymentMethod.toLowerCase() !=
+  //               TextConstants.card.toLowerCase() &&
+  //           p.paymentMethod.toLowerCase() !=
+  //               TextConstants.ebtText.toLowerCase())
+  //           .fold(0.0, (sum, p) => sum + p.amount);
+  //
+  //       // Match API-path logic: non-EBT overflow should reduce remaining EBT.
+  //       final double nonEbtOrderValue =
+  //       (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
+  //       final double nonEbtPaid = payByCash + payByOther;
+  //       final double overflowToEbt =
+  //       nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
+  //       final double remainingEbt =
+  //       (originalEbt - payByEbt).clamp(0.0, double.infinity);
+  //       ebtTotal = (remainingEbt - overflowToEbt).clamp(0.0, double.infinity);
+  //
+  //       isPaymentStarted = totalPaid > 0;
+  //     });
+  //
+  //     stored["originalEbt"] = originalEbt;
+  //     stored["remainingEbt"] = ebtTotal;
+  //     stored["redeemed_value"] = redeemedValue;   // ensure saved
+  //     await box.put(key, stored);
+  //   } catch (e, stackTrace) {
+  //     if (kDebugMode) {
+  //       print(" Error calculating balance from payment history: $e");
+  //       print(stackTrace);
+  //     }
+  //     setState(() {
+  //       balanceAmount = computedNetPayable;
+  //       _currentPaymentRemainingBalance = null;
+  //       _lastPaymentDetails = null;
+  //
+  //     });
+  //   }
+  // }
+
   Future<void> _calculateBalanceFromPaymentHistory() async {
     try {
       if (orderId == null || orderId == 0) {
@@ -649,6 +836,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           balanceAmount = computedNetPayable;
           _currentPaymentRemainingBalance = null;
           _lastPaymentDetails = null;
+
         });
         return;
       }
@@ -661,12 +849,18 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       final stored = Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
       final double originalEbt =
           (stored["originalEbt"] as num?)?.toDouble() ?? ebtTotal;
+      redeemedValue = (stored["redeemed_value"] as num?)?.toDouble() ?? 0.0;
+      final double effectivePayable =
+      (computedNetPayable - redeemedValue)
+          .clamp(0.0, double.infinity);
 
       if (payments.isEmpty) {
         final double remainingEbt =
             (stored["remainingEbt"] as num?)?.toDouble() ?? originalEbt;
+        stored["redeemed_value"] = redeemedValue;   // ensure saved
+
         setState(() {
-          balanceAmount = computedNetPayable;
+          balanceAmount = effectivePayable;
           _currentPaymentRemainingBalance = null;
           _lastPaymentDetails = null;
           payByEbt = 0.0;
@@ -678,9 +872,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       payments.sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
       double totalPaid = 0.0;
-      double runningBalance = computedNetPayable;
+      // double runningBalance = computedNetPayable;
       LocalPayment? lastPayment;
-      double previousBalance = computedNetPayable;
+
+      // double effectivePayable =
+      // (computedNetPayable - redeemedValue).clamp(0.0, double.infinity);
+
+      double runningBalance = effectivePayable;
+      double previousBalance = effectivePayable;
 
       print("\n📊 PAYMENT HISTORY PROGRESSION FOR ORDER #$orderId:");
       print("=" * 60);
@@ -735,8 +934,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       //   previousBalance = balanceBeforePayment;
       // }
 
-      double actualRemaining = computedNetPayable - totalPaid;
-      if (actualRemaining < 0) actualRemaining = 0.0;
+      double actualRemaining = effectivePayable - totalPaid;
+
+      if (actualRemaining < 0) {
+        actualRemaining = 0.0;
+      }
 
       print("\n📈 FINAL SUMMARY:");
       print("Total Paid: \$${totalPaid.toStringAsFixed(2)}");
@@ -826,7 +1028,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       });
     }
   }
-
   Future<void> _printPaymentHistorySummary() async {
     if (orderId == null || orderId == 0) return;
 
@@ -5411,7 +5612,36 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       // ======================================
 // 7️⃣ DO NOT REFRESH CUSTOMER DISPLAY
 // ======================================
-                      print("Skipping customer display refresh after POS Add");
+                      await const MethodChannel(
+                        'com.example.flutter_customer_display/sunmi_display',
+                      ).invokeMethod(
+                        'showCustomerData',
+                        {
+                          'orderId': int.tryParse(localKey) ?? 0,
+                          'items': List<Map<String, dynamic>>.from(
+                            offlineOrder['products'] ?? [],
+                          ),
+                          'grossTotal':
+                          (offlineOrder['gross_total'] as num?)?.toDouble() ?? 0.0,
+                          'discount':
+                          (offlineOrder['discount'] as num?)?.toDouble() ?? 0.0,
+                          'merchantDiscount':
+                          (offlineOrder['merchant_discount'] as num?)?.toDouble() ?? 0.0,
+                          'netTotal':
+                          (offlineOrder['net_total'] as num?)?.toDouble() ?? 0.0,
+                          'tax':
+                          (offlineOrder['order_tax'] as num?)?.toDouble() ?? 0.0,
+                          'netPayable':
+                          (offlineOrder['net_payable'] as num?)?.toDouble() ?? 0.0,
+                          'orderDate': offlineOrder['order_date'] ?? '',
+                          'orderTime': offlineOrder['order_time'] ?? '',
+                          'cashbackFee':
+                          (offlineOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
+                          'loyaltyContact': contact,
+                          'availablePoints': pts,
+                          'summaryEnabled': true,
+                        },
+                      );
 
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -6735,6 +6965,64 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     );
   }
+  Future<void> showRedeemSummary(double redeemedAmount) async {
+    if (redeemedAmount <= 0) {
+      print("❌ Redeem: Invalid amount $redeemedAmount");
+      return;
+    }
+
+    print("🔄 Redeem Requested: $redeemedAmount | Current computedNetPayable: $computedNetPayable | Tendered: $tenderAmount");
+
+    final double availableBalance = (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
+    final double actualRedeem = redeemedAmount.clamp(0.0, availableBalance);
+
+    setState(() {
+      redeemedValue = actualRedeem;
+      isRedeemAppliedFromApi = true;
+
+      // 🔥 CORE CALCULATION - Apply redeem
+      NetTotal = grossTotal + discount + merchantDiscount - actualRedeem;
+      computedNetPayable = NetTotal + tax + cashbackFee;
+      orderTotal = computedNetPayable;
+
+      balanceAmount = (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
+
+      // Reduce EBT if needed
+      if (ebtTotal > 0) {
+        ebtTotal = (ebtTotal - (redeemedAmount - actualRedeem)).clamp(0.0, double.infinity);
+      }
+    });
+
+    // Persist to Hive
+    try {
+      final box = StorageProvider.offlineOrders;
+      final key = (orderId ?? widget.offlineOrderId ?? 0).toString();
+
+      if (await box.containsKey(key)) {
+        final order = Map<String, dynamic>.from(await box.get(key));
+        order['redeemed_value'] = actualRedeem;
+        order['net_payable'] = computedNetPayable;
+        order['balance_amount'] = balanceAmount;
+        order['NetTotal'] = NetTotal;           // extra safety
+        order['computedNetPayable'] = computedNetPayable;
+        await box.put(key, order);
+        print("💾 Redeem successfully saved to Hive → $actualRedeem");
+      }
+    } catch (e) {
+      print("⚠️ Failed to save redeem to Hive: $e");
+    }
+
+    print("✅ REDEEM APPLIED SUCCESSFULLY!");
+    print("   Redeemed     : -${actualRedeem.toStringAsFixed(2)}");
+    print("   New NetTotal : ${NetTotal.toStringAsFixed(2)}");
+    print("   New Payable  : ${computedNetPayable.toStringAsFixed(2)}");
+    print("   New Balance  : ${balanceAmount.toStringAsFixed(2)}");
+
+    // Force refresh UI
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   Future<void> _removeRedeemedAmount() async {
 
@@ -6854,21 +7142,23 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       });
 
 // clear hive first
+      // clear hive
       await removeOfflineOrderRedeem(localKey);
 
-// refresh display with clean data
-      await CustomerDisplayHelper.updateCustomerDisplay(
-        widget.offlineOrderId!,
-      );
-
-// hide redeem row
+// tell android immediately
       await customerDisplayChannel.invokeMethod(
         "customerDisplayResult",
         {
           "success": true,
           "points": updatedPoints,
           "redeemedAmount": 0.0,
+          "removeRedeem": true,
         },
+      );
+
+// then refresh full display
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        widget.offlineOrderId!,
       );
       // =====================================
       // SUCCESS MESSAGE

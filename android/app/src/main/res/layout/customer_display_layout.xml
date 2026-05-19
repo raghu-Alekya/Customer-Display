@@ -428,7 +428,8 @@
                 android:layout_height="wrap_content"
                 android:background="@drawable/card_bg"
                 android:orientation="vertical"
-                android:padding="8dp">
+                android:padding="8dp"
+                android:visibility="gone">
 
                 <!-- Gross Total -->
                 <LinearLayout
@@ -563,22 +564,31 @@
                     android:id="@+id/redeem_row"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
                     android:orientation="horizontal"
+                    android:layout_marginBottom="3dp"
                     android:visibility="gone">
 
                     <TextView
                         android:id="@+id/label_redeem_amount"
                         android:layout_width="0dp"
-                        android:layout_weight="1"
                         android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:paddingStart="4dp"
                         android:text="Redeemed Amount"
-                        android:visibility="gone"/>
+                        android:textColor="#9C27B0"
+                        android:textSize="18sp"
+                        android:visibility="gone" />
 
                     <TextView
                         android:id="@+id/value_redeem_amount"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:visibility="gone"/>
+                        android:paddingEnd="8dp"
+                        android:text="$0.00"
+                        android:textColor="#9C27B0"
+                        android:textSize="18sp"
+                        android:visibility="gone" />
                 </LinearLayout>
 
                 <!-- Cashback Fee -->

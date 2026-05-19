@@ -844,7 +844,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         await orderHelper.setActiveOrder(selectedOrderId);
         await orderHelper.saveLastActiveOrderId(selectedOrderId);
         await fetchOrderItems();
-        CustomerDisplayHelper.updateCustomerDisplay(selectedOrderId);
+        CustomerDisplayHelper.updateCustomerDisplay(
+          selectedOrderId,
+          summaryEnabled: false,
+        );
 
         if (mounted) setState(() {});
       }
@@ -855,7 +858,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       final activeTabOrderId =
           _normalizeOrderId(tabs[defaultIndex]["orderId"]) ?? 0;
       if (activeTabOrderId != 0) {
-        CustomerDisplayHelper.updateCustomerDisplay(activeTabOrderId);
+        CustomerDisplayHelper.updateCustomerDisplay(
+          activeTabOrderId,
+          summaryEnabled: false,
+        );
       }
       setState(() {}); // Ensure UI highlights the correct tab
     }
@@ -946,8 +952,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             await fetchOrderItems();
 
             // ✅ Optional: keep this (will refresh if data comes later)
-            await CustomerDisplayHelper.updateCustomerDisplay(orderId);
-
+            await CustomerDisplayHelper.updateCustomerDisplay(
+              orderId,
+              summaryEnabled: false,
+            );
             if (Misc.showDebugSnackBar) {
               _scaffoldMessenger.showSnackBar(
                 const SnackBar(
@@ -1822,7 +1830,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         );
 
         await fetchOrderItems();
-        await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+        await CustomerDisplayHelper.updateCustomerDisplay(
+          activeOrderId,
+          summaryEnabled: false,
+        );
 
         _isLoading = false;
         if (mounted) setState(() {});

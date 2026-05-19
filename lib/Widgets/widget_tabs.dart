@@ -2425,7 +2425,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       "merchant discount",
       "merchant-discount",
       "merchant_discount",
-      "md",
+      // "md",
     ]);
     if (resolved != null) return resolved;
 
