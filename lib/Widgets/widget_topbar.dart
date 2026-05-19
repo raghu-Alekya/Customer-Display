@@ -418,6 +418,36 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     if (oldWidget.screen != widget.screen) {
       _clearSearchUiState();
     }
+    _forceClearOldOrderFlicker();
+  }
+
+  void _forceClearOldOrderFlicker() {
+    _dialogOpen = false;
+    isAddingItemLoading = false;
+    _removeOverlay();
+
+    // Force immediate UI clean
+    if (mounted) {
+      setState(() {});
+    }
+
+    // Extra aggressive clear after frame to kill any remaining flash
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
+      // Clear search completely again
+      _searchController.clear();
+      _removeOverlay();
+
+      // This is the key - force rebuild again
+      if (mounted) {
+        setState(() {});
+      }
+
+      if (kDebugMode) {
+        print('🔄 Flicker cleared for screen: ${widget.screen}');
+      }
+    });
   }
 
   @override
@@ -626,8 +656,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
             ),
           );
         }
-        // ── FIX: Still reload the UI even when server says "no changes" so
-        // that previously cached data is always shown after a refresh tap.
         TopBar.notifyMergedProductCacheMayHaveChanged();
         await _reloadAllProductsFromIsar();
         TopBar.onRefreshCompleted?.call();
@@ -804,6 +832,22 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       }
 
       // ── 5. Single Isar write transaction ───────────────────────────────────
+      // Collect which category ids are being touched by upserts so we can
+      // delete their indigo_products_ cache BEFORE writing the delta.
+      // This forces _IndigoProductRepositoryWithCache to do a full API fetch
+      // on next load instead of serving a partial delta-only cache.
+      final Set<int> affectedCategoryIds = {};
+      for (final productData in toUpsert) {
+        final List<dynamic> apiCategories =
+            (productData['categories'] as List?) ?? [];
+        for (final cat in apiCategories) {
+          final int? catId = cat['id'] is int
+              ? cat['id'] as int
+              : int.tryParse(cat['id']?.toString() ?? '');
+          if (catId != null) affectedCategoryIds.add(catId);
+        }
+      }
+
       await isar.writeTxn(() async {
         // ── 5-A  DELETED ────────────────────────────────────────────────────
         for (final productId in toDelete) {
@@ -854,7 +898,26 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
             print('  ✅ Product $productId fully deleted from Isar');
         }
 
-        // ── 5-B  CREATED / UPDATED ──────────────────────────────────────────
+        // ── 5-B  DELETE all indigo_products_ entries for affected categories
+        // BEFORE writing anything. This ensures the next UI load does a full
+        // API fetch and returns ALL products, not just the delta items.
+        for (final catId in affectedCategoryIds) {
+          final String indigoKey = 'indigo_products_$catId';
+          final deleted = await isar.isarCacheEntrys
+              .filter()
+              .keyEqualTo(indigoKey)
+              .deleteAll();
+          if (kDebugMode) {
+            print(
+                '🗑️ Pre-deleted $indigoKey (count: $deleted) before upsert so next load fetches full list from API');
+          }
+        }
+
+        // ── 5-C  CREATED / UPDATED — write only to products_<catId> ──────────
+        // We intentionally do NOT recreate indigo_products_ here.
+        // The deleted entries above mean _IndigoProductRepositoryWithCache
+        // will see a cache miss and call the real API which returns every
+        // product in the category, not just the changed ones.
         final Map<int, List<Map<String, dynamic>>> categoryProductMap = {};
 
         for (final productData in toUpsert) {
@@ -893,7 +956,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           final int catId = mapEntry.key;
           final List<Map<String, dynamic>> updatedProducts = mapEntry.value;
 
-          // products_<catId>
+          // products_<catId> — always merge delta into this cache
           final String categoryKey = 'products_$catId';
           final IsarCacheEntry? existing = await isar.isarCacheEntrys
               .where()
@@ -938,45 +1001,9 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               ..timestamp = DateTime.now(),
           );
 
-          // indigo_products_<catId>
-          final String indigoKey = 'indigo_products_$catId';
-          final IsarCacheEntry? indigoExisting = await isar.isarCacheEntrys
-              .where()
-              .filter()
-              .keyEqualTo(indigoKey)
-              .findFirst();
-
-          List<Map<String, dynamic>> indigoCached = [];
-          if (indigoExisting != null) {
-            try {
-              indigoCached = (jsonDecode(indigoExisting.json) as List)
-                  .whereType<Map>()
-                  .map((m) => Map<String, dynamic>.from(m))
-                  .toList();
-            } catch (_) {}
-          }
-
-          for (final updated in updatedProducts) {
-            final int productId = updated['fast_key_product_id'] as int? ?? 0;
-            final int idx = indigoCached.indexWhere(
-                  (p) =>
-              (p['fast_key_product_id'] ?? p['product_id'] ?? p['id'])
-                  ?.toString() ==
-                  productId.toString(),
-            );
-            if (idx >= 0) {
-              indigoCached[idx] = {...indigoCached[idx], ...updated};
-            } else {
-              indigoCached.add(updated);
-            }
-          }
-
-          await isar.isarCacheEntrys.put(
-            (indigoExisting ?? IsarCacheEntry())
-              ..key = indigoKey
-              ..json = jsonEncode(indigoCached)
-              ..timestamp = DateTime.now(),
-          );
+          // NOTE: indigo_products_<catId> is intentionally NOT written here.
+          // It was deleted in step 5-B above. The Indigo repo will fetch
+          // fresh from the API on next load, getting the full product list.
 
           // Clean up sku_* for each upserted product
           for (final updated in updatedProducts) {
@@ -996,7 +1023,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
             'upserted: ${toUpsert.length}, deleted: ${toDelete.length}');
       }
 
-      // ── 5-C. Acknowledge sync version to server ────────────────────────────
+      // ── 5-D. Acknowledge sync version to server ────────────────────────────
       if (lastEventVersion != null) {
         try {
           final updateUrl = Uri.parse(
@@ -1036,8 +1063,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       TopBar.notifyMergedProductCacheMayHaveChanged();
       await _reloadAllProductsFromIsar();
 
-      // ── FIX: Fire the callback so CategoriesScreen busts its Indigo UI
-      // guards and reloads the currently visible product grid from Isar.
       TopBar.onRefreshCompleted?.call();
 
       if (mounted) {
@@ -1062,7 +1087,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       if (mounted) setState(() => isLoading = false);
     }
   }
-
   // ══════════════════════════════════════════════════════════════════════════════
   // SEARCH
   // ══════════════════════════════════════════════════════════════════════════════

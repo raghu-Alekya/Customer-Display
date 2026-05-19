@@ -588,6 +588,8 @@ class _RecentCategoryChip extends StatelessWidget {
     );
   }
 
+
+
   Widget _buildImage(String imagePath, double size) {
     if (imagePath.startsWith('assets/') && imagePath.endsWith('.svg')) {
       return SvgPicture.asset(imagePath,
@@ -821,6 +823,7 @@ class IndigoCategoryBasedProducts {
           IndigoTaxRate.fromJson(Map<String, dynamic>.from(tr as Map)))
           .toList();
     }
+
 
     return IndigoCategoryBasedProducts(
       id: json['id'] ?? 0,
@@ -1339,36 +1342,92 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   // Called by TopBar.onRefreshCompleted.
   // ─────────────────────────────────────────────────────────────────────────
 
+  // Add this helper method to _CategoriesScreenState
+  // ─────────────────────────────────────────────────────────────────────────
+// Deletes Isar indigo_products_ entries for the currently visible category
+// so _IndigoProductRepositoryWithCache sees a cache miss and fetches fresh.
+// ─────────────────────────────────────────────────────────────────────────
+  Future<void> _bustIndigoProductCacheForCurrentCategory() async {
+    if (_selectedCategoryIndex == null ||
+        _selectedCategoryIndex! >= categories.length) return;
+
+    try {
+      final isar = await IsarService.instance;
+      final int parentId = categories[_selectedCategoryIndex!].id;
+
+      // Collect parent + all loaded sub-category ids
+      final Set<int> categoryIds = {parentId};
+      for (final sub in _indigoSubCategories) {
+        categoryIds.add(sub.id);
+      }
+      // Also include the currently selected sub-category explicitly
+      if (_selectedIndigoSubCategoryIndex != null &&
+          _indigoSubCategories.isNotEmpty &&
+          _selectedIndigoSubCategoryIndex! < _indigoSubCategories.length) {
+        categoryIds
+            .add(_indigoSubCategories[_selectedIndigoSubCategoryIndex!].id);
+      }
+
+      await isar.writeTxn(() async {
+        for (final id in categoryIds) {
+          final count = await isar.isarCacheEntrys
+              .filter()
+              .keyEqualTo('indigo_products_$id')
+              .deleteAll();
+          if (kDebugMode) {
+            print(
+                '🗑️ [Categories] Busted indigo_products_$id (deleted: $count)');
+          }
+        }
+      });
+    } catch (e) {
+      if (kDebugMode) {
+        print(
+            '⚠️ [Categories] _bustIndigoProductCacheForCurrentCategory error: $e');
+      }
+    }
+  }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Force-reload the currently visible product grid after a TopBar refresh.
+// Called via TopBar.onRefreshCompleted.
+// ─────────────────────────────────────────────────────────────────────────
   Future<void> _forceReloadCurrentView() async {
     if (!mounted) return;
-
     if (kDebugMode) print("🔄 [Categories] _forceReloadCurrentView triggered");
 
-    // 1. Bust ALL in-flight guards so the load methods don't bail early.
+    // Step 1: Delete the indigo_products_ Isar cache for the visible category.
+    // This makes _IndigoProductRepositoryWithCache.fetchProducts see a cache
+    // miss and call the real API, returning the FULL product list — not just
+    // the delta that refreshProducts wrote.
+    await _bustIndigoProductCacheForCurrentCategory();
+
+    // Step 2: Clear ALL in-flight guards so load methods don't bail early.
     _inFlightIndigoSubParentId = null;
     _inFlightIndigoProductCategoryId = null;
     _inFlightSubCategoryParentId = null;
     _inFlightProductCategoryId = null;
 
-    // 2. Re-trigger the currently visible Indigo sub-category products.
+    // Step 3: Re-trigger loads for the currently visible category/sub-category.
     if (!_showCategoryGrid &&
         _selectedCategoryIndex != null &&
         _selectedCategoryIndex! < categories.length) {
       final int parentId = categories[_selectedCategoryIndex!].id;
 
-      // Re-load sub-categories so the pill bar reflects any new additions.
+      // Reload sub-categories so pill bar reflects any new additions.
       await _loadIndigoSubCategories(parentId);
 
-      // Load the currently selected sub-category's products.
+      // Determine which sub-category's products to reload.
       final int targetId = (_selectedIndigoSubCategoryIndex != null &&
           _indigoSubCategories.isNotEmpty &&
           _selectedIndigoSubCategoryIndex! < _indigoSubCategories.length)
           ? _indigoSubCategories[_selectedIndigoSubCategoryIndex!].id
           : parentId;
 
+      // This now hits the API because we deleted the Isar cache in Step 1.
       await _loadIndigoProductsBySubCategory(targetId);
 
-      // Also refresh the standard product list if a sub-category is selected.
+      // Also reload the standard (non-Indigo) product list if applicable.
       if (_selectedSubCategoryIndex != null &&
           subCategories.isNotEmpty &&
           _selectedSubCategoryIndex! < subCategories.length) {

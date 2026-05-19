@@ -9062,7 +9062,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Future<void> _applyCoupon(String code) async {
-    code = code.trim().toLowerCase(); // Normalize for comparison
+    code = code.trim().toLowerCase();
     if (code.isEmpty) return;
 
     try {
@@ -9081,34 +9081,45 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       setState(() => isSummaryLoading = true);
 
-      // === STRICT DUPLICATE CHECK ===
+      // ==================== SMART DUPLICATE CHECK ====================
       final dynamic cr = offlineOrder["coupon_response"];
+      bool isAlreadyRedeemed = false;
+
       if (cr is Map) {
         final List<dynamic> coupons = cr["coupons"] as List? ?? [];
 
         for (final dynamic item in coupons) {
-          if (item is Map) {
-            final Map<String, dynamic> couponMap = Map<String, dynamic>.from(item);
-            final String existingCode = (couponMap["code"]?.toString() ?? "").trim().toLowerCase();
+          if (item is! Map) continue;
 
-            if (existingCode == code) {
-              // Coupon is currently active
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Coupon already applied"),
-                  backgroundColor: Colors.orange,
-                ),
-              );
-              return;
+          final Map<String, dynamic> couponMap = Map<String, dynamic>.from(item);
+          final String existingCode = (couponMap["code"]?.toString() ?? "").trim().toLowerCase();
+
+          if (existingCode == code) {
+            // 🔥 ONLY block with "already applied" if it is ALREADY REDEEMED
+            if (_couponHiveEntryIsRedeem(couponMap)) {
+              isAlreadyRedeemed = true;
+              break;
             }
+            // If only issued → allow (for issuing or redeeming)
           }
         }
       }
 
-      // Backup before modification
+      if (isAlreadyRedeemed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Coupon already applied"),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+      // ============================================================
+
+      // Backup
       final dynamic originalCouponResponse = offlineOrder["coupon_response"];
 
-      // Add new redeem coupon
+      // Merge redeem coupon
       offlineOrder["coupon_response"] =
           _mergeRedeemIntoCouponResponse(offlineOrder["coupon_response"], code);
 
@@ -9125,15 +9136,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
 
       if (result == null || result is! Map<String, dynamic>) {
-        // Restore on failure
         offlineOrder["coupon_response"] = originalCouponResponse;
         await box.put(orderKey, offlineOrder);
 
         String errorMsg = "Invalid coupon or unable to apply";
-        if (result is Map<String, dynamic>) {
-          if (result['code'] == 'invalid_coupon') {
-            errorMsg = result['message']?.toString() ?? errorMsg;
-          }
+        if (result is Map<String, dynamic> && result['code'] == 'invalid_coupon') {
+          errorMsg = result['message']?.toString() ?? errorMsg;
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -9142,7 +9150,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return;
       }
 
-      // === SUCCESS ===
+      // SUCCESS logic (unchanged)
       final double newDiscount = double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
       final double newTax = double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
       final double newTotal = double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
@@ -9179,19 +9187,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       await _recalculateTaxOnDiscountedItems();
 
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Coupon applied successfully"), backgroundColor: Colors.green),
       );
 
     } catch (e) {
       print("❌ Apply coupon error: $e");
-
-      // Restore on exception
+      // Restore logic (unchanged)
       try {
         final box = StorageProvider.offlineOrders;
-        final String orderKey = widget.orderId?.toString() ??
-            widget.offlineOrderId?.toString() ?? "";
+        final String orderKey = widget.orderId?.toString() ?? widget.offlineOrderId?.toString() ?? "";
         if (orderKey.isNotEmpty) {
           final raw = await box.get(orderKey);
           if (raw is Map) {

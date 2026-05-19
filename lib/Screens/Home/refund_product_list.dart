@@ -536,6 +536,8 @@ class _RefundScreenState extends State<RefundScreen> {
                                                   child: Text("Quantity",
                                                       style: TextStyle(
                                                           color: Colors.white))),
+
+
                                               Expanded(
                                                   flex: 2,
                                                   child: Text("Amount",
@@ -865,10 +867,58 @@ class _RefundScreenState extends State<RefundScreen> {
                                             padding: const EdgeInsets.symmetric(horizontal: 10),
                                             child: Row(
                                               children: const [
-                                                Expanded(flex: 3, child: Text("Item Name", style: TextStyle(color: Colors.white, fontSize: 12))),
-                                                Expanded(flex: 2, child: Text("Price/Qty", style: TextStyle(color: Colors.white, fontSize: 12))),
-                                                Expanded(flex: 1, child: Text("Tax", style: TextStyle(color: Colors.white, fontSize: 12))),
-                                                Expanded(flex: 1, child: Text("Amount", style: TextStyle(color: Colors.white, fontSize: 12))),
+                                                Expanded(
+                                                  flex: 3,
+                                                  child: Align(
+                                                    alignment: Alignment.centerLeft,
+                                                    child: Text(
+                                                      "Item Name",
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  flex: 2,
+                                                  child: Align(
+                                                    alignment: Alignment.centerLeft,
+                                                    child: Text(
+                                                      "Price/Qty",
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  flex: 1,
+                                                  child: Align(
+                                                    alignment: Alignment.centerLeft,
+                                                    child: Text(
+                                                      "Tax",
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  flex: 1,
+                                                  child: Align(
+                                                    alignment: Alignment.centerRight,
+                                                    child: Text(
+                                                      "Amount",
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
                                               ],
                                             ),
                                           ),

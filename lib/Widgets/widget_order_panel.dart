@@ -168,6 +168,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   Map<String, dynamic>? resolvedProductMap;
   VoidCallback? _orderPanelRefreshListener;
   bool _isNewTabDisabled = false;
+  bool _isSwitchingOrder = false;
 
   /// True only after restore + fetch complete; prevents showing stale order items when switching from Orders/Apps.
   bool _initialRestoreDone = false;
@@ -293,7 +294,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
 
     //  Ignore floating point noise
-    return result < 0.01 ? 0.0 : result;
+    // return result < 0.000001 ? 0.0 : result;
+    return result < 0.000001 ? 0.0 : result;
+
   }
 
   // Build #1.0.104: created this function for initial call & while back to this screen
@@ -826,21 +829,25 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           mounted &&
           _tabController!.index < tabs.length) {
         int selectedIndex = _tabController!.index;
-        final int? selectedOrderId =
-        _normalizeOrderId(tabs[selectedIndex]["orderId"]);
+        final int? selectedOrderId = _normalizeOrderId(tabs[selectedIndex]["orderId"]);
         if (selectedOrderId == null) return;
-        if (mounted) {
-          setState(() {
-            orderItems = [];
-            _currentOrderVersion++; // FIX2: increment version when switching tabs
-          });
-        }
+
+        // 🔥 PREVENT BUILD FROM USING STALE CACHE DURING SWITCH
+        setState(() {
+          _isSwitchingOrder = true;
+          orderItems = [];
+          _currentOrderVersion++;
+        });
+
         await orderHelper.setActiveOrder(selectedOrderId);
         await orderHelper.saveLastActiveOrderId(selectedOrderId);
         await fetchOrderItems();
-        CustomerDisplayHelper.updateCustomerDisplay(selectedOrderId);
 
-        if (mounted) setState(() {});
+        // 🟢 SWITCH FINISHED – allow build to use cache again
+        if (mounted) {
+          setState(() => _isSwitchingOrder = false);
+          CustomerDisplayHelper.updateCustomerDisplay(selectedOrderId);
+        }
       }
     });
 
@@ -939,7 +946,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
             await fetchOrderItems();
 
-            // ✅ Optional: keep this (will refresh if data comes later)
+            // Optional: keep this (will refresh if data comes later)
             await CustomerDisplayHelper.updateCustomerDisplay(orderId);
 
             if (Misc.showDebugSnackBar) {
@@ -4128,7 +4135,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
 
     // Only derive from orderHelper after restore+fetch; prevents stale items when switching from Orders/Apps.
-    if (rawOfflineOrder != null && _initialRestoreDone) {
+    if (!_isSwitchingOrder && rawOfflineOrder != null && _initialRestoreDone) {
       if (kDebugMode) {
         print("📦 Detected offline order (${orderHelper.activeOrderId})");
       }
@@ -6183,330 +6190,372 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               ],
                             ),
                             SizedBox(height: 2),
-                            if (merchantDiscount >= 0.01)
-                              Row(
-                                mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    spacing: 5,
-                                    children: [
-                                      // SvgPicture.asset("assets/svg/discount_star.svg",
-                                      //   height: 12, width: 12,
-                                      //   colorFilter: ColorFilter.mode(Colors.blueAccent, BlendMode.srcIn),),
-                                      Text(TextConstants.merchantDiscount,
-                                          style: TextStyle(
-                                            color: Color(0xFF007BFF),
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                          )),
-                                      merchantDiscount
-                                          .toStringAsFixed(2) ==
-                                          '0.00'
-                                          ? SizedBox()
-                                          : GestureDetector(
-                                        onTap: () async {
-                                          if (kDebugMode) {
-                                            print(
-                                                "####################### Remove Merchant Discount locally");
-                                          }
+                            // if (merchantDiscount >= 0.01)
+                            if (merchantDiscount > 0.000001)
+                            // ✅ CHANGE 1: was `>= 0.01`, now `> 0.0` — shows any non-zero discount
+                            //   if (merchantDiscount > 0.0)
+                                Row(
+                                  mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      spacing: 5,
+                                      children: [
+                                        // SvgPicture.asset("assets/svg/discount_star.svg",
+                                        //   height: 12, width: 12,
+                                        //   colorFilter: ColorFilter.mode(Colors.blueAccent, BlendMode.srcIn),),
+                                        Text(TextConstants.merchantDiscount,
+                                            style: TextStyle(
+                                              color: Color(0xFF007BFF),
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                            )),
+                                        // ✅ CHANGE 2: was `toStringAsFixed(2) == '0.00'`
+                                        // now checks the actual value so delete icon shows for tiny discounts
+                                        merchantDiscount <= 0.0
+                                            ? SizedBox()
+                                            : GestureDetector(
+                                          onTap: () async {
+                                            if (kDebugMode) {
+                                              print(
+                                                  "####################### Remove Merchant Discount locally");
+                                            }
 
-                                          final activeOrderId =
-                                              orderHelper
-                                                  .activeOrderId;
-                                          if (activeOrderId ==
-                                              null) {
-                                            _scaffoldMessenger
-                                                .showSnackBar(
-                                              const SnackBar(
-                                                content: Text(
-                                                    "No active order found"),
-                                                backgroundColor:
-                                                Colors.red,
-                                                duration: Duration(
-                                                    seconds: 2),
-                                              ),
+                                            final activeOrderId =
+                                                orderHelper
+                                                    .activeOrderId;
+                                            if (activeOrderId ==
+                                                null) {
+                                              _scaffoldMessenger
+                                                  .showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                      "No active order found"),
+                                                  backgroundColor:
+                                                  Colors.red,
+                                                  duration: Duration(
+                                                      seconds: 2),
+                                                ),
+                                              );
+                                              return;
+                                            }
+
+                                            // Step 1: Show confirmation dialog
+                                            await CustomDialog
+                                                .showRemoveSpecialOrderItemsConfirmation(
+                                              context,
+                                              confirm: () async {
+                                                setState(() =>
+                                                _isLoading =
+                                                true);
+
+                                                final offlineBox =
+                                                    StorageProvider
+                                                        .offlineOrders;
+                                                final rawOrder =
+                                                await offlineBox.get(
+                                                    activeOrderId
+                                                        .toString());
+
+                                                if (rawOrder ==
+                                                    null) {
+                                                  setState(() =>
+                                                  _isLoading =
+                                                  false);
+                                                  _scaffoldMessenger
+                                                      .showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text(
+                                                          "No offline order data found"),
+                                                      backgroundColor:
+                                                      Colors.red,
+                                                      duration:
+                                                      Duration(
+                                                          seconds:
+                                                          2),
+                                                    ),
+                                                  );
+                                                  return;
+                                                }
+
+                                                // Convert to editable Map
+                                                final Map<String,
+                                                    dynamic> order = Map<
+                                                    String,
+                                                    dynamic>.from(
+                                                    rawOrder);
+
+                                                // Build #1.0.287: Ensure ID is preserved in map content
+                                                order['order_id'] =
+                                                    activeOrderId;
+
+                                                // ────────────────────────────────────────────────
+                                                // Remove ALL possible merchant discount fields
+                                                // (covers both old and new storage formats)
+                                                // ────────────────────────────────────────────────
+                                                bool hadDiscount =
+                                                false;
+
+                                                if (order.containsKey('merchantDiscount') ||
+                                                    order.containsKey(
+                                                        'merchantDiscountIds') ||
+                                                    order.containsKey(
+                                                        'discounts') ||
+                                                    order.containsKey(
+                                                        'merchantDiscountType') ||
+                                                    order.containsKey(
+                                                        'merchantDiscountPercentage') ||
+                                                    order.containsKey(
+                                                        'merchantDiscountFixed') ||
+                                                    order.containsKey(
+                                                        'merchantDiscountBaseGross') ||
+                                                    order.containsKey(
+                                                        'merchantDiscountIsPercentage')) {
+                                                  hadDiscount = true;
+
+                                                  order.remove(
+                                                      'merchantDiscount');
+                                                  order.remove(
+                                                      'merchantDiscountIds');
+                                                  order.remove(
+                                                      'discounts');
+                                                  order.remove(
+                                                      'merchantDiscountType');
+                                                  order.remove(
+                                                      'merchantDiscountPercentage');
+                                                  order.remove(
+                                                      'merchantDiscountFixed');
+                                                  order.remove(
+                                                      'merchantDiscountBaseGross');
+                                                  order.remove(
+                                                      'merchantDiscountIsPercentage');
+                                                  order.remove(
+                                                      'merchant_discount_calculated');
+                                                }
+
+                                                // Recalculate totals with merchant discount = 0
+                                                final products =
+                                                    (order['products']
+                                                    as List?) ??
+                                                        [];
+                                                final customItems =
+                                                    (order['custom_items']
+                                                    as List?) ??
+                                                        [];
+                                                double productTotal =
+                                                0.0;
+                                                for (final p
+                                                in products) {
+                                                  final qty = int.tryParse(p[
+                                                  'quantity']
+                                                      ?.toString() ??
+                                                      p['items_count']
+                                                          ?.toString() ??
+                                                      '1') ??
+                                                      1;
+                                                  final price = double
+                                                      .tryParse(p['price']
+                                                      ?.toString() ??
+                                                      '0') ??
+                                                      0.0;
+                                                  productTotal +=
+                                                      price * qty;
+                                                }
+                                                for (final c
+                                                in customItems) {
+                                                  final qty = int.tryParse(c[
+                                                  'quantity']
+                                                      ?.toString() ??
+                                                      c['items_count']
+                                                          ?.toString() ??
+                                                      '1') ??
+                                                      1;
+                                                  final price = double.tryParse(c[
+                                                  'custom_item_price']
+                                                      ?.toString() ??
+                                                      c['amount']
+                                                          ?.toString() ??
+                                                      c['price']
+                                                          ?.toString() ??
+                                                      '0') ??
+                                                      0.0;
+                                                  productTotal +=
+                                                      price * qty;
+                                                }
+                                                final payouts = (order[
+                                                'payouts']
+                                                as List?) ??
+                                                    [];
+                                                final cashbacks =
+                                                    (order['cashbacks']
+                                                    as List?) ??
+                                                        [];
+                                                double payoutsTotal =
+                                                payouts.fold<
+                                                    double>(
+                                                    0,
+                                                        (s, p) =>
+                                                    s +
+                                                        (double.tryParse(p['amount']?.toString() ??
+                                                            '0') ??
+                                                            0));
+                                                double
+                                                cashbacksTotal =
+                                                cashbacks.fold<
+                                                    double>(
+                                                    0,
+                                                        (s, c) =>
+                                                    s +
+                                                        (double.tryParse(c['amount']?.toString() ??
+                                                            '0') ??
+                                                            0));
+                                                final grossTotal =
+                                                    productTotal +
+                                                        payoutsTotal +
+                                                        cashbacksTotal;
+                                                final orderDiscount =
+                                                (order['orderDiscount']
+                                                is num)
+                                                    ? (order['orderDiscount']
+                                                as num)
+                                                    .toDouble()
+                                                    : 0.0;
+                                                final orderTax = (order[
+                                                'order_tax']
+                                                is num)
+                                                    ? (order['order_tax']
+                                                as num)
+                                                    .toDouble()
+                                                    : 0.0;
+                                                final cashbackFee =
+                                                (order['cashbackFee']
+                                                is num)
+                                                    ? (order['cashbackFee']
+                                                as num)
+                                                    .toDouble()
+                                                    : 0.0;
+                                                order['gross_total'] =
+                                                    grossTotal;
+                                                order['net_total'] =
+                                                    grossTotal -
+                                                        orderDiscount;
+                                                order['net_payable'] =
+                                                    order['net_total'] +
+                                                        orderTax +
+                                                        cashbackFee;
+
+                                                await offlineBox.put(
+                                                    activeOrderId
+                                                        .toString(),
+                                                    order);
+
+                                                await orderHelper
+                                                    .loadData();
+                                                OrderHelper
+                                                    .notifyOrderPanelToRefresh();
+                                                await CustomerDisplayHelper
+                                                    .updateCustomerDisplay(
+                                                    activeOrderId);
+
+                                                if (mounted)
+                                                  setState(() =>
+                                                  _isLoading =
+                                                  false);
+
+                                                if (hadDiscount) {
+                                                  _scaffoldMessenger
+                                                      .showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text(
+                                                          "Merchant discount removed successfully"),
+                                                      backgroundColor:
+                                                      Colors
+                                                          .green,
+                                                      duration:
+                                                      Duration(
+                                                          seconds:
+                                                          2),
+                                                    ),
+                                                  );
+                                                } else {
+                                                  _scaffoldMessenger
+                                                      .showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text(
+                                                          "No merchant discount was found on this order"),
+                                                      backgroundColor:
+                                                      Colors
+                                                          .orange,
+                                                      duration:
+                                                      Duration(
+                                                          seconds:
+                                                          2),
+                                                    ),
+                                                  );
+                                                }
+
+                                                widget
+                                                    .refreshOrderList
+                                                    ?.call();
+                                              },
                                             );
-                                            return;
-                                          }
-
-                                          // Step 1: Show confirmation dialog
-                                          await CustomDialog
-                                              .showRemoveSpecialOrderItemsConfirmation(
-                                            context,
-                                            confirm: () async {
-                                              setState(() =>
-                                              _isLoading =
-                                              true);
-
-                                              final offlineBox =
-                                                  StorageProvider
-                                                      .offlineOrders;
-                                              final rawOrder =
-                                              await offlineBox.get(
-                                                  activeOrderId
-                                                      .toString());
-
-                                              if (rawOrder ==
-                                                  null) {
-                                                setState(() =>
-                                                _isLoading =
-                                                false);
-                                                _scaffoldMessenger
-                                                    .showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text(
-                                                        "No offline order data found"),
-                                                    backgroundColor:
-                                                    Colors.red,
-                                                    duration:
-                                                    Duration(
-                                                        seconds:
-                                                        2),
-                                                  ),
-                                                );
-                                                return;
-                                              }
-
-                                              // Convert to editable Map
-                                              final Map<String,
-                                                  dynamic> order = Map<
-                                                  String,
-                                                  dynamic>.from(
-                                                  rawOrder);
-
-                                              // Build #1.0.287: Ensure ID is preserved in map content
-                                              order['order_id'] =
-                                                  activeOrderId;
-
-                                              // ────────────────────────────────────────────────
-                                              // Remove ALL possible merchant discount fields
-                                              // (covers both old and new storage formats)
-                                              // ────────────────────────────────────────────────
-                                              bool hadDiscount =
-                                              false;
-
-                                              if (order.containsKey('merchantDiscount') ||
-                                                  order.containsKey(
-                                                      'merchantDiscountIds') ||
-                                                  order.containsKey(
-                                                      'discounts') ||
-                                                  order.containsKey(
-                                                      'merchantDiscountType') ||
-                                                  order.containsKey(
-                                                      'merchantDiscountPercentage') ||
-                                                  order.containsKey(
-                                                      'merchantDiscountFixed') ||
-                                                  order.containsKey(
-                                                      'merchantDiscountBaseGross') ||
-                                                  order.containsKey(
-                                                      'merchantDiscountIsPercentage')) {
-                                                hadDiscount = true;
-
-                                                order.remove(
-                                                    'merchantDiscount');
-                                                order.remove(
-                                                    'merchantDiscountIds');
-                                                order.remove(
-                                                    'discounts');
-                                                order.remove(
-                                                    'merchantDiscountType');
-                                                order.remove(
-                                                    'merchantDiscountPercentage');
-                                                order.remove(
-                                                    'merchantDiscountFixed');
-                                                order.remove(
-                                                    'merchantDiscountBaseGross');
-                                                order.remove(
-                                                    'merchantDiscountIsPercentage');
-                                                order.remove(
-                                                    'merchant_discount_calculated');
-                                              }
-
-                                              // Recalculate totals with merchant discount = 0
-                                              final products =
-                                                  (order['products']
-                                                  as List?) ??
-                                                      [];
-                                              final customItems =
-                                                  (order['custom_items']
-                                                  as List?) ??
-                                                      [];
-                                              double productTotal =
-                                              0.0;
-                                              for (final p
-                                              in products) {
-                                                final qty = int.tryParse(p[
-                                                'quantity']
-                                                    ?.toString() ??
-                                                    p['items_count']
-                                                        ?.toString() ??
-                                                    '1') ??
-                                                    1;
-                                                final price = double
-                                                    .tryParse(p['price']
-                                                    ?.toString() ??
-                                                    '0') ??
-                                                    0.0;
-                                                productTotal +=
-                                                    price * qty;
-                                              }
-                                              for (final c
-                                              in customItems) {
-                                                final qty = int.tryParse(c[
-                                                'quantity']
-                                                    ?.toString() ??
-                                                    c['items_count']
-                                                        ?.toString() ??
-                                                    '1') ??
-                                                    1;
-                                                final price = double.tryParse(c[
-                                                'custom_item_price']
-                                                    ?.toString() ??
-                                                    c['amount']
-                                                        ?.toString() ??
-                                                    c['price']
-                                                        ?.toString() ??
-                                                    '0') ??
-                                                    0.0;
-                                                productTotal +=
-                                                    price * qty;
-                                              }
-                                              final payouts = (order[
-                                              'payouts']
-                                              as List?) ??
-                                                  [];
-                                              final cashbacks =
-                                                  (order['cashbacks']
-                                                  as List?) ??
-                                                      [];
-                                              double payoutsTotal =
-                                              payouts.fold<
-                                                  double>(
-                                                  0,
-                                                      (s, p) =>
-                                                  s +
-                                                      (double.tryParse(p['amount']?.toString() ??
-                                                          '0') ??
-                                                          0));
-                                              double
-                                              cashbacksTotal =
-                                              cashbacks.fold<
-                                                  double>(
-                                                  0,
-                                                      (s, c) =>
-                                                  s +
-                                                      (double.tryParse(c['amount']?.toString() ??
-                                                          '0') ??
-                                                          0));
-                                              final grossTotal =
-                                                  productTotal +
-                                                      payoutsTotal +
-                                                      cashbacksTotal;
-                                              final orderDiscount =
-                                              (order['orderDiscount']
-                                              is num)
-                                                  ? (order['orderDiscount']
-                                              as num)
-                                                  .toDouble()
-                                                  : 0.0;
-                                              final orderTax = (order[
-                                              'order_tax']
-                                              is num)
-                                                  ? (order['order_tax']
-                                              as num)
-                                                  .toDouble()
-                                                  : 0.0;
-                                              final cashbackFee =
-                                              (order['cashbackFee']
-                                              is num)
-                                                  ? (order['cashbackFee']
-                                              as num)
-                                                  .toDouble()
-                                                  : 0.0;
-                                              order['gross_total'] =
-                                                  grossTotal;
-                                              order['net_total'] =
-                                                  grossTotal -
-                                                      orderDiscount;
-                                              order['net_payable'] =
-                                                  order['net_total'] +
-                                                      orderTax +
-                                                      cashbackFee;
-
-                                              await offlineBox.put(
-                                                  activeOrderId
-                                                      .toString(),
-                                                  order);
-
-                                              await orderHelper
-                                                  .loadData();
-                                              OrderHelper
-                                                  .notifyOrderPanelToRefresh();
-                                              await CustomerDisplayHelper
-                                                  .updateCustomerDisplay(
-                                                  activeOrderId);
-
-                                              if (mounted)
-                                                setState(() =>
-                                                _isLoading =
-                                                false);
-
-                                              if (hadDiscount) {
-                                                _scaffoldMessenger
-                                                    .showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text(
-                                                        "Merchant discount removed successfully"),
-                                                    backgroundColor:
-                                                    Colors
-                                                        .green,
-                                                    duration:
-                                                    Duration(
-                                                        seconds:
-                                                        2),
-                                                  ),
-                                                );
-                                              } else {
-                                                _scaffoldMessenger
-                                                    .showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text(
-                                                        "No merchant discount was found on this order"),
-                                                    backgroundColor:
-                                                    Colors
-                                                        .orange,
-                                                    duration:
-                                                    Duration(
-                                                        seconds:
-                                                        2),
-                                                  ),
-                                                );
-                                              }
-
-                                              widget
-                                                  .refreshOrderList
-                                                  ?.call();
-                                            },
-                                          );
-                                        },
-                                        child: SvgPicture.asset(
-                                          "assets/svg/delete.svg",
-                                          height: 24,
-                                          width: 24,
+                                          },
+                                          child: SvgPicture.asset(
+                                            "assets/svg/delete.svg",
+                                            height: 24,
+                                            width: 24,
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  Text(
-                                      "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(2)}",
-                                      style: TextStyle(
-                                        color: Colors.blue,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      )),
-                                ],
-                              ),
+                                      ],
+                                    ),
+                                    // ✅ CHANGE 3: was `toStringAsFixed(2)` — now shows full precision
+                                    // so ₹0.00013 displays as "-₹0.00013" instead of "-₹0.00"
+                                    Text(
+                                        "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(merchantDiscount < 0.01 ? 5 : 2)}",
+                                        style: TextStyle(
+                                          color: Colors.blue,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        )),
+                                  ],
+                                ),
+
+                            // if (merchantDiscount > 0.0)
+                            //
+                            //   Row(
+                            //     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            //     children: [
+                            //       Row(
+                            //         spacing: 5,
+                            //         children: [
+                            //           Text(TextConstants.merchantDiscount,
+                            //               style: TextStyle(
+                            //                 color: Color(0xFF007BFF),
+                            //                 fontSize: 12,
+                            //                 fontWeight: FontWeight.w600,
+                            //               )),
+                            //           GestureDetector(
+                            //             onTap: () async {
+                            //               // Your existing remove logic - no change needed
+                            //             },
+                            //             child: SvgPicture.asset(
+                            //               "assets/svg/delete.svg",
+                            //               height: 24,
+                            //               width: 24,
+                            //             ),
+                            //           ),
+                            //         ],
+                            //       ),
+                            //       Text(
+                            //         "-${TextConstants.currencySymbol}${merchantDiscount.toStringAsFixed(4)}",  // ← Better precision
+                            //         style: TextStyle(
+                            //           color: Colors.blue,
+                            //           fontSize: 12,
+                            //           fontWeight: FontWeight.w600,
+                            //         ),
+                            //       ),
+                            //     ],
+                            //   ),
                             SizedBox(height: 2),
                             Builder(
                               builder: (_) {
