@@ -1511,7 +1511,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     // Build #1.0.268: Determine Coupon and Merchant Discount exclusively from line items or metadata
     // This avoids double-counting item-level discounts (Multipack, Auto, Combo) which are already in Gross Total.
     double orderDiscount = 0.0;
-    double merchantDiscount = 0.0;
+    // double merchantDiscount = 0.0;
 
     // 1?? Check for explicit metadata for Coupons from API (check multiple possible keys & meta_data array)
     double metaCouponVal = double.tryParse(order['couponValue']?.toString() ??
@@ -3586,7 +3586,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                         final box =
                                             StorageProvider.offlineOrders;
 
-// Prefer server order id if exists, else offline id
+     // Prefer server order id if exists, else offline id
                                         final hiveKey =
                                             frozenSummaryOrderId.toString();
 
