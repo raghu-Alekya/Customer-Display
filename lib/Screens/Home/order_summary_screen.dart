@@ -2888,27 +2888,51 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           item['discount_type']?.toString().toLowerCase() ?? '';
 
       double autoDiscount =
-          _num(item['auto_discount']) +
-              _num(item['auto_discount_total']) +
-              _num(item['autoDiscount']) +
-              _num(item['autoDiscountTotal']) +
-              _num(item['display_auto_discount']);
+      _num(item['auto_discount']) != 0
+          ? _num(item['auto_discount'])
+          : _num(item['auto_discount_total']) != 0
+          ? _num(item['auto_discount_total'])
+          : _num(item['autoDiscount']) != 0
+          ? _num(item['autoDiscount'])
+          : _num(item['autoDiscountTotal']) != 0
+          ? _num(item['autoDiscountTotal'])
+          : _num(item['display_auto_discount']);
 
-      double comboDiscount =
-          _num(item['combo_discount_total']) +
-              _num(item['comboDiscountTotal']) +
-              _num(item['combo_discount']);
+      // double comboDiscount = _num(orderItem['combo_discount_total']) +
+      //     _num(orderItem['comboDiscountTotal']) +
+      //     _num(orderItem['combo_discount']);
+      //
+      // double mixMatchDiscount = _num(orderItem['mixmatch_discount_total']) +
+      //     _num(orderItem['mixMatchDiscountTotal']) +
+      //     _num(orderItem['mixmatch_discount']);
+      //
+      // double multipackDiscount = _num(orderItem['multipack_discount_total']) +
+      //     _num(orderItem['multipackDiscountTotal']) +
+      //     _num(orderItem['multipack_discount']);
 
-      double mixMatchDiscount =
-          _num(item['mixmatch_discount_total']) +
-              _num(item['mixMatchDiscountTotal']) +
-              _num(item['mixmatch_discount']);
+      double comboDiscount = [
+        item['combo_discount_total'],
+        item['comboDiscountTotal'],
+        item['combo_discount'],
+      ]
+          .map((e) => _num(e))
+          .firstWhere((v) => v != 0, orElse: () => 0);
 
-      double multipackDiscount =
-          _num(item['multipack_discount_total']) +
-              _num(item['multipackDiscountTotal']) +
-              _num(item['multipack_discount']);
+      double mixMatchDiscount = [
+        item['mixmatch_discount_total'],
+        item['mixMatchDiscountTotal'],
+        item['mixmatch_discount'],
+      ]
+          .map((e) => _num(e))
+          .firstWhere((v) => v != 0, orElse: () => 0);
 
+      double multipackDiscount = [
+        item['multipack_discount_total'],
+        item['multipackDiscountTotal'],
+        item['multipack_discount'],
+      ]
+          .map((e) => _num(e))
+          .firstWhere((v) => v != 0, orElse: () => 0);
       if (discountType == 'mixmatch' &&
           autoDiscount > 0 &&
           mixMatchDiscount == 0) {
@@ -5612,44 +5636,48 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       // ======================================
 // 7️⃣ DO NOT REFRESH CUSTOMER DISPLAY
 // ======================================
-                      await const MethodChannel(
-                        'com.example.flutter_customer_display/sunmi_display',
-                      ).invokeMethod(
-                        'showCustomerData',
-                        {
-                          'orderId': int.tryParse(localKey) ?? 0,
-                          'items': List<Map<String, dynamic>>.from(
-                            offlineOrder['products'] ?? [],
-                          ),
-                          'grossTotal':
-                          (offlineOrder['gross_total'] as num?)?.toDouble() ?? 0.0,
-                          'discount':
-                          (offlineOrder['discount'] as num?)?.toDouble() ?? 0.0,
-                          'merchantDiscount':
-                          (offlineOrder['merchant_discount'] as num?)?.toDouble() ?? 0.0,
-                          'netTotal':
-                          (offlineOrder['net_total'] as num?)?.toDouble() ?? 0.0,
-                          'tax':
-                          (offlineOrder['order_tax'] as num?)?.toDouble() ?? 0.0,
-                          'netPayable':
-                          (offlineOrder['net_payable'] as num?)?.toDouble() ?? 0.0,
-                          'orderDate': offlineOrder['order_date'] ?? '',
-                          'orderTime': offlineOrder['order_time'] ?? '',
-                          'cashbackFee':
-                          (offlineOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
-                          'loyaltyContact': contact,
-                          'availablePoints': pts,
-                          'summaryEnabled': true,
-                        },
-                      );
-
+                      try {
+                        await const MethodChannel(
+                          'com.example.flutter_customer_display/sunmi_display',
+                        ).invokeMethod(
+                          'showCustomerData',
+                          {
+                            'orderId': int.tryParse(localKey) ?? 0,
+                            'items': List<Map<String, dynamic>>.from(
+                              offlineOrder['products'] ?? [],
+                            ),
+                            'grossTotal':
+                            (offlineOrder['gross_total'] as num?)?.toDouble() ?? 0.0,
+                            'discount':
+                            (offlineOrder['discount'] as num?)?.toDouble() ?? 0.0,
+                            'merchantDiscount':
+                            (offlineOrder['merchant_discount'] as num?)?.toDouble() ?? 0.0,
+                            'netTotal':
+                            (offlineOrder['net_total'] as num?)?.toDouble() ?? 0.0,
+                            'tax':
+                            (offlineOrder['order_tax'] as num?)?.toDouble() ?? 0.0,
+                            'netPayable':
+                            (offlineOrder['net_payable'] as num?)?.toDouble() ?? 0.0,
+                            'orderDate': offlineOrder['order_date'] ?? '',
+                            'orderTime': offlineOrder['order_time'] ?? '',
+                            'cashbackFee':
+                            (offlineOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
+                            'loyaltyContact': contact,
+                            'availablePoints': pts,
+                            'summaryEnabled': true,
+                          },
+                        );
+                      } on PlatformException catch (e) {
+                        if (e.code != 'NO_DISPLAY') {
+                          rethrow;
+                        }
+                      }
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text(
-                              "Customer Added Successfully!",
-                            ),
+                            content: Text("Customer Added Successfully!"),
                             backgroundColor: Colors.green,
+                            duration: Duration(seconds: 1),
                           ),
                         );
                       }
@@ -6206,6 +6234,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                 TextConstants.servicecharges,
                                 '${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}'),
 
+                            if (redeemedValue > 0)
+                              _buildOrderCalculation(
+                                "Redeemed Amount",
+                                '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
+                              ),
+
                             ShaderMask(
                               shaderCallback: (Rect bounds) {
                                 return LinearGradient(
@@ -6254,11 +6288,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               isTotal: true,
                             ),
 
-                            if (redeemedValue > 0)
-                              _buildOrderCalculation(
-                                "Redeemed Amount",
-                                '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
-                              ),
+                            // if (redeemedValue > 0)
+                            //   _buildOrderCalculation(
+                            //     "Redeemed Amount",
+                            //     '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
+                            //   ),
                             _buildOrderCalculation(
                               "Pay by Card",
                               '${TextConstants.currencySymbol}${payByCard.toStringAsFixed(2)}',
@@ -6343,16 +6377,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       Text(
                         "${TextConstants.totalItemsText}: $totalItems",
                         style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.bold),
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       Row(
                         children: [
                           Text(
                             _showFullSummary
-                                ? ' ${TextConstants.netPayable} : '
-                                '${computedNetPayable < 0 ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}' : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}'}'
+                                ? '${TextConstants.netPayable} : '
+                                '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}'
                                 : '${TextConstants.netPayable} '
-                                '${computedNetPayable < 0 ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}' : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}'}',
+                                '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
@@ -6532,24 +6568,40 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     // Pending/offline orders may use *_total or camelCase keys.
-    double autoDiscount = _num(orderItem['auto_discount']) +
-        _num(orderItem['auto_discount_total']) +
-        _num(orderItem['autoDiscount']) +
-        _num(orderItem['autoDiscountTotal']) +
-        _num(orderItem['display_auto_discount']);
+    double autoDiscount =
+    _num(orderItem['auto_discount']) != 0
+        ? _num(orderItem['auto_discount'])
+        : _num(orderItem['auto_discount_total']) != 0
+        ? _num(orderItem['auto_discount_total'])
+        : _num(orderItem['autoDiscount']) != 0
+        ? _num(orderItem['autoDiscount'])
+        : _num(orderItem['autoDiscountTotal']) != 0
+        ? _num(orderItem['autoDiscountTotal'])
+        : _num(orderItem['display_auto_discount']);
 
-    double comboDiscount = _num(orderItem['combo_discount_total']) +
-        _num(orderItem['comboDiscountTotal']) +
-        _num(orderItem['combo_discount']);
+    double comboDiscount = [
+      orderItem['combo_discount_total'],
+      orderItem['comboDiscountTotal'],
+      orderItem['combo_discount'],
+    ]
+        .map((e) => _num(e))
+        .firstWhere((v) => v != 0, orElse: () => 0);
 
-    double mixMatchDiscount = _num(orderItem['mixmatch_discount_total']) +
-        _num(orderItem['mixMatchDiscountTotal']) +
-        _num(orderItem['mixmatch_discount']);
+    double mixMatchDiscount = [
+      orderItem['mixmatch_discount_total'],
+      orderItem['mixMatchDiscountTotal'],
+      orderItem['mixmatch_discount'],
+    ]
+        .map((e) => _num(e))
+        .firstWhere((v) => v != 0, orElse: () => 0);
 
-    double multipackDiscount = _num(orderItem['multipack_discount_total']) +
-        _num(orderItem['multipackDiscountTotal']) +
-        _num(orderItem['multipack_discount']);
-
+    double multipackDiscount = [
+      orderItem['multipack_discount_total'],
+      orderItem['multipackDiscountTotal'],
+      orderItem['multipack_discount'],
+    ]
+        .map((e) => _num(e))
+        .firstWhere((v) => v != 0, orElse: () => 0);
     /// 🔥 FIX: backend sometimes moves discount into auto_discount
     if (discountType == 'mixmatch' &&
         autoDiscount > 0 &&
@@ -6821,6 +6873,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     } else if (label == TextConstants.discountText) {
       amount =
       '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}'; // Display discount from DB
+    }else if (label == TextConstants.netPayable) {
+      amount =
+      '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}';
     }
 
     // Determine colors and icons based on label
@@ -7159,6 +7214,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 // then refresh full display
       await CustomerDisplayHelper.updateCustomerDisplay(
         widget.offlineOrderId!,
+        summaryEnabled: true,
       );
       // =====================================
       // SUCCESS MESSAGE
@@ -8029,12 +8085,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     ),
                                     child: _buildAmountDisplay(
                                       TextConstants.netPayable,
-                                      computedNetPayable < 0
-                                          ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}'
-                                          : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                                      '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}',
                                       leftBarColor: const Color(0xFF3EAE4C),
-                                      amountColor: themeHelper.themeMode ==
-                                          ThemeMode.dark
+                                      amountColor: themeHelper.themeMode == ThemeMode.dark
                                           ? Colors.white
                                           : Colors.black,
                                     ),

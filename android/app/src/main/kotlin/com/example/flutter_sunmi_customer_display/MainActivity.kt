@@ -1337,73 +1337,58 @@ class MainActivity : FlutterActivity() {
                 Log.d("CustomerDisplay", "➡ Reusing existing customer layout")
             }
 
+// Control summary visibility
+            val summaryContainer = findViewById<LinearLayout>(R.id.summary_container)
+            val redeemRow = findViewById<LinearLayout>(R.id.redeem_row)
+
             // ================= CUSTOMER INPUT + CUSTOM KEYPAD =================
 // ================= CUSTOMER INPUT + CUSTOM KEYPAD =================
 
             // ================= CUSTOMER INPUT + CUSTOM KEYPAD =================
-
-            val emailInput =
-                findViewById<EditText>(R.id.email_input)
-
-            val customKeypad =
-                findViewById<GridLayout>(R.id.custom_keypad)
-
-            val addButton =
-                findViewById<Button>(R.id.btn_add_customer)
-
-// hide keypad only before checkout
-            if (!phoneInputUnlocked) {
-                customKeypad.visibility = View.GONE
-            }
+            val emailInput = findViewById<EditText>(R.id.email_input)
+            val customKeypad = findViewById<GridLayout>(R.id.custom_keypad)
+            val addButton = findViewById<Button>(R.id.btn_add_customer)
 
 // restore contact
-            if (loyaltyContact.isNotEmpty()) {
-                emailInput.setText(loyaltyContact)
-            } else {
-                emailInput.setText("")
-            }
+            emailInput.setText(loyaltyContact)
 
-            Log.d(
-                "CustomerDisplay",
-                "📱 Loyalty Contact displayed: ${emailInput.text}"
-            )
-
+// always prevent Android keyboard
             emailInput.showSoftInputOnFocus = false
 
-// enable only after checkout
             if (!phoneInputUnlocked) {
+                // BEFORE CHECKOUT → FULLY DISABLE
+                customKeypad.visibility = View.GONE
 
                 emailInput.isEnabled = false
                 emailInput.isFocusable = false
                 emailInput.isFocusableInTouchMode = false
                 emailInput.isClickable = false
                 emailInput.isCursorVisible = false
+                emailInput.isLongClickable = false
+                emailInput.clearFocus()
+                emailInput.setOnTouchListener { _, _ -> true } // block touch completely
 
-                emailInput.setOnTouchListener(null)
+                addButton.isEnabled = false
+                addButton.alpha = 0.5f // optional disabled look
 
             } else {
-
+                // AFTER CHECKOUT → ENABLE
                 emailInput.isEnabled = true
-
-                // IMPORTANT: prevent Android keyboard
                 emailInput.isFocusable = false
                 emailInput.isFocusableInTouchMode = false
                 emailInput.isClickable = true
                 emailInput.isCursorVisible = false
+                emailInput.isLongClickable = false
+
+                addButton.isEnabled = true
+                addButton.alpha = 1f
 
                 emailInput.setOnTouchListener { _, _ ->
-
-                    Log.d(
-                        "CustomerDisplay",
-                        "⌨ Custom keypad opened"
-                    )
-
+                    Log.d("CustomerDisplay", "⌨ Custom keypad opened")
                     customKeypad.visibility = View.VISIBLE
-
                     true
                 }
             }
-
 // add button
             addButton.setOnClickListener {
 
@@ -1578,9 +1563,9 @@ class MainActivity : FlutterActivity() {
 
                 slideshowImageView.setBackgroundColor(Color.WHITE)
             }
-            val summaryContainer = findViewById<LinearLayout>(R.id.summary_container)
-            summaryContainer.visibility =
-                if (summaryEnabled) View.VISIBLE else View.GONE
+//            val summaryContainer = findViewById<LinearLayout>(R.id.summary_container)
+//            summaryContainer.visibility =
+//                if (summaryEnabled) View.VISIBLE else View.GONE
 
             // -----------------------------------------------------
             // CASE A: Empty cart (items empty OR grossTotal = 0.0)
@@ -1667,13 +1652,13 @@ class MainActivity : FlutterActivity() {
             // -----------------------------------------------------
 //            summaryContainer.visibility =
 //                if (summaryEnabled) View.VISIBLE else View.GONE
-            keepSummaryVisible = summaryEnabled
-
-            summaryContainer.visibility =
-                if (keepSummaryVisible)
-                    View.VISIBLE
-                else
-                    View.GONE
+//            keepSummaryVisible = summaryEnabled
+//
+//            summaryContainer.visibility =
+//                if (keepSummaryVisible)
+//                    View.VISIBLE
+//                else
+//                    View.GONE
             // -----------------------------------------------------
             // Items exist → Show list
             // -----------------------------------------------------
@@ -1700,7 +1685,10 @@ class MainActivity : FlutterActivity() {
 
 
                 val name = (item["name"] as? String) ?: ""
-                val qty = (item["qty"] as? Number)?.toInt() ?: 0
+                val qty =
+                    (item["qty"] as? Number)?.toInt()
+                        ?: (item["quantity"] as? Number)?.toInt()
+                        ?: 1
                 val price = (item["price"] as? Number)?.toDouble() ?: 0.0
 
                 val originalPrice =
@@ -2005,28 +1993,38 @@ class MainActivity : FlutterActivity() {
             netTotalView.text = formatCurrency(netTotal)
             taxView.text = formatCurrency(tax)
 
-// keep original total
+// deduct redeemed amount from net payable
+            val finalNetPayable = (netPayable - redeemedAmount).coerceAtLeast(0.0)
+
             netPayableView.text =
-                "Total : ${formatCurrency(netPayable)}"
+                "Total : ${formatCurrency(finalNetPayable)}"
 
 // show redeem row separately
-            if (redeemedAmount > 0) {
+            if (summaryEnabled && redeemedAmount > 0) {
                 showRedeemSummary(redeemedAmount)
             } else {
-                findViewById<LinearLayout>(R.id.redeem_row)?.visibility = View.GONE
+                redeemRow.visibility = View.GONE
             }
+
             paymentDate.text = orderDate
             paymentTime.text = orderTime
             paymentDate.setTextColor(Color.WHITE)
             paymentTime.setTextColor(Color.WHITE)
 
+            if (!summaryEnabled) {
+                summaryContainer.visibility = View.GONE
+                redeemRow.visibility = View.GONE
+            } else {
+                summaryContainer.visibility = View.VISIBLE
+                redeemRow.visibility =
+                    if (redeemedAmount > 0) View.VISIBLE else View.GONE
+            }
 
             Log.d(
                 "CustomerDisplay",
-                "✔ Order #$orderId totals updated, Total Items: $totalItemCount"
+                "✔ Order #$orderId totals updated, Total Items: $totalItemCount, Final Payable: $finalNetPayable"
             )
         }
-
         private fun dpToPx(dp: Int): Int {
             return (dp * context.resources.displayMetrics.density).toInt()
         }
@@ -2037,22 +2035,10 @@ class MainActivity : FlutterActivity() {
 
             redeemedAmount = amount
 
-            val summaryContainer =
-                findViewById<LinearLayout>(R.id.summary_container)
-
-            val redeemRow =
-                findViewById<LinearLayout>(R.id.redeem_row)
-
-            val redeemLabel =
-                findViewById<TextView>(R.id.label_redeem_amount)
-
-            val redeemValue =
-                findViewById<TextView>(R.id.value_redeem_amount)
-
-            Log.d("CustomerDisplay", "summaryContainer=$summaryContainer")
-            Log.d("CustomerDisplay", "redeemRow=$redeemRow")
-            Log.d("CustomerDisplay", "redeemLabel=$redeemLabel")
-            Log.d("CustomerDisplay", "redeemValue=$redeemValue")
+            val summaryContainer = findViewById<LinearLayout>(R.id.summary_container)
+            val redeemRow = findViewById<LinearLayout>(R.id.redeem_row)
+            val redeemLabel = findViewById<TextView>(R.id.label_redeem_amount)
+            val redeemValue = findViewById<TextView>(R.id.value_redeem_amount)
 
             summaryContainer?.visibility = View.VISIBLE
             redeemRow?.visibility = View.VISIBLE
@@ -2061,6 +2047,18 @@ class MainActivity : FlutterActivity() {
 
             redeemLabel?.text = "Redeemed Amount"
             redeemValue?.text = formatCurrency(amount)
+
+            // DEDUCT FROM NET PAYABLE
+            val currentNetText = netPayableView.text.toString()
+                .replace("Total :", "")
+                .replace("$", "")
+                .replace(",", "")
+                .trim()
+
+            val currentNet = currentNetText.toDoubleOrNull() ?: 0.0
+            val updatedNet = (currentNet - amount).coerceAtLeast(0.0)
+
+            netPayableView.text = "Total : ${formatCurrency(updatedNet)}"
         }
         fun updateRedeemPopupPoints(points: Int) {
 
