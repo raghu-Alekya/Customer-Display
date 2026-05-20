@@ -436,7 +436,7 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
 
           _shiftSubscription = _shiftBloc.shiftStream.listen((closeResponse) async {
             if (closeResponse.status == Status.COMPLETED) {
-              if (mounted) Navigator.of(context).pop(); // close loader
+              // if (mounted) Navigator.of(context).pop(); // close loader
               await UserDbHelper().updateUserShiftId(null);
 
               logoutBloc.performLogout();

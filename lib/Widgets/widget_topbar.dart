@@ -302,6 +302,10 @@ class TopBar extends StatefulWidget {
   // CategoriesScreen sets this in its initState and clears it in dispose().
   static VoidCallback? onRefreshCompleted;
 
+  /// RightOrderPanel listens and clears its order items immediately.
+  static final ValueNotifier<int> modeChangedNotifier = ValueNotifier<int>(0);
+
+
   @override
   State<TopBar> createState() => _TopBarState();
 }
@@ -366,6 +370,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     if (kDebugMode) print("🧹 TopBar user data cache cleared");
   }
 
+  /// Fires whenever the mode-change button is tapped.
+  /// RightOrderPanel listens and clears its order items immediately.
   // ── LIFECYCLE ───────────────────────────────────────────────────────────────
 
   @override
@@ -2620,7 +2626,10 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
           // Mode toggle
           GestureDetector(
-            onTap: widget.onModeChanged,
+            onTap: () {
+              TopBar.modeChangedNotifier.value++;
+              widget.onModeChanged();
+            },
             child: Container(
               padding: const EdgeInsets.all(13),
               decoration: BoxDecoration(
@@ -2647,6 +2656,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               ),
             ),
           ),
+
           const SizedBox(width: 16),
 
           // Theme toggle

@@ -175,6 +175,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
   int _currentOrderVersion = 0;
 
+  VoidCallback? _modeChangeListener;
+
   void _toggleSummary() {
     setState(() {
       _showFullSummary = !_showFullSummary;
@@ -223,6 +225,35 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   void _onNativeUsbBarcode(String barcode) =>
       unawaited(_handleOrderPanelBarcode(barcode));
 
+  // At top of _RightOrderPanelState
+  Future<void> _clearAllOrderData() async {
+    if (!mounted) return;
+
+    setState(() {
+      orderItems = [];
+      tabs = [];
+      _listVersion++;
+      _currentOrderVersion++;
+      _isSwitchingOrder = true;
+      _initialRestoreDone = false;
+    });
+
+    await orderHelper.clearPersistedCartSelection(); // your existing helper
+    await orderHelper.setActiveOrder(null);
+
+    // Clear Hive cache for this order
+    final box = StorageProvider.offlineOrders;
+    if (orderHelper.activeOrderId != null) {
+      await box.delete(orderHelper.activeOrderId.toString());
+    }
+
+    OrderHelper.isOrderPanelLoaded = false;
+
+    if (mounted) {
+      setState(() => _isSwitchingOrder = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -233,6 +264,20 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     // Force full refresh when panel mounts (e.g. navigating from Orders tab) so we show
     // the active processing order, not the order viewed in Orders tab
     OrderHelper.isOrderPanelLoaded = false;
+
+    // Clear order items immediately when mode changes to prevent stale flash.
+    _modeChangeListener = () {
+      if (mounted) {
+        setState(() {
+          orderItems.clear();
+          _listVersion++;
+        });
+      }
+    };
+    _modeChangeListener = () {
+      _clearAllOrderData();           // ← Stronger clear
+    };
+    TopBar.modeChangedNotifier.addListener(_modeChangeListener!);
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await orderHelper
@@ -348,6 +393,17 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   void didUpdateWidget(RightOrderPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.refreshKey != widget.refreshKey) {
+      // ── FIX: clear stale items BEFORE async reload so build() never
+      // shows old-order data while the new fetch is in flight ──────────
+      if (mounted) {
+        setState(() {
+          orderItems = [];
+          _initialRestoreDone = false;
+          _currentOrderVersion++;
+          _listVersion++;
+        });
+      }
+      // ── existing code below, unchanged ──────────────────────────────
       if (kDebugMode) print("🔄 Refresh key changed — forcing data reload");
       OrderHelper.isOrderPanelLoaded = false;
       fetchOrdersData();
@@ -481,15 +537,15 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
 
       if (visibleOrderIds.isNotEmpty) {
-        // 👉 Switch to newest visible order
+        //  Switch to newest visible order
         final newActiveId = visibleOrderIds.last;
 
         await orderHelper.setActiveOrder(newActiveId);
         await orderHelper.saveLastActiveOrderId(newActiveId);
 
-        // ✅ ONLY update display if active order exists
+        //  ONLY update display if active order exists
         if (newActiveId != 0) {
-          print("✅ Showing new active order on display → $newActiveId");
+          print("Showing new active order on display → $newActiveId");
           await CustomerDisplayHelper.updateCustomerDisplay(newActiveId);
         }
 
@@ -590,13 +646,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final activeId = orderHelper.activeOrderId;
 
     // FIX: Immediately clear orderItems when there is no active order
-    if (activeId == null) {
-      if (kDebugMode) print(" fetchOrderItems — no active order, clearing list");
+    if (orderHelper.activeOrderId == null) {
       if (mounted) {
         setState(() {
-          orderItems.clear();
+          orderItems = [];
           _listVersion++;
-          _currentOrderVersion++; // FIX2: increment version
+          _currentOrderVersion++;
         });
       }
       return;
@@ -1164,6 +1219,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         ?.cancel(); // Build #1.0.44 : Added Cancel product subscription
     // productBloc.dispose(); // Added: Dispose ProductBloc
     super.dispose();
+    if (_modeChangeListener != null) {
+      TopBar.modeChangedNotifier.removeListener(_modeChangeListener!);
+    }
+
     if (_orderPanelRefreshListener != null) {
       OrderHelper.orderPanelRefreshNotifier
           .removeListener(_orderPanelRefreshListener!);
