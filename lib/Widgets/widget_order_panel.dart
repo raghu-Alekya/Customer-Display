@@ -530,9 +530,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     // 4️⃣ CONTROLLER + ITEMS
     // --------------------------------------------------
     if (!mounted) return;
-// --------------------------------------------------
-// 3️⃣ HARD ACTIVE ORDER SAFETY (REQUIRED)
-// --------------------------------------------------
+
     final visibleOrderIds = tabs
         .map((t) => _normalizeOrderId(t['orderId']))
         .whereType<int>()
@@ -2595,7 +2593,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
             // 🔹 Empty Order Panel Overlay (when tabs list is empty)
             if (tabs.isEmpty && orderHelper.activeOrderId == null
-                && !_isSwitchingOrder && !_isLoading)
+                && !_isSwitchingOrder && !_isLoading && !_isFetchingInitialData)
               Positioned.fill(
                 child: Container(
                   padding: const EdgeInsets.all(16),
@@ -2945,30 +2943,51 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           await offlineBox.delete(orderId.toString());
           await orderHelper.deleteOrder(orderId);
 
-          // UI cleanup
+          // ── FIX: clear stale items immediately so they never flash on the next tab ──
           setState(() {
             tabs.removeAt(index);
+            orderItems = [];           // ← ADD THIS
+            _isSwitchingOrder = true;  // ← ADD THIS
+            _currentOrderVersion++;    // ← ADD THIS
+            _listVersion++;            // ← ADD THIS
           });
 
           if (tabs.isEmpty) {
             orderHelper.activeOrderId = null;
-            orderItems = [];
-
             print("🧹 No tabs left → FINAL display reset");
-
-            // 🔥 FINAL authoritative reset
             await CustomerDisplayService.resetDisplay();
-
             await _initializeTabController();
-
-            setState(() => _isLoading = false);
+            if (mounted) setState(() {
+              _isLoading = false;
+              _isSwitchingOrder = false;  // ← ADD THIS
+            });
             return;
           }
 
-          setState(() => _isLoading = false);
+          // ── after removing, switch active order and fetch fresh items ──
+          final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
+          final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
+
+          if (isRemovedTabActive) {
+            await orderHelper.setActiveOrder(newActiveOrderId);
+            await orderHelper.saveLastActiveOrderId(newActiveOrderId);
+          }
+
+          await _initializeTabController();
+
+          // ── FIX: only load items if offline data exists for this order ──
+          if (await offlineBox.containsKey(newActiveOrderId.toString())) {
+            await fetchOrderItems();
+          } else {
+            if (mounted) setState(() => orderItems = []);
+          }
+
+          if (mounted) setState(() {
+            _isLoading = false;
+            _isSwitchingOrder = false;  // ← ADD THIS
+          });
           return;
         }
-
         // ❌ Sync failed → store in deletedOrders
         print("⚠️ Sync FAILED → Storing in deletedOrders Hive box...");
 
