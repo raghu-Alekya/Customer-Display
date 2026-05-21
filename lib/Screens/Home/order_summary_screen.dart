@@ -2413,75 +2413,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //   _resetAmountAfterPay();
   // }
 
-  // void _handlePay() {
-  //   if (balanceAmount <= 0 &&
-  //       (double.tryParse(amountController.text
-  //           .replaceAll(TextConstants.currencySymbol, '')
-  //           .trim()) ??
-  //           0) > 0) {
-  //     print(
-  //         "⚠️ DEFENSIVE RESET: balance=0 but amount entered > 0 → forcing reset after possible void");
-  //     setState(() {
-  //       _successPopupShown = false;
-  //       _currentPaymentRemainingBalance = null;
-  //       isPaymentStarted = false;
-  //     });
-  //     _calculateBalanceFromPaymentHistory();
-  //   }
-  //
-  //   final cleanAmount = amountController.text
-  //       .replaceAll(TextConstants.currencySymbol, '')
-  //       .trim();
-  //
-  //   final double amount = double.tryParse(cleanAmount) ?? 0.0;
-  //   final int enteredCents = (amount * 100).round();
-  //   final int ebtCents = (ebtTotal * 100).round();
-  //
-  //   // Basic validation
-  //   if (enteredCents <= 0 && computedNetPayable > 0) {
-  //     setState(() {
-  //       _amountErrorText = TextConstants.amountValidation;
-  //     });
-  //     return;
-  //   }
-  //   _amountErrorText = null;
-  //
-  //   // EBT validation
-  //   if (selectedPaymentMethod == TextConstants.ebtText) {
-  //     if (ebtCents <= 0) {
-  //       setState(() {
-  //         _amountErrorText = "No EBT balance available";
-  //       });
-  //       return;
-  //     }
-  //     if (enteredCents > ebtCents) {
-  //       setState(() {
-  //         _amountErrorText = "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
-  //       });
-  //       return;
-  //     }
-  //   }
-  //
-  //   // ✅ REMOVED the Sunmi‑only branch for Card.
-  //   // Now Card payments go through the same flow as Cash / EBT.
-  //   // The original code was:
-  //   // if (selectedPaymentMethod == TextConstants.card) {
-  //   //   _openSunmiSaleScreen(...);
-  //   //   return;
-  //   // }
-  //
-  //   // ✅ All payment methods (Cash, Card, Wallet, EBT) now call the local storage API
-  //   _callCreatePaymentAPI(); // uses validated amount
-  //   _resetAmountAfterPay();
-  // }
-
-
   void _handlePay() {
     if (balanceAmount <= 0 &&
         (double.tryParse(amountController.text
             .replaceAll(TextConstants.currencySymbol, '')
-            .trim()) ?? 0) > 0) {
-      print("⚠️ DEFENSIVE RESET...");
+            .trim()) ??
+            0) > 0) {
+      print(
+          "⚠️ DEFENSIVE RESET: balance=0 but amount entered > 0 → forcing reset after possible void");
       setState(() {
         _successPopupShown = false;
         _currentPaymentRemainingBalance = null;
@@ -2500,7 +2439,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     // Basic validation
     if (enteredCents <= 0 && computedNetPayable > 0) {
-      setState(() => _amountErrorText = TextConstants.amountValidation);
+      setState(() {
+        _amountErrorText = TextConstants.amountValidation;
+      });
       return;
     }
     _amountErrorText = null;
@@ -2508,36 +2449,97 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // EBT validation
     if (selectedPaymentMethod == TextConstants.ebtText) {
       if (ebtCents <= 0) {
-        setState(() => _amountErrorText = "No EBT balance available");
+        setState(() {
+          _amountErrorText = "No EBT balance available";
+        });
         return;
       }
       if (enteredCents > ebtCents) {
-        setState(() => _amountErrorText =
-        "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})");
+        setState(() {
+          _amountErrorText = "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
+        });
         return;
       }
     }
 
-    // ==================== CARD PAYMENT - PAYROC ====================
-    if (selectedPaymentMethod == TextConstants.card) {
-      print("💳 CARD selected → Opening Payroc Payment Page");
+    // ✅ REMOVED the Sunmi‑only branch for Card.
+    // Now Card payments go through the same flow as Cash / EBT.
+    // The original code was:
+    // if (selectedPaymentMethod == TextConstants.card) {
+    //   _openSunmiSaleScreen(...);
+    //   return;
+    // }
 
-      // Optional: Pass amount & order ID via query params
-      final String payrocUrl =
-          "https://payments.uat.payroc.com/merchant/paymentpage"
-          "?amount=${amount.toStringAsFixed(2)}"
-          "&orderId=${(widget.orderId ?? widget.offlineOrderId ?? orderId ?? 0)}"
-          "&currency=USD";   // adjust currency if needed
-
-      _launchPayrocUrl(payrocUrl);
-      _resetAmountAfterPay();
-      return;
-    }
-
-    // ==================== All other methods (Cash, EBT, etc.) ====================
-    _callCreatePaymentAPI();
+    // ✅ All payment methods (Cash, Card, Wallet, EBT) now call the local storage API
+    _callCreatePaymentAPI(); // uses validated amount
     _resetAmountAfterPay();
   }
+
+
+  // void _handlePay() {
+  //   if (balanceAmount <= 0 &&
+  //       (double.tryParse(amountController.text
+  //           .replaceAll(TextConstants.currencySymbol, '')
+  //           .trim()) ?? 0) > 0) {
+  //     print("⚠️ DEFENSIVE RESET...");
+  //     setState(() {
+  //       _successPopupShown = false;
+  //       _currentPaymentRemainingBalance = null;
+  //       isPaymentStarted = false;
+  //     });
+  //     _calculateBalanceFromPaymentHistory();
+  //   }
+  //
+  //   final cleanAmount = amountController.text
+  //       .replaceAll(TextConstants.currencySymbol, '')
+  //       .trim();
+  //
+  //   final double amount = double.tryParse(cleanAmount) ?? 0.0;
+  //   final int enteredCents = (amount * 100).round();
+  //   final int ebtCents = (ebtTotal * 100).round();
+  //
+  //   // Basic validation
+  //   if (enteredCents <= 0 && computedNetPayable > 0) {
+  //     setState(() => _amountErrorText = TextConstants.amountValidation);
+  //     return;
+  //   }
+  //   _amountErrorText = null;
+  //
+  //   // EBT validation
+  //   if (selectedPaymentMethod == TextConstants.ebtText) {
+  //     if (ebtCents <= 0) {
+  //       setState(() => _amountErrorText = "No EBT balance available");
+  //       return;
+  //     }
+  //     if (enteredCents > ebtCents) {
+  //       setState(() => _amountErrorText =
+  //       "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})");
+  //       return;
+  //     }
+  //   }
+  //
+  //   // ==================== CARD PAYMENT - PAYROC ====================
+  //   if (selectedPaymentMethod == TextConstants.card) {
+  //     print("💳 CARD selected → Opening Payroc Payment Page");
+  //
+  //     // Optional: Pass amount & order ID via query params
+  //     final String payrocUrl =
+  //         "https://payments.uat.payroc.com/merchant/paymentpage"
+  //         "?amount=${amount.toStringAsFixed(2)}"
+  //         "&orderId=${(widget.orderId ?? widget.offlineOrderId ?? orderId ?? 0)}"
+  //         "&currency=USD";   // adjust currency if needed
+  //
+  //     _launchPayrocUrl(payrocUrl);
+  //     _resetAmountAfterPay();
+  //     return;
+  //   }
+  //
+  //   // ==================== All other methods (Cash, EBT, etc.) ====================
+  //   _callCreatePaymentAPI();
+  //   _resetAmountAfterPay();
+  // }
+
+  /////// above code is card payments
 
   Future<void> _launchPayrocUrl(String url) async {
     final Uri uri = Uri.parse(url);
