@@ -1720,35 +1720,24 @@ class _RefundScreenState extends State<RefundScreen> {
                 return;
               }
 
-              final refundAmount = await showDialog<double>(
+// Directly show payment success
+              setState(() {
+                _disabledPaymentType = type;
+              });
+
+              await showDialog<void>(
                 context: context,
                 barrierDismissible: false,
-                builder: (_) => CashRefundDialog(
-                  refundRequest: refundRequest,
-                  refundAmount: totalRefund,
+                builder: (_) => PaymentSuccessDialog(
+                  amount: totalRefund,
                 ),
               );
 
-              // disable ONLY when ADD clicked
-              if (refundAmount != null) {
-                setState(() {
-                  _disabledPaymentType = type;
-                });
-
-                await showDialog<void>(
-                  context: context,
-                  barrierDismissible: false,
-                  builder: (_) => PaymentSuccessDialog(
-                    amount: refundAmount,
-                  ),
-                );
-
-                setState(() {
-                  editedRefundAmount = refundAmount;
-                  isConfirmEnabled = true;
-                  _isRefundCompleted = true;
-                });
-              }
+              setState(() {
+                editedRefundAmount = totalRefund;
+                isConfirmEnabled = true;
+                _isRefundCompleted = true;
+              });
             }
           } catch (e) {
             print("Refund error: $e");

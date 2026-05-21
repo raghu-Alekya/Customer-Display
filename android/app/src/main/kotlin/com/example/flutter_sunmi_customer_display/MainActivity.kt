@@ -53,6 +53,7 @@ class MainActivity : FlutterActivity() {
     private var saleResultCallback: MethodChannel.Result? = null
     private var isOrderActive = false
     private var authToken: String = ""
+    private var isShowingThankYou = false
 //    private var redeemPointsTextView: TextView? = null
 
 
@@ -145,6 +146,13 @@ class MainActivity : FlutterActivity() {
 
 
                 "showCustomerData" -> {
+
+                    // BLOCK refresh while Thank You is active
+                    if (isShowingThankYou) {
+                        Log.d("CustomerDisplay", "⛔ Thank You active → skipping customer data update")
+                        result.success("Skipped")
+                        return@setMethodCallHandler
+                    }
                     val orderId = call.argument<Int>("orderId") ?: 0
                     val items = call.argument<List<Map<String, Any>>>("items") ?: emptyList()
                     val grossTotal = call.argument<Double>("grossTotal") ?: 0.0
@@ -198,11 +206,15 @@ class MainActivity : FlutterActivity() {
                 }
 
                 "showThankYou" -> {
+                    isShowingThankYou = true
+
                     Log.d("CustomerDisplay", "➡ showThankYou invoked")
+
                     if (showThankYouOnCustomerDisplay()) {
                         Log.d("CustomerDisplay", "✔ Thank You displayed")
                         result.success("Thank You shown")
                     } else {
+                        isShowingThankYou = false
                         Log.e("CustomerDisplay", "❌ No secondary display found for Thank You")
                         result.error("NO_DISPLAY", "No secondary display found", null)
                     }
@@ -247,12 +259,16 @@ class MainActivity : FlutterActivity() {
 
                         } else {
 
+                            // popup points
                             customerDisplayPresentation?.updateRedeemPopupPoints(points)
+
+                            // header points DIRECT FROM API
+                            customerDisplayPresentation?.updateHeaderPoints(points)
 
                             if (redeemedAmount > 0) {
                                 customerDisplayPresentation?.showRedeemSummary(redeemedAmount)
                             } else {
-                                customerDisplayPresentation?.hideRedeemSummary()
+                                customerDisplayPresentation?.restoreSummaryAfterRedeemRemoval()
                             }
                         }
                     }
@@ -491,8 +507,7 @@ class MainActivity : FlutterActivity() {
     private fun showThankYouOnCustomerDisplay(): Boolean {
 
         val displayManager =
-            getSystemService(Context.DISPLAY_SERVICE)
-                    as DisplayManager
+            getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
 
         val displays = displayManager.displays
 
@@ -505,16 +520,10 @@ class MainActivity : FlutterActivity() {
 
             val secondaryDisplay = displays[1]
 
-            Log.d(
-                "CustomerDisplay",
-                "Secondary display found: ${secondaryDisplay.name}"
-            )
-
             if (
                 customerDisplayPresentation == null ||
                 customerDisplayPresentation?.display != secondaryDisplay
             ) {
-
                 customerDisplayPresentation?.dismiss()
 
                 customerDisplayPresentation =
@@ -527,50 +536,32 @@ class MainActivity : FlutterActivity() {
                 customerDisplayPresentation?.show()
             }
 
-            // ✅ Show Thank You
+            isShowingThankYou = true
             customerDisplayPresentation?.showThankYouLayout()
-
-            Log.d(
-                "CustomerDisplay",
-                "✔ Thank You layout displayed"
-            )
 
             Handler(Looper.getMainLooper()).postDelayed({
 
-                Log.d(
-                    "CustomerDisplay",
-                    "➡ Reverting back to Welcome"
-                )
+                Log.d("CustomerDisplay", "Thank You timeout finished")
 
-                // ✅ NOW allow welcome
+                isShowingThankYou = false
                 isOrderActive = false
 
-                customerDisplayPresentation
-                    ?.resetFirstOrderShown()
+                customerDisplayPresentation?.resetCustomerLayoutState()
 
-                customerDisplayPresentation?.showWelcomeLayout(
-                    currentStoreId,
-                    currentStoreName,
-                    currentStoreLogoUrl,
-                    currentStoreBaseUrl
-                )
+                MethodChannel(
+                    flutterEngine?.dartExecutor?.binaryMessenger!!,
+                    "com.example.flutter_customer_display/sunmi_display"
+                ).invokeMethod("showNextActiveOrder", null)
 
             }, 5000)
 
             true
 
         } else {
-
-            Log.e(
-                "CustomerDisplay",
-                "❌ No secondary display available"
-            )
-
+            isShowingThankYou = false
             false
         }
-
     }
-
     override fun onDestroy() {
         Log.d("CustomerDisplay", "➡ onDestroy called, dismissing CustomerDisplayPresentation")
         customerDisplayPresentation?.dismiss()
@@ -586,6 +577,8 @@ class MainActivity : FlutterActivity() {
         private var firstOrderShown = false
 
         private lateinit var orderIdView: TextView
+        private lateinit var pointsView: TextView
+
         private lateinit var itemsContainer: LinearLayout
         private lateinit var grossView: TextView
         private lateinit var discountView: TextView
@@ -638,6 +631,60 @@ class MainActivity : FlutterActivity() {
                 "CustomerDisplay",
                 "🔄 firstOrderShown reset"
             )
+        }
+        fun updateHeaderPoints(points: Int) {
+            Handler(Looper.getMainLooper()).post {
+
+                availablePoints = points
+
+                val headerPoints =
+                    findViewById<TextView>(R.id.customer_points)
+
+                if (headerPoints != null) {
+                    headerPoints.text = points.toString()
+                    headerPoints.visibility = View.VISIBLE
+                    headerPoints.invalidate()
+                    headerPoints.requestLayout()
+
+                    Log.d(
+                        "CustomerDisplay",
+                        "HEADER POINTS UPDATED DIRECT FROM API = ${headerPoints.text}"
+                    )
+                } else {
+                    Log.e(
+                        "CustomerDisplay",
+                        "customer_points header not found"
+                    )
+                }
+            }
+        }
+        fun restoreSummaryAfterRedeemRemoval() {
+            Handler(Looper.getMainLooper()).post {
+
+                redeemedAmount = 0.0
+
+                val summaryContainer =
+                    findViewById<LinearLayout>(R.id.summary_container)
+
+                val redeemRow =
+                    findViewById<LinearLayout>(R.id.redeem_row)
+
+                summaryContainer?.visibility = View.VISIBLE
+                redeemRow?.visibility = View.GONE
+
+                // restore net payable from current value
+                val currentNetText =
+                    netPayableView.text.toString()
+                        .replace("Total :", "")
+                        .trim()
+
+                netPayableView.text = "Total : $currentNetText"
+
+                Log.d(
+                    "CustomerDisplay",
+                    "Summary restored after redeem removal"
+                )
+            }
         }
         fun hideRedeemSummary() {
 
@@ -1076,6 +1123,8 @@ class MainActivity : FlutterActivity() {
 
         private fun bindOrderViews() {
             orderIdView = findViewById(R.id.customer_order_id)
+            pointsView = findViewById(R.id.customer_points)
+
             itemsContainer = findViewById(R.id.customer_items_container)
             grossView = findViewById(R.id.value_gross_total)
             discountView = findViewById(R.id.value_discount)
@@ -1092,7 +1141,6 @@ class MainActivity : FlutterActivity() {
 
             Log.d("CustomerDisplay", "✔ Customer order views bound")
         }
-
         private fun updateStoreInfo(
             storeId: String,
             storeName: String,
@@ -1663,6 +1711,19 @@ class MainActivity : FlutterActivity() {
             // Items exist → Show list
             // -----------------------------------------------------
             orderIdView.text = "#$orderId"
+            this.availablePoints =
+                if (availablePoints > 0) availablePoints else this.availablePoints
+
+            pointsView.text = this.availablePoints.toString()
+
+            Log.d(
+                "CustomerDisplay",
+                "HEADER POINTS = ${this.availablePoints}"
+            )
+            Log.d(
+                "CustomerDisplay",
+                "HEADER POINTS FROM updateCustomerData = ${availablePoints}"
+            )
             itemsContainer.removeAllViews()
 
             var totalItemCount = 0
@@ -2046,7 +2107,7 @@ class MainActivity : FlutterActivity() {
             redeemValue?.visibility = View.VISIBLE
 
             redeemLabel?.text = "Redeemed Amount"
-            redeemValue?.text = formatCurrency(amount)
+            redeemValue?.text = "-${formatCurrency(kotlin.math.abs(amount))}"
 
             // DEDUCT FROM NET PAYABLE
             val currentNetText = netPayableView.text.toString()
@@ -2064,22 +2125,21 @@ class MainActivity : FlutterActivity() {
 
             Handler(Looper.getMainLooper()).post {
 
-                Log.d("CustomerDisplay", "UPDATING POPUP POINTS = $points")
-                Log.d("CustomerDisplay", "redeemPointsTextView = $redeemPointsTextView")
+                Log.d("CustomerDisplay", "UPDATING API POINTS = $points")
 
-                if (redeemPointsTextView == null) {
-                    Log.e("CustomerDisplay", "TEXTVIEW NULL")
-                    return@post
+                this.availablePoints = points
+
+                redeemPointsTextView?.let {
+                    it.text = "Available Points: $points"
+                    it.visibility = View.VISIBLE
                 }
 
-                redeemPointsTextView?.text = "Available Points: $points"
-                redeemPointsTextView?.visibility = View.VISIBLE
-                redeemPointsTextView?.invalidate()
-                redeemPointsTextView?.requestLayout()
+                pointsView.text = points.toString()
+                pointsView.visibility = View.VISIBLE
 
                 Log.d(
                     "CustomerDisplay",
-                    "TEXT AFTER UPDATE = ${redeemPointsTextView?.text}"
+                    "MAIN HEADER POINTS UPDATED = ${pointsView.text}"
                 )
             }
         }

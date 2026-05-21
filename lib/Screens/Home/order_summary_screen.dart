@@ -2060,7 +2060,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     if (isPaymentComplete && !_successPopupShown) {
       _successPopupShown = true;
       // ✅ ADD THIS LINE (CRITICAL FIX)
-      await CustomerDisplayService.showThankYou();
+      // await CustomerDisplayService.showThankYou();
       // ✅ STEP 2: CLEAR ACTIVE ORDER (CRITICAL)
       await orderHelper.setActiveOrder(null);
 
@@ -7212,10 +7212,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       );
 
 // then refresh full display
-      await CustomerDisplayHelper.updateCustomerDisplay(
-        widget.offlineOrderId!,
-        summaryEnabled: true,
-      );
+//       await CustomerDisplayHelper.updateCustomerDisplay(
+//         widget.offlineOrderId!,
+//         summaryEnabled: true,
+//       );
       // =====================================
       // SUCCESS MESSAGE
       // =====================================
@@ -10500,12 +10500,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           }
           await _showVoidConfirmation(context, isPartial: true);
         },
-        onNextPayment: () {
+        onNextPayment: () async {
+          try {
+            await CustomerDisplayService.showThankYou();
+          } catch (e) {
+            print(">>> Error showing Thank You screen: $e");
+          }
+
           print("Next Payment tapped → closing partial dialog cleanly");
+
           Navigator.of(dialogCtx).pop();
 
-          // Clear keypad/method highlight after partial flow so it
-          // doesn't remain in the EBT zone.
           if (mounted) {
             setState(() {
               selectedPaymentMethod = TextConstants.cash;
@@ -10565,6 +10570,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           _isVoiding = false;
         },
         onVoidConfirm: () async {
+          // try {
+          //   await CustomerDisplayService.showThankYou();
+          // } catch (e) {
+          //   print(">>> Error showing Thank You screen: $e");
+          // }
           Navigator.of(dialogCtx).pop();
 
           if (_lastPayment == null) {
@@ -10982,11 +10992,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       });
     }
 
-    try {
-      await CustomerDisplayService.showThankYou();
-    } catch (e) {
-      print(">>> Error showing Thank You screen: $e");
-    }
+    // try {
+    //   await CustomerDisplayService.showThankYou();
+    // } catch (e) {
+    //   print(">>> Error showing Thank You screen: $e");
+    // }
 
     showDialog(
       context: context,
@@ -11001,35 +11011,32 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         isVoidDisabled: isVoidDisabled,
 
         // ── VOID ─────────────────────────────────────────────
-        onVoid: () {
-          print("Void tapped from FULL payment success dialog");
+        onVoid: () async {
+
+
           Navigator.of(dialogCtx, rootNavigator: false).pop();
+
           SchedulerBinding.instance.addPostFrameCallback((_) {
             if (!_isShowingPartialDialog) {
               showVoidExitConfirmation(context, false);
             }
           });
         },
-
         // ── NO RECEIPT ───────────────────────────────────────
         onNoReceipt: () async {
-          // await CustomerService.publishPaymentSuccess(
-          //   orderId ?? 0,
-          //   orderItems,
-          //   subtotal: grossTotal,
-          //   tax: tax,
-          //   total: computedNetPayable,
-          // );
+          try {
+            await CustomerDisplayService.showThankYou();
+          } catch (e) {
+            print(">>> Error showing Thank You screen: $e");
+          }
 
-          // ✅ Close IMMEDIATELY
           Navigator.of(dialogCtx, rootNavigator: false).pop();
 
-          // Background work
           doBackgroundWork();
 
-          // Navigate immediately
           OrderHelper.isOrderPanelLoaded = false;
           OrderHelper.notifyOrderPanelToRefresh();
+
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => POSHomeScreen()),
@@ -11039,20 +11046,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         // ── DONE (Print / Email / SMS) ────────────────────────
         onDone: (selectedOption, {String? email}) async {
-          // await CustomerService.publishPaymentSuccess(
-          //   orderId ?? 0,
-          //   orderItems,
-          //   subtotal: grossTotal,
-          //   tax: tax,
-          //   total: computedNetPayable,
-          // );
+          try {
+            await CustomerDisplayService.showThankYou();
+          } catch (e) {
+            print(">>> Error showing Thank You screen: $e");
+          }
+
           print("onDone → $selectedOption, email=$email");
 
           // ── EMAIL ────────────────────────────────────────────
           if (selectedOption == TextConstants.email &&
               email != null &&
               email.isNotEmpty) {
-            // Close immediately
+
             Navigator.of(dialogCtx, rootNavigator: false).pop();
 
             if (orderId == null || orderId == 0) {
@@ -11064,8 +11070,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 ),
               );
             } else {
-              // Send email in background
               paymentBloc.sendOrderDetails(orderId!, email);
+
               StreamSubscription? subscription;
               subscription =
                   paymentBloc.sendOrderDetailsStream.listen((response) {
@@ -11075,8 +11081,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             }
 
             doBackgroundWork();
+
             OrderHelper.isOrderPanelLoaded = false;
             OrderHelper.notifyOrderPanelToRefresh();
+
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (_) => POSHomeScreen()),
@@ -11086,11 +11094,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           }
 
           // ── PRINT ─────────────────────────────────────────────
-          // Close immediately
           Navigator.of(dialogCtx, rootNavigator: false).pop();
 
           if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
-            // Print in background
             Future(() async {
               await _preparePrintTicket();
               await _printTicket(manual: true);
@@ -11099,9 +11105,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
           doBackgroundWork();
 
-          // Navigate immediately
           OrderHelper.isOrderPanelLoaded = false;
           OrderHelper.notifyOrderPanelToRefresh();
+
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => POSHomeScreen()),

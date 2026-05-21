@@ -1513,94 +1513,83 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
   // ══════════════════════════════════════════════════════════════════════════════
 
   Future<List<Map<String, dynamic>>> _getVariantsFromCache(
-    int productId,
-  ) async {
+      int productId) async {
     try {
       final productBox = StorageProvider.productCache;
+
       List<Map<String, dynamic>> _normalizeVariants(dynamic raw) {
         if (raw is! List || raw.isEmpty) return <Map<String, dynamic>>[];
         return raw
             .whereType<Map>()
             .map<Map<String, dynamic>>((v) {
-              final map = v.map(
-                (key, value) => MapEntry(key.toString(), value),
-              );
-              final attrs = map["attributes"];
-              final String fallbackName =
-                  attrs is List
-                      ? attrs
-                          .whereType<Map>()
-                          .map((a) => (a["option"] ?? "").toString())
-                          .where((x) => x.isNotEmpty)
-                          .join(" - ")
-                      : "";
-              return {
-                "id": map["id"],
-                "name":
-                    (map["name"] ?? "").toString().isNotEmpty
-                        ? map["name"]
-                        : (fallbackName.isNotEmpty ? fallbackName : "Variant"),
-                "price": map["regular_price"] ?? map["price"] ?? "0",
-                "image":
-                    (map["image"] is Map && map["image"]["src"] != null)
-                        ? map["image"]["src"]
-                        : (map["image"] is String ? map["image"] : ""),
-                "sku": map["sku"] ?? "",
-              };
-            })
+          final map =
+          v.map((key, value) => MapEntry(key.toString(), value));
+          final attrs = map["attributes"];
+          final String fallbackName = attrs is List
+              ? attrs
+              .whereType<Map>()
+              .map((a) => (a["option"] ?? "").toString())
+              .where((x) => x.isNotEmpty)
+              .join(" - ")
+              : "";
+          return {
+            "id": map["id"],
+            "name": (map["name"] ?? "").toString().isNotEmpty
+                ? map["name"]
+                : (fallbackName.isNotEmpty ? fallbackName : "Variant"),
+            "price": map["regular_price"] ?? map["price"] ?? "0",
+            "image":
+            (map["image"] is Map && map["image"]["src"] != null)
+                ? map["image"]["src"]
+                : (map["image"] is String ? map["image"] : ""),
+            "sku": map["sku"] ?? "",
+          };
+        })
             .where((v) => v["id"] != null)
             .toList();
       }
 
       final isar = await IsarService.instance;
-      final entries =
-          await isar.isarCacheEntrys
-              .where()
-              .filter()
-              .keyStartsWith("products_")
-              .findAll();
+      final entries = await isar.isarCacheEntrys
+          .where()
+          .filter()
+          .keyStartsWith("products_")
+          .findAll();
 
       for (final entry in entries) {
         final List<dynamic> products = jsonDecode(entry.json);
         final match = products.firstWhere(
-          (p) => p["fast_key_product_id"]?.toString() == productId.toString(),
+              (p) =>
+          p["fast_key_product_id"]?.toString() == productId.toString(),
           orElse: () => null,
         );
         if (match == null) continue;
 
-        final rawVariations =
-            match["variations"] ??
-            (await productBox.get(
-              "product_${productId}_variations",
-            ))?["variations"];
+        final rawVariations = match["variations"] ??
+            (await productBox
+                .get("product_${productId}_variations"))?["variations"];
         final variants = _normalizeVariants(rawVariations);
         if (variants.isNotEmpty) return variants;
       }
 
-      // Fallback path: direct variation cache key (used by category preload).
-      final cached = await productBox.get("product_${productId}_variations");
-      final fallbackVariants = _normalizeVariants(
-        cached is Map ? cached["variations"] : null,
-      );
+      final cached =
+      await productBox.get("product_${productId}_variations");
+      final fallbackVariants =
+      _normalizeVariants(cached is Map ? cached["variations"] : null);
       if (fallbackVariants.isNotEmpty) return fallbackVariants;
     } catch (e) {
       debugPrint("_getVariantsFromCache error: $e");
     }
     return [];
   }
-
   Future<List<Map<String, dynamic>>> _fetchVariationsFromApi(
-    int productId,
-  ) async {
+      int productId) async {
     try {
       final token = await _getAuthTokenFromDb();
       final url = Uri.parse(
-        "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations",
-      );
-      final response = await http.get(
-        url,
-        headers: {"Authorization": "Bearer $token"},
-      );
+          "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations");
+      final response =
+      await http.get(url, headers: {"Authorization": "Bearer $token"});
       if (response.statusCode != 200) return <Map<String, dynamic>>[];
 
       final decoded = jsonDecode(response.body);
@@ -1609,30 +1598,30 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
       return decoded
           .whereType<Map>()
           .map<Map<String, dynamic>>((v) {
-            final map = v.map((key, value) => MapEntry(key.toString(), value));
-            final attrs = map["attributes"];
-            final String fallbackName =
-                attrs is List
-                    ? attrs
-                        .whereType<Map>()
-                        .map((a) => (a["option"] ?? "").toString())
-                        .where((x) => x.isNotEmpty)
-                        .join(" - ")
-                    : "";
-            return {
-              "id": map["id"],
-              "name":
-                  (map["name"] ?? "").toString().isNotEmpty
-                      ? map["name"]
-                      : (fallbackName.isNotEmpty ? fallbackName : "Variant"),
-              "price": (map["price"] ?? map["regular_price"] ?? "0").toString(),
-              "image":
-                  (map["image"] is Map && map["image"]["src"] != null)
-                      ? map["image"]["src"]
-                      : (map["image"] is String ? map["image"] : ""),
-              "sku": map["sku"] ?? "",
-            };
-          })
+        final map =
+        v.map((key, value) => MapEntry(key.toString(), value));
+        final attrs = map["attributes"];
+        final String fallbackName = attrs is List
+            ? attrs
+            .whereType<Map>()
+            .map((a) => (a["option"] ?? "").toString())
+            .where((x) => x.isNotEmpty)
+            .join(" - ")
+            : "";
+        return {
+          "id": map["id"],
+          "name": (map["name"] ?? "").toString().isNotEmpty
+              ? map["name"]
+              : (fallbackName.isNotEmpty ? fallbackName : "Variant"),
+          "price":
+          (map["price"] ?? map["regular_price"] ?? "0").toString(),
+          "image":
+          (map["image"] is Map && map["image"]["src"] != null)
+              ? map["image"]["src"]
+              : (map["image"] is String ? map["image"] : ""),
+          "sku": map["sku"] ?? "",
+        };
+      })
           .where((v) => v["id"] != null)
           .toList();
     } catch (e) {
@@ -1640,6 +1629,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
       return <Map<String, dynamic>>[];
     }
   }
+
 
   Future<String> _getAuthTokenFromDb() async {
     final db = await DBHelper.instance.database;
@@ -1675,11 +1665,9 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
     _searchFocusNode.unfocus();
     _removeOverlay();
     await WidgetsBinding.instance.endOfFrame;
-
     if (!mounted) return;
 
     try {
-      // ── 2. Ensure an active order exists ──────────────────────────────────
       final ensuredOrderId = await orderHelper.ensureOrderExists();
       if (ensuredOrderId == null) {
         if (kDebugMode) print("❌ Failed to create or restore order");
@@ -1690,32 +1678,26 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
       final offlineBox = StorageProvider.offlineOrders;
       final activeOrderId = ensuredOrderId.toString();
       final raw = await offlineBox.get(activeOrderId);
-      final Map<String, dynamic> rawOrder = Map<String, dynamic>.from(
-        raw is Map ? raw : {},
-      );
+      final Map<String, dynamic> rawOrder =
+      Map<String, dynamic>.from(raw is Map ? raw : {});
 
-      // ── 3. Resolve product tags ────────────────────────────────────────────
       final List<SKU.Tags> tags = product.tags ?? [];
 
-      // ── 4. Age verification ───────────────────────────────────────────────
-      final bool hasAgeRestriction = tags.any(
-        (t) => t.name == TextConstants.age_restricted,
-      );
+      // Age verification
+      final bool hasAgeRestriction =
+      tags.any((t) => t.name == TextConstants.age_restricted);
 
       if (hasAgeRestriction) {
         final dynamic hiveAge = rawOrder["age_verified"];
-        final bool alreadyVerified =
-            hiveAge == true ||
+        final bool alreadyVerified = hiveAge == true ||
             hiveAge == 1 ||
             hiveAge?.toString().toLowerCase() == "true";
 
         if (!alreadyVerified) {
-          final SKU.Tags ageTag = tags.firstWhere(
-            (t) => t.name == TextConstants.age_restricted,
-          );
-          final int minAge = int.tryParse(ageTag.slug?.toString() ?? "0") ?? 0;
-
-          if (kDebugMode) print("🔞 Age verification required (min $minAge)");
+          final SKU.Tags ageTag =
+          tags.firstWhere((t) => t.name == TextConstants.age_restricted);
+          final int minAge =
+              int.tryParse(ageTag.slug?.toString() ?? "0") ?? 0;
 
           _dialogOpen = true;
           final prov = AgeVerificationProvider();
@@ -1723,47 +1705,39 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
           _dialogOpen = false;
 
           if (!mounted) return;
-          if (!ok) {
-            if (kDebugMode) print("❌ Age verification failed or cancelled");
-            return;
-          }
+          if (!ok) return;
 
           rawOrder["age_verified"] = true;
           await offlineBox.put(activeOrderId, rawOrder);
-          if (kDebugMode) print("✅ Age verified — order updated");
         }
       }
 
       if (!mounted) return;
 
-      // ── 5. Resolve EBT eligibility ─────────────────────────────────────────
+      // EBT eligibility
       bool isEbtEligible = false;
       try {
         final isar = await IsarService.instance;
-        final cachedEntries =
-            await isar.isarCacheEntrys
-                .where()
-                .filter()
-                .keyStartsWith("products_")
-                .findAll();
+        final cachedEntries = await isar.isarCacheEntrys
+            .where()
+            .filter()
+            .keyStartsWith("products_")
+            .findAll();
 
         for (final entry in cachedEntries) {
           final List<dynamic> products = jsonDecode(entry.json);
           final match = products.firstWhere(
-            (p) =>
-                p["fast_key_product_id"]?.toString() == product.id.toString(),
+                (p) =>
+            p["fast_key_product_id"]?.toString() ==
+                product.id.toString(),
             orElse: () => null,
           );
           if (match != null) {
             final dynamic rawEbt = match["is_ebt_eligible"];
-            isEbtEligible =
-                rawEbt == true ||
+            isEbtEligible = rawEbt == true ||
                 rawEbt == 1 ||
                 rawEbt?.toString() == "1" ||
                 rawEbt?.toString().toLowerCase() == "true";
-            if (kDebugMode) {
-              print("🥗 EBT → ${match["fast_key_item_name"]} | $isEbtEligible");
-            }
             break;
           }
         }
@@ -1784,22 +1758,16 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
 
       if (!mounted) return;
 
-      // ── 6. Parse unit price ────────────────────────────────────────────────
-      final double unitPrice =
-          (product.price is num)
-              ? (product.price as num).toDouble()
-              : double.tryParse(product.price?.toString() ?? "0") ?? 0.0;
+      final double unitPrice = (product.price is num)
+          ? (product.price as num).toDouble()
+          : double.tryParse(product.price?.toString() ?? "0") ?? 0.0;
 
-      // ── 7. PRODUCE → Auto Weight & Price dialog ────────────────────────────
-      final bool hasProduceTag = tags.any(
-        (t) =>
-            t.slug?.toLowerCase() == "produce" ||
-            t.name?.toLowerCase() == "produce",
-      );
+      // Produce
+      final bool hasProduceTag = tags.any((t) =>
+      t.slug?.toLowerCase() == "produce" ||
+          t.name?.toLowerCase() == "produce");
 
       if (hasProduceTag) {
-        if (kDebugMode) print("🌿 Produce detected → AutoWeightPriceDialog");
-
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted) return;
 
@@ -1810,31 +1778,23 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
             context: context,
             barrierDismissible: false,
             useRootNavigator: true,
-            builder:
-                (dialogCtx) => ChangeNotifierProvider.value(
-                  value: Provider.of<WeightProvider>(context, listen: false),
-                  child: AutoWeightPriceDialog(
-                    productName: product.name ?? "Product",
-                    unitPrice: unitPrice,
-                  ),
-                ),
+            builder: (dialogCtx) => ChangeNotifierProvider.value(
+              value: Provider.of<WeightProvider>(context, listen: false),
+              child: AutoWeightPriceDialog(
+                productName: product.name ?? "Product",
+                unitPrice: unitPrice,
+              ),
+            ),
           );
         } finally {
           _dialogOpen = false;
         }
 
         if (!mounted) return;
-
-        if (result == null) {
-          if (kDebugMode) print("⚠️ Auto weight cancelled");
-          return;
-        }
+        if (result == null) return;
 
         final double finalPrice = (result["finalPrice"] as num).toDouble();
         final double weightValue = (result["weight"] as num).toDouble();
-        if (kDebugMode) {
-          print("⚖️ Weight: $weightValue lb  |  Price: \$$finalPrice");
-        }
 
         setState(() => isAddingItemLoading = true);
 
@@ -1865,14 +1825,10 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
         return;
       }
 
-      // ── 8. VARIANTS — resolved from local Isar cache only ─────────────────
-      // NOTE: API variant fetch intentionally skipped.
-      // Variants are resolved from local Isar cache only (_getVariantsFromCache).
-      // If none found in cache, product is treated as simple.
-      List<Map<String, dynamic>> variants = await _getVariantsFromCache(
-        product.id!,
-      );
-      if (variants.isEmpty && (product.variations?.isNotEmpty ?? false)) {
+      // Variants
+      List<Map<String, dynamic>> variants =
+      await _getVariantsFromCache(product.id!);
+      if (variants.isEmpty) {
         variants = await _fetchVariationsFromApi(product.id!);
         if (variants.isNotEmpty) {
           await StorageProvider.productCache.put(
@@ -1889,8 +1845,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
       if (!mounted) return;
 
       if (hasVariants) {
-        if (kDebugMode)
-          print("🔀 Variants (${variants.length}) → VariantsDialog");
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted) return;
 
@@ -1900,39 +1854,46 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
             context: context,
             barrierDismissible: false,
             useRootNavigator: true,
-            builder:
-                (dialogCtx) => VariantsDialog(
-                  title: product.name ?? "Select Variant",
-                  variations: variants,
-                  onAddVariant: (selected, qty) async {
-                    final varPrice =
-                        double.tryParse(selected["price"].toString()) ?? 0.0;
+            builder: (dialogCtx) => VariantsDialog(
+              title: product.name ?? "Select Variant",
+              variations: variants,
+              onAddVariant: (selected, qty) async {
+                final varPrice =
+                    double.tryParse(selected["price"].toString()) ?? 0.0;
 
-                    await orderHelper.addItemToOrder(
-                      selected["id"],
-                      selected["name"] ?? product.name ?? 'Unknown',
-                      selected["image"] ?? '',
-                      varPrice,
-                      qty,
-                      selected["sku"] ?? product.sku ?? '',
-                      int.parse(activeOrderId),
-                      type: 'variant',
-                      productId: product.id,
-                      variationId: selected["id"],
-                      unitPrice: varPrice,
-                      salesPrice: varPrice,
-                      regularPrice: varPrice,
-                      isEbtEligible: isEbtEligible,
-                      onItemAdded: () {
-                        _removeOverlay();
-                        _clearSearch();
-                        if (mounted)
-                          setState(() => isAddingItemLoading = false);
-                        widget.onProductSelected?.call(product);
-                      },
-                    );
+                await orderHelper.addItemToOrder(
+                  selected["id"],
+                  selected["name"] ?? product.name ?? 'Unknown',
+                  selected["image"] ?? '',
+                  varPrice,
+                  qty,
+                  selected["sku"] ?? product.sku ?? '',
+                  int.parse(activeOrderId),
+                  type: 'variant',
+                  productId: product.id,
+                  variationId: selected["id"],
+                  unitPrice: varPrice,
+                  salesPrice: varPrice,
+                  regularPrice: varPrice,
+                  isEbtEligible: isEbtEligible,
+                  onItemAdded: () {
+                    _removeOverlay();
+                    _clearSearch();
+
+                    if (mounted) {
+                      setState(() => isAddingItemLoading = false);
+                    }
+
+                    widget.onProductSelected?.call(product);
                   },
-                ),
+                );
+
+                // CLOSE POPUP
+                if (Navigator.canPop(context)) {
+                  Navigator.of(context, rootNavigator: true).pop();
+                }
+              },
+            ),
           );
         } finally {
           _dialogOpen = false;
@@ -1944,14 +1905,12 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
         return;
       }
 
-      // ── 9. VARIABLE PRICE ──────────────────────────────────────────────────
-      final bool hasVariablePriceTag = tags.any(
-        (t) =>
-            t.slug?.toLowerCase() == "variable-product" ||
-            t.slug?.toLowerCase() == "variable" ||
-            t.name?.toLowerCase() == "variable product" ||
-            t.name?.toLowerCase() == "variable",
-      );
+      // Variable price
+      final bool hasVariablePriceTag = tags.any((t) =>
+      t.slug?.toLowerCase() == "variable-product" ||
+          t.slug?.toLowerCase() == "variable" ||
+          t.name?.toLowerCase() == "variable product" ||
+          t.name?.toLowerCase() == "variable");
 
       final String variableKey = "variable_price_added_${product.id}";
       final String savedPriceKey = "selected_price_${product.id}";
@@ -1964,7 +1923,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
           final savedPrice = rawOrder[savedPriceKey];
           finalPrice =
               double.tryParse(savedPrice?.toString() ?? "") ?? unitPrice;
-          if (kDebugMode) print("💲 Variable price re-used: \$$finalPrice");
         } else {
           await WidgetsBinding.instance.endOfFrame;
           if (!mounted) return;
@@ -1983,23 +1941,18 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
           }
 
           if (!mounted) return;
-          if (enteredPrice == null) {
-            if (kDebugMode) print("⚠️ Variable price entry cancelled");
-            return;
-          }
+          if (enteredPrice == null) return;
 
           finalPrice = enteredPrice;
           rawOrder[variableKey] = true;
           rawOrder[savedPriceKey] = finalPrice;
           await offlineBox.put(activeOrderId, rawOrder);
-          if (kDebugMode) print("💲 Variable price entered: \$$finalPrice");
         }
       }
 
       if (!mounted) return;
 
-      // ── 10. SIMPLE PRODUCT ────────────────────────────────────────────────
-      if (kDebugMode) print("🛒 Simple add → ${product.name} @ \$$finalPrice");
+      // Simple product
       setState(() => isAddingItemLoading = true);
 
       await orderHelper.addItemToOrder(
@@ -2034,6 +1987,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
       if (mounted) setState(() => isAddingItemLoading = false);
     }
   }
+
 
   // ══════════════════════════════════════════════════════════════════════════════
   // MISC HELPERS

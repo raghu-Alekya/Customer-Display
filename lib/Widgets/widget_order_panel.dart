@@ -234,33 +234,51 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       unawaited(_handleOrderPanelBarcode(barcode));
 
   @override
+  @override
   void initState() {
     super.initState();
+
     NativeUsbScanBridge.registerHandler(_onNativeUsbBarcode);
     _categoryRepository = CategoryRepository();
     WidgetsBinding.instance.addObserver(this);
     orderBloc = OrderBloc(OrderRepository());
-    // Force full refresh when panel mounts (e.g. navigating from Orders tab) so we show
-    // the active processing order, not the order viewed in Orders tab
+
     OrderHelper.isOrderPanelLoaded = false;
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await orderHelper
-          .restoreActiveOrderId(); // ✅ WAIT - restores lastActiveOrderId for POS context
-      await fetchOrdersData(); // load after restore
+      await orderHelper.restoreActiveOrderId();
+      await fetchOrdersData();
+
       if (mounted) {
-        setState(() => _initialRestoreDone =
-            true); // Safe to derive from orderHelper in build
+        setState(() => _initialRestoreDone = true);
       }
     });
+
     _orderPanelRefreshListener = () {
       if (mounted) {
         OrderHelper.isOrderPanelLoaded = false;
         fetchOrdersData();
       }
     };
+
     OrderHelper.orderPanelRefreshNotifier
         .addListener(_orderPanelRefreshListener!);
+
+    // CUSTOMER DISPLAY CALLBACK
+    customerDisplayChannel.setMethodCallHandler((call) async {
+      if (call.method == "showNextActiveOrder") {
+        await fetchOrdersData();
+
+        if (orderHelper.activeOrderId != null) {
+          await CustomerDisplayHelper.updateCustomerDisplay(
+            orderHelper.activeOrderId!,
+            summaryEnabled: false,
+          );
+        } else {
+          await CustomerDisplayService.showWelcome();
+        }
+      }
+    });
   }
 
   @override
@@ -6108,12 +6126,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                               .isRefundItem] ==
                                                           true;
                                                   if (isRefunded) return true;
-                                                  return name.contains(
-                                                          TextConstants
-                                                              .payoutText) ||
-                                                      type.contains(
-                                                          TextConstants
-                                                              .payoutText);
+                                                  // exact payout only
+                                                  return name == TextConstants.payoutText.toLowerCase() ||
+                                                      type == TextConstants.payoutText.toLowerCase();
                                                 });
                                         final double grossTotalValue =
                                             (grossTotal as num).toDouble();
