@@ -120,6 +120,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   List<Map<String, dynamic>> _customItemsList = []; // ← NEW
   String _selectedCustomItemName = "Custom Item";
 
+  static int _persistedTabIndex = 0;
+
   // Function to check if the item name is empty
   bool _isItemNameEmpty() {
     return _customItemNameController.text.trim().isEmpty;
@@ -328,7 +330,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
     _loadTaxSlabs();
     _loadTaxes();
     // Initialize the selected tab index from widget
-    _selectedTabIndex = widget.selectedTabIndex;
+    _selectedTabIndex = _persistedTabIndex;
 
     //  NEW: Load Custom Item Template + List for Dropdown
     // Replace the old fetch block in initState with this:
@@ -621,14 +623,16 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         onTap: () {
           setState(() {
             _selectedTabIndex = index;
+            _persistedTabIndex = index;
             if (index != 2) _isEnteringItemPrice = false;
           });
         },
         child: SizedBox(
-          // 🔒 LOCK HEIGHT
+
           //height: 80,
           //width: 20,
           // adjust if needed (same for all tabs)
+
           child: Container(
             width: double.infinity,
             decoration: BoxDecoration(
@@ -1440,6 +1444,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                               setState(() {
                                 _selectedCustomItemName = newValue;
                                 _customItemNameController.text = newValue;
+                                _selectedCategoryName = "Select Category";
+
                               });
                             }
                           },
@@ -1644,10 +1650,16 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
           },
           onClearPressed: () {
             setState(() {
+              // _customItemPrice = "0.00";
+              // _customItemPriceController.text =
+              // "${TextConstants.currencySymbol}0.00";
+              // _isEnteringItemPrice = false;
               _customItemPrice = "0.00";
-              _customItemPriceController.text =
-              "${TextConstants.currencySymbol}0.00";
+              _customItemPriceController.text = "${TextConstants.currencySymbol}0.00";
               _isEnteringItemPrice = false;
+
+              // 🔥 NEW: Clear Category + Reset to initial state
+              _selectedCategoryName = "Select Category";
             });
           },
           onDeletePressed: () {
@@ -1682,6 +1694,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
             setState(() {
               _isEnteringItemPrice = false;
+              // _selectedCategoryName = "Select Category";
+
             });
 
             // Remove symbols, spaces, etc.
@@ -2425,7 +2439,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       "merchant discount",
       "merchant-discount",
       "merchant_discount",
-      "md",
     ]);
     if (resolved != null) return resolved;
 
@@ -3956,7 +3969,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       return;
     }
 
-    // ── Category Validation ──────────────────────────────────────  ← ADD HERE
     // ── Category Validation ──────────────────────────────────────
     if (_selectedCategoryName.trim() == "Select Category" ||
         _selectedCategoryName.trim().isEmpty ||
@@ -3966,6 +3978,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         _customItemPrice = "0.00";
         _customItemPriceController.text = "${TextConstants.currencySymbol}0.00";
         _isEnteringItemPrice = false;
+        _selectedCategoryName = "Select Category";
       });
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
         const SnackBar(

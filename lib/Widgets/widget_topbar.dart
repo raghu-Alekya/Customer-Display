@@ -1606,6 +1606,91 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
                       "\$$price",
                       style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
+                    const SizedBox(width: 6),
+
+                    // ── EBT badge ──────────────────────────────────────
+                    Builder(builder: (_) {
+                      final rawTags = p["tags"] ?? p["fast_key_item_tags"];
+                      final bool isEbt = rawTags is List &&
+                          rawTags.any((t) {
+                            final name = (t["name"] ?? "").toString().toLowerCase();
+                            final slug = (t["slug"] ?? "").toString().toLowerCase();
+                            return name.contains("ebt") || slug.contains("ebt");
+                          });
+                      if (!isEbt) return const SizedBox.shrink();
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade600,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'EBT',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      );
+                    }),
+
+                    const SizedBox(width: 4),
+
+                    // ── Variants badge ─────────────────────────────────
+                    Builder(builder: (_) {
+                      final rawVariations = p["variations"];
+                      final bool hasVariants = (rawVariations is List &&
+                          rawVariations.isNotEmpty) ||
+                          (p["type"]?.toString().toLowerCase() == "variable");
+                      if (!hasVariants) return const SizedBox.shrink();
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        // decoration: BoxDecoration(
+                        //   color: Theme.of(context).brightness == Brightness.dark
+                        //       ? const Color(0xFF2F3241)
+                        //       : const Color(0xFFF0F0F5),
+                        //   borderRadius: BorderRadius.circular(4),
+                        //   border: Border.all(
+                        //     color: Theme.of(context).brightness == Brightness.dark
+                        //         ? Colors.white24
+                        //         : Colors.black12,
+                        //     width: 0.5,
+                        //   ),
+                        // ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // CustomPaint(
+                            //   size: const Size(10, 10),
+                            //   // painter: _VariantIconPainter(
+                            //   //   color: Theme.of(context).brightness == Brightness.dark
+                            //   //       ? Colors.white54
+                            //   //       : Colors.black45,
+                            //   // ),
+                            // ),
+                            const SizedBox(width: 4),
+                            SvgPicture.asset(
+                              "assets/svg/variation.svg",
+                              height: 10,
+                              width: 10,
+                            ),
+                            // const SizedBox(width: 3),
+                            // Text(
+                            //   'Variants',
+                            //   style: TextStyle(
+                            //     fontSize: 9,
+                            //     fontWeight: FontWeight.w600,
+                            //     color: Theme.of(context).brightness == Brightness.dark
+                            //         ? Colors.white54
+                            //         : Colors.black54,
+                            //   ),
+                            // ),
+                          ],
+                        ),
+                      );
+                    }),
                   ],
                 ),
                 onTap: () async {
@@ -2619,11 +2704,11 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           ),
           const SizedBox(width: 16),
 
-          // Mode toggle
-// Mode toggle
+
+     // Mode toggle
           GestureDetector(
             onTap: () {
-              // 🔥 This must fire FIRST — RightOrderPanel listens to it
+              // This must fire FIRST — RightOrderPanel listens to it
               TopBar.modeChangedNotifier.value++;
 
               // Existing call (unchanged)

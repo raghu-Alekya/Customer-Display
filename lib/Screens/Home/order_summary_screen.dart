@@ -495,7 +495,7 @@ class NoScrollbarBehavior extends ScrollBehavior {
   @override
   Widget buildScrollbar(
       BuildContext context, Widget child, ScrollableDetails details) {
-    return child; // prevents scrollbar from showing
+    return child;
   }
 }
 
@@ -598,7 +598,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     double multipack = n(item['multipack_discount_total']) + n(item['multipackDiscountTotal']);
     double mixmatch = n(item['mixmatch_discount_total']);
 
-    // ✅ ADD: proportional share of order-level coupon discount
+    // ADD: proportional share of order-level coupon discount
     double couponShare = _proportionalCouponDiscountForItem(item);
 
     final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
@@ -2539,7 +2539,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //   _resetAmountAfterPay();
   // }
 
-  /////// above code is card payments
+  /////// Fabove code is card payments
 
   Future<void> _launchPayrocUrl(String url) async {
     final Uri uri = Uri.parse(url);
