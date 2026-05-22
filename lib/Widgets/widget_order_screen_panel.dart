@@ -2299,7 +2299,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                           print(
                               "#### variationName: $variationName, variationCount: $variationCount, combo: $combo");
                           print(
-                              "#### salesPrice: $salesPrice, regularPrice: $regularPrice, itemTotalPrice: $itemTotalPrice");
+                              "####  salesPriceeeeeeeeee: $salesPrice, regularPrice: $regularPrice, itemTotalPrice: $itemTotalPrice");
                         }
 
                         /// Set display name based on item type
@@ -2607,63 +2607,42 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                             if (!isPayoutOrCouponOrCustomItem) ...[
                                               Builder(
                                                 builder: (context) {
-                                                  double qty = (orderItem[
-                                                  AppDBConst
-                                                      .itemCount]
-                                                  as num?)
-                                                      ?.toDouble() ??
-                                                      1;
+                                                  final double qty = (orderItem[AppDBConst.itemCount] as num?)?.toDouble() ?? 1;
 
-                                                  double unitPrice =
-                                                  // (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??  ////---
-                                                  (orderItem[AppDBConst
-                                                      .itemPrice]
-                                                  as num?)
-                                                      ?.toDouble() ??
-                                                      (orderItem[AppDBConst
-                                                          .itemRegularPrice]
-                                                      as num?)
-                                                          ?.toDouble() ??
-                                                      (orderItem[AppDBConst
-                                                          .itemUnitPrice]
-                                                      as num?)
-                                                          ?.toDouble() ?? ////
-                                                      0.0; ////
+                                                  // Get regular price (original price before discount)
+                                                  final double regularPrice =
+                                                      (orderItem[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
+                                                          (orderItem[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??
+                                                          (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
 
-                                                  // If still zero → derive price from sum price
-                                                  if (unitPrice == 0.0) {
-                                                    final double sumPrice =
-                                                        (orderItem[AppDBConst
-                                                            .itemSumPrice]
-                                                        as num?)
-                                                            ?.toDouble() ??
-                                                            0.0;
+                                                  // Current (discounted) unit price for calculation
+                                                  double displayUnitPrice = (orderItem[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
 
-                                                    if (sumPrice > 0 &&
-                                                        qty > 0) {
-                                                      unitPrice =
-                                                          sumPrice / qty;
+                                                  // Check if this item has any discount
+                                                  final bool hasDiscount =
+                                                      ((orderItem[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0) > 0 ||
+                                                          ((orderItem[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0) > 0 ||
+                                                          ((orderItem[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0) > 0 ||
+                                                          ((orderItem[AppDBConst.displayAutoDiscount] as num?)?.toDouble() ?? 0.0) > 0;
+
+                                                  // If item has discount → show Regular Price, else show current price
+                                                  if (hasDiscount && regularPrice > displayUnitPrice) {
+                                                    displayUnitPrice = regularPrice;
+                                                  }
+
+                                                  // Fallback if still zero
+                                                  if (displayUnitPrice == 0.0) {
+                                                    final double sumPrice = (orderItem[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
+                                                    if (sumPrice > 0 && qty > 0) {
+                                                      displayUnitPrice = sumPrice / qty;
                                                     }
                                                   }
 
-                                                  // 🔹 NEW: calculate total amount
-                                                  final double totalAmount =
-                                                      unitPrice * qty;
-
                                                   return Text(
-                                                    // 🔹 OLD: only unit price × qty
-                                                    // "${TextConstants.currencySymbol} ${unitPrice.toStringAsFixed(2)} × ${qty.toInt()}",
-
-                                                    // 🔹 NEW: show unit price × qty = total amount
-                                                    "${TextConstants.currencySymbol} ${unitPrice.toStringAsFixed(2)} × ${qty.toInt()} ",
-                                                    // "= ${TextConstants.currencySymbol} ${totalAmount.toStringAsFixed(2)}",
-
+                                                    "${TextConstants.currencySymbol}${displayUnitPrice.toStringAsFixed(2)} × ${qty.toInt()}",
                                                     style: TextStyle(
-                                                      color: themeHelper
-                                                          .themeMode ==
-                                                          ThemeMode.dark
-                                                          ? ThemeNotifier
-                                                          .textDark
+                                                      color: themeHelper.themeMode == ThemeMode.dark
+                                                          ? ThemeNotifier.textDark
                                                           : Colors.black54,
                                                       fontSize: 10,
                                                     ),
@@ -2945,7 +2924,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                               ),
                               padding: const EdgeInsets.all(8),
                               child: SingleChildScrollView(
-                                // ✅ scroll added
+                                //  scroll added
                                 physics: const BouncingScrollPhysics(),
 
                                 child: Column(
@@ -3066,13 +3045,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                           TextConstants.netTotalText,
                                           style: TextStyle(
                                               fontWeight: FontWeight.bold,
-                                              fontSize: 12),
+                                              fontSize: 15),
                                         ),
                                         Text(
                                             "${TextConstants.currencySymbol}${netTotal.toStringAsFixed(2)}",
                                             style: TextStyle(
                                                 fontWeight: FontWeight.bold,
-                                                fontSize: 12,
+                                                fontSize: 15,
                                                 color: themeHelper
                                                     .themeMode ==
                                                     ThemeMode.dark
@@ -3094,14 +3073,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                           TextConstants.taxText,
                                           style: TextStyle(
                                               fontWeight: FontWeight.bold,
-                                              fontSize: 15,
+                                              fontSize: 12,
                                               color: Colors.grey),
                                         ),
                                         Text(
                                             "${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}",
                                             style: TextStyle(
                                                 fontWeight: FontWeight.bold,
-                                                fontSize: 15,
+                                                fontSize: 12,
                                                 color:
                                                 themeHelper.themeMode ==
                                                     ThemeMode.dark
@@ -3168,7 +3147,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                           "${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}",
                                           style: const TextStyle(
                                               color: Colors.grey,
-                                              fontSize: 14),
+                                              fontSize: 12),
                                         ),
                                       ],
                                     ),
@@ -3579,6 +3558,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                     itemTypeLower
                                         .contains('loyalty');
 
+
+
                                 return !isNonProduct;
                               }).toList();
                             }
@@ -3586,9 +3567,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                             final box =
                                 StorageProvider.offlineOrders;
 
-// Prefer server order id if exists, else offline id
+                            // Prefer server order id if exists, else offline id
                             final hiveKey =
                             frozenSummaryOrderId.toString();
+
+                            final int? selectedOrderId = widget.activeOrderId;
 
                             final boxData = await box.get(hiveKey);
                             final double discountAmount = ((boxData
@@ -3603,21 +3586,44 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                   "🏷 Passing Discount Amount = $discountAmount");
                             }
 
-                            final filteredItems =
-                            visibleLineItems(orderItems);
-                            print("🔎 BEFORE SUMMARY NAVIGATION");
-                            for (var item in filteredItems) {
-                              print(
-                                  "Name: ${item[AppDBConst.itemName]} "
-                                      "Price: ${item[AppDBConst.itemPrice]} "
-                                      "Qty: ${item[AppDBConst.itemCount]} "
-                                      "orderTaxxxxxxxx: $orderTax} "
+                            final filteredItems = visibleLineItems(orderItems);
 
-                                      "DiscountType: ${item['discount_type']} "
-                                      "AutoDiscount: ${item['auto_discount']} "
-                                      "ComboDiscount: ${item['combo_discount_total']} "
-                                      "MixMatchDiscount: ${item['mixmatch_discount_total']} "
-                                      "MultipackDiscount: ${item['multipack_discount_total']}");
+// 🔥 NEW: Fix price before sending to OrderSummaryScreen
+                            final List<Map<String, dynamic>> itemsForSummary = filteredItems.map((item) {
+                              final Map<String, dynamic> newItem = Map<String, dynamic>.from(item);
+
+                              final double regularPrice =
+                                  (item[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
+                                      (item[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??
+                                      (item[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
+
+                              final double currentPrice = (item[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
+
+                              // Check if item has any discount
+                              final bool hasDiscount =
+                                  ((item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0) > 0 ||
+                                      ((item[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0) > 0 ||
+                                      ((item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0) > 0 ||
+                                      ((item[AppDBConst.displayAutoDiscount] as num?)?.toDouble() ?? 0.0) > 0 ||
+                                      (item['discount_type']?.toString().isNotEmpty ?? false);
+
+                              // If has discount → send original price as itemPrice for display in summary
+                              if (hasDiscount && regularPrice > currentPrice && regularPrice > 0) {
+                                newItem[AppDBConst.itemPrice] = regularPrice;
+                                // Optionally also update unit price if used
+                                newItem[AppDBConst.itemUnitPrice] = regularPrice;
+                              }
+
+                              return newItem;
+                            }).toList();
+
+                            print("🔎 AFTER PRICE FIX FOR SUMMARY");
+                            for (var item in itemsForSummary) {
+                              print(
+                                  "Name: ${item[AppDBConst.itemName]} | "
+                                      "Sent Price: ${item[AppDBConst.itemPrice]} | "
+                                      "Regular: ${item[AppDBConst.itemRegularPrice]} | "
+                                      "Qty: ${item[AppDBConst.itemCount]}");
                             }
 
 
@@ -3635,7 +3641,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                   merchantDiscount,
                                   orderTax: uiOrderTax,
                                   netPayable: netPayable.toDouble(),
-                                  orderId: frozenSummaryOrderId,
+                                  orderId: selectedOrderId,
+
                                   offlineOrderId:
                                   frozenSummaryOrderId,
                                   cashbackFee: cashbackFee,

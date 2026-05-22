@@ -152,9 +152,8 @@
                     <!-- Input -->
                     <EditText
                         android:id="@+id/email_input"
-                        android:layout_width="0dp"
+                        android:layout_width="180dp"
                         android:layout_height="40dp"
-                        android:layout_weight="1"
                         android:hint="Enter phone or email"
                         android:textColor="#353535"
                         android:textSize="18sp"
@@ -164,7 +163,6 @@
                         android:inputType="textEmailAddress|phone"
                         android:maxLines="1"
                         android:imeOptions="actionDone" />
-
                     <!-- Add Button -->
                     <Button
                         android:id="@+id/btn_add_customer"
@@ -177,12 +175,11 @@
                         android:textColor="@android:color/white"
                         android:backgroundTint="#003A82" />
 
-                    <!-- Points -->
                     <TextView
                         android:id="@+id/points_label"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="16dp"
+                        android:layout_marginStart="100dp"
                         android:text="Points:"
                         android:textColor="#E20000"
                         android:textSize="20sp"

@@ -593,6 +593,7 @@ class MainActivity : FlutterActivity() {
 
         private lateinit var paymentDate: TextView
         private lateinit var paymentTime: TextView
+        private lateinit var totalItemsView: TextView
 
         private var currentStoreId: String = ""
         private var currentStoreName: String = ""
@@ -661,8 +662,6 @@ class MainActivity : FlutterActivity() {
         fun restoreSummaryAfterRedeemRemoval() {
             Handler(Looper.getMainLooper()).post {
 
-                redeemedAmount = 0.0
-
                 val summaryContainer =
                     findViewById<LinearLayout>(R.id.summary_container)
 
@@ -672,17 +671,23 @@ class MainActivity : FlutterActivity() {
                 summaryContainer?.visibility = View.VISIBLE
                 redeemRow?.visibility = View.GONE
 
-                // restore net payable from current value
-                val currentNetText =
-                    netPayableView.text.toString()
-                        .replace("Total :", "")
-                        .trim()
+                val currentNetText = netPayableView.text.toString()
+                    .replace("Total :", "")
+                    .replace("$", "")
+                    .replace(",", "")
+                    .trim()
 
-                netPayableView.text = "Total : $currentNetText"
+                val currentNet = currentNetText.toDoubleOrNull() ?: 0.0
+
+                val restoredNet = currentNet + redeemedAmount
+
+                redeemedAmount = 0.0
+
+                netPayableView.text = "Total : ${formatCurrency(restoredNet)}"
 
                 Log.d(
                     "CustomerDisplay",
-                    "Summary restored after redeem removal"
+                    "Restored net payable = $restoredNet"
                 )
             }
         }
@@ -1124,6 +1129,7 @@ class MainActivity : FlutterActivity() {
         private fun bindOrderViews() {
             orderIdView = findViewById(R.id.customer_order_id)
             pointsView = findViewById(R.id.customer_points)
+            totalItemsView = findViewById(R.id.label_total_items)
 
             itemsContainer = findViewById(R.id.customer_items_container)
             grossView = findViewById(R.id.value_gross_total)
@@ -1739,22 +1745,20 @@ class MainActivity : FlutterActivity() {
 
 
             for ((index, item) in items.withIndex()) {
-                Log.d(
-                    "CustomerDisplay",
-                    "🔁 LOOP[$index] raw item = $item"
-                )
-
 
                 val name = (item["name"] as? String) ?: ""
+
                 val qty =
-                    (item["qty"] as? Number)?.toInt()
-                        ?: (item["quantity"] as? Number)?.toInt()
+                    item["qty"]?.toString()?.toIntOrNull()
+                        ?: item["quantity"]?.toString()?.toIntOrNull()
+                        ?: item["items_count"]?.toString()?.toIntOrNull()
                         ?: 1
-                val price = (item["price"] as? Number)?.toDouble() ?: 0.0
+
+                val price =
+                    (item["price"] as? Number)?.toDouble() ?: 0.0
 
                 val originalPrice =
                     (item["original_price"] as? Number)?.toDouble() ?: price
-
 
                 val discountValue =
                     (item["auto_discount"] as? Number)?.toDouble() ?: 0.0
@@ -1762,6 +1766,16 @@ class MainActivity : FlutterActivity() {
                 val discountType =
                     (item["discount_type"] as? String)?.trim() ?: ""
 
+                val hasDiscount = discountValue > 0
+                val originalTotal = price * qty
+                val discountedTotal = originalTotal - discountValue
+
+                // count total items
+                if (!name.equals("Payout", true) &&
+                    !name.equals("Cashback", true)
+                ) {
+                    totalItemCount += qty
+                }
                 Log.d(
                     "CustomerDisplay",
                     """
@@ -1775,15 +1789,15 @@ class MainActivity : FlutterActivity() {
                 )
 
 
-                val hasDiscount = discountValue > 0
-                val originalTotal = price * qty
-                val discountedTotal = originalTotal - discountValue
+//                val hasDiscount = discountValue > 0
+//                val originalTotal = price * qty
+//                val discountedTotal = originalTotal - discountValue
 
 
-                // ✔ SAME CALCULATION
-                if (!name.equals("Payout", true) && !name.equals("Cashback", true)) {
-                    totalItemCount += qty
-                }
+//                // ✔ SAME CALCULATION
+//                if (!name.equals("Payout", true) && !name.equals("Cashback", true)) {
+//                    totalItemCount += qty
+//                }
 
                 // ================= ROW =================
                 val row = LinearLayout(context).apply {
@@ -2042,24 +2056,24 @@ class MainActivity : FlutterActivity() {
             }
 
 // ================= TOTALS (UNCHANGED) =================
-            findViewById<TextView>(R.id.label_total_items).text = "Total Items : $totalItemCount"
             grossView.text = formatCurrency(grossTotal)
             discountView.text = formatCurrency(-discount)
+            totalItemsView.text = "Total Items : $totalItemCount"
 
             findViewById<TextView>(R.id.label_cashback_fee).text = "Cashback Fee"
             findViewById<TextView>(R.id.value_cashback_fee).text =
                 formatCurrency(cashbackFee)
 
             merchantDiscountView.text = formatCurrency(-merchantDiscount)
-            netTotalView.text = formatCurrency(netTotal)
+
+            val calculatedNetTotal = grossTotal - discount
+            netTotalView.text = formatCurrency(calculatedNetTotal)
+
             taxView.text = formatCurrency(tax)
 
-// deduct redeemed amount from net payable
             val finalNetPayable = (netPayable - redeemedAmount).coerceAtLeast(0.0)
 
-            netPayableView.text =
-                "Total : ${formatCurrency(finalNetPayable)}"
-
+            netPayableView.text = "Total : ${formatCurrency(finalNetPayable)}"
 // show redeem row separately
             if (summaryEnabled && redeemedAmount > 0) {
                 showRedeemSummary(redeemedAmount)
