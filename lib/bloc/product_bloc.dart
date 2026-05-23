@@ -78,31 +78,53 @@ class ProductError extends ProductState {
 class ProductBloc extends Bloc<ProductEvent, ProductState> {
   final ProductRepository _repository;
 
-  ProductBloc({required ProductRepository repository})
-      : _repository = repository,
+  int _latestCategoryRequestId = 0;
+  int _latestSearchRequestId = 0;
+
+  ProductBloc({
+    required ProductRepository repository,
+  })  : _repository = repository,
         super(const ProductInitial()) {
     on<FetchProductsForCategory>(_onFetchProductsForCategory);
     on<SearchProducts>(_onSearchProducts);
+    on<ClearProducts>(_onClearProducts);
+    on<ResetProducts>(_onResetProducts);
+  }
 
-    on<ClearProducts>((event, emit) {
-      emit(const ProductLoaded([]));
-    });
-    /// 🔥 RESET HANDLER
-    on<ResetProducts>((event, emit) {
-      emit(const ProductInitial());
-    });
+  void _onClearProducts(
+      ClearProducts event,
+      Emitter<ProductState> emit,
+      ) {
+    emit(const ProductLoaded([]));
+  }
+
+  void _onResetProducts(
+      ResetProducts event,
+      Emitter<ProductState> emit,
+      ) {
+    emit(const ProductInitial());
   }
 
   Future<void> _onFetchProductsForCategory(
       FetchProductsForCategory event,
       Emitter<ProductState> emit,
       ) async {
+    final requestId = ++_latestCategoryRequestId;
+
+    // clear old items immediately + show loader
     emit(const ProductLoading());
+
     try {
       final products =
       await _repository.getProductsByCategory(event.categoryId);
+
+      // ignore old response
+      if (requestId != _latestCategoryRequestId) return;
+
       emit(ProductLoaded(products));
     } catch (e) {
+      if (requestId != _latestCategoryRequestId) return;
+
       emit(ProductError(e.toString()));
     }
   }
@@ -111,13 +133,21 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
       SearchProducts event,
       Emitter<ProductState> emit,
       ) async {
+    final requestId = ++_latestSearchRequestId;
+
     emit(const ProductLoading());
+
     try {
-      final products = await _repository.searchProducts(event.query);
+      final products =
+      await _repository.searchProducts(event.query);
+
+      if (requestId != _latestSearchRequestId) return;
+
       emit(ProductLoaded(products));
     } catch (e) {
+      if (requestId != _latestSearchRequestId) return;
+
       emit(ProductError(e.toString()));
     }
   }
-
 }

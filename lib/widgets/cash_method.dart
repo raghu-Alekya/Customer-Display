@@ -706,7 +706,7 @@ class _CashMethodScreenState extends State<CashMethodScreen> {
                             const _Dash(),
                             const SizedBox(height: 8),
                             _CashRow(
-                              title: 'Tax (CGST + SGST)',
+                              title: 'Tax ',
                               value: _formatAmount(widget.tax),
                             ),
                             const SizedBox(height: 8),
@@ -724,13 +724,110 @@ class _CashMethodScreenState extends State<CashMethodScreen> {
                       const SizedBox(height: 20),
                       TextButton(
                         onPressed: () {
-                          CartManager.cartItems.clear();
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const HomeScreen(),
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (dialogContext) => AlertDialog(
+                              backgroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              contentPadding: const EdgeInsets.all(20),
+                              content: SizedBox(
+                                width: 300,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text(
+                                      "Cancel Payment",
+                                      style: TextStyle(
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black,
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 12),
+
+                                    const Text(
+                                      "This will stop your current payment you may need to restart your order.",
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        color: Colors.black54,
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 24),
+
+                                    Image.asset(
+                                      "assets/cancel_payment.png",
+                                      height: 140,
+                                    ),
+
+                                    const SizedBox(height: 28),
+
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 50,
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFFFF9800),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                        ),
+                                        onPressed: () {
+                                          Navigator.pop(dialogContext);
+                                        },
+                                        child: const Text(
+                                          "No, Continue Payment",
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 12),
+
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 50,
+                                      child: OutlinedButton(
+                                        style: OutlinedButton.styleFrom(
+                                          side: const BorderSide(
+                                            color: Color(0xFFFF9800),
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                        ),
+                                        onPressed: () {
+                                          CartManager.cartItems.clear();
+
+                                          Navigator.pushAndRemoveUntil(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => const HomeScreen(),
+                                            ),
+                                                (route) => false,
+                                          );
+                                        },
+                                        child: const Text(
+                                          "Yes, Cancel Order",
+                                          style: TextStyle(
+                                            color: Color(0xFFFF9800),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                            (route) => false,
                           );
                         },
                         child: const Text(

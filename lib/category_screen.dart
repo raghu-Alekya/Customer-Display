@@ -367,7 +367,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                     borderRadius: BorderRadius.circular(8),
                     child: CachedNetworkImage(
                       imageUrl: url,
-                      width: 52,
+                      width: 72,
                       height: 52,
                       fit: BoxFit.cover,
                       placeholder: (_, __) => Container(
@@ -418,13 +418,13 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _storeLogoBlock(),
-          const SizedBox(width: 4),
+          const SizedBox(width: 8),
           KioskOrderTypeChip(orderType: widget.orderType),
-          const SizedBox(width: 6),
+          const SizedBox(width: 12),
           SizedBox(
-            width: 200,
+            width: 280,
             child: Container(
-              height: 34,
+              height: 30,
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -810,44 +810,64 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
   Widget _foodGrid() {
     return BlocBuilder<ProductBloc, ProductState>(
       builder: (context, state) {
-        if (state is ProductLoading || state is ProductInitial) {
-          return const KioskBlockLoading(message: 'Loading products...');
+        // Initial empty state
+        if (state is ProductInitial) {
+          return const SizedBox();
         }
 
+        // Show loader immediately when category changes
+        if (state is ProductLoading) {
+          return const Center(
+            child: KioskBlockLoading(
+              message: 'Loading products...',
+            ),
+          );
+        }
+
+        // Error state
         if (state is ProductError) {
           return Center(
             child: Text(
               'Failed to load items: ${state.message}',
-              style: TextStyle(color: Colors.grey.shade700),
+              style: TextStyle(
+                color: Colors.grey.shade700,
+              ),
               textAlign: TextAlign.center,
             ),
           );
         }
 
+        // Loaded but empty
         if (state is! ProductLoaded || state.products.isEmpty) {
-          return const Center(child: Text('No items found'));
+          return const Center(
+            child: Text('No items found'),
+          );
         }
 
-        final products = state.products.where(_matchesSelectedType).toList();
+        final products = state.products
+            .where(_matchesSelectedType)
+            .toList();
+
         if (products.isEmpty) {
-          return const Center(child: Text('No items found for selected type'));
+          return const Center(
+            child: Text('No items found for selected type'),
+          );
         }
 
+        // Product grid
         return Align(
           alignment: Alignment.topLeft,
           child: SizedBox(
-            width: 450, // 🔥 control total grid width here
+            width: 450,
             child: GridView.builder(
-              // shrinkWrap: true, // 🔥 important
               physics: const BouncingScrollPhysics(),
-              // padding: const EdgeInsets.symmetric(vertical: 6),
               itemCount: products.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3, // ✅ keep 3
-                mainAxisSpacing: 6,
-                crossAxisSpacing: 6,
-                // Slightly taller cells so larger product images fit without overflow.
-                childAspectRatio: 1.05,
+              gridDelegate:
+              const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                mainAxisExtent: 150,
               ),
               itemBuilder: (_, index) {
                 final item = products[index];
@@ -871,17 +891,18 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
       borderRadius: BorderRadius.circular(12),
       onTap: () => _openCustomize(item),
       child: Container(
-        padding: const EdgeInsets.all(7),
+        height: 220,
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.black12),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Center(child: _productImage(item.imageUrl)),
-            const SizedBox(height: 4),
+            const SizedBox(height: 12),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -897,50 +918,58 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                   ),
                 ),
                 const SizedBox(width: 4),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.name,
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Text(
-                            '\$${item.price.replaceAll("₹", "")}',
-                            style: const TextStyle(
-                              color: Color(0xFF129A50),
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const Spacer(),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(6),
-                            onTap: () => _openCustomize(item),
-                            child: Container(
-                              height: 24,
-                              width: 24,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFD8B2),
-                                borderRadius: BorderRadius.circular(5),
-                              ),
-                              child: const Icon(
-                                Icons.add,
-                                size: 15,
-                                color: Color(0xFFFF8A00),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                  child: Text(
+                    item.name,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                // const SizedBox(width: 6),
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () => _openCustomize(item),
+                  child: Container(
+                    height: 24,
+                    width: 26,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFD8B2),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: const Icon(
+                      Icons.add,
+                      size: 18,
+                      color: Color(0xFFFF8A00),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // const SizedBox(height: 4),
+
+            Text(
+              '\$${item.price.replaceAll("₹", "")}',
+              style: const TextStyle(
+                color: Color(0xFF129A50),
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
               ],
             ),
           ],
@@ -956,6 +985,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
           product: item,
           addons: const [],
           orderType: widget.orderType,
+          openedFromSearch: false,
         ),
       ),
     );
@@ -1100,11 +1130,14 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
         children: [
           GestureDetector(
             onTap: () {
-              Navigator.push(
+              CartManager.cartItems.clear();
+
+              Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(
                   builder: (_) => const HomeScreen(),
                 ),
+                    (route) => false,
               );
             },
             child: Container(
@@ -1114,7 +1147,11 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                 color: const Color(0xFFFF7A00),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.home_outlined, color: Colors.white, size: 21),
+              child: const Icon(
+                Icons.home_outlined,
+                color: Colors.white,
+                size: 21,
+              ),
             ),
           ),
 

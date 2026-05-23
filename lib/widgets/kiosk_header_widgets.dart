@@ -9,7 +9,7 @@ class KioskHeaderTokens {
   static const double menuFontSize = 11;
   static const double menuIconSize = 12;
 
-  static const Color orderTypeBg = Color(0xFFEAF0FA);
+  static const Color orderTypeBg = Colors.white;
   static const Color orderTypeBorder = Color(0xFFD6E0EE);
   static const Color orderTypeDot = Color(0xFF5C76A3);
   static const Color orderTypeText = Color(0xFF4E668E);
@@ -63,10 +63,10 @@ class KioskOrderTypeChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = orderType.trim().isEmpty ? 'Dine-In' : orderType;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         color: KioskHeaderTokens.orderTypeBg,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: KioskHeaderTokens.orderTypeBorder),
       ),
       child: Row(
@@ -83,7 +83,8 @@ class KioskOrderTypeChip extends StatelessWidget {
             style: const TextStyle(
               fontSize: KioskHeaderTokens.orderTypeFontSize,
               color: KioskHeaderTokens.orderTypeText,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w900,
+
             ),
           ),
         ],

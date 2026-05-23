@@ -15,6 +15,7 @@ class CustomizeScreen extends StatefulWidget {
 
   final int initialQty;
   final bool isEditFromCart;
+  final bool openedFromSearch;
 
   const CustomizeScreen({
     super.key,
@@ -23,6 +24,7 @@ class CustomizeScreen extends StatefulWidget {
     required this.orderType,
     this.initialQty = 1,
     this.isEditFromCart = false,
+    this.openedFromSearch = false,
   });
 
   @override
@@ -37,6 +39,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
   // final int initialQty;
   final int minQty = 1;
   final int maxQty = 99;
+
 
   @override
   void initState() {
@@ -272,13 +275,17 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                                   child: Container(
                                     padding: const EdgeInsets.all(4),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
+                                      color: qty > minQty
+                                          ? const Color(0xFFFF7A00) // same as add button
+                                          : Colors.white,
                                       borderRadius: BorderRadius.circular(5),
                                     ),
                                     child: Icon(
                                       Icons.remove,
-                                      size: 14,
-                                      color: qty > minQty ? Colors.black : Colors.grey,
+                                      size: 18,
+                                      color: qty > minQty
+                                          ? Colors.white
+                                          : Colors.grey,
                                     ),
                                   ),
                                 ),
@@ -295,8 +302,10 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                                     ),
                                     child: Icon(
                                       Icons.add,
-                                      size: 14,
-                                      color: qty < maxQty ? Colors.white : Colors.white70,
+                                      size: 18,
+                                      color: qty < maxQty
+                                          ? Colors.white
+                                          : Colors.white70,
                                     ),
                                   ),
                                 ),
@@ -484,15 +493,16 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFF8A00),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10), // ✅ ADD THIS
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                     onPressed: isLoading
                         ? null
                         : () {
-                      final selectedAddons = addons.where((a) => a.isSelected).toList();
+                      final selectedAddons =
+                      addons.where((a) => a.isSelected).toList();
 
-                      // EDIT MODE: opened from cart -> return edited values to cart row
+                      // EDIT MODE
                       if (widget.isEditFromCart) {
                         Navigator.pop(context, {
                           "qty": qty,
@@ -501,18 +511,23 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                         return;
                       }
 
-                      // ADD MODE: opened from menu/category -> keep existing merge/add behavior
-                      final existingIndex = CartManager.cartItems.indexWhere((item) {
+                      // ADD MODE
+                      final existingIndex =
+                      CartManager.cartItems.indexWhere((item) {
                         final product = item["product"];
                         if (product.id != widget.product.id) return false;
 
                         final List existingAddons = item["addons"] as List;
+
                         if (existingAddons.length != selectedAddons.length) {
                           return false;
                         }
 
-                        final existingIds = existingAddons.map((a) => a.id).toSet();
-                        final newIds = selectedAddons.map((a) => a.id).toSet();
+                        final existingIds =
+                        existingAddons.map((a) => a.id).toSet();
+
+                        final newIds =
+                        selectedAddons.map((a) => a.id).toSet();
 
                         return existingIds.length == newIds.length &&
                             existingIds.containsAll(newIds);
@@ -521,7 +536,6 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                       if (existingIndex >= 0) {
                         CartManager.cartItems[existingIndex]["qty"] += qty;
                       } else {
-                        // Prefer manager helper so lineId is included
                         CartManager.addItem(
                           product: widget.product,
                           addons: selectedAddons,
@@ -529,13 +543,16 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                         );
                       }
 
-                      Navigator.pop(context, true);
+                      if (widget.openedFromSearch) {
+                        Navigator.pop(context, true); // close customize
+                        Navigator.pop(context);       // close search -> category
+                      } else {
+                        Navigator.pop(context, true); // category -> back to category only
+                      }
                     },
                     child: const Text(
                       "Add to Cart",
-                      style: TextStyle(
-                        color: Colors.white,
-                      ),
+                      style: TextStyle(color: Colors.white),
                     ),
                   ),
                 ),

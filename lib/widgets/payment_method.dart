@@ -273,7 +273,7 @@ class _PaymentMethodsState extends State<PaymentMethods> {
                             ),
                             SizedBox(height: 6),
                             _SummaryRow(
-                              label: 'Tax (CGST + SGST)',
+                              label: 'Tax ',
                               value: _formatAmount(widget.tax),
                             ),
                             SizedBox(height: 8),

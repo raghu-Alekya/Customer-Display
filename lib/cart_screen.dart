@@ -126,13 +126,13 @@ class _CartScreenState extends State<CartScreen> {
                     /// COLUMN HEADERS
                     Row(
                       children: const [
-                        Expanded(flex: 4, child: Text("Item Name")),
+                        Expanded(flex: 3, child: Text("Item Name")),
                         Expanded(
-                          flex: 2,
+                          flex: 1,
                           child: Center(child: Text("Qty")),
                         ),
                         Expanded(
-                          flex: 2,
+                          flex: 1,
                           child: Align(
                             alignment: Alignment.centerRight,
                             child: Text("Sub Total"),
@@ -179,7 +179,7 @@ class _CartScreenState extends State<CartScreen> {
 
                                 /// ITEM DETAILS
                                 Expanded(
-                                  flex: 4,
+                                  flex: 3,
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
@@ -302,7 +302,7 @@ class _CartScreenState extends State<CartScreen> {
 
                                 /// QTY
                                 Expanded(
-                                  flex: 2,
+                                  flex: 1,
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
@@ -328,7 +328,7 @@ class _CartScreenState extends State<CartScreen> {
 
                                 /// PRICE
                                 Expanded(
-                                  flex: 2,
+                                  flex: 1,
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
@@ -395,7 +395,7 @@ class _CartScreenState extends State<CartScreen> {
                         children: [
                           _billRow("Sub Total", total),
                           const SizedBox(height: 6),
-                          _billRow("Tax (9.1%)", tax),
+                          _billRow("Tax ", tax),
                           const Divider(height: 20),
                           _billRow("Net Payable", grandTotal, isTotal: true),
                         ],

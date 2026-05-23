@@ -195,11 +195,12 @@ class _SearchScreenState extends State<SearchScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => CustomizeScreen(
+                                builder: (_) =>CustomizeScreen(
                                   product: item,
-                                  addons: const [], // pass if needed
-                                  orderType: "Dine-In", // 🔥 pass your orderType properly
-                                ),
+                                  addons: const [],
+                                  orderType: "Dine-In",
+                                  openedFromSearch: true,
+                                )
                               ),
                             );
                           },
