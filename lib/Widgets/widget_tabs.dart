@@ -865,6 +865,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
               isDarkTheme: themeHelper.themeMode == ThemeMode.dark,
               numPadType: NumPadType.payment,
               showAddInsteadOfPay: true,
+
             ),
           ),
         ],
@@ -1444,6 +1445,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                               setState(() {
                                 _selectedCustomItemName = newValue;
                                 _customItemNameController.text = newValue;
+                                _selectedCategoryName = "Select Category";
+
                               });
                             }
                           },
@@ -1648,10 +1651,16 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
           },
           onClearPressed: () {
             setState(() {
+              // _customItemPrice = "0.00";
+              // _customItemPriceController.text =
+              // "${TextConstants.currencySymbol}0.00";
+              // _isEnteringItemPrice = false;
               _customItemPrice = "0.00";
-              _customItemPriceController.text =
-              "${TextConstants.currencySymbol}0.00";
+              _customItemPriceController.text = "${TextConstants.currencySymbol}0.00";
               _isEnteringItemPrice = false;
+
+              // 🔥 NEW: Clear Category + Reset to initial state
+              _selectedCategoryName = "Select Category";
             });
           },
           onDeletePressed: () {
@@ -1686,6 +1695,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
             setState(() {
               _isEnteringItemPrice = false;
+              // _selectedCategoryName = "Select Category";
+
             });
 
             // Remove symbols, spaces, etc.
@@ -3930,8 +3941,323 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 // that for the duplicate check instead.
 // ============================================================
 
+  // Future<void> _handleAddCustomItem() async {
+  //   if (kDebugMode) print("🟢 [CUSTOM ITEM] START");
+  //
+  //   final orderHelper = OrderHelper();
+  //   final int? ensuredOrderId = await orderHelper.ensureOrderExists();
+  //
+  //   if (ensuredOrderId == null) {
+  //     ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //       const SnackBar(
+  //         content: Text("Failed to create order"),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //     return;
+  //   }
+  //
+  //   // ── Price Validation ────────────────────────────────────────
+  //   final cleanedPrice = _customItemPrice.replaceAll(RegExp(r'[^0-9.]'), '');
+  //   final double? price = double.tryParse(cleanedPrice);
+  //   if (price == null || price <= 0) {
+  //     ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //       const SnackBar(
+  //         content: Text("Please enter valid price"),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //     return;
+  //   }
+  //
+  //   // ── Category Validation ──────────────────────────────────────
+  //   if (_selectedCategoryName.trim() == "Select Category" ||
+  //       _selectedCategoryName.trim().isEmpty ||
+  //       !_categoriesList.any((cat) =>
+  //       cat['name']?.toString().trim() == _selectedCategoryName.trim())) {
+  //     // ── Reset UI ─────────────────────────────────────────────
+  //     setState(() {
+  //       _isCustomItemLoading = false;
+  //       _customItemPrice = "0.00";
+  //       _customItemPriceController.clear();
+  //       _skuController.clear();
+  //       _isEnteringItemPrice = false;
+  //       _selectedCategoryName = "Select Category"; //  Clear category after successful add
+  //     });
+  //   }
+  //
+  //   try {
+  //     final box = StorageProvider.offlineOrders;
+  //     final key = ensuredOrderId.toString();
+  //     final rawOrder = await box.get(key) ?? {};
+  //     final orderData = Map<String, dynamic>.from(rawOrder);
+  //
+  //     List<dynamic> products = (orderData["products"] ?? [])
+  //         .map((e) => Map<String, dynamic>.from(e))
+  //         .toList();
+  //
+  //     // ── Find selected custom item from dropdown ──────────────
+  //     final selectedItem = _customItemsList.firstWhere(
+  //           (item) => (item['name']?.toString() ?? "") == _selectedCustomItemName,
+  //       orElse: () => _customItemsList.isNotEmpty ? _customItemsList.first : {},
+  //     );
+  //
+  //     final String baseItemName =
+  //         selectedItem['name']?.toString() ?? "Custom Item";
+  //     final int selectedProductId = selectedItem['id'] ?? 60303;
+  //
+  //     // ── Find selected category and its tax slug ───────────────
+  //     final selectedCategory = _categoriesList.firstWhere(
+  //           (cat) =>
+  //       (cat['name']?.toString() ?? "").trim() ==
+  //           _selectedCategoryName.trim(),
+  //       orElse: () => _categoriesList.isNotEmpty
+  //           ? _categoriesList.first
+  //           : {},
+  //     );
+  //
+  //     final int selectedCategoryId =
+  //         int.tryParse(selectedCategory['id']?.toString() ?? '0') ?? 0;
+  //
+  //     final double categoryTaxPercent = double.tryParse(
+  //         selectedCategory['pos_tax_percent']?.toString() ?? '0') ??
+  //         0.0;
+  //
+  //     // === ENSURE SELECTED CATEGORY TAX IS STORED ===
+  //     final String posTaxClass =
+  //         selectedCategory['pos_tax_class']?.toString() ?? "standard";
+  //
+  //     final String posTaxPercent =
+  //         selectedCategory['pos_tax_percent']?.toString() ?? "0";
+  //
+  //     // ✅ IMPORTANT: Get the tax slug (e.g., "standard", "reduced")
+  //     // Prefer pos_tax_slug from API, otherwise derive from pos_tax_class
+  //     String taxSlug =
+  //         selectedCategory['pos_tax_slug']?.toString() ?? '';
+  //
+  //     if (taxSlug.isEmpty) {
+  //       final rawClass =
+  //           selectedCategory['pos_tax_class']?.toString() ?? '';
+  //
+  //       taxSlug = rawClass.toLowerCase().replaceAll(' ', '-');
+  //     }
+  //
+  //     // ✅ Determine if taxable (positive percent AND slug exists)
+  //     final bool isTaxable =
+  //         categoryTaxPercent > 0 && taxSlug.isNotEmpty;
+  //
+  //     final String taxStatus = isTaxable ? "taxable" : "none";
+  //     final String taxClass = isTaxable ? taxSlug : "";
+  //
+  //     print(
+  //       "🔍 ADD ATTEMPT → Product ID: $selectedProductId | Category ID: $selectedCategoryId | Tax Percent: $categoryTaxPercent% | Tax Slug: '$taxSlug' | Tax Status: $taxStatus",
+  //     );
+  //
+  //     // ── Duplicate check using stored `selected_category_id` ──
+  //     bool alreadyExists = false;
+  //
+  //     for (int i = 0; i < products.length; i++) {
+  //       final existing = products[i];
+  //
+  //       final int existingProductId =
+  //           int.tryParse(existing['product_id']?.toString() ?? '0') ??
+  //               0;
+  //
+  //       final int existingSelectedCategoryId = int.tryParse(
+  //           existing['selected_category_id']?.toString() ?? '0') ??
+  //           0;
+  //
+  //       if (existingProductId == selectedProductId &&
+  //           existingSelectedCategoryId == selectedCategoryId) {
+  //         alreadyExists = true;
+  //
+  //         print(
+  //           "❌ DUPLICATE DETECTED → Same Product + Same Selected Category",
+  //         );
+  //
+  //         break;
+  //       }
+  //     }
+  //
+  //     if (alreadyExists) {
+  //       setState(() {
+  //         _isCustomItemLoading = false;
+  //         _customItemPrice = "0.00";
+  //         _customItemPriceController.text =
+  //         "${TextConstants.currencySymbol}0.00";
+  //         _isEnteringItemPrice = false;
+  //         _selectedCategoryName = "Select Category";
+  //
+  //       });
+  //
+  //       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //         const SnackBar(
+  //           content: Text(
+  //             "This item is already added. Create a new order to add it again.",
+  //           ),
+  //           backgroundColor: Colors.orange,
+  //           duration: Duration(seconds: 1),
+  //         ),
+  //       );
+  //
+  //       return;
+  //     }
+  //
+  //     print("✅ No duplicate → Adding new item");
+  //
+  //     // ── Build item with correct tax fields ─────────────────────
+  //     final categories =
+  //     selectedItem['categories'] is List
+  //         ? selectedItem['categories']
+  //         : [];
+  //
+  //     final tags = selectedItem['tags'] is List
+  //         ? selectedItem['tags']
+  //         : [];
+  //
+  //     final normalizedSku = _skuController.text.trim().isNotEmpty
+  //         ? normalizeSku(_skuController.text)
+  //         : "C-${DateTime.now().millisecondsSinceEpoch}";
+  //
+  //     final String displayName =
+  //         "$_selectedCategoryName - $baseItemName";
+  //
+  //     final customItem = {
+  //       "server_item_id": selectedProductId,
+  //       "product_id": selectedProductId,
+  //       "variation_id": 0,
+  //       "type": selectedItem['type']?.toString() ?? "simple",
+  //       "name": displayName,
+  //       "price": price,
+  //       "sku": normalizedSku,
+  //       "categories": categories,
+  //       "tags": tags,
+  //       "selected_category_id": selectedCategoryId,
+  //       "selected_category_name": _selectedCategoryName,
+  //       "selected_category_tax_slug": taxSlug,
+  //
+  //       // 🔥 NEW: Explicitly store original pos_tax_* fields
+  //       "pos_tax_class": posTaxClass,
+  //       "pos_tax_percent": posTaxPercent,
+  //
+  //       "tax_status": taxStatus,
+  //       "tax_class": taxClass,
+  //       "tax_rate": categoryTaxPercent,
+  //       "tax_percent": categoryTaxPercent,
+  //       "applied_tax": "$_selectedCategoryName Tax",
+  //
+  //       "quantity": 1,
+  //       "item_image": "assets/custom.png",
+  //       "product_image": "assets/custom.png",
+  //       AppDBConst.itemType: "custom",
+  //       AppDBConst.itemName: displayName,
+  //       AppDBConst.itemPrice: price,
+  //       AppDBConst.itemSumPrice: price,
+  //       AppDBConst.itemCount: 1,
+  //     };
+  //
+  //     products.add(customItem);
+  //
+  //     // ── Recalculate totals ───────────────────────────────────
+  //     double grossTotal = 0.0;
+  //
+  //     for (var p in products) {
+  //       final itemPrice = (p["price"] ?? 0.0) as num;
+  //       final qty = (p["quantity"] ?? 1) as num;
+  //
+  //       grossTotal += itemPrice * qty;
+  //     }
+  //
+  //     orderData["products"] = products;
+  //     orderData["gross_total"] = grossTotal;
+  //     orderData["net_total"] = grossTotal;
+  //     orderData["net_payable"] = grossTotal;
+  //
+  //     await box.put(key, orderData);
+  //
+  //     await StorageProvider.productCache.put(
+  //       "sku_$normalizedSku",
+  //       {"products": [customItem]},
+  //     );
+  //
+  //     // ── Reset UI ─────────────────────────────────────────────
+  //     setState(() {
+  //       _isCustomItemLoading = false;
+  //       _customItemPrice = "0.00";
+  //       _customItemPriceController.clear();
+  //       _skuController.clear();
+  //       _isEnteringItemPrice = false;
+  //       // _selectedCategoryName = "Select Category";
+  //
+  //
+  //       // // ── Category Validation ─────────────────────────────────
+  //       if (_selectedCategoryName.trim() == "Select Category" ||
+  //           _selectedCategoryName.trim().isEmpty) {
+  //         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //           const SnackBar(
+  //             content: Text("Please select a category before adding"),
+  //             backgroundColor: Colors.orange,
+  //             duration: Duration(seconds: 2),
+  //           ),
+  //         );
+  //         return;
+  //       }
+  //
+  //       setState(() => _isCustomItemLoading = true);
+  //     });
+  //
+  //     await _orderHelper.loadData();
+  //     await _loadOrderData();
+  //
+  //     OrderHelper.notifyOrderPanelToRefresh();
+  //
+  //     widget.refreshOrderList?.call();
+  //
+  //     print(
+  //       "✅ SUCCESS: Added → $displayName | Tax Status: $taxStatus | Tax Class Slug: $taxClass",
+  //     );
+  //   } catch (e, stack) {
+  //     print("❌ Custom Item Error: $e");
+  //     print("Stack: $stack");
+  //
+  //     setState(() => _isCustomItemLoading = false);
+  //
+  //     ScaffoldMessenger.of(widget.scaffoldMessengerContext)
+  //         .showSnackBar(
+  //       SnackBar(
+  //         content: Text("Error adding custom item"),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //   }
+  // }
+
+
   Future<void> _handleAddCustomItem() async {
     if (kDebugMode) print("🟢 [CUSTOM ITEM] START");
+
+    // ── VALIDATION FIRST (BEFORE ANY OPERATIONS) ─────────────────
+    if (_selectedCategoryName.trim() == "Select Category" ||
+        _selectedCategoryName.trim().isEmpty ||
+        !_categoriesList.any((cat) =>
+        cat['name']?.toString().trim() == _selectedCategoryName.trim())) {
+
+      // Reset price field
+      setState(() {
+        _customItemPrice = "0.00";
+        _customItemPriceController.text = "${TextConstants.currencySymbol}0.00";
+        _isEnteringItemPrice = false;
+      });
+
+      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+        const SnackBar(
+          content: Text("Please select a category before adding"),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return; // ← EXIT EARLY
+    }
 
     final orderHelper = OrderHelper();
     final int? ensuredOrderId = await orderHelper.ensureOrderExists();
@@ -3959,27 +4285,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       return;
     }
 
-    // ── Category Validation ──────────────────────────────────────  ← ADD HERE
-    // ── Category Validation ──────────────────────────────────────
-    if (_selectedCategoryName.trim() == "Select Category" ||
-        _selectedCategoryName.trim().isEmpty ||
-        !_categoriesList.any((cat) =>
-        cat['name']?.toString().trim() == _selectedCategoryName.trim())) {
-      setState(() {
-        _customItemPrice = "0.00";
-        _customItemPriceController.text = "${TextConstants.currencySymbol}0.00";
-        _isEnteringItemPrice = false;
-      });
-      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        const SnackBar(
-          content: Text("Please select a category before adding"),
-          backgroundColor: Colors.orange,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
     setState(() => _isCustomItemLoading = true);
 
     try {
@@ -3998,79 +4303,43 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         orElse: () => _customItemsList.isNotEmpty ? _customItemsList.first : {},
       );
 
-      final String baseItemName =
-          selectedItem['name']?.toString() ?? "Custom Item";
+      final String baseItemName = selectedItem['name']?.toString() ?? "Custom Item";
       final int selectedProductId = selectedItem['id'] ?? 60303;
 
       // ── Find selected category and its tax slug ───────────────
       final selectedCategory = _categoriesList.firstWhere(
-            (cat) =>
-        (cat['name']?.toString() ?? "").trim() ==
-            _selectedCategoryName.trim(),
-        orElse: () => _categoriesList.isNotEmpty
-            ? _categoriesList.first
-            : {},
+            (cat) => (cat['name']?.toString() ?? "").trim() == _selectedCategoryName.trim(),
+        orElse: () => _categoriesList.isNotEmpty ? _categoriesList.first : {},
       );
 
-      final int selectedCategoryId =
-          int.tryParse(selectedCategory['id']?.toString() ?? '0') ?? 0;
-
+      final int selectedCategoryId = int.tryParse(selectedCategory['id']?.toString() ?? '0') ?? 0;
       final double categoryTaxPercent = double.tryParse(
-          selectedCategory['pos_tax_percent']?.toString() ?? '0') ??
-          0.0;
+          selectedCategory['pos_tax_percent']?.toString() ?? '0') ?? 0.0;
 
-      // === ENSURE SELECTED CATEGORY TAX IS STORED ===
-      final String posTaxClass =
-          selectedCategory['pos_tax_class']?.toString() ?? "standard";
+      final String posTaxClass = selectedCategory['pos_tax_class']?.toString() ?? "standard";
+      final String posTaxPercent = selectedCategory['pos_tax_percent']?.toString() ?? "0";
 
-      final String posTaxPercent =
-          selectedCategory['pos_tax_percent']?.toString() ?? "0";
-
-      // ✅ IMPORTANT: Get the tax slug (e.g., "standard", "reduced")
-      // Prefer pos_tax_slug from API, otherwise derive from pos_tax_class
-      String taxSlug =
-          selectedCategory['pos_tax_slug']?.toString() ?? '';
-
+      String taxSlug = selectedCategory['pos_tax_slug']?.toString() ?? '';
       if (taxSlug.isEmpty) {
-        final rawClass =
-            selectedCategory['pos_tax_class']?.toString() ?? '';
-
+        final rawClass = selectedCategory['pos_tax_class']?.toString() ?? '';
         taxSlug = rawClass.toLowerCase().replaceAll(' ', '-');
       }
 
-      // ✅ Determine if taxable (positive percent AND slug exists)
-      final bool isTaxable =
-          categoryTaxPercent > 0 && taxSlug.isNotEmpty;
-
+      final bool isTaxable = categoryTaxPercent > 0 && taxSlug.isNotEmpty;
       final String taxStatus = isTaxable ? "taxable" : "none";
       final String taxClass = isTaxable ? taxSlug : "";
 
-      print(
-        "🔍 ADD ATTEMPT → Product ID: $selectedProductId | Category ID: $selectedCategoryId | Tax Percent: $categoryTaxPercent% | Tax Slug: '$taxSlug' | Tax Status: $taxStatus",
-      );
-
       // ── Duplicate check using stored `selected_category_id` ──
       bool alreadyExists = false;
-
       for (int i = 0; i < products.length; i++) {
         final existing = products[i];
-
-        final int existingProductId =
-            int.tryParse(existing['product_id']?.toString() ?? '0') ??
-                0;
-
+        final int existingProductId = int.tryParse(existing['product_id']?.toString() ?? '0') ?? 0;
         final int existingSelectedCategoryId = int.tryParse(
-            existing['selected_category_id']?.toString() ?? '0') ??
-            0;
+            existing['selected_category_id']?.toString() ?? '0') ?? 0;
 
-        if (existingProductId == selectedProductId &&
-            existingSelectedCategoryId == selectedCategoryId) {
+        if (existingProductId == selectedProductId && existingSelectedCategoryId == selectedCategoryId) {
           alreadyExists = true;
-
-          print(
-            "❌ DUPLICATE DETECTED → Same Product + Same Selected Category",
-          );
-
+          print("❌ DUPLICATE DETECTED → Same Product + Same Selected Category");
           break;
         }
       }
@@ -4079,42 +4348,30 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         setState(() {
           _isCustomItemLoading = false;
           _customItemPrice = "0.00";
-          _customItemPriceController.text =
-          "${TextConstants.currencySymbol}0.00";
+          _customItemPriceController.text = "${TextConstants.currencySymbol}0.00";
           _isEnteringItemPrice = false;
+          _selectedCategoryName = "Select Category";
         });
 
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(
-            content: Text(
-              "This item is already added. Create a new order to add it again.",
-            ),
+            content: Text("This item is already added. Create a new order to add it again."),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 1),
           ),
         );
-
         return;
       }
 
-      print("✅ No duplicate → Adding new item");
-
-      // ── Build item with correct tax fields ─────────────────────
-      final categories =
-      selectedItem['categories'] is List
-          ? selectedItem['categories']
-          : [];
-
-      final tags = selectedItem['tags'] is List
-          ? selectedItem['tags']
-          : [];
+      // ── Build item ─────────────────────────────────────────────
+      final categories = selectedItem['categories'] is List ? selectedItem['categories'] : [];
+      final tags = selectedItem['tags'] is List ? selectedItem['tags'] : [];
 
       final normalizedSku = _skuController.text.trim().isNotEmpty
           ? normalizeSku(_skuController.text)
           : "C-${DateTime.now().millisecondsSinceEpoch}";
 
-      final String displayName =
-          "$_selectedCategoryName - $baseItemName";
+      final String displayName = "$_selectedCategoryName - $baseItemName";
 
       final customItem = {
         "server_item_id": selectedProductId,
@@ -4129,17 +4386,13 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         "selected_category_id": selectedCategoryId,
         "selected_category_name": _selectedCategoryName,
         "selected_category_tax_slug": taxSlug,
-
-        // 🔥 NEW: Explicitly store original pos_tax_* fields
         "pos_tax_class": posTaxClass,
         "pos_tax_percent": posTaxPercent,
-
         "tax_status": taxStatus,
         "tax_class": taxClass,
         "tax_rate": categoryTaxPercent,
         "tax_percent": categoryTaxPercent,
         "applied_tax": "$_selectedCategoryName Tax",
-
         "quantity": 1,
         "item_image": "assets/custom.png",
         "product_image": "assets/custom.png",
@@ -4154,11 +4407,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
       // ── Recalculate totals ───────────────────────────────────
       double grossTotal = 0.0;
-
       for (var p in products) {
         final itemPrice = (p["price"] ?? 0.0) as num;
         final qty = (p["quantity"] ?? 1) as num;
-
         grossTotal += itemPrice * qty;
       }
 
@@ -4168,11 +4419,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       orderData["net_payable"] = grossTotal;
 
       await box.put(key, orderData);
-
-      await StorageProvider.productCache.put(
-        "sku_$normalizedSku",
-        {"products": [customItem]},
-      );
+      await StorageProvider.productCache.put("sku_$normalizedSku", {"products": [customItem]});
 
       // ── Reset UI ─────────────────────────────────────────────
       setState(() {
@@ -4181,46 +4428,22 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         _customItemPriceController.clear();
         _skuController.clear();
         _isEnteringItemPrice = false;
-
-        // FIX: Do NOT blindly reset category — keep user's last selection
-        // ── Category Validation ─────────────────────────────────
-        if (_selectedCategoryName.trim() == "Select Category" ||
-            _selectedCategoryName.trim().isEmpty) {
-          ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-            const SnackBar(
-              content: Text("Please select a category before adding"),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 2),
-            ),
-          );
-          return;
-        }
-
-        setState(() => _isCustomItemLoading = true);
+        _selectedCategoryName = "Select Category"; // Reset after successful add
       });
 
       await _orderHelper.loadData();
       await _loadOrderData();
-
       OrderHelper.notifyOrderPanelToRefresh();
-
       widget.refreshOrderList?.call();
 
-      print(
-        "✅ SUCCESS: Added → $displayName | Tax Status: $taxStatus | Tax Class Slug: $taxClass",
-      );
+      print("✅ SUCCESS: Added → $displayName | Tax Status: $taxStatus | Tax Class Slug: $taxClass");
+
     } catch (e, stack) {
       print("❌ Custom Item Error: $e");
       print("Stack: $stack");
-
       setState(() => _isCustomItemLoading = false);
-
-      ScaffoldMessenger.of(widget.scaffoldMessengerContext)
-          .showSnackBar(
-        SnackBar(
-          content: Text("Error adding custom item"),
-          backgroundColor: Colors.red,
-        ),
+      ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+        SnackBar(content: Text("Error adding custom item: $e"), backgroundColor: Colors.red),
       );
     }
   }

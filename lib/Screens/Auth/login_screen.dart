@@ -21,6 +21,7 @@ import '../../Repositories/Assets/asset_repository.dart';
 import '../../Repositories/Auth/login_repository.dart';
 import '../../Repositories/Auth/logout_repository.dart';
 import '../../Repositories/Orders/order_repository.dart';
+import '../../Repositories/session_valadition_repository.dart';
 import '../../Widgets/SafeStorageHelper.dart';
 import '../../Widgets/discount_engine_constants.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
@@ -268,10 +269,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                     if (snapshot.data?.data?.token != null) {
                                       WidgetsBinding.instance.addPostFrameCallback((_) async {
                                         final loginResponse = snapshot.data!.data!;
+                                        final pin = _password.join();
+                                        final token = loginResponse.token ?? "";
 
-// ✅ STORE SAFE FLAGS
-                                        await SafeStorageHelper.saveSafeEnable(
-                                          loginResponse.safeEnable == "1",
+                                        TokenValidationService.startValidation(
+                                          token: token,
+                                          pin: pin,
                                         );
 
                                         await SafeStorageHelper.saveSafeEnableDrop(
