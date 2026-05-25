@@ -1668,12 +1668,19 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
           1;
 
       // Price priority
+      // Price priority — use item_sum_price (already discounted) directly
+      // Do NOT fall back to item_price/price as those hold original/unit price
       double unitPrice =
           double.tryParse(item["item_sum_price"]?.toString() ?? "") ??
               double.tryParse(item["amount"]?.toString() ?? "") ??
-              double.tryParse(item["item_price"]?.toString() ?? "") ??
-              double.tryParse(item["price"]?.toString() ?? "") ??
               0.0;
+      // If item_sum_price is 0, only then fall back to unit price keys
+      if (unitPrice == 0.0) {
+        unitPrice =
+            double.tryParse(item["item_price"]?.toString() ?? "") ??
+                double.tryParse(item["price"]?.toString() ?? "") ??
+                0.0;
+      }
 
       // Extract item-level discounts accurately from meta
       String dType = (item['discount_type'] ?? '').toString().toLowerCase();
@@ -1706,6 +1713,37 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
       grossTotal += unitPrice;
     }
+
+
+    final double couponOnlyDiscount = (() {
+      double couponLinesSumLocal = 0.0;
+      if (_order['coupon_lines'] is List) {
+        for (var c in _order['coupon_lines']) {
+          if (c is Map) {
+            couponLinesSumLocal += double.tryParse(c['discount']?.toString() ?? '') ?? 0.0;
+          }
+        }
+      }
+      if (couponLinesSumLocal > 0) return couponLinesSumLocal;
+
+      // Check if we have item-level discounts in orderItems
+      final bool hasItemLevelDiscounts = orderItems.any((item) {
+        final autoD = (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
+        final multiD = (item[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
+        final comboD = (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
+        return autoD > 0 || multiD > 0 || comboD > 0;
+      });
+
+      if (hasItemLevelDiscounts) return 0.0;
+
+      return orderDiscount.abs();
+    })();
+
+    // ✅ FIX: orderDiscount should only be coupon/order-level discount
+// NOT item-level auto/combo/multipack discounts (those are in line items)
+// Item-level discounts are already embedded in itemsForSummary line items
+// and will be subtracted by _recalculateGrossAndNetFromLineItemDiscounts()
+// So pass 0.0 for orderDiscount when it only reflects item-level discounts
 
     print("### Gross Total Calculated: $grossTotal");
 
@@ -1885,6 +1923,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         print("   Price → $itemPrice | Tax → $itemTax");
       }
     }
+
 
     final double totalRefundWithTax =
         localRefundedItemsTotal + localRefundedTaxTotal;
@@ -3589,30 +3628,68 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                         final filteredItems = visibleLineItems(orderItems);
 
 // 🔥 NEW: Fix price before sending to OrderSummaryScreen
+//                                         final List<Map<String, dynamic>> itemsForSummary = filteredItems.map((item) {
+//                                           final Map<String, dynamic> newItem = Map<String, dynamic>.from(item);
+//
+//                                           final double regularPrice =
+//                                               (item[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
+//                                                   (item[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??
+//                                                   (item[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
+//
+//                                           final double currentPrice = (item[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
+//
+//                                           // Check if item has any discount
+//                                           final bool hasDiscount =
+//                                               ((item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0) > 0 ||
+//                                                   ((item[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0) > 0 ||
+//                                                   ((item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0) > 0 ||
+//                                                   ((item[AppDBConst.displayAutoDiscount] as num?)?.toDouble() ?? 0.0) > 0 ||
+//                                                   (item['discount_type']?.toString().isNotEmpty ?? false);
+//
+//                                           // If has discount → send original price as itemPrice for display in summary
+//                                           if (hasDiscount && regularPrice > currentPrice && regularPrice > 0) {
+//                                             newItem[AppDBConst.itemPrice] = regularPrice;
+//                                             // Optionally also update unit price if used
+//                                             newItem[AppDBConst.itemUnitPrice] = regularPrice;
+//                                           }
+//
+//                                           return newItem;
+//                                         }).toList();
+
+                                        // 🔥 NEW: Fix price before sending to OrderSummaryScreen (Enhanced for all discount types)
                                         final List<Map<String, dynamic>> itemsForSummary = filteredItems.map((item) {
                                           final Map<String, dynamic> newItem = Map<String, dynamic>.from(item);
 
-                                          final double regularPrice =
-                                              (item[AppDBConst.itemRegularPrice] as num?)?.toDouble() ??
-                                                  (item[AppDBConst.itemUnitPrice] as num?)?.toDouble() ??
-                                                  (item[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
+                                          final double qty = (item[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
+                                          final double sumPrice = (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
 
-                                          final double currentPrice = (item[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
+                                          // Get all discount amounts for this item
+                                          final double autoDiscount = (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
+                                          final double multipackDiscount = (item[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
+                                          final double comboDiscount = (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
+                                          final double totalItemDiscount = autoDiscount + multipackDiscount + comboDiscount;
 
-                                          // Check if item has any discount
-                                          final bool hasDiscount =
-                                              ((item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0) > 0 ||
-                                                  ((item[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0) > 0 ||
-                                                  ((item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0) > 0 ||
-                                                  ((item[AppDBConst.displayAutoDiscount] as num?)?.toDouble() ?? 0.0) > 0 ||
-                                                  (item['discount_type']?.toString().isNotEmpty ?? false);
+                                          // Current discounted unit price from DB
+                                          double currentUnitPrice = (item[AppDBConst.itemPrice] as num?)?.toDouble() ??
+                                              (item[AppDBConst.itemUnitPrice] as num?)?.toDouble() ?? 0.0;
 
-                                          // If has discount → send original price as itemPrice for display in summary
-                                          if (hasDiscount && regularPrice > currentPrice && regularPrice > 0) {
-                                            newItem[AppDBConst.itemPrice] = regularPrice;
-                                            // Optionally also update unit price if used
-                                            newItem[AppDBConst.itemUnitPrice] = regularPrice;
+                                          if (currentUnitPrice == 0.0 && sumPrice > 0 && qty > 0) {
+                                            currentUnitPrice = sumPrice / qty;
                                           }
+
+                                          // If item has discounts, restore the original pre-discount price for display
+                                          // The summary screen uses itemPrice as the "unit price" shown with strikethrough
+                                          if (totalItemDiscount > 0 && qty > 0) {
+                                            final double originalUnitPrice = currentUnitPrice + (totalItemDiscount / qty);
+                                            newItem[AppDBConst.itemPrice] = originalUnitPrice;
+                                            newItem[AppDBConst.itemUnitPrice] = originalUnitPrice;
+                                            // item_sum_price must also reflect the pre-discount total so the summary
+                                            // screen can subtract discounts from it and show the correct final price
+                                            newItem[AppDBConst.itemSumPrice] = originalUnitPrice * qty;
+                                          }
+
+                                          newItem['original_price'] = currentUnitPrice;
+                                          newItem['regular_price'] = (item[AppDBConst.itemRegularPrice] as num?)?.toDouble() ?? currentUnitPrice;
 
                                           return newItem;
                                         }).toList();
@@ -3624,6 +3701,17 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                   "Sent Price: ${item[AppDBConst.itemPrice]} | "
                                                   "Regular: ${item[AppDBConst.itemRegularPrice]} | "
                                                   "Qty: ${item[AppDBConst.itemCount]}");
+
+
+                                          print("🚀 NAVIGATING TO ORDER SUMMARY");
+                                          print("   netPayable          : ${netPayable.toStringAsFixed(2)}");
+                                          print("   uiNetPayable        : ${uiNetPayable.toStringAsFixed(2)}");
+                                          print("   grossTotal          : ${grossTotal.toStringAsFixed(2)}");
+                                          print("   orderDiscount       : ${orderDiscount.toStringAsFixed(2)}");
+                                          print("   merchantDiscount    : ${merchantDiscount.toStringAsFixed(2)}");
+                                          print("   orderTax            : ${orderTax.toStringAsFixed(2)}");
+                                          print("   cashbackFee         : ${cashbackFee.toStringAsFixed(2)}");
+                                          print("   uiGrossTotal        : ${uiGrossTotal.toStringAsFixed(2)}");
                                         }
 
 
@@ -3631,16 +3719,20 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                           context,
                                           MaterialPageRoute(
                                             builder: (_) => OrderSummaryScreen(
-                                              orderItems:
-                                                  filteredItems, // ✅ ONLY product items
+                                              orderItems:itemsForSummary,
+                                                  // filteredItems, //  ONLY product items
                                               formattedDate: displayDate,
                                               formattedTime: displayTime,
                                               grossTotal: grossTotal.toDouble(),
-                                              orderDiscount: orderDiscount,
+                                              // grossTotal: itemRegularPrice,           // Keep your current gross for totals
+                                              // orderDiscount: orderDiscount,
+                                              orderDiscount: uiOrderDiscount,
+
                                               merchantDiscount:
                                                   merchantDiscount,
                                               orderTax: uiOrderTax,
                                               netPayable: netPayable.toDouble(),
+
                                               orderId: selectedOrderId,
 
                                               offlineOrderId:
@@ -3648,6 +3740,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                               cashbackFee: cashbackFee,
                                               ebtAmount: ebtAmount,
                                               discountAmount: discountAmount,
+                                              itemPricesAlreadyAdjusted: true, // ADD THIS — prices fixed in panel, skip double-subtract
+
                                             ),
                                           ),
                                         );
