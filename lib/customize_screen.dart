@@ -105,7 +105,6 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
   double get totalPrice => (basePrice + addonsTotal) * qty;
 
   @override
-  @override
   Widget build(BuildContext context) {
     const horizontalInset = 16.0;
     const cardPadding = 12.0;
@@ -151,7 +150,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                 horizontalInset,
                 horizontalInset,
               ),
-              padding: const EdgeInsets.all(cardPadding),
+              // padding: const EdgeInsets.all(cardPadding),
               decoration: BoxDecoration(
                 color: const Color(0xFFF7F7F7),
                 borderRadius: BorderRadius.circular(16),
@@ -161,7 +160,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                 children: [
                   /// 🔹 HEADER — spacer + flex match item row below (4+3+2+2)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF3E2CC), // ✅ SAME AS ITEM CARD
                       borderRadius: BorderRadius.circular(5),
@@ -189,6 +188,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.black,
+                                fontWeight: FontWeight.w900,
                               ),
                             ),
                           ),
@@ -203,7 +203,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.black,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w900,
                               ),
                             ),
                           ),
@@ -213,12 +213,12 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                           child: Align(
                             alignment: Alignment.centerRight,
                             child: Text(
-                              "Final",
+                              "Total",
                               textAlign: TextAlign.end,
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.black,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w900,
                               ),
                             ),
                           ),
@@ -231,7 +231,8 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
 
                   /// 🔹 ITEM CARD
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(18),
+                    width: double.infinity,
                     decoration: BoxDecoration(
                       color: const Color(0xFFF3E2CC), // 🔥 beige
                       borderRadius: BorderRadius.circular(5),

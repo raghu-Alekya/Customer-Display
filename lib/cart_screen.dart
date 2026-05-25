@@ -352,7 +352,7 @@ class _CartScreenState extends State<CartScreen> {
                                     ],
                                   ),
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 28),
 
                                 /// DELETE
                                 Expanded(

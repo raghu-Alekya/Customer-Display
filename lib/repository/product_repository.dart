@@ -17,55 +17,27 @@ class ProductRemoteDataSource {
       : _client = client ?? http.Client();
 
   Future<List<ProductModel>> fetchProductsByCategory(int categoryId) async {
-    print("🔵 Fetch Products By Category ID: $categoryId");
     final cacheKey = 'products_cache_category_$categoryId';
+
     final cached = await _readCachedProducts(
       cacheKey,
       maxAge: const Duration(minutes: 20),
     );
+
     if (cached != null && cached.isNotEmpty) {
-      print("⚡ Returning cached products for category $categoryId");
       return cached;
     }
 
-    final endpoints = <Uri>[
-      Uri.parse('$_customBaseUrl/$categoryId'),
-      Uri.parse(
-        '$_wcProductsBaseUrl?category=$categoryId&per_page=100&status=publish',
-      ),
-    ];
+    final endpoint = Uri.parse('$_customBaseUrl/$categoryId');
 
-    Exception? lastError;
+    final products = await _requestProducts(endpoint);
 
-    for (final endpoint in endpoints) {
-      print("👉 Trying Endpoint: $endpoint");
-
-      try {
-        final products = await _requestProducts(endpoint);
-
-        print("✅ Products Count from $endpoint: ${products.length}");
-
-        if (products.isNotEmpty) {
-          await _writeCachedProducts(cacheKey, products);
-          return products;
-        } else {
-          print("⚠️ Empty response, trying next endpoint...");
-        }
-      } catch (e) {
-        print("❌ Error from $endpoint: $e");
-        lastError = Exception(e.toString());
-      }
+    if (products.isNotEmpty) {
+      await _writeCachedProducts(cacheKey, products);
     }
 
-    if (lastError != null) {
-      print("🚨 Final Error: $lastError");
-      throw lastError;
-    }
-
-    print("⚠️ No products found for category $categoryId");
-    return const [];
+    return products;
   }
-
   Future<List<ProductModel>> searchProducts(String query) async {
     print("🔍 Searching Products: $query");
     final normalizedQuery = query.trim().toLowerCase();

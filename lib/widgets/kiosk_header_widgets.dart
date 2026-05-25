@@ -32,20 +32,27 @@ class KioskMenuBackButton extends StatelessWidget {
       onPressed: onPressed ?? () => Navigator.pop(context),
       icon: const Icon(
         Icons.arrow_back_ios_new,
-        size: KioskHeaderTokens.menuIconSize,
+        size: 10, // reduced
         color: KioskHeaderTokens.menuOrange,
       ),
       label: Text(
         label,
         style: const TextStyle(
-          fontSize: KioskHeaderTokens.menuFontSize,
+          fontSize: 11, // reduced
           color: KioskHeaderTokens.menuOrange,
           fontWeight: FontWeight.w600,
         ),
       ),
       style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: KioskHeaderTokens.menuBorder),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        minimumSize: const Size(80, 32), // reduced height
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        side: const BorderSide(
+          color: KioskHeaderTokens.menuBorder,
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 8,
+          vertical: 0, // remove extra height
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
         ),
@@ -62,15 +69,20 @@ class KioskOrderTypeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = orderType.trim().isEmpty ? 'Dine-In' : orderType;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      width: 90,   // same as back button width
+      height: 32,  // same as back button height
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: KioskHeaderTokens.orderTypeBg,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: KioskHeaderTokens.orderTypeBorder),
+        border: Border.all(
+          color: KioskHeaderTokens.orderTypeBorder,
+        ),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Icon(
             Icons.circle,
@@ -78,13 +90,15 @@ class KioskOrderTypeChip extends StatelessWidget {
             color: KioskHeaderTokens.orderTypeDot,
           ),
           const SizedBox(width: 4),
-          Text(
-            text,
-            style: const TextStyle(
-              fontSize: KioskHeaderTokens.orderTypeFontSize,
-              color: KioskHeaderTokens.orderTypeText,
-              fontWeight: FontWeight.w900,
-
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                color: KioskHeaderTokens.orderTypeText,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ],

@@ -420,7 +420,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
           _storeLogoBlock(),
           const SizedBox(width: 8),
           KioskOrderTypeChip(orderType: widget.orderType),
-          const SizedBox(width: 12),
+          const SizedBox(width: 6),
           SizedBox(
             width: 280,
             child: Container(
