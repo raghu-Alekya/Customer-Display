@@ -167,6 +167,7 @@ class MainActivity : FlutterActivity() {
                     val loyaltyContact = call.argument<String>("loyaltyContact") ?: ""
                     val availablePoints = call.argument<Int>("availablePoints") ?: 0
                     val summaryEnabled = call.argument<Boolean>("summaryEnabled") ?: false
+                    val redeemedAmount = call.argument<Double>("redeemedAmount") ?: 0.0
 
                     Log.d("CustomerDisplay", "☎ Loyalty Contact received: $loyaltyContact")
 
@@ -193,9 +194,9 @@ class MainActivity : FlutterActivity() {
                         cashbackFee,
                         loyaltyContact,
                         availablePoints,
-                        summaryEnabled
+                        summaryEnabled,
+                        redeemedAmount
                     )
-
                     if (success) {
                         Log.d("CustomerDisplay", "✔ Customer data displayed")
                         result.success("Data displayed")
@@ -455,7 +456,8 @@ class MainActivity : FlutterActivity() {
         cashbackFee: Double,
         loyaltyContact: String,
         availablePoints: Int,
-        summaryEnabled: Boolean
+        summaryEnabled: Boolean,
+        redeemedAmount: Double
     ): Boolean {
         // 🔥 ADD THIS LINE HERE (FIRST LINE)
         isOrderActive = true
@@ -495,7 +497,8 @@ class MainActivity : FlutterActivity() {
             cashbackFee,
             loyaltyContact,
             availablePoints,
-            summaryEnabled //✅
+            summaryEnabled,
+            redeemedAmount
         )
 
         Log.d("CustomerDisplay", "✔ CustomerDisplayPresentation updated with order #$orderId")
@@ -681,7 +684,7 @@ class MainActivity : FlutterActivity() {
 
                 val restoredNet = currentNet + redeemedAmount
 
-                redeemedAmount = 0.0
+                this.redeemedAmount = 0.0
 
                 netPayableView.text = "Total : ${formatCurrency(restoredNet)}"
 
@@ -695,8 +698,7 @@ class MainActivity : FlutterActivity() {
 
             Log.d("CustomerDisplay", "hideRedeemSummary called")
 
-            redeemedAmount = 0.0
-
+            this.redeemedAmount = 0.0
             val redeemRow =
                 findViewById<LinearLayout>(R.id.redeem_row)
 
@@ -713,7 +715,7 @@ class MainActivity : FlutterActivity() {
             isRedeemPopupOpen = false
             phoneInputUnlocked = false
             keepSummaryVisible = false
-            redeemedAmount = 0.0
+            this.redeemedAmount = 0.0
             currentDisplayedOrderId = -1
 
             Log.d("CustomerDisplay", "🔄 Customer layout state reset")
@@ -1067,7 +1069,7 @@ class MainActivity : FlutterActivity() {
                 isRedeemPopupOpen = false
                 firstOrderShown = false
                 currentDisplayedOrderId = -1
-                redeemedAmount = 0.0// IMPORTANT RESET
+                this.redeemedAmount = 0.0// IMPORTANT RESET
 
                 setContentView(R.layout.welcome_layout)
 
@@ -1316,10 +1318,13 @@ class MainActivity : FlutterActivity() {
             cashbackFee: Double,
             loyaltyContact: String,
             availablePoints: Int,
-            summaryEnabled: Boolean
+            summaryEnabled: Boolean,
+            redeemedAmount: Double
         ) {
 
             firstOrderShown = true
+            this.redeemedAmount = redeemedAmount
+
 
 // detect new order BEFORE popup check
             if (currentDisplayedOrderId != -1 &&
@@ -1330,7 +1335,7 @@ class MainActivity : FlutterActivity() {
                     "🆕 New order detected → clearing redeem state"
                 )
 
-                redeemedAmount = 0.0
+                this.redeemedAmount = 0.0
                 isRedeemPopupOpen = false
                 keepSummaryVisible = false
 
@@ -2071,11 +2076,9 @@ class MainActivity : FlutterActivity() {
 
             taxView.text = formatCurrency(tax)
 
-            val finalNetPayable = (netPayable - redeemedAmount).coerceAtLeast(0.0)
-
-            netPayableView.text = "Total : ${formatCurrency(finalNetPayable)}"
+            netPayableView.text = "Total : ${formatCurrency(netPayable)}"
 // show redeem row separately
-            if (summaryEnabled && redeemedAmount > 0) {
+            if (summaryEnabled && this.redeemedAmount > 0) {
                 showRedeemSummary(redeemedAmount)
             } else {
                 redeemRow.visibility = View.GONE
@@ -2097,7 +2100,7 @@ class MainActivity : FlutterActivity() {
 
             Log.d(
                 "CustomerDisplay",
-                "✔ Order #$orderId totals updated, Total Items: $totalItemCount, Final Payable: $finalNetPayable"
+                "✔ Order #$orderId totals updated, Total Items: $totalItemCount, Final Payable: $netPayable"
             )
         }
         private fun dpToPx(dp: Int): Int {

@@ -42,6 +42,7 @@ import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import '../Screens/Home/isar_payments/local_payments_model.dart';
 import '../Utilities/printer_settings.dart';
 import '../Utilities/result_utility.dart';
+import '../services/CustomerDisplayService.dart';
 
 /// Same EBT rules as [OrderPanelDBHelper] / Fast Keys: product tag `ebt-eligible` OR line/variation
 /// meta keys `is_ebt_eligible`, `_is_ebt_eligible`, `_ebt_eligible` (list API often omits tags).
@@ -833,6 +834,10 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
   /// Never null: list rows and payment helpers use `_order[...]` immediately after API
   /// preview fills `orderItems`, before `fetchOrder()` completes — `[]` on null was NoSuchMethodError.
   var _order = <String, dynamic>{AppDBConst.orderStatus: ''};
+
+  double get redeemedAmount {
+    return hiveRedeemedValue;
+  }
   // Build #1.0.118: Update fetchOrder to use widget.activeOrderId
   Future<void> fetchOrder() async {
     final int? requestOrderId = widget.activeOrderId;
@@ -1845,19 +1850,17 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     // NET TOTAL (no tax)
     // Algebraic addition: grossTotal + orderDiscount + merchantDiscount
     num netTotal = (grossTotal +
-        (orderDiscount != 0 ? -orderDiscount.abs() : 0.0) +
-        (merchantDiscount != 0 ? -merchantDiscount.abs() : 0.0))
-        .clamp(0.0, double.infinity);
+        (orderDiscount != 0 ? orderDiscount : 0.0) +           // already negative usually
+        (merchantDiscount != 0 ? merchantDiscount : 0.0))      // already negative
+        .clamp(double.negativeInfinity, double.infinity);         // ← Removed 0.0 clamp
 
-    // NET PAYABLE WITH TAX + CASHBACK
-    // Formula: Gross total + coupon (+ or -ve) + merchant discount (+ve or -ve) + tax + service charges
+// NET PAYABLE WITH TAX + CASHBACK
     double computedNetPayable = (grossTotal +
-        (orderDiscount != 0 ? -orderDiscount.abs() : 0.0) +
-        (merchantDiscount != 0 ? -merchantDiscount.abs() : 0.0) +
+        (orderDiscount != 0 ? orderDiscount : 0.0) +
+        (merchantDiscount != 0 ? merchantDiscount : 0.0) +
         orderTax +
         cashbackFee)
-        .clamp(0.0, double.infinity);
-
+        .clamp(double.negativeInfinity, double.infinity);
     // Woo total overrides only if > 0
     double netPayable = wooTotal > 0 ? wooTotal : computedNetPayable;
 
@@ -3619,6 +3622,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                 : null) ??
                                 0.0)
                                 .toDouble();
+                            // ADD THIS
+                            final double redeemValue = ((boxData is Map
+                                ? boxData["redeemed_value"]   // change key if needed
+                                : null) ??
+                                0.0)
+                                .toDouble();
+
+                            print("REDEEM VALUE FROM PENDING ORDER = $redeemValue");
 
                             if (kDebugMode) {
                               print(
@@ -3714,7 +3725,58 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                               print("   uiGrossTotal        : ${uiGrossTotal.toStringAsFixed(2)}");
                             }
 
+                            // Customer display update
+                            try {
+                              final customerDisplayItems = itemsForSummary.map((item) {
+                                final qty = (item[AppDBConst.itemCount] as num?)?.toInt() ?? 1;
+                                final price =
+                                    (item[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
 
+                                print(
+                                  "DISPLAY ITEM => ${item[AppDBConst.itemName]} | Qty: $qty | Price: $price",
+                                );
+
+                                return {
+                                  "name": item[AppDBConst.itemName]?.toString() ?? "",
+                                  "qty": qty,
+                                  "price": price,
+                                  "original_price":
+                                  (item["original_price"] as num?)?.toDouble() ?? price,
+                                  "auto_discount":
+                                  (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0,
+                                  "discount_type": item["discount_type"]?.toString() ?? "",
+                                  "image": item["image"]?.toString() ?? "",
+                                };
+                              }).toList();
+
+                              await CustomerDisplayService.showCustomerData(
+                                orderId: frozenSummaryOrderId,
+                                items: customerDisplayItems,
+
+                                // EXACT SAME AS ORDER SUMMARY
+                                grossTotal: grossTotal.toDouble(),
+                                discount: uiOrderDiscount.toDouble(),
+                                merchantDiscount: merchantDiscount.toDouble(),
+                                tax: uiOrderTax.toDouble(),
+                                cashbackFee: cashbackFee.toDouble(),
+                                netPayable: netPayable.toDouble(),
+
+                                // subtotal before final total
+                                netTotal: (grossTotal -
+                                    uiOrderDiscount -
+                                    merchantDiscount)
+                                    .toDouble(),
+
+                                orderDate: displayDate,
+                                orderTime: displayTime,
+                                loyaltyContact: '',
+                                redeemedAmount: redeemValue,
+                                summaryEnabled: true,
+                              );
+                            } catch (e) {
+                              print(">>> Customer display update failed: $e");
+                            }
+                            // navigation to order summary
                             final result = await Navigator.push(
                               context,
                               MaterialPageRoute(

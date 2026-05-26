@@ -832,125 +832,126 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   //   }
   // }
 
-  void _recalculateGrossAndNetFromLineItemDiscounts() {
-    if (orderItems.isEmpty) return;
-
-    double toDouble(dynamic v) =>
-        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
-
-    double recalculatedGrossTotal = 0.0;
-    double totalLineItemDiscount = 0.0;
-
-    for (final item in orderItems) {
-      final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
-      final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
-
-      // Skip non-product lines for discount calculation
-      if (itemType.contains('discount') ||
-          itemType.contains('coupon') ||
-          itemType.contains('payout') ||
-          itemType.contains('cashback') ||
-          itemType.contains('loyalty') ||
-          itemName.contains('merchant discount')) {
-        continue;
-      }
-
-      final double itemSumPrice = toDouble(item['item_sum_price']);
-      final double unitPrice = toDouble(item['item_price'] ?? item['price']);
-      final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-      final double lineOriginalTotal = unitPrice * qty;
-
-      // Use item_sum_price if available (more accurate from OrderScreenPanel)
-      // Otherwise calculate from unit price × quantity
-      final double lineGross = itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
-      recalculatedGrossTotal += lineGross;
-
-      final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
-
-      // Extract all discount types
-      double autoDiscount = [
-        item['auto_discount'],
-        item['auto_discount_total'],
-        item['autoDiscount'],
-        item['autoDiscountTotal'],
-        item['display_auto_discount'],
-        item['_pos_auto_discount'],
-      ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
-
-      double comboDiscount = [
-        item['combo_discount_total'],
-        item['comboDiscountTotal'],
-        item['combo_discount'],
-      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-
-      double mixMatchDiscount = [
-        item['mixmatch_discount_total'],
-        item['mixMatchDiscountTotal'],
-        item['mixmatch_discount'],
-      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-
-      double multipackDiscount = [
-        item['multipack_discount_total'],
-        item['multipackDiscountTotal'],
-        item['multipack_discount'],
-      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-
-      // Fix: backend sometimes moves discount into auto_discount for typed discounts
-      if (dtype == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
-        mixMatchDiscount = autoDiscount;
-        autoDiscount = 0;
-      }
-      if (dtype == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
-        comboDiscount = autoDiscount;
-        autoDiscount = 0;
-      }
-      if (dtype == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
-        multipackDiscount = autoDiscount;
-        autoDiscount = 0;
-      }
-
-      final double itemDiscount = autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
-      totalLineItemDiscount += itemDiscount;
-    }
-
-    // Only update if we have discounted items
-    if (totalLineItemDiscount <= 0 && (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
-      return;
-    }
-
-    // CRITICAL FIX: Use recalculatedGrossTotal as the new gross total
-    // This ensures the gross total reflects the PRE-discount total from item_sum_price
-    final double newGrossTotal = recalculatedGrossTotal > 0 ? recalculatedGrossTotal : grossTotal;
-
-    // NetTotal = GrossTotal - LineItemDiscounts + OrderDiscount + MerchantDiscount
-    final double newNetTotal = newGrossTotal - totalLineItemDiscount + discount + merchantDiscount;
-    final double newNetPayable = newNetTotal + tax + cashbackFee;
-
-    if (kDebugMode) {
-      print('── LINE-ITEM DISCOUNT RECALCULATION ──');
-      print('   Original Gross Total      : $grossTotal');
-      print('   Recalculated Gross Total  : $newGrossTotal');
-      print('   Total Line Item Discounts : $totalLineItemDiscount');
-      print('   Order Discount            : $discount');
-      print('   Merchant Discount         : $merchantDiscount');
-      print('   Tax                       : $tax');
-      print('   Cashback Fee              : $cashbackFee');
-      print('   New Net Total             : $newNetTotal');
-      print('   New Net Payable           : $newNetPayable');
-    }
-
-    setState(() {
-      grossTotal = newNetTotal.clamp(0.0, double.infinity); // post-discount value
-      NetTotal = newNetTotal.clamp(0.0, double.infinity);      NetTotal = newNetTotal.clamp(0.0, double.infinity);
-      computedNetPayable = newNetPayable.clamp(0.0, double.infinity);
-      orderTotal = computedNetPayable;
-
-      // Only reset balanceAmount if no payment has been made yet
-      if (tenderAmount <= 0) {
-        balanceAmount = computedNetPayable;
-      }
-    });
-  }
+  // void _recalculateGrossAndNetFromLineItemDiscounts() {
+  //   if (orderItems.isEmpty) return;
+  //
+  //   double toDouble(dynamic v) =>
+  //       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+  //
+  //   double recalculatedGrossTotal = 0.0;
+  //   double totalLineItemDiscount = 0.0;
+  //
+  //   for (final item in orderItems) {
+  //     final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+  //     final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
+  //
+  //     // Skip non-product lines for discount calculation
+  //     if (itemType.contains('discount') ||
+  //         itemType.contains('coupon') ||
+  //         itemType.contains('payout') ||
+  //         itemType.contains('cashback') ||
+  //         itemType.contains('loyalty') ||
+  //         itemName.contains('merchant discount')) {
+  //       continue;
+  //     }
+  //
+  //     final double itemSumPrice = toDouble(item['item_sum_price']);
+  //     final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+  //     final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+  //     final double lineOriginalTotal = unitPrice * qty;
+  //
+  //     // Use item_sum_price if available (more accurate from OrderScreenPanel)
+  //     // Otherwise calculate from unit price × quantity
+  //     final double lineGross = itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
+  //     recalculatedGrossTotal += lineGross;
+  //
+  //     final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
+  //
+  //     // Extract all discount types
+  //     double autoDiscount = [
+  //       item['auto_discount'],
+  //       item['auto_discount_total'],
+  //       item['autoDiscount'],
+  //       item['autoDiscountTotal'],
+  //       item['display_auto_discount'],
+  //       item['_pos_auto_discount'],
+  //     ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
+  //
+  //     double comboDiscount = [
+  //       item['combo_discount_total'],
+  //       item['comboDiscountTotal'],
+  //       item['combo_discount'],
+  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+  //
+  //     double mixMatchDiscount = [
+  //       item['mixmatch_discount_total'],
+  //       item['mixMatchDiscountTotal'],
+  //       item['mixmatch_discount'],
+  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+  //
+  //     double multipackDiscount = [
+  //       item['multipack_discount_total'],
+  //       item['multipackDiscountTotal'],
+  //       item['multipack_discount'],
+  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+  //
+  //     // Fix: backend sometimes moves discount into auto_discount for typed discounts
+  //     if (dtype == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
+  //       mixMatchDiscount = autoDiscount;
+  //       autoDiscount = 0;
+  //     }
+  //     if (dtype == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
+  //       comboDiscount = autoDiscount;
+  //       autoDiscount = 0;
+  //     }
+  //     if (dtype == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
+  //       multipackDiscount = autoDiscount;
+  //       autoDiscount = 0;
+  //     }
+  //
+  //     final double itemDiscount = autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
+  //     totalLineItemDiscount += itemDiscount;
+  //   }
+  //
+  //   // Only update if we have discounted items
+  //   if (totalLineItemDiscount <= 0 && (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
+  //     return;
+  //   }
+  //
+  //   // CRITICAL FIX: Use recalculatedGrossTotal as the new gross total
+  //   // This ensures the gross total reflects the PRE-discount total from item_sum_price
+  //   final double newGrossTotal = recalculatedGrossTotal > 0 ? recalculatedGrossTotal : grossTotal;
+  //
+  //   // NetTotal = GrossTotal - LineItemDiscounts + OrderDiscount + MerchantDiscount
+  //   final double newNetTotal = newGrossTotal - totalLineItemDiscount + discount + merchantDiscount;
+  //   final double newNetPayable = newNetTotal + tax + cashbackFee;
+  //
+  //   if (kDebugMode) {
+  //     print('── LINE-ITEM DISCOUNT RECALCULATION ──');
+  //     print('   Original Gross Total      : $grossTotal');
+  //     print('   Recalculated Gross Total  : $newGrossTotal');
+  //     print('   Total Line Item Discounts : $totalLineItemDiscount');
+  //     print('   Order Discount            : $discount');
+  //     print('   Merchant Discount         : $merchantDiscount');
+  //     print('   Tax                       : $tax');
+  //     print('   Cashback Fee              : $cashbackFee');
+  //     print('   New Net Total             : $newNetTotal');
+  //     print('   New Net Payable           : $newNetPayable');
+  //   }
+  //
+  //   setState(() {
+  //     grossTotal = newGrossTotal - totalLineItemDiscount + discount ; ////===
+  //     //newNetTotal.clamp(0.0, double.infinity); // post-discount value
+  //     NetTotal = newNetTotal.clamp(0.0, double.infinity);      NetTotal = newNetTotal.clamp(0.0, double.infinity);
+  //     computedNetPayable = newNetPayable.clamp(0.0, double.infinity);
+  //     orderTotal = computedNetPayable;
+  //
+  //     // Only reset balanceAmount if no payment has been made yet
+  //     if (tenderAmount <= 0) {
+  //       balanceAmount = computedNetPayable;
+  //     }
+  //   });
+  // }
 
   Future<void> _calculateBalanceFromPaymentHistory() async {
     try {
@@ -3171,7 +3172,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   Future<void> _recalculateTaxOnDiscountedItems() async {
     if (orderItems.isEmpty) return;
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
     double toDouble(dynamic v) =>
         v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
 
@@ -3186,12 +3186,200 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       return 0.0;
     }
 
-    double lineDiscount(Map<String, dynamic> item) =>
-        _extractTotalDiscountForItem(item);
+    // ─── Only use item-level auto/combo/multipack discounts here.
+    // Do NOT include coupon share — coupon is an order-level discount
+    // already captured in the `discount` state variable.
+    double lineItemOnlyDiscount(Map<String, dynamic> item) {
+      double n(dynamic v) =>
+          v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
 
-    // ── Walk product lines ──────────────────────────────────────────────────────
+      double posAuto = n(item['_pos_auto_discount']) +
+          n(item['auto_discount']) +
+          n(item['autoDiscount']) +
+          n(item['auto_discount_total']) +
+          n(item['display_auto_discount']);
+
+      double combo =
+          n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
+      double multipack =
+          n(item['multipack_discount_total']) + n(item['multipackDiscountTotal']);
+      double mixmatch = n(item['mixmatch_discount_total']);
+
+      final String dtype =
+      (item['discount_type'] ?? '').toString().toLowerCase();
+
+      if (dtype == 'auto' || dtype.isEmpty) return posAuto;
+      if (dtype == 'combo' || dtype == 'mixmatch')
+        return combo > 0 ? combo : posAuto;
+      if (dtype == 'multipack') return multipack > 0 ? multipack : posAuto;
+      return posAuto + combo + multipack + mixmatch;
+    }
+
     double totalTax = 0.0;
     bool anyItemHasDiscountOrTaxRate = false;
+    double totalLineGross = 0.0;
+    double totalLineDiscount = 0.0;
+
+    for (final item in orderItems) {
+      final String itemType =
+      (item['item_type'] ?? '').toString().toLowerCase();
+      final String itemName =
+      (item['item_name'] ?? '').toString().toLowerCase();
+
+      if (itemType.contains('discount') ||
+          itemType.contains('coupon') ||
+          itemType.contains('payout') ||
+          itemType.contains('cashback') ||
+          itemType.contains('loyalty') ||
+          itemName.contains('merchant discount')) {
+        continue;
+      }
+
+      final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+      final int qty =
+      (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+      final double lineTotal = unitPrice * qty;
+
+      // Use ONLY item-level discount (no coupon share)
+      final double itemDiscount = lineItemOnlyDiscount(item);
+      final double taxableBase =
+      (lineTotal - itemDiscount).clamp(0.0, double.infinity);
+
+      totalLineGross += lineTotal;
+      totalLineDiscount += itemDiscount;
+
+      if (itemDiscount > 0) anyItemHasDiscountOrTaxRate = true;
+
+      double itemTax = 0.0;
+      final double taxRate = resolveTaxRate(item);
+
+      if (taxRate > 0) {
+        anyItemHasDiscountOrTaxRate = true;
+        itemTax = taxableBase * taxRate;
+      } else {
+        final double rawTax =
+        toDouble(item['item_tax'] ?? item['tax_amount']);
+        if (rawTax > 0 && lineTotal > 0) {
+          anyItemHasDiscountOrTaxRate = true;
+          // Scale the original tax proportionally to the taxable base
+          itemTax = rawTax * (taxableBase / lineTotal);
+        }
+      }
+
+      totalTax += itemTax;
+    }
+
+    totalTax = double.parse(totalTax.toStringAsFixed(4));
+
+    final double serverTax = widget.orderTax;
+
+    // Net after ALL discounts (item-level + order-level coupon)
+    final double netAfterDiscount =
+        totalLineGross - totalLineDiscount + discount + merchantDiscount;
+
+    double finalTax;
+
+    if (!anyItemHasDiscountOrTaxRate) {
+      // No item-level data at all — use server tax scaled by coupon discount ratio
+      if (serverTax > 0 && discount < 0) {
+        // Coupon was applied: scale server tax by (net / gross) ratio
+        final double originalGross = widget.grossTotal;
+        if (originalGross > 0) {
+          final double taxableNet =
+          (originalGross + discount).clamp(0.0, double.infinity);
+          finalTax = serverTax * (taxableNet / originalGross);
+        } else {
+          finalTax = 0.0;
+        }
+      } else {
+        finalTax = serverTax > 0 ? serverTax : totalTax;
+      }
+      if (kDebugMode) {
+        print('── TAX: No item-level data. finalTax=$finalTax');
+      }
+    } else if (totalTax <= 0 && serverTax > 0) {
+      // Recalc returned 0 but server has a value — check if net > 0
+      if (netAfterDiscount > 0.005) {
+        finalTax = serverTax;
+      } else {
+        finalTax = 0.0;
+      }
+      if (kDebugMode) {
+        print('── TAX: Recalc=0, server=$serverTax, net=$netAfterDiscount → finalTax=$finalTax');
+      }
+    } else {
+      // ── KEY FIX: if a coupon discount is also applied on top of
+      // item discounts, scale the recalculated tax further by the
+      // coupon ratio so we don't over-report tax.
+      if (discount < 0 && totalLineGross > 0) {
+        final double postCouponBase =
+        (totalLineGross - totalLineDiscount + discount)
+            .clamp(0.0, double.infinity);
+        final double preCouponBase =
+        (totalLineGross - totalLineDiscount).clamp(0.01, double.infinity);
+        totalTax = totalTax * (postCouponBase / preCouponBase);
+        totalTax = double.parse(totalTax.toStringAsFixed(4));
+      }
+      finalTax = totalTax;
+      if (kDebugMode) {
+        print('── TAX: Using recalculated value: $finalTax');
+      }
+    }
+
+    if (kDebugMode) {
+      print('── TAX RECALCULATION COMPLETE ──');
+      print('   Gross Total        : $totalLineGross');
+      print('   Line Discounts     : $totalLineDiscount');
+      print('   Coupon/Order Disc  : $discount');
+      print('   Net After Discount : $netAfterDiscount');
+      print('   Server Tax         : $serverTax');
+      print('   Recalculated Tax   : $totalTax');
+      print('   Final Tax Used     : $finalTax');
+    }
+
+    final bool taxChanged = (finalTax - tax).abs() > 0.005;
+    if (!taxChanged) return;
+
+    final double newNetTotal = widget.grossTotal + discount + merchantDiscount;
+    final double newNetPayable = newNetTotal + finalTax + cashbackFee;
+
+    setState(() {
+      tax = finalTax;
+      NetTotal = newNetTotal;
+      computedNetPayable = newNetPayable;
+      orderTotal = newNetPayable;
+
+      if (tenderAmount <= 0) {
+        balanceAmount = newNetPayable;
+      }
+    });
+  }
+// ─────────────────────────────────────────────────────────────────────────────
+
+  void _recalculateGrossAndNetFromLineItemDiscounts() {
+    if (orderItems.isEmpty) return;
+
+    final bool hasPayout = orderItems.any((item) {
+      final String t = (item['item_type'] ?? '').toString().toLowerCase();
+      final String n = (item['item_name'] ?? '').toString().toLowerCase();
+      return t.contains('payout') ||
+          t.contains('cashback') ||
+          n.contains('payout') ||
+          n.contains('cashback');
+    });
+
+    if (hasPayout) {
+      if (kDebugMode) {
+        print('── LINE-ITEM RECALC SKIPPED: order has payout/cashback lines');
+      }
+      return; // ← trust widget.grossTotal / widget.netPayable as-is
+    }
+
+    double toDouble(dynamic v) =>
+        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+
+    double recalculatedGrossTotal = 0.0;
+    double totalLineItemDiscount = 0.0;
 
     for (final item in orderItems) {
       final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
@@ -3206,106 +3394,96 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         continue;
       }
 
+      final double itemSumPrice = toDouble(item['item_sum_price']);
       final double unitPrice = toDouble(item['item_price'] ?? item['price']);
       final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-      final double lineTotal = unitPrice * qty;
+      final double lineOriginalTotal = unitPrice * qty;
 
-      final double discount = lineDiscount(item);
-      final double taxableBase = (lineTotal - discount).clamp(0.0, double.infinity);
+      final double lineGross = itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
+      recalculatedGrossTotal += lineGross;
 
-      // Track whether this order's items actually carry discount or tax-rate data.
-      // If none do, recalculation is meaningless — server value is authoritative.
-      if (discount > 0) anyItemHasDiscountOrTaxRate = true;
+      final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
 
-      double itemTax = 0.0;
-      final double taxRate = resolveTaxRate(item);
+      double autoDiscount = [
+        item['auto_discount'],
+        item['auto_discount_total'],
+        item['autoDiscount'],
+        item['autoDiscountTotal'],
+        item['display_auto_discount'],
+        item['_pos_auto_discount'],
+      ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
 
-      if (taxRate > 0) {
-        anyItemHasDiscountOrTaxRate = true;
-        itemTax = taxableBase * taxRate;
-      } else {
-        final double rawTax = toDouble(item['item_tax'] ?? item['tax_amount']);
-        if (rawTax > 0 && lineTotal > 0) {
-          anyItemHasDiscountOrTaxRate = true;
-          itemTax = rawTax * (taxableBase / lineTotal);
-        }
+      double comboDiscount = [
+        item['combo_discount_total'],
+        item['comboDiscountTotal'],
+        item['combo_discount'],
+      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+
+      double mixMatchDiscount = [
+        item['mixmatch_discount_total'],
+        item['mixMatchDiscountTotal'],
+        item['mixmatch_discount'],
+      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+
+      double multipackDiscount = [
+        item['multipack_discount_total'],
+        item['multipackDiscountTotal'],
+        item['multipack_discount'],
+      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+
+      if (dtype == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
+        mixMatchDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+      if (dtype == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
+        comboDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+      if (dtype == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
+        multipackDiscount = autoDiscount;
+        autoDiscount = 0;
       }
 
-      totalTax += itemTax;
+      final double itemDiscount =
+          autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
+      totalLineItemDiscount += itemDiscount;
     }
 
-    totalTax = double.parse(totalTax.toStringAsFixed(4));
-
-    // ── Decision: use recalculated value vs server value ───────────────────────
-    //
-    // Only override the server tax when the items ACTUALLY provided enough data
-    // for a meaningful recalculation (discount keys or tax_rate keys were present).
-    //
-    // When items come from SQLite (e.g. opened from OrderScreenPanel) without
-    // those keys, totalTax will be 0.0 while widget.orderTax = 1.27 (from Woo).
-    // In that case we keep the server value.
-    //
-    // When items DO have discount keys (e.g. auto_discount on a line),
-    // the recalculated value is used because it reflects the post-discount tax.
-
-    final double serverTax = widget.orderTax; // passed in from OrderScreenPanel
-
-    final double finalTax;
-
-    if (!anyItemHasDiscountOrTaxRate) {
-      // No discount/rate data on items → trust the server value entirely.
-      finalTax = serverTax > 0 ? serverTax : totalTax;
-      if (kDebugMode) {
-        print('── TAX: No item-level discount/rate data found.');
-        print('   Using server tax: $finalTax (recalc would have been $totalTax)');
-      }
-    } else if (totalTax <= 0 && serverTax > 0) {
-      // Items had discount keys but recalc still produced 0 (edge case) →
-      // fall back to server value to avoid showing $0.00 tax incorrectly.
-      finalTax = serverTax;
-      if (kDebugMode) {
-        print('── TAX: Recalc = 0 but server tax = $serverTax → using server value.');
-      }
-    } else {
-      // Normal case: items had data and recalc produced a meaningful value.
-      finalTax = totalTax;
-      if (kDebugMode) {
-        print('── TAX: Using recalculated value: $finalTax');
-      }
-    }
-
-    if (kDebugMode) {
-      print('── TAX RECALCULATION COMPLETE ──');
-      print('   Gross Total        : $grossTotal');
-      print('   Discount           : $discount');
-      print('   Merchant Discount  : $merchantDiscount');
-      print('   Server Tax (passed): $serverTax');
-      print('   Recalculated Tax   : $totalTax');
-      print('   Final Tax Used     : $finalTax');
-      print('   Cashback Fee       : $cashbackFee');
-      print('   Net Payable        : ${(grossTotal + discount + merchantDiscount + finalTax + cashbackFee).toStringAsFixed(2)}');
-    }
-
-    // ── Only setState when value actually changed ──────────────────────────────
-    final bool taxChanged = (finalTax - tax).abs() > 0.005;
-    if (!taxChanged) {
-      if (kDebugMode) print('   Tax unchanged ($tax) — skipping setState');
+    if (totalLineItemDiscount <= 0 &&
+        (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
       return;
     }
 
-    final double newNetTotal = grossTotal + discount + merchantDiscount;
-    final double newNetPayable = newNetTotal + finalTax + cashbackFee;
+    final double newGrossTotal =
+    recalculatedGrossTotal > 0 ? recalculatedGrossTotal : grossTotal;
+
+    final double newNetTotal =
+        newGrossTotal - totalLineItemDiscount + discount + merchantDiscount;
+    final double newNetPayable = newNetTotal + tax + cashbackFee;
+
+    if (kDebugMode) {
+      print('── LINE-ITEM DISCOUNT RECALCULATION ──');
+      print('   Original Gross Total      : $grossTotal');
+      print('   Recalculated Gross Total  : $newGrossTotal');
+      print('   Total Line Item Discounts : $totalLineItemDiscount');
+      print('   Order Discount            : $discount');
+      print('   Merchant Discount         : $merchantDiscount');
+      print('   Tax                       : $tax');
+      print('   Cashback Fee              : $cashbackFee');
+      print('   New Net Total             : $newNetTotal');
+      print('   New Net Payable           : $newNetPayable');
+    }
 
     setState(() {
-      tax = finalTax;
-      NetTotal = newNetTotal;
-      computedNetPayable = newNetPayable;
-      orderTotal = newNetPayable;
+      grossTotal =
+          newGrossTotal - totalLineItemDiscount ;
+      // newGrossTotal;
+      NetTotal = newNetTotal.clamp(0.0, double.infinity);
+      computedNetPayable = newNetPayable.clamp(0.0, double.infinity);
+      orderTotal = computedNetPayable;
 
-      // Only reset balanceAmount when no payment has been made yet,
-      // so an in-progress partial payment is not disrupted.
       if (tenderAmount <= 0) {
-        balanceAmount = newNetPayable;
+        balanceAmount = computedNetPayable;
       }
     });
   }
@@ -5616,7 +5794,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               }
 
 // CASE 1: partial/full payment started
-              if (hasNetPayment || hasUnsyncedPayments) {
+              if (hasAnyPaymentBeenMade || hasUnsyncedPayments) {
                 _showExitPaymentConfirmation(context);
                 return;
               }
@@ -9652,7 +9830,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       setState(() => isSummaryLoading = true);
 
-      // ✅ CRITICAL: Fully clear coupon data
+      // Clear coupon data from Hive
       offlineOrder.remove("coupon_response");
       offlineOrder.remove("applied_coupons");
       offlineOrder.remove("coupon_applied");
@@ -9660,36 +9838,59 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       offlineOrder.remove("tax_discount");
       offlineOrder.remove("grand_total");
 
-      // Re-initialize clean coupon_response with only issued coupons (if any)
       offlineOrder["coupon_response"] = {
-        "coupons": [], // Start fresh
+        "coupons": [],
         "available_coupons": [],
       };
 
       await box.put(orderKey, offlineOrder);
 
-      // Reset local state
+      // ─────────────────────────────────────────────────────────
+      // FIX: Restore tax from widget.orderTax (the server value
+      // passed in when this screen was opened — always correct
+      // before any coupon was applied).
+      // Do NOT call _recalculateTaxOnDiscountedItems here because
+      // SQLite line items carry no tax_rate/item_tax keys, so
+      // recalculation always returns 0 and overwrites the real tax.
+      // ─────────────────────────────────────────────────────────
+      final double restoredTax = widget.orderTax;
+
       setState(() {
         discount = 0.0;
         discountValue = 0.0;
         couponDiscount = 0.0;
-        tax = widget.orderTax; // restore original tax
-        NetTotal = grossTotal + merchantDiscount;
+
+        // Restore tax to the original server value
+        tax = restoredTax;
+
+        // Recompute totals from scratch using original widget values
+        grossTotal = widget.grossTotal;
+        merchantDiscount = widget.merchantDiscount < 0
+            ? widget.merchantDiscount
+            : -widget.merchantDiscount.abs();
+
+        NetTotal = grossTotal + merchantDiscount; // discount is 0 now
         computedNetPayable = NetTotal + tax + cashbackFee;
         orderTotal = computedNetPayable;
         balanceAmount = computedNetPayable - tenderAmount;
-        isCouponAppliedFromApi = false;
 
+        isCouponAppliedFromApi = false;
       });
 
+      // Only recalculate item-level discounts (auto/combo/multipack),
+      // NOT tax — that was restored above from widget.orderTax.
+      // Recalculate tax accounting for item-level discounts (auto/combo/multipack).
       await _recalculateTaxOnDiscountedItems();
-      _recalculateGrossAndNetFromLineItemDiscounts();
 
-      // Optional: Sync to server to remove coupon from Woo side
+      // Recalculate gross/net from item-level discounts (auto/combo/multipack).
+      if (!widget.itemPricesAlreadyAdjusted) {
+        _recalculateGrossAndNetFromLineItemDiscounts();
+      }
+
       try {
         await OrderRepository().syncSingleOfflineOrder(offlineOrder);
       } catch (e) {
-        print("⚠️ Sync after coupon removal failed (but local clear succeeded): $e");
+        print(" Sync after coupon removal failed: $e");
       }
 
       if (mounted) {
@@ -9701,7 +9902,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         );
       }
 
-      print("🗑️ Coupon fully removed and cleaned from Hive for order: $orderKey");
+      print("🗑️ Coupon removed for order: $orderKey | tax restored to: $restoredTax");
     } catch (e) {
       print("❌ Error removing coupon: $e");
       if (mounted) {
@@ -9897,7 +10098,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Future<void> _applyCoupon(String code) async {
-    code = code.trim().toLowerCase(); // Normalize for comparison
+    code = code.trim().toLowerCase();
     if (code.isEmpty) return;
 
     try {
@@ -9916,34 +10117,45 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       setState(() => isSummaryLoading = true);
 
-      // === STRICT DUPLICATE CHECK ===
+      // ==================== SMART DUPLICATE CHECK ====================
       final dynamic cr = offlineOrder["coupon_response"];
+      bool isAlreadyRedeemed = false;
+
       if (cr is Map) {
         final List<dynamic> coupons = cr["coupons"] as List? ?? [];
 
         for (final dynamic item in coupons) {
-          if (item is Map) {
-            final Map<String, dynamic> couponMap = Map<String, dynamic>.from(item);
-            final String existingCode = (couponMap["code"]?.toString() ?? "").trim().toLowerCase();
+          if (item is! Map) continue;
 
-            if (existingCode == code) {
-              // Coupon is currently active
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Coupon already applied"),
-                  backgroundColor: Colors.orange,
-                ),
-              );
-              return;
+          final Map<String, dynamic> couponMap = Map<String, dynamic>.from(item);
+          final String existingCode = (couponMap["code"]?.toString() ?? "").trim().toLowerCase();
+
+          if (existingCode == code) {
+            // 🔥 ONLY block with "already applied" if it is ALREADY REDEEMED
+            if (_couponHiveEntryIsRedeem(couponMap)) {
+              isAlreadyRedeemed = true;
+              break;
             }
+            // If only issued → allow (for issuing or redeeming)
           }
         }
       }
 
-      // Backup before modification
+      if (isAlreadyRedeemed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Coupon already applied"),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+      // ============================================================
+
+      // Backup
       final dynamic originalCouponResponse = offlineOrder["coupon_response"];
 
-      // Add new redeem coupon
+      // Merge redeem coupon
       offlineOrder["coupon_response"] =
           _mergeRedeemIntoCouponResponse(offlineOrder["coupon_response"], code);
 
@@ -9960,15 +10172,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
 
       if (result == null || result is! Map<String, dynamic>) {
-        // Restore on failure
         offlineOrder["coupon_response"] = originalCouponResponse;
         await box.put(orderKey, offlineOrder);
 
         String errorMsg = "Invalid coupon or unable to apply";
-        if (result is Map<String, dynamic>) {
-          if (result['code'] == 'invalid_coupon') {
-            errorMsg = result['message']?.toString() ?? errorMsg;
-          }
+        if (result is Map<String, dynamic> && result['code'] == 'invalid_coupon') {
+          errorMsg = result['message']?.toString() ?? errorMsg;
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -9977,7 +10186,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return;
       }
 
-      // === SUCCESS ===
+      // SUCCESS logic (unchanged)
       final double newDiscount = double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
       final double newTax = double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
       final double newTotal = double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
@@ -10011,21 +10220,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         balanceAmount = newTotal;
         isCouponAppliedFromApi = true;
       });
+
       await _recalculateTaxOnDiscountedItems();
       _recalculateGrossAndNetFromLineItemDiscounts();
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Coupon applied successfully"), backgroundColor: Colors.green),
       );
 
     } catch (e) {
       print("❌ Apply coupon error: $e");
-
-      // Restore on exception
+      // Restore logic (unchanged)
       try {
         final box = StorageProvider.offlineOrders;
-        final String orderKey = widget.orderId?.toString() ??
-            widget.offlineOrderId?.toString() ?? "";
+        final String orderKey = widget.orderId?.toString() ?? widget.offlineOrderId?.toString() ?? "";
         if (orderKey.isNotEmpty) {
           final raw = await box.get(orderKey);
           if (raw is Map) {
@@ -10834,11 +11041,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           await _showVoidConfirmation(context, isPartial: true);
         },
         onNextPayment: () async {
-          try {
-            await CustomerDisplayService.showThankYou();
-          } catch (e) {
-            print(">>> Error showing Thank You screen: $e");
-          }
+          // try {
+          //   await CustomerDisplayService.showThankYou();
+          // } catch (e) {
+          //   print(">>> Error showing Thank You screen: $e");
+          // }
 
           print("Next Payment tapped → closing partial dialog cleanly");
 
@@ -11865,23 +12072,40 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       useRootNavigator: false,
       builder: (dialogCtx) => PaymentDialog(
         status: PaymentStatus.exitConfirmation,
-        onExitCancel: () {
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
-        },
-        onExitConfirm: () {
-          // ✅ STEP 1: Close dialog IMMEDIATELY
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
 
-          // ✅ STEP 2: Navigate IMMEDIATELY — no await
+        onExitCancel: () {
+          if (Navigator.of(dialogCtx).canPop()) {
+            Navigator.of(dialogCtx).pop();
+          }
+        },
+
+        onExitConfirm: () async {
+          // Close popup
+          if (Navigator.of(dialogCtx).canPop()) {
+            Navigator.of(dialogCtx).pop();
+          }
+
+          // Customer display
+          try {
+            await CustomerDisplayService.showThankYou();
+          } catch (e) {
+            print(">>> Error updating customer display: $e");
+          }
+
+          // Refresh order panel
           OrderHelper.isOrderPanelLoaded = false;
           OrderHelper.notifyOrderPanelToRefresh();
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => POSHomeScreen()),
-            result: TextConstants.refresh,
-          );
 
-          // ✅ STEP 3: Sync in background AFTER navigation
+          // Navigate safely
+          if (context.mounted) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => POSHomeScreen(),
+              ),
+            );
+          }
+
+          // Background sync
           Future(() async {
             try {
               await _syncCurrentOfflineOrder();

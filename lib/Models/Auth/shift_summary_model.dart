@@ -145,6 +145,11 @@ class Shift extends Equatable {
   final String shiftStatus;
   final double overShort;
   final double tillAmount;
+  final double ebtTotal;
+  final double cardTotal;
+  final double refundTotal;
+  final double payoutTotal;
+  final double cashbackAmount;
 
   const Shift({
     required this.shiftId,
@@ -166,7 +171,13 @@ class Shift extends Equatable {
     required this.shiftClosingNotes,
     required this.shiftStatus,
     required this.overShort,
-    required this.tillAmount
+    required this.tillAmount,
+    // required this.tillAmount,
+    required this.ebtTotal,
+    required this.cardTotal,
+    required this.refundTotal,
+    required this.payoutTotal,
+    required this.cashbackAmount,
   });
 
   factory Shift.fromJson(Map<String, dynamic> json) {
@@ -193,6 +204,14 @@ class Shift extends Equatable {
           .toList() ??
           [],
       tillAmount: (json['till_amount'] ?? 0).toDouble(),
+      ebtTotal: double.tryParse(json['ebt_total']?.toString() ?? '0') ?? 0.0,
+
+      cardTotal: double.tryParse(json['card_total']?.toString() ?? '0') ?? 0.0,
+
+      refundTotal: double.tryParse(json['refund_total']?.toString() ?? '0') ?? 0.0,
+
+      payoutTotal: double.tryParse(json['payout_total']?.toString() ?? '0') ?? 0.0,
+      cashbackAmount: (json['cashback_amount'] ?? 0).toDouble(),
       totalVendorPayments:
       (json['total_vendor_payments'] as num?)?.toDouble() ?? 0.0,
       openingBalance: (json['opening_balance'] as num?)?.toDouble() ?? 0.0,
@@ -226,6 +245,11 @@ class Shift extends Equatable {
     'shift_closing_notes': shiftClosingNotes,
     'shift_status': shiftStatus,
     'over_short': overShort,
+    'ebt_total': ebtTotal,
+    'card_total': cardTotal,
+    'refund_total': refundTotal,
+    'payout_total': payoutTotal,
+    'cashback_amount': cashbackAmount,
   };
 
   @override

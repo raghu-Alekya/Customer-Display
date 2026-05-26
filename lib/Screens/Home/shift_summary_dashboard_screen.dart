@@ -546,12 +546,14 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
 
   Widget _buildFinancialSummaryCards(Shift shift) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
+
     return Container(
-      height: 120, // ✅ fixed height
+      height: 204, // increased height for 2 rows
+      // height: 234,
       width: sidebarPosition == SidebarPosition.bottom
           ? MediaQuery.of(context).size.width * 0.675
           : MediaQuery.of(context).size.width * 0.608,
-      padding: EdgeInsets.all(15),
+      padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: themeHelper.themeMode == ThemeMode.dark
             ? Color(0xFF1F1D2B)
@@ -559,129 +561,232 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
         borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
+            color: Colors.black.withOpacity(0.2),
             blurRadius: 6,
             offset: Offset(0, 3),
           ),
         ],
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _buildSummaryCard(
-                TextConstants.openingAmount,
-                '${TextConstants.currencySymbol}${shift.openingBalance.toStringAsFixed(2)}',
-                Color(0xFFD3EAFF),
-                "assets/openwithround.png",
-                Color(0xFF487FFF)),
-            SizedBox(width: MediaQuery.of(context).size.width * 0.010),
-            _buildSummaryCard(
-                TextConstants.totalTransactions,
-                '${shift.totalSales}',
-                Color(0xFFF1E2FF),
-                "assets/totalwithround.png",
-                Color(0xFF8252E9)),
-            SizedBox(width: MediaQuery.of(context).size.width * 0.010),
-            _buildSummaryCard(
-                TextConstants.saleAmount,
-                '${TextConstants.currencySymbol}${shift.totalSaleAmount.toStringAsFixed(2)}',
-                Color(0xFFFDE9DB),
-                "assets/Groupwithround.png",
-                Color(0xFFFE8B3E)),
-            SizedBox(width: MediaQuery.of(context).size.width * 0.010),
-            _buildSummaryCard(
-              "Till Amount",
-              '${shift.tillAmount < 0 ? '-${TextConstants.currencySymbol}${shift.tillAmount.abs().toStringAsFixed(2)}'
-                  : '${TextConstants.currencySymbol}${shift.tillAmount.toStringAsFixed(2)}'}',
-              Color(0xFFE0F7FA),
-              "assets/svg/cash_drawer.svg",
-              Color(0xFF0097A7),
-            ),
-            SizedBox(width: MediaQuery.of(context).size.width * 0.010),
-            _buildSummaryCard(
-                TextConstants.closingAmount,
-                '${TextConstants.currencySymbol}${shift.closingBalance.toStringAsFixed(2)}',
-                Color(0xFFD2FFF3),
-                "assets/closewithround.png",
-                Color(0xFF0F8B6A)),
-          ],
-        ),
+
+      // ✅ removed horizontal scroll
+      child: Column(
+        children: [
+
+          /// FIRST ROW
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildSummaryCard(
+                  TextConstants.openingAmount,
+                  '${TextConstants.currencySymbol}${shift.openingBalance.toStringAsFixed(2)}',
+                  Color(0xFFD3EAFF),
+                  "assets/opening-amount.png",
+                  Color(0xFF487FFF)),
+              SizedBox(width: MediaQuery.of(context).size.width * 0.006),
+              _buildSummaryCard(
+                  TextConstants.totalTransactions,
+                  '${shift.totalSales}',
+                  Color(0xFFF1E2FF),
+                  "assets/total_orders.png",
+                  Color(0xFF8252E9)),
+              SizedBox(width: MediaQuery.of(context).size.width * 0.006),
+              _buildSummaryCard(
+                  TextConstants.saleAmount,
+                  '${TextConstants.currencySymbol}${shift.totalSaleAmount.toStringAsFixed(2)}',
+                  Color(0xFFFDE9DB),
+                  "assets/sale_amount.png",
+                  Color(0xFFFE8B3E)),
+              SizedBox(width: MediaQuery.of(context).size.width * 0.006),
+              _buildSummaryCard(
+                "Till Amount",
+                '${shift.tillAmount < 0 ? '-${TextConstants.currencySymbol}${shift.tillAmount.abs().toStringAsFixed(2)}'
+                    : '${TextConstants.currencySymbol}${shift.tillAmount.toStringAsFixed(2)}'}',
+                Color(0xFFFDF4CD),
+                "assets/svg/cash_drawer.svg",
+                Color(0xFFEDC531),
+              ),
+              SizedBox(width: MediaQuery.of(context).size.width * 0.006),
+              _buildSummaryCard(
+                  TextConstants.closingAmount,
+                  '${TextConstants.currencySymbol}${shift.closingBalance.toStringAsFixed(2)}',
+                  Color(0xFFD2FFF3),
+                  "assets/closing_amount.png",
+                  Color(0xFF0F8B6A)),
+            ],
+          ),
+
+          SizedBox(height: 6),
+
+          /// SECOND ROW
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildSummaryCard(
+                  "Card Payment",
+                  '${TextConstants.currencySymbol}${shift.cardTotal.toStringAsFixed(2)}',
+                  Color(0xFFD5FFD9),
+                  "assets/Card_payments.png",
+                  Color(0xFF0AAD1B)),
+              SizedBox(width: MediaQuery.of(context).size.width * 0.006),
+              _buildSummaryCard(
+                  "EBT Payment",
+                  '${TextConstants.currencySymbol}${shift.ebtTotal.toStringAsFixed(2)}',
+                  Color(0xFFE4DDD6),
+                  "assets/ebt_payments.svg",
+                  Color(0xFF6F4518)),
+              SizedBox(width: MediaQuery.of(context).size.width * 0.006),
+              _buildSummaryCard(
+                  "Cashback",
+                  '${TextConstants.currencySymbol}${shift.cashbackAmount.toStringAsFixed(2)}',
+                  Color(0xFFFFE5EC),
+                  "assets/cashback_bill.png",
+                  Color(0xFFFB6F92)),
+              SizedBox(width: MediaQuery.of(context).size.width * 0.006),
+              _buildSummaryCard(
+                  "Payout",
+                  '${TextConstants.currencySymbol}${shift.payoutTotal.toStringAsFixed(2)}',
+                  Color(0xFFCEE7F5),
+                  "assets/payout_bill.png",
+                  Color(0xFF2274A5)),
+              SizedBox(width: MediaQuery.of(context).size.width * 0.006),
+              _buildSummaryCard(
+                  "Refund Amount",
+                  '${TextConstants.currencySymbol}${shift.refundTotal.toStringAsFixed(2)}',
+                  Color(0xFFFFE1E5),
+                  "assets/refund.png",
+                  Color(0xFFC71F37)),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildSummaryCard(String title, String amount, Color color,
-      String imagePath, Color circleBgColor) {
+  Widget _buildSummaryCard(
+      String title,
+      String amount,
+      Color color,
+      String imagePath,
+      Color circleBgColor,
+      ) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.175,
+      height: MediaQuery.of(context).size.height * 0.125,
       width: sidebarPosition == SidebarPosition.bottom
-          ? MediaQuery.of(context).size.width * 0.155
-          : MediaQuery.of(context).size.width * 0.138,
+          ? MediaQuery.of(context).size.width * 0.125
+          : MediaQuery.of(context).size.width * 0.112,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
       ),
-      alignment: Alignment.center,
-      child: Padding(
-        padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.008),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween, // 👈 this fixes it
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Column(
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+
+          /// CURVED LEFT INDICATOR
+          Positioned(
+            left: -1,
+            top: 30,
+            child: Container(
+              height: 30,
+              width: 4,
+              decoration: BoxDecoration(
+                color: circleBgColor,
+                borderRadius: BorderRadius.only(
+                  topRight: Radius.circular(10),
+                  bottomRight: Radius.circular(10),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: circleBgColor.withOpacity(0.45),
+
+                    /// spreads all around
+                    spreadRadius: 2,
+
+                    /// blur softness
+                    blurRadius: 20,
+
+                    /// keeps glow centered
+                    offset: Offset(10, 0),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          /// MAIN CONTENT
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  amount,
-                  style: TextStyle(
-                    color: Color(0xFF373535),
-                    fontSize: MediaQuery.of(context).size.width * 0.01,
-                    fontWeight: FontWeight.bold,
-                  ),
+
+                /// TOP ROW
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+
+                    /// AMOUNT
+                    Expanded(
+                      child: Text(
+                        amount,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: const Color(0xFF373535),
+                          fontSize: MediaQuery.of(context).size.width * 0.01,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+
+                    /// ICON
+                    Container(
+                      height: 33,
+                      width: 33,
+                      decoration: BoxDecoration(
+                        color: circleBgColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: imagePath.endsWith('.svg')
+                            ? SvgPicture.asset(
+                          imagePath,
+                          height: 18,
+                          width: 18,
+                          color: Colors.white,
+                        )
+                            : Image.asset(
+                          imagePath,
+                          height: 18,
+                          width: 18,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(height: 20),
+
+                // Spacer(),
+
+                /// TITLE
                 Text(
                   title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Color(0xFF373535),
+                    color: const Color(0xFF000000),
                     fontSize: MediaQuery.of(context).size.width * 0.01,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
             ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Container(
-                  height: 35,
-                  width: 35,
-                  decoration: BoxDecoration(
-                    color: circleBgColor,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: imagePath.endsWith('.svg')
-                        ? SvgPicture.asset(
-                      imagePath,
-                      height: 20,
-                      width: 20,
-                      fit: BoxFit.contain,
-                      color: Colors.white,
-                    )
-                        : Image.asset(
-                      imagePath,
-                      height: 30,
-                      width: 30,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                ),
-              ],
-            )
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

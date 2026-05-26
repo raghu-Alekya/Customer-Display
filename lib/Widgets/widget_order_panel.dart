@@ -640,17 +640,35 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
     if (activeId == null) {
       if (kDebugMode) {
-        print("⛔ fetchOrderItems — no active order, clearing list");
+        print("⛔ No active order → showing welcome screen");
       }
+
       if (mounted) {
         setState(() {
           orderItems.clear();
           _listVersion++;
         });
       }
+
+      try {
+        final storeInfo = PinakaPreferences.getLoggedInStore();
+
+        if (storeInfo.isNotEmpty) {
+          await CustomerDisplayHelper.updateWelcomeWithStore(
+            storeInfo['storeId']!,
+            storeInfo['storeName']!,
+            storeLogoUrl: storeInfo['storeLogoUrl'],
+            storeBaseUrl: storeInfo['storeBaseUrl'],
+          );
+        } else {
+          await CustomerDisplayService.showWelcome();
+        }
+      } catch (e) {
+        print("Customer display welcome error: $e");
+      }
+
       return;
     }
-
     // Tabs can lag behind activeOrderId (e.g. while _getOrderTabs runs, or offline-only).
     // Never clear the cart just because the tab bar has not caught up yet.
     if (!_tabsContainActiveOrder(activeId)) {
@@ -951,6 +969,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               summaryEnabled: false,
               discountType: "NONE",
               discountValue: 0.0,
+              redeemedAmount: 0.0,
             );
             // 🔥🔥🔥 END FIX
 

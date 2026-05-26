@@ -14,7 +14,7 @@ class SessionEndedDialog {
 
     _isShowing = true;
 
-    int seconds = 4;
+    int seconds = 10;
     Timer? timer;
 
     await showDialog(
@@ -71,7 +71,7 @@ class SessionEndedDialog {
 
                     /// IMAGE
                     Image.asset(
-                      'assets/images/session_ended.png',
+                      'assets/session_ended.png',
                       height: 150,
                     ),
 

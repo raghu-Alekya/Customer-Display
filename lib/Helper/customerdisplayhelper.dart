@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import '../Database/order_panel_db_helper.dart';
+import '../Preferences/pinaka_preferences.dart';
 import '../services/CustomerDisplayService.dart';
 
 class CustomerDisplayHelper {
@@ -50,13 +51,32 @@ class CustomerDisplayHelper {
 
 // ❌ BLOCK if no active order
       if (activeId == null) {
-        print("⛔ [CD] No active order → skipping display update");
+        print("🟢 [CD] No active order → showing welcome");
+
+        final storeInfo = PinakaPreferences.getLoggedInStore();
+
+        if (storeInfo.isNotEmpty) {
+          await CustomerDisplayHelper.updateWelcomeWithStore(
+            storeInfo['storeId']!,
+            storeInfo['storeName']!,
+            storeLogoUrl: storeInfo['storeLogoUrl'],
+            storeBaseUrl: storeInfo['storeBaseUrl'],
+          );
+        } else {
+          await CustomerDisplayService.showWelcome();
+        }
+
         return;
       }
 
 // ❌ BLOCK stale updates
       if (activeId != serverOrderId) {
-        print("🟥 [CD] Ignoring stale display update");
+        print("🟥 [CD] Stale update detected");
+
+        if (activeId == null) {
+          await CustomerDisplayService.showWelcome();
+        }
+
         return;
       }
 
@@ -86,6 +106,7 @@ class CustomerDisplayHelper {
           summaryEnabled: summaryEnabled,
           discountType: "NONE",
           discountValue: 0.0,
+          redeemedAmount: 0.0,
         );
 
         return;
@@ -206,6 +227,7 @@ class CustomerDisplayHelper {
           summaryEnabled: summaryEnabled,
           discountType: "NONE",
           discountValue: 0.0,
+          redeemedAmount: 0.0
         );
 
         return;
@@ -451,6 +473,7 @@ class CustomerDisplayHelper {
         summaryEnabled: summaryEnabled,
         discountType: appliedDiscountType,
         discountValue: totalItemDiscount,
+        redeemedAmount: 0.0,
 
       );
 
