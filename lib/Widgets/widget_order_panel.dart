@@ -283,15 +283,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     };
     TopBar.modeChangedNotifier.addListener(_modeChangeListener!);
 
-    // _modeChangeListener = () {
-    //   _clearAllOrderData();           // ← Stronger clear
-    // };
-    // TopBar.modeChangedNotifier.addListener(_modeChangeListener!);
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await orderHelper
-          .restoreActiveOrderId(); // ✅ WAIT - restores lastActiveOrderId for POS context
-      await fetchOrdersData(); // load after restore
+          .restoreActiveOrderId();
+      await fetchOrdersData();
       if (mounted) {
         setState(() => _initialRestoreDone =
         true); // Safe to derive from orderHelper in build
@@ -403,8 +399,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   void didUpdateWidget(RightOrderPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.refreshKey != widget.refreshKey) {
-      // ── FIX: clear stale items BEFORE async reload so build() never
-      // shows old-order data while the new fetch is in flight ──────────
       if (mounted) {
         setState(() {
           orderItems = [];
@@ -967,12 +961,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
   }
 
-  // Build #1.0.10: Creates a new order and adds it as a new tab
-  //Build #1.0.78: Explanation!
-  // Removed orderHelper.createOrder and setActiveOrder as they’re now handled in OrderBloc.
-  // Updated UI (tabs, tab controller, items) after API success.
-  // Added alert dialog for error handling with retry option.
-  // Loader is shown via _isLoading during the API call.
+
+
   Future<void> addNewTab() async {Future<void> addNewTab() async {
     if (_isNewTabDisabled) return;
 
@@ -1350,6 +1340,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   //   _onBarcodeScannedCallback.call(barcode);
   // }
   // final GlobalKey<BarcodeKeyboardListenerState> _scannerKey = GlobalKey();//Build #1.0.268: 2. create global key
+
   Future<void> _handleOrderPanelBarcode(String barcode) async {
     if (ScannerMutex.noOrderBusy) {
       print("🚫 BLOCKED BY ScannerMutex.noOrderBusy");
@@ -4042,7 +4033,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final ScrollController scrollController = ScrollController();
 
-    // 🚨 EARLY RETURN WHEN NO ACTIVE ORDER
+    //  EARLY RETURN WHEN NO ACTIVE ORDER
     if (orderHelper.activeOrderId == null) {
       if (orderItems.isNotEmpty && mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -4207,45 +4198,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
     }
 
-    // ============ COMPUTE TOTALS FROM orderItems (SINGLE SOURCE OF TRUTH) ============
-    // double grossTotal = 0.0;
-    // double orderTax = 0.0;
-    // int totalItems = 0;
-    //
-    // for (final item in orderItems) {
-    //   final qty = (item['items_count'] ?? 1) as int;
-    //   final price = (item['item_price'] ?? 0.0) as double;
-    //   final itemTotal = price * qty;
-    //   grossTotal += itemTotal;
-    //   totalItems += qty;
-    //
-    //   final itemType = (item['item_type'] ?? '').toString().toLowerCase();
-    //   if (itemType == 'payout') {
-    //     // payouts are already included in grossTotal via their price
-    //   } else if (itemType == 'cashback') {
-    //     // cashback fee is handled separately
-    //   } else {
-    //     orderTax += (item['item_tax'] ?? 0.0) as double;
-    //   }
-    // }
-    //
-    // final netTotal = grossTotal - orderDiscount - merchantDiscount;
-    // final netPayable = netTotal + orderTax + cashbackFee;
-    //
-    // if (kDebugMode) {
-    //   print("✅ Totals from orderItems → gross: $grossTotal, tax: $orderTax, net: $netPayable");
-    //   print("#### ACTIVE ORDER ID: ${orderHelper.activeOrderId}");
-    //   print("#### orderItems: $orderItems");
-    //   print("#### grossTotal: $grossTotal");
-    //   print("#### orderDiscount: $orderDiscount");
-    //   print("#### merchantDiscount: $merchantDiscount");
-    //   print("#### orderTax: $orderTax");
-    //   print("#### netTotal: $netTotal");
-    //   print("#### netPayable: $netPayable");
-    // }
-
-
-    // ============ COMPUTE TOTALS FROM orderItems (SINGLE SOURCE OF TRUTH) ============
     double grossTotal = 0.0;
     double orderTax = 0.0;
     int totalItems = 0;
@@ -4253,7 +4205,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     for (final item in orderItems) {
       final itemType = (item['item_type'] ?? '').toString().toLowerCase();
 
-      // ✅ FIX: Skip merchant discount line items — already handled via merchantDiscount from Hive
+      // FIX: Skip merchant discount line items — already handled via merchantDiscount from Hive
       // Prevents double-subtraction: once via negative price in grossTotal, once via merchantDiscount in netTotal
       if (itemType == 'discount') continue;
 
@@ -4396,6 +4348,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                 ],
               ),
             ),
+
             if (tabs.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -6149,160 +6102,4 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
 /// //Build #1.0.2 : Added showNumPadDialog if user tap on order layout list item
 
-// New method to show product edit screen (replace the existing showNumPadDialog)
-// void showProductEditScreen(BuildContext context, Map<String, dynamic> orderItem) {
-//   showDialog(
-//       context: context,
-//       barrierDismissible: false,
-//       builder: (context) {
-//     return ProductEditScreen(
-//       orderItem: orderItem,
-//       onQuantityUpdated: (newQuantity) {
-//         setState(() {
-//           orderItem[AppDBConst.itemCount] = newQuantity;
-//         });
-//         // Here you would update the database if needed
-//         // For now we're just updating the UI state
-//         fetchOrderItems();
-//       },
-//     );
-//   }
-//   );
-// }
-// void showNumPadDialog(BuildContext context, String itemName, Function(int) onQuantitySelected) {
-//   TextEditingController controller = TextEditingController();
-//   int quantity = 0;
-//
-//   showDialog(
-//     context: context,
-//     builder: (context) {
-//       return StatefulBuilder(
-//         builder: (context, setState) {
-//           void updateQuantity(int newQuantity) {
-//             setState(() {
-//               quantity = newQuantity;
-//               controller.text = quantity == 0 ? "" : quantity.toString();
-//             });
-//           }
-//
-//           return Dialog(
-//             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-//             insetPadding: EdgeInsets.symmetric(horizontal: 40, vertical: 100),
-//             child: Container(
-//               width: 600,
-//               padding: const EdgeInsets.all(16.0),
-//               child: Column(
-//                 mainAxisSize: MainAxisSize.min,
-//                 children: [
-//                   // Title
-//                   Text(TextConstants.enterQuanText, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
-//                   Text(itemName, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-//                   SizedBox(height: 12),
-//
-//                   // TextField with + and - buttons
-//                   Container(
-//                     width: 500,
-//                     decoration: BoxDecoration(
-//                       borderRadius: BorderRadius.circular(12),
-//                       border: Border.all(color: Colors.grey.shade400, width: 1.5),
-//                       color: Colors.grey.shade100,
-//                     ),
-//                     padding: EdgeInsets.symmetric(horizontal: 20), // Match NumPad padding
-//                     child: Row(
-//                       children: [
-//                         // Decrement Button
-//                         IconButton(
-//                           icon: Icon(Icons.remove_circle, size: 32, color: Colors.redAccent),
-//                           onPressed: () {
-//                             if (quantity > 0) updateQuantity(quantity - 1);
-//                           },
-//                         ),
-//
-//                         // Quantity TextField
-//                         Expanded(
-//                           child: TextField(
-//                             controller: controller,
-//                             textAlign: TextAlign.center,
-//                             readOnly: true,
-//                             style: TextStyle(
-//                               fontSize: 28,
-//                               fontWeight: controller.text.isEmpty ? FontWeight.normal : FontWeight.bold,
-//                               color: controller.text.isEmpty ? Colors.grey : Colors.black87, // Fix: Color updates correctly
-//                             ),
-//                             decoration: InputDecoration(
-//                               border: InputBorder.none,
-//                               hintText: "00", // Fix: Shows properly when empty
-//                               hintStyle: TextStyle(fontSize: 28, color: Colors.grey),
-//                               contentPadding: EdgeInsets.symmetric(vertical: 12), // Fix: Consistent padding
-//                             ),
-//                           ),
-//                         ),
-//
-//                         // Increment Button
-//                         IconButton(
-//                           icon: Icon(Icons.add_circle, size: 32, color: Colors.green),
-//                           onPressed: () {
-//                             updateQuantity(quantity + 1);
-//                           },
-//                         ),
-//                       ],
-//                     ),
-//                   ),
-//                   SizedBox(height: 16),
-//
-//                   // CustomNumPad with OK button
-//                   CustomNumPad(
-//                     onDigitPressed: (digit) {
-//                       setState(() {
-//                         int newQty = int.tryParse((controller.text.isEmpty ? "0" : controller.text) + digit) ?? quantity;
-//                         updateQuantity(newQty);
-//                       });
-//                     },
-//                     onClearPressed: () => updateQuantity(0),
-//                     onConfirmPressed: () {
-//                       onQuantitySelected(quantity);
-//                       Navigator.pop(context);
-//                     },
-//                     actionButtonType: ActionButtonType.ok, // OK instead of Delete
-//                   ),
-//                 ],
-//               ),
-//             ),
-//           );
-//         },
-//       );
-//     },
-//   );
-// }
-// void showProductEditScreen(BuildContext context, Map<String, dynamic> orderItem) {
-//   showDialog(
-//     context: context,
-//     barrierDismissible: false,
-//     builder: (BuildContext dialogContext) {
-//       return ProductEditScreen(
-//         orderItem: orderItem,
-//         onQuantityUpdated: (newQuantity) async {
-//           // Update the item in the database first
-//           // if (orderHelper.activeOrderId != null) {
-//           //   await orderHelper.updateItemQuantity(
-//           //       orderItem[AppDBConst.itemId],
-//           //       newQuantity
-//           //   );
-//           // }
-//
-//           // Then update the UI state
-//           setState(() {
-//             orderItem[AppDBConst.itemCount] = newQuantity;
-//             // Also update the sum price to maintain consistency
-//             orderItem[AppDBConst.itemSumPrice] =
-//                 orderItem[AppDBConst.itemPrice] * newQuantity;
-//           });
-//
-//           // Refresh the order items
-//           fetchOrderItems();
-//         },
-//       );
-//     },
-//   );
-// }
 }

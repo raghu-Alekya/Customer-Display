@@ -74,36 +74,111 @@ bool lineItemEbtEligibleForPanelPreview(LineItem li) {
 }
 
 /// Build order-panel rows from Total Orders list API [LineItem]s (instant display before DB sync).
+// List<Map<String, dynamic>> panelMapsFromApiLineItems(List<LineItem> lines) {
+//   final out = <Map<String, dynamic>>[];
+//   for (final li in lines) {
+//     try {
+//       final qty = li.quantity;
+//       final total = double.tryParse(li.total) ?? (li.price * qty);
+//       final unit = qty > 0 ? total / qty : li.price;
+//       final nameLower = li.name.toLowerCase();
+//       final isDiscountItem = nameLower.contains('discount');
+//       final variationId = li.variationId;
+//       final variationName = li.productVariationData?.sku ?? '';
+//       final int ebtFlag = lineItemEbtEligibleForPanelPreview(li) ? 1 : 0;
+//       String discountType = '';
+//       if (li.multipackApplied) {
+//         discountType = 'multipack';
+//       } else if (li.comboDiscountApplied) {
+//         discountType = 'mixmatch';
+//       } else if (li.autoDiscountApplied) {
+//         discountType = 'auto';
+//       }
+//       out.add({
+//         AppDBConst.itemName: li.name,
+//         AppDBConst.itemCount: qty,
+//         AppDBConst.itemPrice: unit,
+//         AppDBConst.itemSumPrice: total,
+//         // Same shape as SQLite rows: panel ListView uses item_unit_price / item_sales_price /
+//         // item_regular_price with ?.toDouble() — if those are missing or String, you get NoSuchMethodError.
+//         AppDBConst.itemUnitPrice: unit,
+//         AppDBConst.itemSalesPrice: 0.0,
+//         AppDBConst.itemRegularPrice: 0.0,
+//         'product_id': li.productId,
+//         'item_type': 'product',
+//         AppDBConst.itemImage: li.image.src,
+//         AppDBConst.itemVariationId: variationId,
+//         AppDBConst.itemVariationCustomName: variationName,
+//         'attribute_variant': variationId > 0 ? variationName : '',
+//         'variant_name': variationId,
+//         'variation_id': variationId,
+//         'ebt_eligible': ebtFlag,
+//         AppDBConst.isEbtEligible: ebtFlag,
+//         'is_discount_item': isDiscountItem,
+//         AppDBConst.isRefundItem: li.isRefundItem,
+//         'discount_type': discountType,
+//         AppDBConst.multipackDiscount: li.multipackDiscountAmount,
+//         AppDBConst.autoDiscountTotal: li.autoDiscountAmount,
+//         AppDBConst.comboDiscountTotal: li.comboDiscountAmount,
+//         AppDBConst.displayAutoDiscount: li.displayAutoDiscountAmount,
+//         'mixmatch_discount_total': li.comboDiscountAmount,
+//       });
+//     } catch (e, st) {
+//       if (kDebugMode) {
+//         print('panelMapsFromApiLineItems skip line: $e\n$st');
+//       }
+//     }
+//   }
+//   return out;
+// }
+
+/// Build order-panel rows from Total Orders list API [LineItem]s with FULL discount & tax support
 List<Map<String, dynamic>> panelMapsFromApiLineItems(List<LineItem> lines) {
   final out = <Map<String, dynamic>>[];
+
   for (final li in lines) {
     try {
       final qty = li.quantity;
       final total = double.tryParse(li.total) ?? (li.price * qty);
       final unit = qty > 0 ? total / qty : li.price;
+
       final nameLower = li.name.toLowerCase();
       final isDiscountItem = nameLower.contains('discount');
+
       final variationId = li.variationId;
       final variationName = li.productVariationData?.sku ?? '';
+
       final int ebtFlag = lineItemEbtEligibleForPanelPreview(li) ? 1 : 0;
+
+      // ✅ FIXED: Better discount type detection
       String discountType = '';
+      double autoDiscount = 0.0;
+      double comboDiscount = 0.0;
+      double multipackDiscount = 0.0;
+
       if (li.multipackApplied) {
         discountType = 'multipack';
+        multipackDiscount = li.multipackDiscountAmount ?? 0.0;
       } else if (li.comboDiscountApplied) {
         discountType = 'mixmatch';
+        comboDiscount = li.comboDiscountAmount ?? 0.0;
       } else if (li.autoDiscountApplied) {
         discountType = 'auto';
+        autoDiscount = li.autoDiscountAmount ?? 0.0;
       }
+
+      // ✅ FIXED: Better tax & total calculation
+      final double itemTax = double.tryParse(li.totalTax ?? '0') ?? 0.0;
+      final double itemTotalWithTax = total + itemTax;
+
       out.add({
         AppDBConst.itemName: li.name,
         AppDBConst.itemCount: qty,
         AppDBConst.itemPrice: unit,
         AppDBConst.itemSumPrice: total,
-        // Same shape as SQLite rows: panel ListView uses item_unit_price / item_sales_price /
-        // item_regular_price with ?.toDouble() — if those are missing or String, you get NoSuchMethodError.
         AppDBConst.itemUnitPrice: unit,
-        AppDBConst.itemSalesPrice: 0.0,
-        AppDBConst.itemRegularPrice: 0.0,
+        AppDBConst.itemSalesPrice: total,
+        AppDBConst.itemRegularPrice: li.price,
         'product_id': li.productId,
         'item_type': 'product',
         AppDBConst.itemImage: li.image.src,
@@ -115,17 +190,19 @@ List<Map<String, dynamic>> panelMapsFromApiLineItems(List<LineItem> lines) {
         'ebt_eligible': ebtFlag,
         AppDBConst.isEbtEligible: ebtFlag,
         'is_discount_item': isDiscountItem,
-        AppDBConst.isRefundItem: li.isRefundItem,
+        AppDBConst.isRefundItem: li.isRefundItem ?? 0,
         'discount_type': discountType,
-        AppDBConst.multipackDiscount: li.multipackDiscountAmount,
-        AppDBConst.autoDiscountTotal: li.autoDiscountAmount,
-        AppDBConst.comboDiscountTotal: li.comboDiscountAmount,
-        AppDBConst.displayAutoDiscount: li.displayAutoDiscountAmount,
-        'mixmatch_discount_total': li.comboDiscountAmount,
+        AppDBConst.multipackDiscount: multipackDiscount,
+        AppDBConst.autoDiscountTotal: autoDiscount,
+        AppDBConst.comboDiscountTotal: comboDiscount,
+        AppDBConst.displayAutoDiscount: autoDiscount,
+        'mixmatch_discount_total': comboDiscount,
+        'item_tax': itemTax,
+        'total_with_tax': itemTotalWithTax,
       });
     } catch (e, st) {
       if (kDebugMode) {
-        print('panelMapsFromApiLineItems skip line: $e\n$st');
+        print('panelMapsFromApiLineItems skip line: $e');
       }
     }
   }

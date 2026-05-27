@@ -54,6 +54,7 @@ import 'package:flutter/services.dart';
 import '../../Helper/api_helper.dart';
 
 import 'Widgets/discount_engine_constants.dart';
+import 'Widgets/navigation_services.dart';
 import 'Widgets/offline_order_sync_service.dart';
 import 'Widgets/weighing_scale_widget.dart';
 import 'Utilities/global_utility.dart';
@@ -242,6 +243,7 @@ class MyApp extends StatelessWidget {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return SafeArea(  //Build #1.0.2 : Fixed - status bar overlapping with design
       child: MaterialApp(
+        navigatorKey: navigatorKey,
         debugShowCheckedModeBanner: false,
         theme: ThemeNotifier.lightTheme.copyWith(
           // Add Poppins to your existing light theme

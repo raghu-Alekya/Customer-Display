@@ -879,39 +879,37 @@ class NavigationBar extends StatelessWidget {
             label: "Refund",
             isSelected: selectedSidebarIndex == 5,
             isDisabled: isShiftInvalid || isShiftScreen,
-            onTap: (isShiftInvalid ||
-                    isShiftScreen ||
-                    selectedSidebarIndex == 5)
+            onTap: (isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5)
                 ? () {}
                 : () async {
-                    final oh = OrderHelper();
-                    if (oh.activeOrderId != null) {
-                      await oh.saveLastActiveOrderId(oh.activeOrderId!);
-                    }
-                    if (!await _canNavigate(5)) return;
-                    lastSelectedIndex = 5;
-                    onSidebarItemSelected(5);
-                    if (callbackOnlyIndices?.contains(5) == true) return;
+              final oh = OrderHelper();
+              if (oh.activeOrderId != null) {
+                await oh.saveLastActiveOrderId(oh.activeOrderId!);
+              }
+              if (!await _canNavigate(5)) return;
 
-                    Future.microtask(() {
-                      if (!context.mounted) return;
-                      Navigator.of(context).pushAndRemoveUntil(
-                        PageRouteBuilder(
-                          pageBuilder:
-                              (context, animation, secondaryAnimation) =>
-                                  const CompletedOrdersScreen(
-                            lastSelectedIndex: 5,
-                          ),
-                          transitionsBuilder:
-                              (context, animation, secondaryAnimation, child) {
-                            return child; // No animation
-                          },
-                          transitionDuration: Duration.zero,
-                        ),
-                        (route) => false,
-                      );
-                    });
-                  },
+              lastSelectedIndex = 5;
+              onSidebarItemSelected(5);
+              if (callbackOnlyIndices?.contains(5) == true) return;
+
+              // Strong delay to let old screen dispose properly
+              await Future.delayed(const Duration(milliseconds: 250));
+
+              if (!context.mounted) return;
+
+              Future.microtask(() {
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  PageRouteBuilder(
+                    pageBuilder: (context, animation, secondaryAnimation) =>
+                    const CompletedOrdersScreen(lastSelectedIndex: 5),
+                    transitionsBuilder: (context, animation, secondaryAnimation, child) => child,
+                    transitionDuration: Duration.zero,
+                  ),
+                      (route) => false,
+                );
+              });
+            },
             isVertical: isVertical,
           ),
           // Additional dynamic items can be added here.

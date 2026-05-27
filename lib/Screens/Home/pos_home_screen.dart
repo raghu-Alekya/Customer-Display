@@ -15,7 +15,7 @@ import 'categories_screen.dart';
 import 'fast_key_screen.dart';
 
 /// Single shell for Fast Keys, Categories, and Add tabs.
-/// Uses IndexedStack so RightOrderPanel is shared and does not reload when switching tabs.
+/// Uses IndexedStack so RightOrderPanel is shared.
 class POSHomeScreen extends StatefulWidget {
   final int? lastSelectedIndex;
 
@@ -27,7 +27,7 @@ class POSHomeScreen extends StatefulWidget {
 
 class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin {
   int _selectedSidebarIndex = 0;
-  int _activeTabIndex = 0; // Build #1.0.283: Separate tab index from selection highlight
+  int _activeTabIndex = 0;
   int _refreshCounter = 0;
   final OrderHelper orderHelper = OrderHelper();
   final List<int> quantities = [1, 1, 1, 1];
@@ -37,6 +37,27 @@ class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin
     super.initState();
     _selectedSidebarIndex = widget.lastSelectedIndex ?? 0;
     _activeTabIndex = _selectedSidebarIndex.clamp(0, 2);
+
+    // ✅ Prevent mode change listener from firing during tab navigation
+    // TopBar.modeChangedNotifier.addListener(_onModeChanged);
+  }
+
+  // void _onModeChanged() {
+  //   // Guard: Ignore mode change if we are navigating via sidebar to other screens
+  //   final routeName = ModalRoute.of(context)?.settings.name;
+  //   if (routeName != null && routeName.contains('_tab')) {
+  //     print("🚫 Blocked unwanted mode change during tab navigation");
+  //     return;
+  //   }
+  //
+  //   print("✅ Mode changed via TopBar button");
+  //   setState(() {}); // Rebuild layout
+  // }
+
+  @override
+  void dispose() {
+    // TopBar.modeChangedNotifier.removeListener(_onModeChanged);
+    super.dispose();
   }
 
   void _refreshOrderList() {
@@ -65,26 +86,32 @@ class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin
             TopBar(
               screen: _getScreenForIndex(_activeTabIndex),
               onModeChanged: () async {
+                // ✅ This is the ONLY place mode changes happen now
+                print("🔄 [POSHomeScreen] Mode change triggered from button");
+
                 String newLayout;
                 if (sidebarPosition == SidebarPosition.left) {
                   newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
                 } else if (sidebarPosition == SidebarPosition.right) {
                   newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
                 } else {
-                  // Navbar at bottom: next click swaps order panel to right (or back to left layout)
                   newLayout = orderPanelPosition == OrderPanelPosition.left
                       ? SharedPreferenceTextConstants.navBottomOrderRight
                       : SharedPreferenceTextConstants.navLeftOrderRight;
                 }
+
                 PinakaPreferences.layoutSelectionNotifier.value = newLayout;
-                await UserDbHelper().saveUserSettings({AppDBConst.layoutSelection: newLayout}, modeChange: true);
+                await UserDbHelper().saveUserSettings(
+                  {AppDBConst.layoutSelection: newLayout},
+                  modeChange: true,
+                );
                 setState(() {});
               },
               onProductSelected: (product) async {
                 try {
                   _refreshOrderList();
                 } catch (e, s) {
-                  if (kDebugMode) print("Exception in onProductSelected: $e, Stack: $s");
+                  if (kDebugMode) print("Exception in onProductSelected: $e");
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -104,19 +131,13 @@ class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin
                   if (sidebarPosition == SidebarPosition.left)
                     custom_widgets.NavigationBar(
                       selectedSidebarIndex: _selectedSidebarIndex,
-                      onSidebarItemSelected: (index) {
-                        setState(() {
-                          _selectedSidebarIndex = index;
-                          if (index < 3) {
-                            _activeTabIndex = index;
-                          }
-                        });
-                      },
+                      onSidebarItemSelected: _handleSidebarSelection,
                       isVertical: true,
                       callbackOnlyIndices: const {0, 1, 2},
                     ),
                   if (sidebarPosition == SidebarPosition.right ||
-                      (sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
+                      (sidebarPosition == SidebarPosition.bottom &&
+                          orderPanelPosition == OrderPanelPosition.left))
                     RightOrderPanel(
                       key: const ValueKey('order_panel'),
                       quantities: quantities,
@@ -127,14 +148,15 @@ class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin
                     child: IndexedStack(
                       index: _activeTabIndex,
                       children: [
-                        FastKeyScreen(embedInShell: true),
-                        CategoriesScreen(embedInShell: true),
+                        const FastKeyScreen(embedInShell: true),
+                        const CategoriesScreen(embedInShell: true),
                         AddScreen(embedInShell: true),
                       ],
                     ),
                   ),
                   if (sidebarPosition != SidebarPosition.right &&
-                      !(sidebarPosition == SidebarPosition.bottom && orderPanelPosition == OrderPanelPosition.left))
+                      !(sidebarPosition == SidebarPosition.bottom &&
+                          orderPanelPosition == OrderPanelPosition.left))
                     RightOrderPanel(
                       key: const ValueKey('order_panel'),
                       quantities: quantities,
@@ -144,14 +166,7 @@ class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin
                   if (sidebarPosition == SidebarPosition.right)
                     custom_widgets.NavigationBar(
                       selectedSidebarIndex: _selectedSidebarIndex,
-                      onSidebarItemSelected: (index) {
-                        setState(() {
-                          _selectedSidebarIndex = index;
-                          if (index < 3) {
-                            _activeTabIndex = index;
-                          }
-                        });
-                      },
+                      onSidebarItemSelected: _handleSidebarSelection,
                       isVertical: true,
                       callbackOnlyIndices: const {0, 1, 2},
                     ),
@@ -161,14 +176,7 @@ class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin
             if (sidebarPosition == SidebarPosition.bottom)
               custom_widgets.NavigationBar(
                 selectedSidebarIndex: _selectedSidebarIndex,
-                onSidebarItemSelected: (index) {
-                  setState(() {
-                    _selectedSidebarIndex = index;
-                    if (index < 3) {
-                      _activeTabIndex = index;
-                    }
-                  });
-                },
+                onSidebarItemSelected: _handleSidebarSelection,
                 isVertical: false,
                 callbackOnlyIndices: const {0, 1, 2},
               ),
@@ -176,5 +184,17 @@ class _POSHomeScreenState extends State<POSHomeScreen> with LayoutSelectionMixin
         ),
       ),
     );
+  }
+
+  // ✅ Centralized handler to avoid duplication and race conditions
+  void _handleSidebarSelection(int index) {
+    // ✅ Pure tab switch — never touches mode
+    setState(() {
+      _selectedSidebarIndex = index;
+      if (index < 3) {
+        _activeTabIndex = index;
+      }
+    });
+    print("📍 Sidebar selected: $index (Tab: $_activeTabIndex)");
   }
 }

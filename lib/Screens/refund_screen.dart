@@ -64,6 +64,8 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   List<String> transactionIds = [];
   Map<int, String?> selectedTxnPerOrder = {};
   List<String> transactionIdOptions = [];
+  bool _isModeChangePending = false;
+  bool _isNavigatingAway = false;
 
   List<CompletedOrder> _orders = [];
   // int _totalPages = 1;
@@ -88,6 +90,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
       endIndex > filteredOrders.length ? filteredOrders.length : endIndex,
     );
   }
+
   void _loadPage(int page) {
     setState(() {
       _currentPage = page;
@@ -122,190 +125,224 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
       ),
     );
   }
+  @override
+  void dispose() {
+    _isNavigatingAway = true;  // add this line FIRST
+    super.dispose();
+  }
+
+  // ✅ FIX: Helper to compute sidebar position fresh from notifier
+  // This prevents stale closure bug in onModeChanged
+  SidebarPosition _getSidebarPosition(String layout) {
+    if (layout == SharedPreferenceTextConstants.navRightOrderLeft) return SidebarPosition.right;
+    if (layout == SharedPreferenceTextConstants.navBottomOrderLeft) return SidebarPosition.bottom;
+    if (layout == SharedPreferenceTextConstants.navBottomOrderRight) return SidebarPosition.bottom;
+    return SidebarPosition.left;
+  }
+
+  // ✅ FIX: Helper to compute order panel position fresh from notifier
+  OrderPanelPosition _getOrderPanelPosition(String layout) {
+    if (layout == SharedPreferenceTextConstants.navRightOrderLeft) return OrderPanelPosition.left;
+    if (layout == SharedPreferenceTextConstants.navBottomOrderLeft) return OrderPanelPosition.left;
+    if (layout == SharedPreferenceTextConstants.navBottomOrderRight) return OrderPanelPosition.right;
+    return OrderPanelPosition.right;
+  }
+
+
+  /// ✅ FINAL SAFE MODE CHANGE HANDLER
+  void _handleModeChange() async {
+    if (_isNavigatingAway || _isModeChangePending) {
+      print("🚫 [Refund] Mode change BLOCKED - navigating away");
+      return;
+    }
+
+    _isModeChangePending = true;
+    print("🔄 [Refund] Mode toggle requested");
+
+    final String currentLayout = PinakaPreferences.layoutSelectionNotifier.value;
+    final SidebarPosition currentSidebar = _getSidebarPosition(currentLayout);
+    final OrderPanelPosition currentOrderPanel = _getOrderPanelPosition(currentLayout);
+
+    String newLayout;
+    if (currentSidebar == SidebarPosition.left) {
+      newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
+    } else if (currentSidebar == SidebarPosition.right) {
+      newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
+    } else {
+      newLayout = currentOrderPanel == OrderPanelPosition.left
+          ? SharedPreferenceTextConstants.navBottomOrderRight
+          : SharedPreferenceTextConstants.navLeftOrderRight;
+    }
+
+    print("🔄 [Refund] Changing mode to: $newLayout");
+
+    PinakaPreferences.layoutSelectionNotifier.value = newLayout;
+
+    await UserDbHelper().saveUserSettings(
+      {AppDBConst.layoutSelection: newLayout},
+      modeChange: true,
+    );
+
+    // Reset after small delay
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (mounted) _isModeChangePending = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
-    final layout = PinakaPreferences.layoutSelectionNotifier.value;
 
-// Defaults
-    SidebarPosition sidebarPosition = SidebarPosition.left;
-    OrderPanelPosition orderPanelPosition = OrderPanelPosition.right;
+    // ✅ FIX: Wrap entire build in ValueListenableBuilder so layout changes
+    // are reactive and onModeChanged always reads the current layout value,
+    // not a stale closure captured at a previous build.
+    return ValueListenableBuilder<String>(
+      valueListenable: PinakaPreferences.layoutSelectionNotifier,
+      builder: (context, layout, _) {
+        // ✅ FIX: Compute layout from current notifier value — not stale local variable
+        final SidebarPosition sidebarPosition = _getSidebarPosition(layout);
+        final OrderPanelPosition orderPanelPosition = _getOrderPanelPosition(layout);
 
-// 🔥 SAME LOGIC AS OrdersScreen
-    if (layout == SharedPreferenceTextConstants.navRightOrderLeft) {
-      sidebarPosition = SidebarPosition.right;
-      orderPanelPosition = OrderPanelPosition.left;
-    } else if (layout == SharedPreferenceTextConstants.navBottomOrderLeft) {
-      sidebarPosition = SidebarPosition.bottom;
-      orderPanelPosition = OrderPanelPosition.left;
-    } else if (layout == SharedPreferenceTextConstants.navBottomOrderRight) {
-      sidebarPosition = SidebarPosition.bottom;
-      orderPanelPosition = OrderPanelPosition.right;
-    } else {
-      sidebarPosition = SidebarPosition.left;
-      orderPanelPosition = OrderPanelPosition.right;
-    }
+        return Scaffold(
+          body: Column(
+            children: [
+              /// 🔹 TOP BAR (same as Orders screen)
+              TopBar(
+                screen: Screen.ORDERS,
+                onModeChanged: _handleModeChange,
+              ),
+              const Divider(height: 1, thickness: 0.4),
 
-    return Scaffold(
-      body: Column(
-        children: [
-          /// 🔹 TOP BAR (same as Orders screen)
-          TopBar(
-            screen: Screen.ORDERS,
-            onModeChanged: () async {
-              String newLayout;
+              /// 🔹 MAIN CONTENT
+              Expanded(
+                child: Row(
+                  children: [
+                    /// 🔹 LEFT SIDEBAR
+                    if (sidebarPosition == SidebarPosition.left)
+                      custom_widgets.NavigationBar(
+                        selectedSidebarIndex: _selectedSidebarIndex,
+                        isVertical: true,
+                        onSidebarItemSelected: (index) {
+                          setState(() => _selectedSidebarIndex = index);
+                        },
+                      ),
 
-              if (sidebarPosition == SidebarPosition.left) {
-                newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
-              } else if (sidebarPosition == SidebarPosition.right) {
-                newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
-              } else {
-                newLayout = orderPanelPosition == OrderPanelPosition.left
-                    ? SharedPreferenceTextConstants.navBottomOrderRight
-                    : SharedPreferenceTextConstants.navLeftOrderRight;
-              }
+                    /// 🔹 CENTER CONTENT (Completed Orders Table)
+                    Expanded(
+                      child: BlocConsumer<CompletedOrdersBloc,
+                          CompletedOrdersState>(
+                        listener: (context, state) {
+                          if (state is CompletedOrdersLoaded) {
+                            setState(() {
+                              _allOrders = state.orders;
 
-              // Update notifier
-              PinakaPreferences.layoutSelectionNotifier.value = newLayout;
+                              filteredOrders =
+                                  List.from(_allOrders); // ✅ important
 
-              // Save to DB
-              await UserDbHelper().saveUserSettings(
-                {AppDBConst.layoutSelection: newLayout},
-                modeChange: true,
-              );
+                              transactionIds = _allOrders
+                                  .map((o) => o.transactionId)
+                                  .where((id) => id.isNotEmpty)
+                                  .toSet()
+                                  .toList();
 
-              // Refresh UI
-              setState(() {});
-            },
-          ),
+                              _currentPage = 1;
 
-          const Divider(height: 1, thickness: 0.4),
+                              _totalPages =
+                                  (filteredOrders.length / _rowsPerPage)
+                                      .ceil();
 
-          /// 🔹 MAIN CONTENT
-          Expanded(
-            child: Row(
-              children: [
-                /// 🔹 LEFT SIDEBAR
-                if (sidebarPosition == SidebarPosition.left)
-                  custom_widgets.NavigationBar(
-                    selectedSidebarIndex: _selectedSidebarIndex,
-                    isVertical: true,
-                    onSidebarItemSelected: (index) {
-                      setState(() => _selectedSidebarIndex = index);
-                    },
-                  ),
+                              _paginate(); // ✅ now correct
+                            });
+                          }
+                        },
+                        builder: (context, state) {
+                          if (_pagedOrders.isEmpty) {
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          }
+                          if (state is CompletedOrdersError) {
+                            return Center(
+                              child: Text(
+                                state.message,
+                                style: const TextStyle(color: Colors.red),
+                              ),
+                            );
+                          }
 
-                /// 🔹 CENTER CONTENT (Completed Orders Table)
-                Expanded(
-                  child:
-                  BlocConsumer<CompletedOrdersBloc, CompletedOrdersState>(
-                    listener: (context, state) {
-                      if (state is CompletedOrdersLoaded) {
-                        setState(() {
-                          _allOrders = state.orders;
+                          // Loaded / Initial
+                          return Container(
+                            margin: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: themeHelper.themeMode == ThemeMode.dark
+                                  ? ThemeNotifier.primaryBackground
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.05),
+                                  blurRadius: 6,
+                                )
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                /// 🔹 HEADER
+                                _buildHeader(),
 
-                          filteredOrders = List.from(_allOrders); // ✅ important
+                                const SizedBox(height: 12),
 
-                          transactionIds = _allOrders
-                              .map((o) => o.transactionId)
-                              .where((id) => id.isNotEmpty)
-                              .toSet()
-                              .toList();
+                                /// 🔹 TABLE
+                                Expanded(
+                                    child: _buildOrderTable(themeHelper)),
 
-                          _currentPage = 1;
+                                /// 🔹 PAGINATION
+                                const SizedBox(height: 8),
+                                _buildPagination(),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
 
-                          _totalPages =
-                              (filteredOrders.length / _rowsPerPage).ceil();
+                    /// 🔹 RIGHT ORDER PANEL (same behavior as Orders)
+                    // if (sidebarPosition != SidebarPosition.right)
+                    //   OrderScreenPanel(
+                    //     fetchOrders: true,
+                    //     formattedDate: '',
+                    //     formattedTime: '',
+                    //     quantities: quantities,
+                    //     activeOrderId: null,
+                    //     refreshOrderList: () {},
+                    //   ),
 
-                          _paginate(); // ✅ now correct
-                        });
-                      }
-                    },
-                    builder: (context, state) {
-                      if (_pagedOrders.isEmpty) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      if (state is CompletedOrdersError) {
-                        return Center(
-                          child: Text(
-                            state.message,
-                            style: const TextStyle(color: Colors.red),
-                          ),
-                        );
-                      }
-
-                      // Loaded / Initial
-                      return Container(
-                        margin: const EdgeInsets.all(12),
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: themeHelper.themeMode == ThemeMode.dark
-                              ? ThemeNotifier.primaryBackground
-                              : Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 6,
-                            )
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            /// 🔹 HEADER
-                            _buildHeader(),
-
-                            const SizedBox(height: 12),
-
-                            /// 🔹 TABLE
-                            Expanded(child: _buildOrderTable(themeHelper)),
-
-                            /// 🔹 PAGINATION
-                            const SizedBox(height: 8),
-                            _buildPagination(),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                    /// 🔹 RIGHT SIDEBAR
+                    if (sidebarPosition == SidebarPosition.right)
+                      custom_widgets.NavigationBar(
+                        selectedSidebarIndex: _selectedSidebarIndex,
+                        isVertical: true,
+                        onSidebarItemSelected: (index) {
+                          setState(() => _selectedSidebarIndex = index);
+                        },
+                      ),
+                  ],
                 ),
+              ),
 
-                /// 🔹 RIGHT ORDER PANEL (same behavior as Orders)
-                // if (sidebarPosition != SidebarPosition.right)
-                //   OrderScreenPanel(
-                //     fetchOrders: true,
-                //     formattedDate: '',
-                //     formattedTime: '',
-                //     quantities: quantities,
-                //     activeOrderId: null,
-                //     refreshOrderList: () {},
-                //   ),
-
-                /// 🔹 RIGHT SIDEBAR
-                if (sidebarPosition == SidebarPosition.right)
-                  custom_widgets.NavigationBar(
-                    selectedSidebarIndex: _selectedSidebarIndex,
-                    isVertical: true,
-                    onSidebarItemSelected: (index) {
-                      setState(() => _selectedSidebarIndex = index);
-                    },
-                  ),
-              ],
-            ),
+              /// 🔹 BOTTOM SIDEBAR
+              if (sidebarPosition == SidebarPosition.bottom)
+                custom_widgets.NavigationBar(
+                  selectedSidebarIndex: _selectedSidebarIndex,
+                  isVertical: false,
+                  onSidebarItemSelected: (index) {
+                    setState(() => _selectedSidebarIndex = index);
+                  },
+                ),
+            ],
           ),
-
-          /// 🔹 BOTTOM SIDEBAR
-          if (sidebarPosition == SidebarPosition.bottom)
-            custom_widgets.NavigationBar(
-              selectedSidebarIndex: _selectedSidebarIndex,
-              isVertical: false,
-              onSidebarItemSelected: (index) {
-                setState(() => _selectedSidebarIndex = index);
-              },
-            ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -496,6 +533,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
       ],
     );
   }
+
   void _openDateRangePickerDialog() {
     final themeHelper = Provider.of<ThemeNotifier>(context, listen: false);
 
@@ -526,8 +564,8 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
       },
     );
   }
-  void _onDateRangeSelectionChanged(
-      DateRangePickerSelectionChangedArgs args) {
+
+  void _onDateRangeSelectionChanged(DateRangePickerSelectionChangedArgs args) {
     if (args.value is PickerDateRange) {
       final range = args.value as PickerDateRange;
 
@@ -541,6 +579,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
       });
     }
   }
+
   void _applyDateFilter() {
     if (!_isDateRangeApplied || _startDate == null || _endDate == null) {
       filteredOrders = _allOrders;
@@ -554,8 +593,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
         final start =
         DateTime(_startDate!.year, _startDate!.month, _startDate!.day);
 
-        final end =
-        DateTime(_endDate!.year, _endDate!.month, _endDate!.day);
+        final end = DateTime(_endDate!.year, _endDate!.month, _endDate!.day);
 
         return dateOnly.isAfter(start.subtract(const Duration(days: 1))) &&
             dateOnly.isBefore(end.add(const Duration(days: 1)));
@@ -565,184 +603,192 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
     _currentPage = 1;
     _paginate();
   }
+
   // ================= TABLE =================
 
-  Widget _buildOrderTable(ThemeNotifier themeHelper) { bool isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildOrderTable(ThemeNotifier themeHelper) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-  return Container(
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(12),
-      color: themeHelper.themeMode == ThemeMode.dark
-          ? const Color(0xFF201F29)
-          : const Color(0xFFF9F9F9),
-    ),
-    child: Column(
-      children: [
-        /// 🔹 TABLE HEADER
-        Container(
-          padding: const EdgeInsets.only(
-            left: 8,
-            right: 0,
-            top: 14,
-            bottom: 14,
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: themeHelper.themeMode == ThemeMode.dark
+            ? const Color(0xFF201F29)
+            : const Color(0xFFF9F9F9),
+      ),
+      child: Column(
+        children: [
+          /// 🔹 TABLE HEADER
+          Container(
+            padding: const EdgeInsets.only(
+              left: 8,
+              right: 0,
+              top: 14,
+              bottom: 14,
+            ),
+            decoration: BoxDecoration(
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? const Color(0xFF29313F)
+                  : const Color(0xFF6F6F70),
+              borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(10)),
+            ),
+            child: Row(
+              children: const [
+                SizedBox(width: 10),
+
+                _HeaderCell("Order ID"),
+                _HeaderCell("Order Type"),
+                _HeaderCell("Date"),
+                _HeaderCell("Transaction ID"),
+                // SizedBox(width: 10),
+                _HeaderCell("Payment Type"),
+                _HeaderCell("Amount"),
+                _HeaderCell("Item Tax"),
+                _HeaderCell("Discount"),
+                _HeaderCell("Total"),
+                _HeaderCell("Status"),
+              ],
+            ),
           ),
-          decoration: BoxDecoration(
-            color: themeHelper.themeMode == ThemeMode.dark
-                ? const Color(0xFF29313F)
-                : const Color(0xFF6F6F70),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
-          ),
-          child: Row(
-            children: const [
-              SizedBox(width: 10),
 
-              _HeaderCell("Order ID"),
-              _HeaderCell("Order Type"),
-              _HeaderCell("Date"),
-              _HeaderCell("Transaction ID"),
-              // SizedBox(width: 10),
-              _HeaderCell("Payment Type"),
-              _HeaderCell("Amount"),
-              _HeaderCell("Item Tax"),
-              _HeaderCell("Discount"),
-              _HeaderCell("Total"),
-              _HeaderCell("Status"),
-            ],
-          ),
-        ),
+          /// 🔹 TABLE BODY
+          Expanded(
+            child: ListView.builder(
+              itemCount: _pagedOrders.length,
+              itemBuilder: (context, index) {
+                final order = _pagedOrders[index];
 
-        /// 🔹 TABLE BODY
-        Expanded(
-          child: ListView.builder(
-            itemCount: _pagedOrders.length,
-            itemBuilder: (context, index) {
-              final order = _pagedOrders[index];
-
-              return InkWell(
-                onTap: () {
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (dialogContext) {
-                      return BlocProvider(
-                        create: (_) => RefundValidationBloc(
-                          repository: RefundValidationRepository(
-                            baseUrl:
-                            "https://merchantretail.alektasolutions.com",
+                return InkWell(
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (dialogContext) {
+                        return BlocProvider(
+                          create: (_) => RefundValidationBloc(
+                            repository: RefundValidationRepository(
+                              baseUrl:
+                              "https://merchantretail.alektasolutions.com",
+                            ),
                           ),
+                          child: PinCheckInDialog(order: order),
+                        );
+                      },
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.only(
+                      left: 10,
+                      right: 10,
+                      top: 10,
+                      bottom: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF212231) : Colors.white,
+                      border: Border(
+                        bottom: BorderSide(
+                          color: isDark
+                              ? const Color(0xFF4D4E63) // dark mode border
+                              : const Color(0xFFD8D7D7), // light mode border
                         ),
-                        child: PinCheckInDialog(order: order),
-                      );
-                    },
-                  );
-                },
-                child: Container(
-                  padding: const EdgeInsets.only(
-                    left: 10,
-                    right: 10,
-                    top: 10,
-                    bottom: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF212231) : Colors.white,
-                    border: Border(
-                      bottom: BorderSide(
-                        color: isDark
-                            ? const Color(0xFF4D4E63)   // dark mode border
-                            : const Color(0xFFD8D7D7),  // light mode border
                       ),
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      _DataCell("#${order.orderId}"),
-                      _DataCell(order.orderType),
-                      _DataCell(
-                        DateFormat('dd-MM-yyyy').format(order.completedAt),
-                      ),
-                      // _DataCell(order.transactionId),
-                      const SizedBox(width:10),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {},
-                          behavior: HitTestBehavior.opaque,
-                          child: DropdownButtonHideUnderline(
-                            child: Builder(
-                              builder: (context) {
-                                final List<String> itemsList = [
-                                  order.transactionId.toString(),
-                                  ...transactionIdOptions
-                                      .map((e) => e.toString()),
-                                ].toSet().toList();
+                    child: Row(
+                      children: [
+                        _DataCell("#${order.orderId}"),
+                        _DataCell(order.orderType),
+                        _DataCell(
+                          DateFormat('dd-MM-yyyy').format(order.completedAt),
+                        ),
+                        // _DataCell(order.transactionId),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {},
+                            behavior: HitTestBehavior.opaque,
+                            child: DropdownButtonHideUnderline(
+                              child: Builder(
+                                builder: (context) {
+                                  final List<String> itemsList = [
+                                    order.transactionId.toString(),
+                                    ...transactionIdOptions
+                                        .map((e) => e.toString()),
+                                  ].toSet().toList();
 
-                                // ✅ Show only first 2 IDs in display
-                                String displayText = "";
+                                  // ✅ Show only first 2 IDs in display
+                                  String displayText = "";
 
-                                if (itemsList.length == 1) {
-                                  displayText = itemsList[0];
-                                } else if (itemsList.length == 2) {
-                                  displayText =
-                                  "${itemsList[0]}, ${itemsList[1]}";
-                                } else if (itemsList.length > 2) {
-                                  displayText =
-                                  "${itemsList[0]}, ${itemsList[1]}...";
-                                }
-                                return DropdownButton<String>(
-                                  value: itemsList.first,
-                                  isDense: true,
-                                  isExpanded: true,
-                                  icon: const SizedBox.shrink(),
-                                  onChanged: (value) {
-                                    setState(() {
-                                      selectedTxnPerOrder[order.orderId] =
-                                      value!;
-                                    });
-                                  },
-                                  selectedItemBuilder: (context) {
-                                    return itemsList.map((e) {
-                                      return Align(
-                                        alignment: Alignment.centerLeft,
+                                  if (itemsList.length == 1) {
+                                    displayText = itemsList[0];
+                                  } else if (itemsList.length == 2) {
+                                    displayText =
+                                    "${itemsList[0]}, ${itemsList[1]}";
+                                  } else if (itemsList.length > 2) {
+                                    displayText =
+                                    "${itemsList[0]}, ${itemsList[1]}...";
+                                  }
+                                  return DropdownButton<String>(
+                                    value: itemsList.first,
+                                    isDense: true,
+                                    isExpanded: true,
+                                    icon: const SizedBox.shrink(),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        selectedTxnPerOrder[order.orderId] =
+                                        value!;
+                                      });
+                                    },
+                                    selectedItemBuilder: (context) {
+                                      return itemsList.map((e) {
+                                        return Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: Text(
+                                            displayText,
+                                            style: const TextStyle(
+                                                fontSize: 14),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        );
+                                      }).toList();
+                                    },
+                                    items: itemsList.map((txn) {
+                                      return DropdownMenuItem<String>(
+                                        value: txn,
                                         child: Text(
-                                          displayText,
+                                          txn,
                                           style:
-                                          const TextStyle(fontSize: 14),
-                                          overflow: TextOverflow.ellipsis,
+                                          const TextStyle(fontSize: 12),
                                         ),
                                       );
-                                    }).toList();
-                                  },
-                                  items: itemsList.map((txn) {
-                                    return DropdownMenuItem<String>(
-                                      value: txn,
-                                      child: Text(
-                                        txn,
-                                        style: const TextStyle(fontSize: 12),
-                                      ),
-                                    );
-                                  }).toList(),
-                                );
-                              },
+                                    }).toList(),
+                                  );
+                                },
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      // const SizedBox(width:5),
-                      _DataCell(order.paymentMethod),
-                      _DataCell('${order.amount < 0 ? '-' : ''}\$${order.amount.abs().toStringAsFixed(2)}'),
-                      _DataCell('${order.tax < 0 ? '-' : ''}\$${order.tax.abs().toStringAsFixed(2)}'),
-                      _DataCell('${order.discount < 0 ? '-' : ''}\$${order.discount.abs().toStringAsFixed(2)}'),
-                      _DataCell('${order.total < 0 ? '-' : ''}\$${order.total.abs().toStringAsFixed(2)}'),
-                      const _StatusCell(),
-                    ],
+                        // const SizedBox(width:5),
+                        _DataCell(order.paymentMethod),
+                        _DataCell(
+                            '${order.amount < 0 ? '-' : ''}\$${order.amount.abs().toStringAsFixed(2)}'),
+                        _DataCell(
+                            '${order.tax < 0 ? '-' : ''}\$${order.tax.abs().toStringAsFixed(2)}'),
+                        _DataCell(
+                            '${order.discount < 0 ? '-' : ''}\$${order.discount.abs().toStringAsFixed(2)}'),
+                        _DataCell(
+                            '${order.total < 0 ? '-' : ''}\$${order.total.abs().toStringAsFixed(2)}'),
+                        const _StatusCell(),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
   }
 
   // ================= PAGINATION =================

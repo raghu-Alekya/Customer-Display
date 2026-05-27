@@ -121,6 +121,10 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   int _currentPage = 1;
   int _rowsPerPage = 10;
   final List<int> _rowsPerPageOptions = [10, 20, 50, 100];
+
+  // FIX #1: Track the last fetch sequence to cancel stale completions
+  int _fetchSequence = 0;
+
   dynamic _extractMeta(Map map, String key) {
     if (map["request"]?["meta_data"] is List) {
       for (var m in map["request"]["meta_data"]) {
@@ -169,9 +173,24 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   }
 
   /// Same line items as the Total Orders API row — used to paint the right panel immediately.
+  // List<model.LineItem>? _previewLineItemsForSelectedOrder() {
+  //   final id = OrderHelper().selectedOrderId;
+  //   if (id == null || id < 0) return null;
+  //   for (final o in _pageOrders) {
+  //     if (o.id == id) return o.lineItems;
+  //   }
+  //   for (final o in _orders) {
+  //     if (o.id == id) return o.lineItems;
+  //   }
+  //   return null;
+  // }
+
+  /// Same line items as the Total Orders API row — used to paint the right panel immediately.
   List<model.LineItem>? _previewLineItemsForSelectedOrder() {
     final id = OrderHelper().selectedOrderId;
     if (id == null || id < 0) return null;
+
+    // Priority: pageOrders (full data) > _orders
     for (final o in _pageOrders) {
       if (o.id == id) return o.lineItems;
     }
@@ -181,10 +200,11 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     return null;
   }
 
-  /// Same order object as the list row — hydrates panel status, discounts, and tags before SQLite sync.
+  /// NEW: Enhanced preview order with better discount/tax handling
   model.OrderModel? _previewOrderForSelectedOrder() {
     final id = OrderHelper().selectedOrderId;
     if (id == null || id < 0) return null;
+
     for (final o in _pageOrders) {
       if (o.id == id) return o;
     }
@@ -193,6 +213,19 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     }
     return null;
   }
+
+  /// Same order object as the list row — hydrates panel status, discounts, and tags before SQLite sync.
+  // model.OrderModel? _previewOrderForSelectedOrder() {
+  //   final id = OrderHelper().selectedOrderId;
+  //   if (id == null || id < 0) return null;
+  //   for (final o in _pageOrders) {
+  //     if (o.id == id) return o;
+  //   }
+  //   for (final o in _orders) {
+  //     if (o.id == id) return o;
+  //   }
+  //   return null;
+  // }
 
   @override
   void initState() {
@@ -225,9 +258,11 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
         if (!isLoading && _currentChunk < maxChunks) {
           setState(() {
-            _currentChunk++;
-            _visibleOrders =
-                _pageOrders.take(_currentChunk * _chunkSize).toList();
+            // _pageOrders = list;
+            _currentChunk = 1;
+            _visibleOrders = _rowsPerPage <= _chunkSize
+                ? _pageOrders.take(_chunkSize).toList()
+                : _pageOrders;
             _orders = _visibleOrders;
           });
         }
@@ -236,12 +271,15 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final cacheKey = _ordersFetchCacheKey();
+      // FIX #2: Cache restore always selects the FIRST order, never a stale ID
       _TotalOrdersListCache.restoreIfMatch(cacheKey, (list, total) {
         if (!mounted) return;
         setState(() {
           _pageOrders = list;
           _currentChunk = 1;
-          _visibleOrders = _pageOrders.take(_chunkSize).toList();
+          _visibleOrders = _rowsPerPage <= _chunkSize
+              ? _pageOrders.take(_chunkSize).toList()
+              : _pageOrders;
           _orders = _visibleOrders;
           _totalOrdersCount = total;
           isLoading = false;
@@ -250,13 +288,10 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
         if (sourceOrders.isEmpty) {
           OrderHelper().selectedOrderId = null;
         } else {
-          final currentSelected = OrderHelper().selectedOrderId;
-          final orderToSelect = (currentSelected == null ||
-              !sourceOrders.any((o) => o.id == currentSelected))
-              ? sourceOrders.first.id
-              : currentSelected;
-          OrderHelper().selectedOrderId = orderToSelect;
-          _onOrderRowSelected(orderToSelect);
+          // FIX #2: Always default to FIRST order on cache restore
+          final firstOrderId = sourceOrders.first.id;
+          OrderHelper().selectedOrderId = firstOrderId;
+          _onOrderRowSelected(firstOrderId);
         }
       });
 
@@ -266,17 +301,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
         _onOrderRowSelected(-1);
       }
     });
-
-    // Initialize order fetching
-    //_fetchOrders();
-    // _orderScreenPanel = OrderScreenPanel( //Build #1.0.234: No need
-    //   key: ValueKey(orderHelper.activeOrderId ?? 0),
-    //   formattedDate: panelDate ?? '', // Build #1.0.226
-    //   formattedTime: panelTime ?? '',
-    //   quantities: quantities,
-    //   activeOrderId: orderHelper.activeOrderId, // Pass activeOrderId
-    //   fetchOrders: false, // Show shimmer initially
-    // );
   }
 
   bool get _hasMoreLazyData {
@@ -318,19 +342,14 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     debugPrint("OrdersScreen: Initiating fetch orders");
     debugPrint("🚀 Fetch Orders Called");
 
+    // FIX #3: Increment sequence so any stale stream callbacks can be ignored
+    final int mySequence = ++_fetchSequence;
+
     final String fetchCacheKey = _ordersFetchCacheKey();
     final searchQuery = _searchController.text.trim(); // ✅ NO encoding
     debugPrint("🔎 Search Query (RAW): $searchQuery");
     debugPrint("📄 Current Page: $_currentPage");
-    // if (searchQuery.isEmpty || searchQuery == "")  {
-    //   debugPrint("Search cleared → fetching full list");
-    //   debugPrint("🧪 isEmpty check: ${searchQuery.isEmpty}");
-    //   // Optional but recommended: reset paging + local lists
-    //   _currentPage = 1;
-    //   _pageOrders = [];
-    //   _visibleOrders = [];
-    //   _orders = [];
-    // }
+
     debugPrint("🔥 FETCH CALLED AT: ${DateTime.now()}");
     _fetchOrdersSubscription?.cancel();
     _loadingDelayTimer?.cancel();
@@ -340,13 +359,14 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     _fetchOrdersSubscription =
         _orderBloc.fetchTotalOrdersStream.listen((response) {
           if (!mounted) return;
+          // FIX #3: Ignore stale responses from previous fetch calls
+          if (mySequence != _fetchSequence) return;
 
           if (response.status == Status.COMPLETED) {
             _fetchInProgress = false;
             _loadingDelayTimer?.cancel();
             _loadingDelayTimer = null;
 
-            final previousOrderIds = _pageOrders.map((o) => o.id).toSet();
             final orders = response.data?.ordersData ?? [];
 
             _TotalOrdersListCache.update(
@@ -358,41 +378,27 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
             setState(() {
               _pageOrders = orders;
               _currentChunk = 1;
-
-              _visibleOrders = _pageOrders.take(_chunkSize).toList();
+              // Show all page rows immediately — no lazy hiding when rowsPerPage fits
+              _visibleOrders = _rowsPerPage <= _chunkSize
+                  ? _pageOrders.take(_chunkSize).toList()
+                  : _pageOrders; // show all rows for the current page
               _orders = _visibleOrders;
-
               _totalOrdersCount = response.data?.orderTotalCount ?? 0;
               isLoading = false;
             });
 
-            // 🔥 Selection Logic (kept)
+            // FIX #4: Always select FIRST order after every fetch
+            // This fixes: new order arrives → 2nd order was selected instead of 1st
             final sourceOrders = _pageOrders.isNotEmpty ? _pageOrders : _orders;
             if (sourceOrders.isEmpty) {
               OrderHelper().selectedOrderId = null;
               return;
             }
 
-            final currentSelected = OrderHelper().selectedOrderId;
-            int? newIncomingOrderId;
-            if (previousOrderIds.isNotEmpty) {
-              for (final order in sourceOrders) {
-                if (!previousOrderIds.contains(order.id)) {
-                  newIncomingOrderId = order.id;
-                  break;
-                }
-              }
-            }
-
-            final orderToSelect = newIncomingOrderId ??
-                ((currentSelected == null ||
-                    !sourceOrders.any((o) => o.id == currentSelected))
-                    ? sourceOrders.first.id
-                    : currentSelected);
-
-            OrderHelper().selectedOrderId = orderToSelect;
-
-            _onOrderRowSelected(orderToSelect);
+            // Always select the first order in the list
+            final int firstOrderId = sourceOrders.first.id;
+            OrderHelper().selectedOrderId = firstOrderId;
+            _onOrderRowSelected(firstOrderId);
           }
 
           // ERROR
@@ -458,232 +464,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
       search: searchQuery,
     );
   }
-  //Build #1.0.54: added Fetch orders from API
-//   void _fetchOrders() {
-//     debugPrint("OrdersScreen: Initiating fetch orders");
-//     _fetchOrdersSubscription?.cancel();
-//     _loadingDelayTimer?.cancel();
-//     _loadingDelayTimer = null;
-//     _fetchInProgress = false;
-//     _fetchOrdersSubscription =
-//         _orderBloc.fetchTotalOrdersStream.listen((response) async {
-//           if (!mounted) return;
-//
-//           if (response.status == Status.COMPLETED) {
-//             _fetchInProgress = false;
-//             _loadingDelayTimer?.cancel();
-//             _loadingDelayTimer = null;
-//
-//             debugPrint(
-//                 "OrdersScreen: Successfully fetched ${response.data!.ordersData.length} orders, Total Count: ${response.data!.orderTotalCount}");
-//
-//             final deletedBox = StorageProvider.deletedOrders;
-//             final deletedMap = await deletedBox.toMap();
-//
-//             setState(() {
-//               _pageOrders = response.data!.ordersData;
-//
-//               _currentChunk = 1;
-//
-//               // 👇 ALWAYS start with only chunkSize
-//               _visibleOrders = _pageOrders.take(_chunkSize).toList();
-//               _orders = _visibleOrders;
-//
-//               _totalOrdersCount = response.data!.orderTotalCount;
-//               isLoading = false;
-//
-//             // -------------------------------------------------------------
-//               // ⭐ MERGE OFFLINE DELETED ORDERS WITH USER FILTER LOGIC
-//               // -------------------------------------------------------------
-//
-//               // Get selected user filter
-//               final String selectedUserId = _filterUsers
-//                   .firstWhere((e) => e.displayName == _selectedUserFilter)
-//                   .iD ??
-//                   "";
-//
-//               if (deletedMap.isNotEmpty) {
-//                 debugPrint("Merging ${deletedMap.length} deleted offline orders...");
-//
-//                 final deletedOrderModels = deletedMap.values.map((json) {
-//                   final map = Map<String, dynamic>.from(json);
-//
-//                   // ⭐ FIX 1: Convert order_id → id
-//                   map["id"] ??= map["order_id"];
-//
-//                   // ⭐ FIX 2: Convert created_at → date_created
-//                   if (map["created_at"] != null) {
-//                     map["date_created"] = map["created_at"]
-//                         .toString()
-//                         .replaceAll("T", " ")
-//                         .split(".")
-//                         .first;
-//                   }
-//
-//                   final payable = (map["net_payable"] as num?)?.toDouble() ?? 0.0;
-//
-// // ⭐ FINAL TOTAL (SHOW IN LIST)
-//                   map["total"] = payable.toStringAsFixed(2);
-//
-//
-//                   // ⭐ FIX 4: Force offline order meta
-//                   map["status"] = "cancelled";
-//                   map["order_type"] = "offline Order";
-//                   map["created_via"] = "offline Order";
-//                   map["createdVia"] = "offline Order";
-//
-//                   // ⭐ FIX 5: USER & SHIFT LOGIC
-//                   final metaUserId =
-//                       _extractMeta(map, "user_id") ?? _extractMeta(map, "pos_placed_by");
-//                   map["user_id"] = metaUserId != null
-//                       ? int.tryParse(metaUserId.toString())
-//                       : -1;
-//
-//                   map["createdBy"] = map["user_id"];
-//                   map["employee_name"] = map["employee_name"] ??
-//                       _extractMeta(map, "user_name") ??
-//                       "Offline User";
-//                   map["shift_id"] ??= _extractMeta(map, "shift_id") ?? -1;
-//
-//                   // ⭐ USER FILTER APPLIED (MATCH ONLINE FILTER BEHAVIOR)
-//                   if (selectedUserId.isNotEmpty && selectedUserId != "All") {
-//                     if (map["user_id"].toString() != selectedUserId.toString()) {
-//                       return null; // ❌ Skip unrelated deleted order
-//                     }
-//                   }
-//
-//                   try {
-//                     return model.OrderModel.fromJson(map);
-//                   } catch (e) {
-//                     debugPrint("❌ Error converting deleted order: $e\nMAP: $map");
-//                     return null;
-//                   }
-//                 }).where((e) => e != null).cast<model.OrderModel>().toList();
-//
-//                 // ⭐ Remove duplicates
-//                 final existingIds = _orders.map((o) => o.id ?? 0).toSet();
-//                 final uniqueDeleted = deletedOrderModels.where((order) {
-//                   final deletedId = order.id ?? 0;
-//                   return !existingIds.contains(deletedId);
-//                 }).toList();
-//
-//                 debugPrint("Added deleted offline orders: ${uniqueDeleted.length}");
-//
-//                 // ⭐ PREPEND offline deleted orders
-//                 if (_currentPage == 1) {
-//                   _pageOrders = [...uniqueDeleted, ..._pageOrders];
-//                   _visibleOrders = _pageOrders.take(_chunkSize).toList();
-//                   _orders = _visibleOrders;
-//                 }
-//
-//                 // ⭐ SORT latest first
-//                 _orders.sort((a, b) {
-//                   final da = DateTime.tryParse(a.dateCreated ?? "") ?? DateTime(1970);
-//                   final db = DateTime.tryParse(b.dateCreated ?? "") ?? DateTime(1970);
-//                   return db.compareTo(da);
-//                 });
-//               }
-//
-//               // -------------------------------------------------------------
-//
-//               if (_orders.isEmpty) {
-//                 debugPrint("_orders empty:");
-//                 OrderHelper().selectedOrderId = null;
-//                 return;
-//               }
-//
-//               if (OrderHelper().selectedOrderId == null ||
-//                   !_orders.any((order) =>
-//                   order.id == OrderHelper().selectedOrderId)) {
-//                 OrderHelper().selectedOrderId = _orders.first.id;
-//                 _onOrderRowSelected(OrderHelper().selectedOrderId!);
-//               } else {
-//                 _onOrderRowSelected(OrderHelper().selectedOrderId!);
-//               }
-//             });
-//           }
-//
-//           // ---------------- ERROR HANDLING ----------------
-//           else if (response.status == Status.ERROR) {
-//             _fetchInProgress = false;
-//             _loadingDelayTimer?.cancel();
-//             _loadingDelayTimer = null;
-//
-//             if (response.message!.contains('Unauthorised')) {
-//               Navigator.pushReplacement(context,
-//                   MaterialPageRoute(builder: (context) => LoginScreen()));
-//
-//               ScaffoldMessenger.of(context).showSnackBar(
-//                 const SnackBar(
-//                   content: Text("Unauthorised. Session is expired on this device."),
-//                   backgroundColor: Colors.red,
-//                   duration: Duration(seconds: 2),
-//                 ),
-//               );
-//             } else {
-//               debugPrint("OrdersScreen: Error fetching orders - ${response.message}");
-//               setState(() => isLoading = false);
-//
-//               ScaffoldMessenger.of(context).showSnackBar(
-//                 SnackBar(
-//                   content: Text(TextConstants.failedToFetchOrders),
-//                   backgroundColor: Colors.red,
-//                   duration: const Duration(seconds: 2),
-//                 ),
-//               );
-//             }
-//           }
-//
-//           // ---------------- LOADING STATE (delayed to avoid flash for quick loads) ----------------
-//           else if (response.status == Status.LOADING) {
-//             _fetchInProgress = true;
-//             _loadingDelayTimer?.cancel();
-//             _loadingDelayTimer = Timer(const Duration(milliseconds: 300), () {
-//               if (mounted && _fetchInProgress) {
-//                 setState(() => isLoading = true);
-//               }
-//             });
-//           }
-//         });
-//
-//     // ---------------- API FILTER PARAMS ----------------
-//     var selectedStatus = _filterStatuses
-//         .firstWhere((element) => element.name == _selectedStatusFilter)
-//         .slug;
-//
-//     var selectedUserId = _filterUsers
-//         .firstWhere((element) =>
-//     element.displayName == _selectedUserFilter)
-//         .iD ??
-//         "";
-//
-//     var selectedOrderType = _filterOrderType
-//         .firstWhere((element) =>
-//     element.name == _selectedOrderTypeFilter)
-//         .slug ??
-//         "";
-//
-//     DateFormat format = DateFormat('yyyy-MM-dd');
-//     String? startDateFormatted = '';
-//     String? endDateFormatted = '';
-//
-//     if (_startDate != null) {
-//       startDateFormatted = format.format(_startDate!);
-//       endDateFormatted = format.format(_endDate!);
-//     }
-//
-//     // API CALL
-//     _orderBloc.fetchTotalOrdersCount(
-//       allStatuses: true,
-//       pageNumber: _currentPage,
-//       pageLimit: _rowsPerPage,
-//       status: selectedStatus,
-//       orderType: selectedOrderType,
-//       userId: selectedUserId,
-//       startDate: startDateFormatted ?? '',
-//       endDate: endDateFormatted ?? '',
-//     );
-//   }
 
   // Sort orders based on column
   void _sortData(String column) {
@@ -839,13 +619,11 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
         _isDateRangeApplied = _startDate != null && _endDate != null;
         _currentPage = 1;
 
-        //  if(_isDateRangeApplied) {
         debugPrint("#### _isDateRangeApplied: $_isDateRangeApplied");
         debugPrint("Start Date: $_startDate");
         debugPrint("End Date: $_endDate");
         // Fetch new data with updated date range
         _fetchOrders();
-        //   }
         debugPrint(
             "OrdersScreen: Date range selected from $_startDate to $_endDate");
       });
@@ -903,20 +681,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     super.dispose();
   }
 
-  // @override
-  // void didChangeDependencies() {
-  //   super.didChangeDependencies();
-  //   debugPrint("????? OrdersScreen: didChangeDependencies");
-  //   WidgetsBinding.instance.addPostFrameCallback((_) {
-  //     _fetchOrders();
-  //     // Build #1.0.248: Only call _onOrderRowSelected if we don't have a preserved selection
-  //     if (OrderHelper().selectedOrderId == null) {
-  //       _onOrderRowSelected(-1);
-  //     }
-  //
-  //     ///initialise order panel
-  //   });
-  // }
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -926,15 +690,18 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
   // Build #1.0.143: Fixed Issue : After return from order summary screen , total order screen not refreshing with updated response
   void _refreshOrderList() {
     if (kDebugMode) print("_refreshOrderList called");
+
+    if (!isLoading) {
+      setState(() => isLoading = true);
+    }
+
     OrderHelper.notifyOrderPanelToRefresh();
-    _fetchOrders();
+    _fetchOrders();   // This already handles loading via stream
   }
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    // String formattedDate = DateFormat("EEE, MMM d' ${now.year}'").format(now);
-    // String formattedTime = DateFormat('hh:mm a').format(now);
     final themeHelper = Provider.of<ThemeNotifier>(context);
     // Update filteredData where clause
     List<model.OrderModel> filteredData = _orders;
@@ -972,8 +739,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
               // Update the notifier which will trigger _onLayoutChanged
               PinakaPreferences.layoutSelectionNotifier.value = newLayout;
-              // No need to call saveLayoutSelection here as it's handled in the notifier
-              //_preferences.saveLayoutSelection(newLayout);
               //Build #1.0.122: update layout mode change selection to DB
               await UserDbHelper().saveUserSettings(
                   {AppDBConst.layoutSelection: newLayout},
@@ -1011,7 +776,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                 if (sidebarPosition == SidebarPosition.right ||
                     (sidebarPosition == SidebarPosition.bottom &&
                         orderPanelPosition == OrderPanelPosition.left))
-                // Replace your OrderScreenPanel instances with:
                   OrderScreenPanel(
                     fetchOrders: !isLoading, // Sync with parent's loading state
                     key: ValueKey(
@@ -1055,8 +819,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                     ),
                     padding: const EdgeInsets.fromLTRB(4, 4, 0, 4),
                     child: Column(
-                      //mainAxisAlignment: MainAxisAlignment.start,
-                      // crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         // Filters
                         Row(
@@ -1136,7 +898,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                       ),
                                     ),
 
-                                    // ✅ CLEAR BUTTON (NOW WILL WORK)
+                                    // ✅ CLEAR BUTTON
                                     if (_searchController.text.isNotEmpty)
                                       GestureDetector(
                                         onTap: () {
@@ -1229,16 +991,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        // if (_isDateRangeApplied) ...[
-                                        //   Text(
-                                        //     "${DateFormat('dd/MM').format(_startDate!)} - ${DateFormat('dd/MM').format(_endDate!)}",
-                                        //     style: TextStyle(
-                                        //       color: _isDateRangeApplied ? Colors.white : Colors.black,
-                                        //       fontSize: 14,
-                                        //     ),
-                                        //   ),
-                                        //   const SizedBox(width: 8),
-                                        // ],
                                         SvgPicture.asset(
                                           'assets/svg/filter_calendar.svg',
                                           width: MediaQuery.of(context)
@@ -1258,18 +1010,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                                                 : Color(0xFF6F6F70),
                                             BlendMode.srcIn,
                                           ),
-                                          //color: _isDateRangeApplied ? Colors.white : Colors.black,
                                         ),
-                                        // if (!_isDateRangeApplied) ...[
-                                        //   const SizedBox(width: 8),
-                                        //   Text(
-                                        //     "Date Range",
-                                        //     style: TextStyle(
-                                        //       color: Colors.black,
-                                        //       fontSize: 14,
-                                        //     ),
-                                        //   ),
-                                        // ],
                                       ],
                                     ),
                                   ),
@@ -1484,7 +1225,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                         ),
 
                         // ADDED: Pagination Controls
-                        //if (!isLoading && totalItems > 0)
                         if (!isLoading && _totalOrdersCount > _rowsPerPage)
                           _buildPaginationControls(totalItems, totalPages),
                       ],
@@ -1501,7 +1241,6 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
                 if (sidebarPosition != SidebarPosition.right &&
                     !(sidebarPosition == SidebarPosition.bottom &&
                         orderPanelPosition == OrderPanelPosition.left))
-                // Replace your OrderScreenPanel instances with:
                   OrderScreenPanel(
                     fetchOrders: !isLoading, // Sync with parent's loading state
                     key: ValueKey(
@@ -1555,23 +1294,32 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     );
   }
 
-  // method to handle row selection
+  // FIX #6: Show loading when new order comes + improved refresh
   void _onOrderRowSelected(int orderId) async {
     debugPrint("OrdersScreen: _onOrderRowSelected id $orderId");
 
     // Build #1.0.248: Preserve the selection
     OrderHelper().selectedOrderId = orderId;
+
+    // NEW: If this is called from refresh after new order, show loading
+    bool shouldShowLoading = orderId == -1 ||
+        (OrderHelper().selectedOrderId != null && _pageOrders.isEmpty);
+
+    if (shouldShowLoading && !isLoading) {
+      setState(() => isLoading = true);
+    }
+
     // Explicitly declare selectedOrder as a nullable OrderModel
     model.OrderModel? selectedOrder;
 
     if (orderId == -1 && _orders.isNotEmpty) {
-      orderId = _orders.first
-          .id; //Build #1.0.165: to fix issue in windows, not able to save lastActiveOrderID
+      orderId = _orders.first.id;
       OrderHelper().selectedOrderId = orderId;
     }
 
     if (OrderHelper().selectedOrderId != null) {
       final selectedId = OrderHelper().selectedOrderId!;
+      // FIX #5: Search _pageOrders first (full dataset), then _orders (visible chunk)
       for (final order in _pageOrders) {
         if (order.id == selectedId) {
           selectedOrder = order;
@@ -1589,55 +1337,24 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
     }
 
     if (selectedOrder != null) {
-      // If an order is selected, parse and format its date and time
       final date = DateTime.tryParse(selectedOrder.dateCreated)?.toLocal();
       if (date != null) {
         panelDate = DateFormat(TextConstants.dateFormat).format(date);
         panelTime = DateFormat('hh:mm a').format(date);
       } else {
-        // Fallback if the date string is invalid
         panelDate = 'Invalid Date';
         panelTime = 'Invalid Time';
       }
     } else {
-      // If no order is selected, default to the current date and time
       final now = DateTime.now();
       panelDate = DateFormat(TextConstants.dateFormat).format(now);
       panelTime = DateFormat('hh:mm a').format(now);
     }
 
-    if (OrderHelper().selectedOrderId != orderId) {
-      // Create or switch to order tab in RightOrderPanel view only
-      OrderHelper().selectedOrderId = orderId;
-      // Notify RightOrderPanel to refresh
-      // Set the state with the selected order's ID
-      setState(() {
-        /// we don't have to use de-select order
-        /// when ever changing theme on topBar , selected order preserve correctly , otherwise it will remove
-        // // If the user taps the same row, you might want to deselect it
-        // if (OrderHelper().selectedOrderId == orderId) {
-        //   OrderHelper().selectedOrderId = null;
-        //   // Consider clearing the helper as well if needed
-        //   // OrderHelper().clearActiveOrder();
-        // } else {
-        //   OrderHelper().selectedOrderId = orderId;
-        // }
-      });
-      debugPrint(
-          "OrdersScreen: Selected order ID $OrderHelper().selectedOrderId");
-    }
-    setState(
-            () {}); // Build #1.0.248: Force UI to update with the new selection
-    // _orderScreenPanel = OrderScreenPanel( //Build #1.0.234: No need , we already setting values in widget build method
-    //   key: ValueKey(orderId), // Use orderId as key
-    //   formattedDate: panelDate ?? '', // Build #1.0.226: updated values
-    //   formattedTime: panelTime ?? '',
-    //   quantities: quantities,
-    //   activeOrderId: orderId, // Pass activeOrderId
-    //   fetchOrders: !isLoading,
-    // );
-    // _orderScreenPanel.setFormattedDate = panelDate;
-    // _orderScreenPanel.setFormattedTime = panelTime;
+    // Build #1.0.248: Force UI to update with the new selection
+    setState(() {});
+
+    debugPrint("OrdersScreen: Selected order ID ${OrderHelper().selectedOrderId}");
   }
 
   Widget _buildPaginationControls(int totalItems, int totalPages) {

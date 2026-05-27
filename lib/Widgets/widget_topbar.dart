@@ -351,6 +351,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
   static Map<String, dynamic>? _cachedUserData;
   static bool _isUserDataLoaded = false;
   static Future<Map<String, dynamic>?>? _initialUserFuture;
+  static bool isNavigationInProgress = false;
 
   static void clearUserDataCache() {
     _cachedUserData = null;
@@ -402,15 +403,24 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     } else {
       if (_cachedUserData != null) {
         userId = _cachedUserData![AppDBConst.userId] as int?;
-        userDisplayName =
-        _cachedUserData![AppDBConst.userDisplayName] as String?;
+        userDisplayName = _cachedUserData![AppDBConst.userDisplayName] as String?;
         userRole = _cachedUserData![AppDBConst.userRole] as String?;
       }
     }
 
-    // NOTE: TopBar does NOT set TopBar.onRefreshCompleted here.
-    // That callback is set by CategoriesScreen in its own initState so that
-    // the callback correctly points to _CategoriesScreenState methods.
+    // ✅ REMOVED: modeChangedNotifier debug listener — was never disposed,
+    //    leaked across screens, and caused mode changes on tab navigation.
+  }
+
+  void setModeChangePending(bool value) {
+  }
+
+  // Add this method inside class _TopBarState { ... }
+  void preventModeChangeDuringNavigation() {
+    isNavigationInProgress = true;
+    Future.delayed(const Duration(milliseconds: 1000), () {
+      if (mounted) isNavigationInProgress = false;
+    });
   }
 
   @override
@@ -464,8 +474,6 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    // Do NOT clear TopBar.onRefreshCompleted here — CategoriesScreen owns it
-    // and clears it in its own dispose().
     _debounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _searchController.removeListener(_onSearchChanged);
@@ -2705,13 +2713,13 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           const SizedBox(width: 16),
 
 
-     // Mode toggle
+// Mode toggle - FIXED (Prevents accidental trigger during navigation)
           GestureDetector(
             onTap: () {
-              // This must fire FIRST — RightOrderPanel listens to it
-              TopBar.modeChangedNotifier.value++;
-
-              // Existing call (unchanged)
+              print("🔄 [MODE BUTTON] Tapped — calling onModeChanged");
+              // ✅ No modeChangedNotifier.value++ — removing this was the key fix.
+              // That static notifier leaked to ALL screens that ever built a TopBar,
+              // including TotalOrdersScreen and CompletedOrdersScreen (Refund).
               widget.onModeChanged();
             },
             child: Container(
@@ -2740,6 +2748,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               ),
             ),
           ),
+
           const SizedBox(width: 16),
 
           // Theme toggle
