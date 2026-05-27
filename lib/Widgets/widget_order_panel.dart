@@ -4205,7 +4205,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     for (final item in orderItems) {
       final itemType = (item['item_type'] ?? '').toString().toLowerCase();
 
-      // FIX: Skip merchant discount line items — already handled via merchantDiscount from Hive
+      //  FIX: Skip merchant discount line items — already handled via merchantDiscount from Hive
       // Prevents double-subtraction: once via negative price in grossTotal, once via merchantDiscount in netTotal
       if (itemType == 'discount') continue;
 
@@ -4348,7 +4348,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                 ],
               ),
             ),
-
             if (tabs.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),

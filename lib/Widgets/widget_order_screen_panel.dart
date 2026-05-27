@@ -42,6 +42,7 @@ import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import '../Screens/Home/isar_payments/local_payments_model.dart';
 import '../Utilities/printer_settings.dart';
 import '../Utilities/result_utility.dart';
+import '../services/CustomerDisplayService.dart';
 
 /// Same EBT rules as [OrderPanelDBHelper] / Fast Keys: product tag `ebt-eligible` OR line/variation
 /// meta keys `is_ebt_eligible`, `_is_ebt_eligible`, `_ebt_eligible` (list API often omits tags).
@@ -1560,6 +1561,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     String displayTime = "";
 
     final DateTime? bestDateTime = _getBestDateTime();
+
+
 
     if (bestDateTime != null) {
       displayDate = DateFormat(TextConstants.dateFormat).format(bestDateTime);
@@ -3763,6 +3766,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                           double currentUnitPrice = (item[AppDBConst.itemPrice] as num?)?.toDouble() ??
                                               (item[AppDBConst.itemUnitPrice] as num?)?.toDouble() ?? 0.0;
 
+
+
                                           if (currentUnitPrice == 0.0 && sumPrice > 0 && qty > 0) {
                                             currentUnitPrice = sumPrice / qty;
                                           }
@@ -3804,6 +3809,67 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                           print("   uiGrossTotal        : ${uiGrossTotal.toStringAsFixed(2)}");
                                         }
 
+                                        final double redeemValue = ((boxData is Map
+                                            ? boxData["redeemed_value"]   // change key if needed
+                                            : null) ??
+                                            0.0)
+                                            .toDouble();
+
+                                        // Customer display update
+                                        try {
+                                          final customerDisplayItems = itemsForSummary.map((item) {
+                                            final qty = (item[AppDBConst.itemCount] as num?)?.toInt() ?? 1;
+                                            final price =
+                                                (item[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
+                                            // ADD THIS
+
+
+                                            print("REDEEM VALUE FROM PENDING ORDER = $redeemValue");
+
+                                            print(
+                                              "DISPLAY ITEM => ${item[AppDBConst.itemName]} | Qty: $qty | Price: $price",
+                                            );
+
+                                            return {
+                                              "name": item[AppDBConst.itemName]?.toString() ?? "",
+                                              "qty": qty,
+                                              "price": price,
+                                              "original_price":
+                                              (item["original_price"] as num?)?.toDouble() ?? price,
+                                              "auto_discount":
+                                              (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0,
+                                              "discount_type": item["discount_type"]?.toString() ?? "",
+                                              "image": item["image"]?.toString() ?? "",
+                                            };
+                                          }).toList();
+
+                                          await CustomerDisplayService.showCustomerData(
+                                            orderId: frozenSummaryOrderId,
+                                            items: customerDisplayItems,
+
+                                            // EXACT SAME AS ORDER SUMMARY
+                                            grossTotal: grossTotal.toDouble(),
+                                            discount: uiOrderDiscount.toDouble(),
+                                            merchantDiscount: merchantDiscount.toDouble(),
+                                            tax: uiOrderTax.toDouble(),
+                                            cashbackFee: cashbackFee.toDouble(),
+                                            netPayable: netPayable.toDouble(),
+
+                                            // subtotal before final total
+                                            netTotal: (grossTotal -
+                                                uiOrderDiscount -
+                                                merchantDiscount)
+                                                .toDouble(),
+
+                                            orderDate: displayDate,
+                                            orderTime: displayTime,
+                                            loyaltyContact: '',
+                                            redeemedAmount: redeemValue,
+                                            summaryEnabled: true,
+                                          );
+                                        } catch (e) {
+                                          print(">>> Customer display update failed: $e");
+                                        }
 
                                         final result = await Navigator.push(
                                           context,

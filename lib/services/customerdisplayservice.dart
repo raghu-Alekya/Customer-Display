@@ -2,7 +2,7 @@ import 'package:flutter/services.dart';
 
 class CustomerDisplayService {
   static const MethodChannel _platform =
-  MethodChannel('com.alekta.pinakapos');
+  MethodChannel('com.alekta.pinakapos/sunmi_display');
 
   /// 🔹 Show default welcome screen
   static Future<void> showWelcome() async {
@@ -76,22 +76,21 @@ class CustomerDisplayService {
     required double tax,
     required double netPayable,
     required double cashbackFee,
-    String loyaltyContact = "", // ✅ NEW
+    // required double redeemedAmount,
+
+    double redeemedAmount = 0.0,
+    String loyaltyContact = "",
     String orderDate = '',
     String orderTime = '',
     String storeId = '',
     String storeName = '',
     String? storeLogoUrl,
     bool summaryEnabled = true,
-    String discountType = "",
+    String discountType = ", required redeemedAmount",
     double discountValue = 0.0,
   }) async {
     try {
-      print("📢 [CustomerDisplayService] showCustomerData() called");
-      print("📝 orderId: $orderId, items count: ${items.length}");
-      print(
-          "📝 grossTotal: $grossTotal, discount: $discount, merchantDiscount: $merchantDiscount, netTotal: $netTotal, tax: $tax, netPayable: $netPayable, cashbackFee: $cashbackFee");
-      print("📝 store: $storeName ($storeId), logo: $storeLogoUrl");
+      print("📢 showCustomerData called");
 
       final safeItems = items.map((item) {
         return {
@@ -105,16 +104,6 @@ class CustomerDisplayService {
         };
       }).toList();
 
-// 🔍 Print discount details
-      for (final item in safeItems) {
-        print(
-            "🧾 Item: ${item['name']} | "
-                "Discount Type: ${item['discount_type']} | "
-                "Auto Discount: ${item['auto_discount']}"
-        );
-      }
-
-
       await _platform.invokeMethod('showCustomerData', {
         "orderId": orderId,
         "items": safeItems,
@@ -125,6 +114,7 @@ class CustomerDisplayService {
         "tax": tax,
         "netPayable": netPayable,
         "cashbackFee": cashbackFee,
+        "redeemedAmount": redeemedAmount,
         "orderDate": orderDate,
         "orderTime": orderTime,
         "storeId": storeId,
@@ -132,14 +122,11 @@ class CustomerDisplayService {
         "storeLogoUrl": storeLogoUrl ?? "",
         "loyaltyContact": loyaltyContact,
         "summaryEnabled": summaryEnabled,
-        // ✅ NEW
         "discountType": discountType,
         "discountValue": discountValue,
       });
-
-      print("✅ [CustomerDisplayService] Customer data sent successfully");
     } catch (e) {
-      print("⚠️ [CustomerDisplayService] Failed to send data: $e");
+      print("Customer display error: $e");
     }
   }
 }

@@ -120,6 +120,8 @@
             android:layout_marginEnd="10dp"
             android:padding="0dp">
             <!-- ================= CUSTOMER INFO (ADDED HERE) ================= -->
+            <!-- ================= CUSTOMER INFO ================= -->
+            <!-- ================= CUSTOMER INFO ================= -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -129,64 +131,211 @@
                 android:elevation="2dp"
                 android:layout_marginBottom="10dp">
 
-                <!-- FIRST ROW: Mobile Number (left) + Order ID (right) -->
+                <!-- Top Row -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <!-- Customer Label -->
+                    <TextView
+                        android:id="@+id/email_label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Customer:"
+                        android:textColor="#003A82"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:layout_marginEnd="8dp" />
+
+                    <!-- Input -->
+                    <EditText
+                        android:id="@+id/email_input"
+                        android:layout_width="180dp"
+                        android:layout_height="40dp"
+                        android:hint="Enter phone or email"
+                        android:textColor="#353535"
+                        android:textSize="18sp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:background="@drawable/edittext_bg"
+                        android:inputType="textEmailAddress|phone"
+                        android:maxLines="1"
+                        android:imeOptions="actionDone" />
+                    <!-- Add Button -->
+                    <Button
+                        android:id="@+id/btn_add_customer"
+                        android:layout_width="wrap_content"
+                        android:layout_height="48dp"
+                        android:layout_marginStart="10dp"
+                        android:text="Add"
+                        android:textAllCaps="false"
+                        android:textSize="16sp"
+                        android:textColor="@android:color/white"
+                        android:backgroundTint="#003A82" />
+
+                    <TextView
+                        android:id="@+id/points_label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="100dp"
+                        android:text="Points:"
+                        android:textColor="#E20000"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/customer_points"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:text="0"
+                        android:textColor="#353535"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Order ID below customer -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
                     android:layout_marginTop="8dp">
 
-                    <!-- Email Section (Label + Value) -->
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:layout_weight="1">
-
-                        <TextView
-                            android:id="@+id/email_label"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Customer:"
-                            android:textColor="#003A82"
-                            android:textSize="20sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/email_value"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="6dp"
-                            android:text=""
-                            android:textColor="#353535"
-                            android:textSize="20sp" />
-                    </LinearLayout>
-
-                    <!-- Order ID (Right Side) -->
                     <TextView
                         android:id="@+id/order_id_label"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Order ID:"
-                        android:textColor="#E20000"
-                        android:textSize="20sp"
+                        android:textColor="#003A82"
+                        android:textSize="18sp"
                         android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/customer_order_id"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="6dp"
+                        android:layout_marginStart="8dp"
                         android:text=""
                         android:textColor="#353535"
-                        android:textSize="20sp"
+                        android:textSize="18sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
-                <!-- SECOND ROW: Email -->
-
-
             </LinearLayout>
+            <!-- ================= CUSTOM KEYPAD ================= -->
+            <!--            <GridLayout-->
+            <!--                android:id="@+id/custom_keypad"-->
+            <!--                android:layout_width="match_parent"-->
+            <!--                android:layout_height="wrap_content"-->
+            <!--                android:layout_marginTop="10dp"-->
+            <!--                android:columnCount="3"-->
+            <!--                android:rowCount="4"-->
+            <!--                android:alignmentMode="alignMargins"-->
+            <!--                android:useDefaultMargins="true">-->
+
+            <!--                &lt;!&ndash; Row 1 &ndash;&gt;-->
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_1"-->
+            <!--                    android:text="1"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_2"-->
+            <!--                    android:text="2"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_3"-->
+            <!--                    android:text="3"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                &lt;!&ndash; Row 2 &ndash;&gt;-->
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_4"-->
+            <!--                    android:text="4"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_5"-->
+            <!--                    android:text="5"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_6"-->
+            <!--                    android:text="6"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                &lt;!&ndash; Row 3 &ndash;&gt;-->
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_7"-->
+            <!--                    android:text="7"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_8"-->
+            <!--                    android:text="8"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_9"-->
+            <!--                    android:text="9"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                &lt;!&ndash; Row 4 &ndash;&gt;-->
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_clear"-->
+            <!--                    android:text="⌫"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_0"-->
+            <!--                    android:text="0"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_done"-->
+            <!--                    android:text="Done"-->
+            <!--                    android:textSize="20sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+            <!--            </GridLayout>-->
             <!-- =============================================================== -->
             <!-- ITEM LIST HEADER -->
             <LinearLayout
@@ -256,7 +405,8 @@
             <LinearLayout
                 android:id="@+id/empty_state_box"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:gravity="center"
                 android:orientation="vertical"
                 android:visibility="gone">
@@ -298,7 +448,8 @@
                 android:layout_height="wrap_content"
                 android:background="@drawable/card_bg"
                 android:orientation="vertical"
-                android:padding="8dp">
+                android:padding="8dp"
+                android:visibility="gone">
 
                 <!-- Gross Total -->
                 <LinearLayout
@@ -429,6 +580,37 @@
                         android:textSize="18sp" />
                 </LinearLayout>
 
+                <LinearLayout
+                    android:id="@+id/redeem_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="3dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/label_redeem_amount"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:paddingStart="4dp"
+                        android:text="Redeemed Amount"
+                        android:textColor="#9C27B0"
+                        android:textSize="18sp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/value_redeem_amount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingEnd="8dp"
+                        android:text="$0.00"
+                        android:textColor="#9C27B0"
+                        android:textSize="18sp"
+                        android:visibility="gone" />
+                </LinearLayout>
+
                 <!-- Cashback Fee -->
                 <LinearLayout
                     android:id="@+id/row_cashback_fee"
@@ -488,7 +670,47 @@
                 </LinearLayout>
 
             </LinearLayout>
+            <!-- ================= CUSTOM KEYPAD ================= -->
+            <!-- ================= CUSTOM KEYPAD ================= -->
+            <GridLayout
+                android:id="@+id/custom_keypad"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone"
+                android:columnCount="6"
+                android:background="#FFFFFF"
+                android:padding="4dp">
 
+                <!-- Numbers -->
+                <Button android:id="@+id/key_1" android:text="1"/>
+                <Button android:id="@+id/key_2" android:text="2"/>
+                <Button android:id="@+id/key_3" android:text="3"/>
+                <Button android:id="@+id/key_4" android:text="4"/>
+                <Button android:id="@+id/key_5" android:text="5"/>
+                <Button android:id="@+id/key_6" android:text="6"/>
+
+                <Button android:id="@+id/key_7" android:text="7"/>
+                <Button android:id="@+id/key_8" android:text="8"/>
+                <Button android:id="@+id/key_9" android:text="9"/>
+                <Button android:id="@+id/key_0" android:text="0"/>
+                <Button android:id="@+id/key_at" android:text="@"/>
+                <Button android:id="@+id/key_dot" android:text="."/>
+
+
+                <!-- Actions -->
+                <Button
+                    android:id="@+id/key_space"
+                    android:text="Space"/>
+
+                <Button
+                    android:id="@+id/key_clear"
+                    android:text="⌫"/>
+
+                <Button
+                    android:id="@+id/key_done"
+                    android:text="Done"/>
+
+            </GridLayout>
         </LinearLayout>
 
         <!-- ================= LEFT PANEL (SLIDESHOW) ================= -->

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:pinaka_pos/Database/user_db_helper.dart';
 import 'package:pinaka_pos/Repositories/Orders/order_repository.dart';
@@ -2531,7 +2532,6 @@ class OrderHelper {
       "tax_rate": rate,
     };
   }
-
   Future<void> addItemToOrder(
       int? serverItemId,
       String name,
@@ -2822,24 +2822,49 @@ class OrderHelper {
 
       final updatedOrder = <String, dynamic>{...order, 'products': products};
 
-      // Calculate totals and save to Hive + Memory
       await saveOfflineOrder(orderId, updatedOrder);
-      // ead back the values that saveOfflineOrder wrote
+
       final double subtotal =
           (updatedOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
-      final double tax = (updatedOrder['order_tax'] as num?)?.toDouble() ?? 0.0;
+      final double tax =
+          (updatedOrder['order_tax'] as num?)?.toDouble() ?? 0.0;
       final double total =
           (updatedOrder['net_payable'] as num?)?.toDouble() ?? 0.0;
 
-      // / 🔄 Send update to Customer Display
-      // await CustomerService.publishCartUpdate(
-      // orderId,
-      // products,
-      // subtotal: subtotal,
-      // tax: tax,
-      // total: total,
-      // );
+// refresh UI FIRST
+      notifyOrderPanelToRefresh();
+      if (onItemAdded != null) onItemAdded();
 
+      try {
+        await const MethodChannel(
+          'com.alekta.pinakapos/sunmi_display',
+        ).invokeMethod(
+          'showCustomerData',
+          {
+            'orderId': orderId,
+            'items': products,
+            'grossTotal': subtotal,
+            'discount': (updatedOrder['discount'] as num?)?.toDouble() ?? 0.0,
+            'merchantDiscount':
+            (updatedOrder['merchant_discount'] as num?)?.toDouble() ?? 0.0,
+            'netTotal':
+            (updatedOrder['net_total'] as num?)?.toDouble() ?? subtotal,
+            'tax': tax,
+            'netPayable': total,
+            'orderDate': updatedOrder['order_date']?.toString() ?? '',
+            'orderTime': updatedOrder['order_time']?.toString() ?? '',
+            'cashbackFee':
+            (updatedOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
+            'loyaltyContact':
+            updatedOrder['loyalty_contact']?.toString() ?? '',
+            'availablePoints':
+            (updatedOrder['available_points'] as num?)?.toInt() ?? 0,
+            'summaryEnabled': false,
+          },
+        );
+      } catch (e) {
+        print("Customer display unavailable: $e");
+      }
       notifyOrderPanelToRefresh();
       if (onItemAdded != null) onItemAdded();
     } finally {
