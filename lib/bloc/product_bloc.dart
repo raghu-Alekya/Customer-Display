@@ -35,7 +35,13 @@ class SearchProducts extends ProductEvent {
 class ResetProducts extends ProductEvent {
   const ResetProducts();
 }
+
 class ClearProducts extends ProductEvent {}
+//** Raghu modified the code to load the select cat. items()
+
+class SetProductLoading extends ProductEvent {
+  const SetProductLoading();
+}
 
 /// ================= STATES =================
 
@@ -63,7 +69,6 @@ class ProductLoaded extends ProductState {
   List<Object?> get props => [products];
 }
 
-
 class ProductError extends ProductState {
   final String message;
 
@@ -81,42 +86,38 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
   int _latestCategoryRequestId = 0;
   int _latestSearchRequestId = 0;
 
-  ProductBloc({
-    required ProductRepository repository,
-  })  : _repository = repository,
-        super(const ProductInitial()) {
+  ProductBloc({required ProductRepository repository})
+    : _repository = repository,
+      super(const ProductInitial()) {
     on<FetchProductsForCategory>(_onFetchProductsForCategory);
     on<SearchProducts>(_onSearchProducts);
     on<ClearProducts>(_onClearProducts);
     on<ResetProducts>(_onResetProducts);
+    //** Raghu modified the code to load the select cat. items()
+    on<SetProductLoading>((event, emit) => emit(const ProductLoading()));
   }
 
-  void _onClearProducts(
-      ClearProducts event,
-      Emitter<ProductState> emit,
-      ) {
+  void _onClearProducts(ClearProducts event, Emitter<ProductState> emit) {
     emit(const ProductLoaded([]));
   }
 
-  void _onResetProducts(
-      ResetProducts event,
-      Emitter<ProductState> emit,
-      ) {
+  void _onResetProducts(ResetProducts event, Emitter<ProductState> emit) {
     emit(const ProductInitial());
   }
 
   Future<void> _onFetchProductsForCategory(
-      FetchProductsForCategory event,
-      Emitter<ProductState> emit,
-      ) async {
+    FetchProductsForCategory event,
+    Emitter<ProductState> emit,
+  ) async {
     final requestId = ++_latestCategoryRequestId;
 
     // clear old items immediately + show loader
     emit(const ProductLoading());
 
     try {
-      final products =
-      await _repository.getProductsByCategory(event.categoryId);
+      final products = await _repository.getProductsByCategory(
+        event.categoryId,
+      );
 
       // ignore old response
       if (requestId != _latestCategoryRequestId) return;
@@ -130,16 +131,15 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
   }
 
   Future<void> _onSearchProducts(
-      SearchProducts event,
-      Emitter<ProductState> emit,
-      ) async {
+    SearchProducts event,
+    Emitter<ProductState> emit,
+  ) async {
     final requestId = ++_latestSearchRequestId;
 
     emit(const ProductLoading());
 
     try {
-      final products =
-      await _repository.searchProducts(event.query);
+      final products = await _repository.searchProducts(event.query);
 
       if (requestId != _latestSearchRequestId) return;
 

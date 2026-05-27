@@ -730,6 +730,9 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                     selectedSubcategory = -1;
                     selectedSubcategoryId = null;
                   });
+                  //** Raghu modified the code to load the select cat. items() */
+                  // ✅ Clear old products and show loader immediately
+                  context.read<ProductBloc>().add(const SetProductLoading());
 
                   // ✅ Only load subcategories
                   context.read<SubcategoryBloc>().add(
