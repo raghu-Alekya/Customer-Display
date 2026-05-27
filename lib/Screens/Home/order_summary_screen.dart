@@ -828,177 +828,44 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 // ─────────────────────────────────────────────────────────────────────────────
 
-  void _recalculateGrossAndNetFromLineItemDiscounts() {
-    if (orderItems.isEmpty) return;
-
-    final bool hasPayout = orderItems.any((item) {
-      final String t = (item['item_type'] ?? '').toString().toLowerCase();
-      final String n = (item['item_name'] ?? '').toString().toLowerCase();
-      return t.contains('payout') ||
-          t.contains('cashback') ||
-          n.contains('payout') ||
-          n.contains('cashback');
-    });
-
-    if (hasPayout) {
-      if (kDebugMode) {
-        print('── LINE-ITEM RECALC SKIPPED: order has payout/cashback lines');
-      }
-      return; // ← trust widget.grossTotal / widget.netPayable as-is
-    }
-
-    double toDouble(dynamic v) =>
-        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
-
-    double recalculatedGrossTotal = 0.0;
-    double totalLineItemDiscount = 0.0;
-
-    for (final item in orderItems) {
-      final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
-      final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
-
-      if (itemType.contains('discount') ||
-          itemType.contains('coupon') ||
-          itemType.contains('payout') ||
-          itemType.contains('cashback') ||
-          itemType.contains('loyalty') ||
-          itemName.contains('merchant discount')) {
-        continue;
-      }
-
-      final double itemSumPrice = toDouble(item['item_sum_price']);
-      final double unitPrice = toDouble(item['item_price'] ?? item['price']);
-      final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-      final double lineOriginalTotal = unitPrice * qty;
-
-      final double lineGross = itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
-      recalculatedGrossTotal += lineGross;
-
-      final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
-
-      double autoDiscount = [
-        item['auto_discount'],
-        item['auto_discount_total'],
-        item['autoDiscount'],
-        item['autoDiscountTotal'],
-        item['display_auto_discount'],
-        item['_pos_auto_discount'],
-      ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
-
-      double comboDiscount = [
-        item['combo_discount_total'],
-        item['comboDiscountTotal'],
-        item['combo_discount'],
-      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-
-      double mixMatchDiscount = [
-        item['mixmatch_discount_total'],
-        item['mixMatchDiscountTotal'],
-        item['mixmatch_discount'],
-      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-
-      double multipackDiscount = [
-        item['multipack_discount_total'],
-        item['multipackDiscountTotal'],
-        item['multipack_discount'],
-      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-
-      if (dtype == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
-        mixMatchDiscount = autoDiscount;
-        autoDiscount = 0;
-      }
-      if (dtype == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
-        comboDiscount = autoDiscount;
-        autoDiscount = 0;
-      }
-      if (dtype == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
-        multipackDiscount = autoDiscount;
-        autoDiscount = 0;
-      }
-
-      final double itemDiscount =
-          autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
-      totalLineItemDiscount += itemDiscount;
-    }
-
-    if (totalLineItemDiscount <= 0 &&
-        (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
-      return;
-    }
-
-    final double newGrossTotal =
-    recalculatedGrossTotal > 0 ? recalculatedGrossTotal : grossTotal;
-
-    final double newNetTotal =
-        newGrossTotal - totalLineItemDiscount + discount + merchantDiscount;
-    final double newNetPayable = newNetTotal + tax + cashbackFee;
-
-    if (kDebugMode) {
-      print('── LINE-ITEM DISCOUNT RECALCULATION ──');
-      print('   Original Gross Total      : $grossTotal');
-      print('   Recalculated Gross Total  : $newGrossTotal');
-      print('   Total Line Item Discounts : $totalLineItemDiscount');
-      print('   Order Discount            : $discount');
-      print('   Merchant Discount         : $merchantDiscount');
-      print('   Tax                       : $tax');
-      print('   Cashback Fee              : $cashbackFee');
-      print('   New Net Total             : $newNetTotal');
-      print('   New Net Payable           : $newNetPayable');
-    }
-
-    setState(() {
-      grossTotal =
-          newGrossTotal - totalLineItemDiscount;
-          // newGrossTotal;
-      NetTotal = newNetTotal.clamp(0.0, double.infinity);
-      computedNetPayable = newNetPayable.clamp(0.0, double.infinity);
-      orderTotal = computedNetPayable;
-
-      if (tenderAmount <= 0) {
-        balanceAmount = computedNetPayable;
-      }
-    });
-  }
-
-
-
   // void _recalculateGrossAndNetFromLineItemDiscounts() {
   //   if (orderItems.isEmpty) return;
+  //
+  //   final bool hasPayout = orderItems.any((item) {
+  //     final String t = (item['item_type'] ?? '').toString().toLowerCase();
+  //     final String n = (item['item_name'] ?? '').toString().toLowerCase();
+  //     return t.contains('payout') ||
+  //         t.contains('cashback') ||
+  //         n.contains('payout') ||
+  //         n.contains('cashback');
+  //   });
+  //
+  //   if (hasPayout) {
+  //     if (kDebugMode) {
+  //       print('── LINE-ITEM RECALC SKIPPED: order has payout/cashback lines');
+  //     }
+  //     return; // ← trust widget.grossTotal / widget.netPayable as-is
+  //   }
   //
   //   double toDouble(dynamic v) =>
   //       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
   //
   //   double recalculatedGrossTotal = 0.0;
   //   double totalLineItemDiscount = 0.0;
-  //   double payoutCashbackTotal = 0.0;
   //
   //   for (final item in orderItems) {
   //     final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
   //     final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
   //
-  //     // ── Payout / cashback: accumulate separately, excluded from product gross.
-  //     final bool isPayout = itemType.contains('payout') ||
-  //         itemType.contains('cashback') ||
-  //         itemName.contains('payout') ||
-  //         itemName.contains('cashback');
-  //
-  //     if (isPayout) {
-  //       final double sumPrice = toDouble(item['item_sum_price']);
-  //       final double unitPrice = toDouble(item['item_price'] ?? item['price']);
-  //       final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-  //       payoutCashbackTotal += sumPrice != 0 ? sumPrice : unitPrice * qty;
-  //       continue;
-  //     }
-  //
-  //     // ── Skip non-product meta lines.
   //     if (itemType.contains('discount') ||
   //         itemType.contains('coupon') ||
+  //         itemType.contains('payout') ||
+  //         itemType.contains('cashback') ||
   //         itemType.contains('loyalty') ||
   //         itemName.contains('merchant discount')) {
   //       continue;
   //     }
   //
-  //     // ── Real product line.
   //     final double itemSumPrice = toDouble(item['item_sum_price']);
   //     final double unitPrice = toDouble(item['item_price'] ?? item['price']);
   //     final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
@@ -1054,9 +921,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   //     totalLineItemDiscount += itemDiscount;
   //   }
   //
-  //   // Nothing to recalculate if no discounts and gross matches.
   //   if (totalLineItemDiscount <= 0 &&
-  //       payoutCashbackTotal == 0 &&
   //       (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
   //     return;
   //   }
@@ -1064,44 +929,27 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   //   final double newGrossTotal =
   //   recalculatedGrossTotal > 0 ? recalculatedGrossTotal : grossTotal;
   //
-  //   final double newGrossAfterItemDiscounts = newGrossTotal - totalLineItemDiscount;
-  //
-  //   // ── KEY FIX ──────────────────────────────────────────────────────────────
-  //   // Gross Total displayed = product gross after discounts + payout/cashback.
-  //   // Payout(-10) brings it down: $21.93 + (-$10) = $11.93
-  //   // Cashback(+5) brings it up:  $21.93 + (-$5) + $5 = $21.93
-  //   final double newGrossForDisplay = newGrossAfterItemDiscounts + payoutCashbackTotal;
-  //   // ─────────────────────────────────────────────────────────────────────────
-  //
-  //   // NetTotal = grossForDisplay + coupon + merchant discount (no payout double-count)
-  //   final double newNetTotal = newGrossForDisplay +
-  //       discount +        // order-level coupon (negative)
-  //       merchantDiscount;
-  //
+  //   final double newNetTotal =
+  //       newGrossTotal - totalLineItemDiscount + discount + merchantDiscount;
   //   final double newNetPayable = newNetTotal + tax + cashbackFee;
   //
   //   if (kDebugMode) {
   //     print('── LINE-ITEM DISCOUNT RECALCULATION ──');
-  //     print('   Product Gross (pre-discount)       : $newGrossTotal');
-  //     print('   Total Line Item Discounts          : $totalLineItemDiscount');
-  //     print('   Product Gross After Discounts      : $newGrossAfterItemDiscounts');
-  //     print('   Payout / Cashback Total            : $payoutCashbackTotal');
-  //     print('   Gross For Display (shown)          : $newGrossForDisplay');
-  //     print('   Order Discount (coupon)            : $discount');
-  //     print('   Merchant Discount                  : $merchantDiscount');
-  //     print('   Tax                                : $tax');
-  //     print('   Cashback Fee                       : $cashbackFee');
-  //     print('   New Net Total                      : $newNetTotal');
-  //     print('   New Net Payable                    : $newNetPayable');
+  //     print('   Original Gross Total      : $grossTotal');
+  //     print('   Recalculated Gross Total  : $newGrossTotal');
+  //     print('   Total Line Item Discounts : $totalLineItemDiscount');
+  //     print('   Order Discount            : $discount');
+  //     print('   Merchant Discount         : $merchantDiscount');
+  //     print('   Tax                       : $tax');
+  //     print('   Cashback Fee              : $cashbackFee');
+  //     print('   New Net Total             : $newNetTotal');
+  //     print('   New Net Payable           : $newNetPayable');
   //   }
   //
   //   setState(() {
-  //     // Gross Total = product prices after item discounts + payout/cashback
-  //     // e.g. no payout:        $21.93
-  //     //      payout -$10:      $11.93
-  //     //      payout -$5 + cb +$5: $21.93
-  //     grossTotal = newGrossForDisplay.clamp(0.0, double.infinity);
-  //
+  //     grossTotal =
+  //         newGrossTotal - totalLineItemDiscount;
+  //         // newGrossTotal;
   //     NetTotal = newNetTotal.clamp(0.0, double.infinity);
   //     computedNetPayable = newNetPayable.clamp(0.0, double.infinity);
   //     orderTotal = computedNetPayable;
@@ -1111,6 +959,158 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   //     }
   //   });
   // }
+
+
+
+  void _recalculateGrossAndNetFromLineItemDiscounts() {
+    if (orderItems.isEmpty) return;
+
+    double toDouble(dynamic v) =>
+        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+
+    double recalculatedGrossTotal = 0.0;
+    double totalLineItemDiscount = 0.0;
+    double payoutCashbackTotal = 0.0;
+
+    for (final item in orderItems) {
+      final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+      final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
+
+      // ── Payout / cashback detection — check BOTH item_type AND item_name
+      // because some items have empty item_type but name = "Payout" or "Cashback"
+      final bool isPayout = itemType.contains('payout') ||
+          itemType.contains('cashback') ||
+          itemName == 'payout' ||
+          itemName == 'cashback' ||
+          itemName.contains('payout') ||
+          itemName.contains('cashback');
+
+      if (isPayout) {
+        final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+        final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+        // Use item_price × qty — always the cashier-entered value.
+        // Payout: item_price is negative (e.g. -10), cashback: positive (+5).
+        payoutCashbackTotal += unitPrice * qty;
+        continue; // ← CRITICAL: skip all further processing for this item
+      }
+
+      // ── Skip non-product meta lines.
+      if (itemType.contains('discount') ||
+          itemType.contains('coupon') ||
+          itemType.contains('loyalty') ||
+          itemName.contains('merchant discount')) {
+        continue;
+      }
+
+      // ── Real product line — only reach here for actual products.
+      final double itemSumPrice = toDouble(item['item_sum_price']);
+      final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+      final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+      final double lineOriginalTotal = unitPrice * qty;
+
+      final double lineGross = itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
+      recalculatedGrossTotal += lineGross;
+
+      final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
+
+      double autoDiscount = [
+        item['auto_discount'],
+        item['auto_discount_total'],
+        item['autoDiscount'],
+        item['autoDiscountTotal'],
+        item['display_auto_discount'],
+        item['_pos_auto_discount'],
+      ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
+
+      double comboDiscount = [
+        item['combo_discount_total'],
+        item['comboDiscountTotal'],
+        item['combo_discount'],
+      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+
+      double mixMatchDiscount = [
+        item['mixmatch_discount_total'],
+        item['mixMatchDiscountTotal'],
+        item['mixmatch_discount'],
+      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+
+      double multipackDiscount = [
+        item['multipack_discount_total'],
+        item['multipackDiscountTotal'],
+        item['multipack_discount'],
+      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+
+      if (dtype == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
+        mixMatchDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+      if (dtype == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
+        comboDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+      if (dtype == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
+        multipackDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+
+      final double itemDiscount =
+          autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
+      totalLineItemDiscount += itemDiscount;
+    }
+
+    // ── Guard: nothing changed, skip setState.
+    if (totalLineItemDiscount <= 0 &&
+        payoutCashbackTotal == 0 &&
+        (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
+      return;
+    }
+
+    // ── Use widget.grossTotal as the product baseline when recalculatedGrossTotal
+    //    is 0 (pure payout order — no real product lines at all).
+    final double productGross = recalculatedGrossTotal != 0
+        ? recalculatedGrossTotal
+        : (widget.grossTotal > 0 ? widget.grossTotal : 0.0);
+
+    // Product prices after item-level discounts.
+    final double productGrossAfterDiscounts = productGross - totalLineItemDiscount;
+
+    // Gross shown in UI = product gross after discounts + payout/cashback.
+    // Pure payout order: productGrossAfterDiscounts = 0, payoutCashbackTotal = -10 → -10 ✓
+    // Products + payout: 21.93 + (-10) = 11.93 ✓
+    final double newGrossForDisplay = productGrossAfterDiscounts + payoutCashbackTotal;
+
+    // NetTotal = grossForDisplay + coupon + merchant discount.
+    final double newNetTotal = newGrossForDisplay + discount + merchantDiscount;
+
+    // Net payable — allow negative for refund/payout-only orders.
+    final double newNetPayable = newNetTotal + tax + cashbackFee;
+
+    if (kDebugMode) {
+      print('── LINE-ITEM DISCOUNT RECALCULATION ──');
+      print('   Product Gross (pre-discount)       : $productGross');
+      print('   Total Line Item Discounts          : $totalLineItemDiscount');
+      print('   Product Gross After Discounts      : $productGrossAfterDiscounts');
+      print('   Payout / Cashback Total            : $payoutCashbackTotal');
+      print('   Gross For Display                  : $newGrossForDisplay');
+      print('   Order Discount (coupon)            : $discount');
+      print('   Merchant Discount                  : $merchantDiscount');
+      print('   Tax                                : $tax');
+      print('   Cashback Fee                       : $cashbackFee');
+      print('   New Net Total                      : $newNetTotal');
+      print('   New Net Payable                    : $newNetPayable');
+    }
+
+    setState(() {
+      grossTotal = newGrossForDisplay;
+      NetTotal = newNetTotal;
+      computedNetPayable = newNetPayable;
+      orderTotal = newNetPayable;
+
+      if (tenderAmount <= 0) {
+        balanceAmount = newNetPayable;
+      }
+    });
+  }
 
   static const bool offline_PAYMENT_SUCCESS = true; //
 

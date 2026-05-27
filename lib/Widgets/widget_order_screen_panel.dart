@@ -1921,19 +1921,32 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     // ----------- ONLINE TOTAL COMPUTATION -----------
     // NET TOTAL (no tax)
     // Algebraic addition: grossTotal + orderDiscount + merchantDiscount
-    num netTotal = (grossTotal +
-            (orderDiscount != 0 ? -orderDiscount.abs() : 0.0) +
-            (merchantDiscount != 0 ? -merchantDiscount.abs() : 0.0))
-        .clamp(0.0, double.infinity);
+    // num netTotal = (grossTotal +
+    //         (orderDiscount != 0 ? -orderDiscount.abs() : 0.0) +
+    //         (merchantDiscount != 0 ? -merchantDiscount.abs() : 0.0))
+    //     .clamp(0.0, double.infinity);
+    //
+    // // NET PAYABLE WITH TAX + CASHBACK
+    // // Formula: Gross total + coupon (+ or -ve) + merchant discount (+ve or -ve) + tax + service charges
+    // double computedNetPayable = (grossTotal +
+    //         (orderDiscount != 0 ? -orderDiscount.abs() : 0.0) +
+    //         (merchantDiscount != 0 ? -merchantDiscount.abs() : 0.0) +
+    //         orderTax +
+    //         cashbackFee)
+    //     .clamp(0.0, double.infinity);
 
-    // NET PAYABLE WITH TAX + CASHBACK
-    // Formula: Gross total + coupon (+ or -ve) + merchant discount (+ve or -ve) + tax + service charges
+    num netTotal = (grossTotal +
+        (orderDiscount != 0 ? orderDiscount : 0.0) +           // already negative usually
+        (merchantDiscount != 0 ? merchantDiscount : 0.0))      // already negative
+        .clamp(double.negativeInfinity, double.infinity);         // ← Removed 0.0 clamp
+
+// NET PAYABLE WITH TAX + CASHBACK
     double computedNetPayable = (grossTotal +
-            (orderDiscount != 0 ? -orderDiscount.abs() : 0.0) +
-            (merchantDiscount != 0 ? -merchantDiscount.abs() : 0.0) +
-            orderTax +
-            cashbackFee)
-        .clamp(0.0, double.infinity);
+        (orderDiscount != 0 ? orderDiscount : 0.0) +
+        (merchantDiscount != 0 ? merchantDiscount : 0.0) +
+        orderTax +
+        cashbackFee)
+        .clamp(double.negativeInfinity, double.infinity);
 
     // Woo total overrides only if > 0
     double netPayable = wooTotal > 0 ? wooTotal : computedNetPayable;

@@ -258,11 +258,9 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
 
         if (!isLoading && _currentChunk < maxChunks) {
           setState(() {
-            // _pageOrders = list;
-            _currentChunk = 1;
-            _visibleOrders = _rowsPerPage <= _chunkSize
-                ? _pageOrders.take(_chunkSize).toList()
-                : _pageOrders;
+            _currentChunk++;
+            _visibleOrders =
+                _pageOrders.take(_currentChunk * _chunkSize).toList();
             _orders = _visibleOrders;
           });
         }
@@ -277,9 +275,7 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
         setState(() {
           _pageOrders = list;
           _currentChunk = 1;
-          _visibleOrders = _rowsPerPage <= _chunkSize
-              ? _pageOrders.take(_chunkSize).toList()
-              : _pageOrders;
+          _visibleOrders = _pageOrders.take(_chunkSize).toList();
           _orders = _visibleOrders;
           _totalOrdersCount = total;
           isLoading = false;
@@ -378,11 +374,10 @@ class _OrdersScreenState extends State<TotalOrdersScreen>
             setState(() {
               _pageOrders = orders;
               _currentChunk = 1;
-              // Show all page rows immediately — no lazy hiding when rowsPerPage fits
-              _visibleOrders = _rowsPerPage <= _chunkSize
-                  ? _pageOrders.take(_chunkSize).toList()
-                  : _pageOrders; // show all rows for the current page
+
+              _visibleOrders = _pageOrders.take(_chunkSize).toList();
               _orders = _visibleOrders;
+
               _totalOrdersCount = response.data?.orderTotalCount ?? 0;
               isLoading = false;
             });
