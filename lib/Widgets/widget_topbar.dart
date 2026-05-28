@@ -307,6 +307,7 @@ class TopBar extends StatefulWidget {
     }
     mergedProductCacheRevision.value++;
   }
+  static final ValueNotifier<int> modeChangedNotifier = ValueNotifier<int>(0);
 
   /// Call when Indigo/category caches (or other writers) update merged product data.
   static void notifyMergedProductCacheMayHaveChanged() {

@@ -1753,11 +1753,45 @@ class MainActivity : FlutterActivity() {
 
                 val name = (item["name"] as? String) ?: ""
 
-                val qty =
-                    item["qty"]?.toString()?.toIntOrNull()
-                        ?: item["quantity"]?.toString()?.toIntOrNull()
-                        ?: item["items_count"]?.toString()?.toIntOrNull()
-                        ?: 1
+                val qty: Int = when {
+                    item["qty"] is Number ->
+                        (item["qty"] as Number).toInt()
+
+                    item["quantity"] is Number ->
+                        (item["quantity"] as Number).toInt()
+
+                    item["items_count"] is Number ->
+                        (item["items_count"] as Number).toInt()
+
+                    item["itemCount"] is Number ->
+                        (item["itemCount"] as Number).toInt()
+
+                    item["count"] is Number ->
+                        (item["count"] as Number).toInt()
+
+                    item["item_count"] is Number ->
+                        (item["item_count"] as Number).toInt()
+
+                    item["qty"] != null ->
+                        item["qty"].toString().toDoubleOrNull()?.toInt() ?: 1
+
+                    item["quantity"] != null ->
+                        item["quantity"].toString().toDoubleOrNull()?.toInt() ?: 1
+
+                    item["items_count"] != null ->
+                        item["items_count"].toString().toDoubleOrNull()?.toInt() ?: 1
+
+                    item["itemCount"] != null ->
+                        item["itemCount"].toString().toDoubleOrNull()?.toInt() ?: 1
+
+                    item["count"] != null ->
+                        item["count"].toString().toDoubleOrNull()?.toInt() ?: 1
+
+                    item["item_count"] != null ->
+                        item["item_count"].toString().toDoubleOrNull()?.toInt() ?: 1
+
+                    else -> 1
+                }
 
                 val price =
                     (item["price"] as? Number)?.toDouble() ?: 0.0
