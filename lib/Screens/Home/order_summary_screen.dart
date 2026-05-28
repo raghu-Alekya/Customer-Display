@@ -642,6 +642,329 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return (lineGross / grossTotal) * couponDisc;
   }
 
+  // Future<void> _recalculateTaxOnDiscountedItems() async {
+  //   if (orderItems.isEmpty) return;
+  //
+  //   double toDouble(dynamic v) =>
+  //       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+  //
+  //   double resolveTaxRate(Map<String, dynamic> item) {
+  //     for (final key in ['tax_rate', 'tax', 'tax_percent']) {
+  //       final raw = item[key];
+  //       if (raw != null) {
+  //         final r = toDouble(raw);
+  //         if (r > 0) return r / 100.0;
+  //       }
+  //     }
+  //     return 0.0;
+  //   }
+  //
+  //   // ─── Only use item-level auto/combo/multipack discounts here.
+  //   // Do NOT include coupon share — coupon is an order-level discount
+  //   // already captured in the `discount` state variable.
+  //   double lineItemOnlyDiscount(Map<String, dynamic> item) {
+  //     double n(dynamic v) =>
+  //         v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+  //
+  //     double posAuto = n(item['_pos_auto_discount']) +
+  //         n(item['auto_discount']) +
+  //         n(item['autoDiscount']) +
+  //         n(item['auto_discount_total']) +
+  //         n(item['display_auto_discount']);
+  //
+  //     double combo =
+  //         n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
+  //     double multipack =
+  //         n(item['multipack_discount_total']) + n(item['multipackDiscountTotal']);
+  //     double mixmatch = n(item['mixmatch_discount_total']);
+  //
+  //     final String dtype =
+  //     (item['discount_type'] ?? '').toString().toLowerCase();
+  //
+  //     if (dtype == 'auto' || dtype.isEmpty) return posAuto;
+  //     if (dtype == 'combo' || dtype == 'mixmatch')
+  //       return combo > 0 ? combo : posAuto;
+  //     if (dtype == 'multipack') return multipack > 0 ? multipack : posAuto;
+  //     return posAuto + combo + multipack + mixmatch;
+  //   }
+  //
+  //   double totalTax = 0.0;
+  //   bool anyItemHasDiscountOrTaxRate = false;
+  //   double totalLineGross = 0.0;
+  //   double totalLineDiscount = 0.0;
+  //
+  //   for (final item in orderItems) {
+  //     final String itemType =
+  //     (item['item_type'] ?? '').toString().toLowerCase();
+  //     final String itemName =
+  //     (item['item_name'] ?? '').toString().toLowerCase();
+  //
+  //     if (itemType.contains('discount') ||
+  //         itemType.contains('coupon') ||
+  //         itemType.contains('payout') ||
+  //         itemType.contains('cashback') ||
+  //         itemType.contains('loyalty') ||
+  //         itemName.contains('merchant discount')) {
+  //       continue;
+  //     }
+  //
+  //     final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+  //     final int qty =
+  //     (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+  //     final double lineTotal = unitPrice * qty;
+  //
+  //     // Use ONLY item-level discount (no coupon share)
+  //     final double itemDiscount = lineItemOnlyDiscount(item);
+  //     final double taxableBase =
+  //     (lineTotal - itemDiscount).clamp(0.0, double.infinity);
+  //
+  //     totalLineGross += lineTotal;
+  //     totalLineDiscount += itemDiscount;
+  //
+  //     if (itemDiscount > 0) anyItemHasDiscountOrTaxRate = true;
+  //
+  //     double itemTax = 0.0;
+  //     final double taxRate = resolveTaxRate(item);
+  //
+  //     if (taxRate > 0) {
+  //       anyItemHasDiscountOrTaxRate = true;
+  //       itemTax = taxableBase * taxRate;
+  //     } else {
+  //       final double rawTax =
+  //       toDouble(item['item_tax'] ?? item['tax_amount']);
+  //       if (rawTax > 0 && lineTotal > 0) {
+  //         anyItemHasDiscountOrTaxRate = true;
+  //         // Scale the original tax proportionally to the taxable base
+  //         itemTax = rawTax * (taxableBase / lineTotal);
+  //       }
+  //     }
+  //
+  //     totalTax += itemTax;
+  //   }
+  //
+  //   totalTax = double.parse(totalTax.toStringAsFixed(4));
+  //
+  //   final double serverTax = widget.orderTax;
+  //
+  //   // Net after ALL discounts (item-level + order-level coupon)
+  //   final double netAfterDiscount =
+  //       totalLineGross - totalLineDiscount + discount + merchantDiscount;
+  //
+  //   double finalTax;
+  //
+  //   if (!anyItemHasDiscountOrTaxRate) {
+  //     // No item-level data at all — use server tax scaled by coupon discount ratio
+  //     if (serverTax > 0 && discount < 0) {
+  //       // Coupon was applied: scale server tax by (net / gross) ratio
+  //       final double originalGross = widget.grossTotal;
+  //       if (originalGross > 0) {
+  //         final double taxableNet =
+  //         (originalGross + discount).clamp(0.0, double.infinity);
+  //         finalTax = serverTax * (taxableNet / originalGross);
+  //       } else {
+  //         finalTax = 0.0;
+  //       }
+  //     } else {
+  //       finalTax = serverTax > 0 ? serverTax : totalTax;
+  //     }
+  //     if (kDebugMode) {
+  //       print('── TAX: No item-level data. finalTax=$finalTax');
+  //     }
+  //   } else if (totalTax <= 0 && serverTax > 0) {
+  //     // Recalc returned 0 but server has a value — check if net > 0
+  //     if (netAfterDiscount > 0.005) {
+  //       finalTax = serverTax;
+  //     } else {
+  //       finalTax = 0.0;
+  //     }
+  //     if (kDebugMode) {
+  //       print('── TAX: Recalc=0, server=$serverTax, net=$netAfterDiscount → finalTax=$finalTax');
+  //     }
+  //   } else {
+  //     // ── KEY FIX: if a coupon discount is also applied on top of
+  //     // item discounts, scale the recalculated tax further by the
+  //     // coupon ratio so we don't over-report tax.
+  //     if (discount < 0 && totalLineGross > 0) {
+  //       final double postCouponBase =
+  //       (totalLineGross - totalLineDiscount + discount)
+  //           .clamp(0.0, double.infinity);
+  //       final double preCouponBase =
+  //       (totalLineGross - totalLineDiscount).clamp(0.01, double.infinity);
+  //       totalTax = totalTax * (postCouponBase / preCouponBase);
+  //       totalTax = double.parse(totalTax.toStringAsFixed(4));
+  //     }
+  //     finalTax = totalTax;
+  //     if (kDebugMode) {
+  //       print('── TAX: Using recalculated value: $finalTax');
+  //     }
+  //   }
+  //
+  //   if (kDebugMode) {
+  //     print('── TAX RECALCULATION COMPLETE ──');
+  //     print('   Gross Total        : $totalLineGross');
+  //     print('   Line Discounts     : $totalLineDiscount');
+  //     print('   Coupon/Order Disc  : $discount');
+  //     print('   Net After Discount : $netAfterDiscount');
+  //     print('   Server Tax         : $serverTax');
+  //     print('   Recalculated Tax   : $totalTax');
+  //     print('   Final Tax Used     : $finalTax');
+  //   }
+  //
+  //   final bool taxChanged = (finalTax - tax).abs() > 0.005;
+  //   if (!taxChanged) return;
+  //
+  //   final double newNetTotal = widget.grossTotal + discount + merchantDiscount;
+  //   final double newNetPayable = newNetTotal + finalTax + cashbackFee;
+  //
+  //   setState(() {
+  //     tax = finalTax;
+  //     NetTotal = newNetTotal;
+  //     computedNetPayable = newNetPayable;
+  //     orderTotal = newNetPayable;
+  //
+  //     if (tenderAmount <= 0) {
+  //       balanceAmount = newNetPayable;
+  //     }
+  //   });
+  // }
+  //////=================5/28/26
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+  // void _recalculateGrossAndNetFromLineItemDiscounts() {
+  //   if (orderItems.isEmpty) return;
+  //
+  //   final bool hasPayout = orderItems.any((item) {
+  //     final String t = (item['item_type'] ?? '').toString().toLowerCase();
+  //     final String n = (item['item_name'] ?? '').toString().toLowerCase();
+  //     return t.contains('payout') ||
+  //         t.contains('cashback') ||
+  //         n.contains('payout') ||
+  //         n.contains('cashback');
+  //   });
+  //
+  //   if (hasPayout) {
+  //     if (kDebugMode) {
+  //       print('── LINE-ITEM RECALC SKIPPED: order has payout/cashback lines');
+  //     }
+  //     return; // ← trust widget.grossTotal / widget.netPayable as-is
+  //   }
+  //
+  //   double toDouble(dynamic v) =>
+  //       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+  //
+  //   double recalculatedGrossTotal = 0.0;
+  //   double totalLineItemDiscount = 0.0;
+  //
+  //   for (final item in orderItems) {
+  //     final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+  //     final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
+  //
+  //     if (itemType.contains('discount') ||
+  //         itemType.contains('coupon') ||
+  //         itemType.contains('payout') ||
+  //         itemType.contains('cashback') ||
+  //         itemType.contains('loyalty') ||
+  //         itemName.contains('merchant discount')) {
+  //       continue;
+  //     }
+  //
+  //     final double itemSumPrice = toDouble(item['item_sum_price']);
+  //     final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+  //     final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+  //     final double lineOriginalTotal = unitPrice * qty;
+  //
+  //     final double lineGross = itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
+  //     recalculatedGrossTotal += lineGross;
+  //
+  //     final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
+  //
+  //     double autoDiscount = [
+  //       item['auto_discount'],
+  //       item['auto_discount_total'],
+  //       item['autoDiscount'],
+  //       item['autoDiscountTotal'],
+  //       item['display_auto_discount'],
+  //       item['_pos_auto_discount'],
+  //     ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
+  //
+  //     double comboDiscount = [
+  //       item['combo_discount_total'],
+  //       item['comboDiscountTotal'],
+  //       item['combo_discount'],
+  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+  //
+  //     double mixMatchDiscount = [
+  //       item['mixmatch_discount_total'],
+  //       item['mixMatchDiscountTotal'],
+  //       item['mixmatch_discount'],
+  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+  //
+  //     double multipackDiscount = [
+  //       item['multipack_discount_total'],
+  //       item['multipackDiscountTotal'],
+  //       item['multipack_discount'],
+  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+  //
+  //     if (dtype == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
+  //       mixMatchDiscount = autoDiscount;
+  //       autoDiscount = 0;
+  //     }
+  //     if (dtype == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
+  //       comboDiscount = autoDiscount;
+  //       autoDiscount = 0;
+  //     }
+  //     if (dtype == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
+  //       multipackDiscount = autoDiscount;
+  //       autoDiscount = 0;
+  //     }
+  //
+  //     final double itemDiscount =
+  //         autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
+  //     totalLineItemDiscount += itemDiscount;
+  //   }
+  //
+  //   if (totalLineItemDiscount <= 0 &&
+  //       (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
+  //     return;
+  //   }
+  //
+  //   final double newGrossTotal =
+  //   recalculatedGrossTotal > 0 ? recalculatedGrossTotal : grossTotal;
+  //
+  //   final double newNetTotal =
+  //       newGrossTotal - totalLineItemDiscount + discount + merchantDiscount;
+  //   final double newNetPayable = newNetTotal + tax + cashbackFee;
+  //
+  //   if (kDebugMode) {
+  //     print('── LINE-ITEM DISCOUNT RECALCULATION ──');
+  //     print('   Original Gross Total      : $grossTotal');
+  //     print('   Recalculated Gross Total  : $newGrossTotal');
+  //     print('   Total Line Item Discounts : $totalLineItemDiscount');
+  //     print('   Order Discount            : $discount');
+  //     print('   Merchant Discount         : $merchantDiscount');
+  //     print('   Tax                       : $tax');
+  //     print('   Cashback Fee              : $cashbackFee');
+  //     print('   New Net Total             : $newNetTotal');
+  //     print('   New Net Payable           : $newNetPayable');
+  //   }
+  //
+  //   setState(() {
+  //     grossTotal =
+  //         newGrossTotal - totalLineItemDiscount;
+  //         // newGrossTotal;
+  //     NetTotal = newNetTotal.clamp(0.0, double.infinity);
+  //     computedNetPayable = newNetPayable.clamp(0.0, double.infinity);
+  //     orderTotal = computedNetPayable;
+  //
+  //     if (tenderAmount <= 0) {
+  //       balanceAmount = computedNetPayable;
+  //     }
+  //   });
+  // }
+
+  //=============
+
   Future<void> _recalculateTaxOnDiscountedItems() async {
     if (orderItems.isEmpty) return;
 
@@ -826,141 +1149,48 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         balanceAmount = newNetPayable;
       }
     });
+
+    final String orderKey = widget.offlineOrderId?.toString() ??
+        widget.orderId?.toString() ??
+        orderId?.toString() ??
+        "";
+
+    if (orderKey.isNotEmpty) {
+      try {
+        final box = StorageProvider.offlineOrders;
+        final rawOrder = await box.get(orderKey);
+        if (rawOrder != null) {
+          final offlineOrder = Map<String, dynamic>.from(rawOrder);
+          offlineOrder["tax_discount"] = finalTax;
+          offlineOrder["order_tax"] = finalTax;
+          offlineOrder["grand_total"] = newNetPayable;
+          offlineOrder["net_payable"] = newNetPayable;
+          if (tenderAmount <= 0) {
+            offlineOrder["balanceAmount"] = newNetPayable;
+            offlineOrder["balance_amount"] = newNetPayable;
+            offlineOrder["remaining_balance"] = newNetPayable;
+          }
+          await box.put(orderKey, offlineOrder);
+          if (kDebugMode) {
+            print("💾 [CD/Summary] Updated Hive with recalculated tax: $finalTax, netPayable: $newNetPayable");
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print("❌ [CD/Summary] Failed to update Hive order tax: $e");
+        }
+      }
+    }
+
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    if (widget.offlineOrderId != null) {
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        widget.offlineOrderId!,
+        summaryEnabled: true,
+      );
+    }
   }
-// ─────────────────────────────────────────────────────────────────────────────
-
-  // void _recalculateGrossAndNetFromLineItemDiscounts() {
-  //   if (orderItems.isEmpty) return;
-  //
-  //   final bool hasPayout = orderItems.any((item) {
-  //     final String t = (item['item_type'] ?? '').toString().toLowerCase();
-  //     final String n = (item['item_name'] ?? '').toString().toLowerCase();
-  //     return t.contains('payout') ||
-  //         t.contains('cashback') ||
-  //         n.contains('payout') ||
-  //         n.contains('cashback');
-  //   });
-  //
-  //   if (hasPayout) {
-  //     if (kDebugMode) {
-  //       print('── LINE-ITEM RECALC SKIPPED: order has payout/cashback lines');
-  //     }
-  //     return; // ← trust widget.grossTotal / widget.netPayable as-is
-  //   }
-  //
-  //   double toDouble(dynamic v) =>
-  //       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
-  //
-  //   double recalculatedGrossTotal = 0.0;
-  //   double totalLineItemDiscount = 0.0;
-  //
-  //   for (final item in orderItems) {
-  //     final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
-  //     final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
-  //
-  //     if (itemType.contains('discount') ||
-  //         itemType.contains('coupon') ||
-  //         itemType.contains('payout') ||
-  //         itemType.contains('cashback') ||
-  //         itemType.contains('loyalty') ||
-  //         itemName.contains('merchant discount')) {
-  //       continue;
-  //     }
-  //
-  //     final double itemSumPrice = toDouble(item['item_sum_price']);
-  //     final double unitPrice = toDouble(item['item_price'] ?? item['price']);
-  //     final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-  //     final double lineOriginalTotal = unitPrice * qty;
-  //
-  //     final double lineGross = itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
-  //     recalculatedGrossTotal += lineGross;
-  //
-  //     final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
-  //
-  //     double autoDiscount = [
-  //       item['auto_discount'],
-  //       item['auto_discount_total'],
-  //       item['autoDiscount'],
-  //       item['autoDiscountTotal'],
-  //       item['display_auto_discount'],
-  //       item['_pos_auto_discount'],
-  //     ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
-  //
-  //     double comboDiscount = [
-  //       item['combo_discount_total'],
-  //       item['comboDiscountTotal'],
-  //       item['combo_discount'],
-  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-  //
-  //     double mixMatchDiscount = [
-  //       item['mixmatch_discount_total'],
-  //       item['mixMatchDiscountTotal'],
-  //       item['mixmatch_discount'],
-  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-  //
-  //     double multipackDiscount = [
-  //       item['multipack_discount_total'],
-  //       item['multipackDiscountTotal'],
-  //       item['multipack_discount'],
-  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-  //
-  //     if (dtype == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
-  //       mixMatchDiscount = autoDiscount;
-  //       autoDiscount = 0;
-  //     }
-  //     if (dtype == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
-  //       comboDiscount = autoDiscount;
-  //       autoDiscount = 0;
-  //     }
-  //     if (dtype == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
-  //       multipackDiscount = autoDiscount;
-  //       autoDiscount = 0;
-  //     }
-  //
-  //     final double itemDiscount =
-  //         autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
-  //     totalLineItemDiscount += itemDiscount;
-  //   }
-  //
-  //   if (totalLineItemDiscount <= 0 &&
-  //       (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
-  //     return;
-  //   }
-  //
-  //   final double newGrossTotal =
-  //   recalculatedGrossTotal > 0 ? recalculatedGrossTotal : grossTotal;
-  //
-  //   final double newNetTotal =
-  //       newGrossTotal - totalLineItemDiscount + discount + merchantDiscount;
-  //   final double newNetPayable = newNetTotal + tax + cashbackFee;
-  //
-  //   if (kDebugMode) {
-  //     print('── LINE-ITEM DISCOUNT RECALCULATION ──');
-  //     print('   Original Gross Total      : $grossTotal');
-  //     print('   Recalculated Gross Total  : $newGrossTotal');
-  //     print('   Total Line Item Discounts : $totalLineItemDiscount');
-  //     print('   Order Discount            : $discount');
-  //     print('   Merchant Discount         : $merchantDiscount');
-  //     print('   Tax                       : $tax');
-  //     print('   Cashback Fee              : $cashbackFee');
-  //     print('   New Net Total             : $newNetTotal');
-  //     print('   New Net Payable           : $newNetPayable');
-  //   }
-  //
-  //   setState(() {
-  //     grossTotal =
-  //         newGrossTotal - totalLineItemDiscount;
-  //         // newGrossTotal;
-  //     NetTotal = newNetTotal.clamp(0.0, double.infinity);
-  //     computedNetPayable = newNetPayable.clamp(0.0, double.infinity);
-  //     orderTotal = computedNetPayable;
-  //
-  //     if (tenderAmount <= 0) {
-  //       balanceAmount = computedNetPayable;
-  //     }
-  //   });
-  // }
-
 
 
   void _recalculateGrossAndNetFromLineItemDiscounts() {
@@ -5831,6 +6061,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 await CustomerDisplayHelper.updateCustomerDisplay(
                   orderId!,
                   summaryEnabled: false,
+                  // redeemedAmount: actualRedeem,   // ← Important
                 );
               }
 

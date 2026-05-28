@@ -49,6 +49,8 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   DateTime? _startDate;
   DateTime? _endDate;
   bool _isDateRangeApplied = false;
+  static bool isActive = false;
+
 // int _currentPage = 1;
   List<CompletedOrder> _allOrders = [];
   List<CompletedOrder> filteredOrders = [];
@@ -66,6 +68,8 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
   List<String> transactionIdOptions = [];
   bool _isModeChangePending = false;
   bool _isNavigatingAway = false;
+
+
 
   List<CompletedOrder> _orders = [];
   // int _totalPages = 1;
@@ -96,6 +100,12 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
       _currentPage = page;
       _paginate();
     });
+  }
+
+  @override
+  void deactivate() {
+    _isNavigatingAway = true;
+    super.deactivate();
   }
 
   void _updatePagination() {
