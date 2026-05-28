@@ -129,4 +129,32 @@ class CustomerDisplayService {
       print("Customer display error: $e");
     }
   }
+  /// 🔹 Update redeem / summary state on customer display
+  // static Future<void> customerDisplayResult({
+  //   required bool success,
+  //   required double redeemedAmount,
+  //   required int points,
+  //   String message = "",
+  // }) async {
+  //   try {
+  //     print(
+  //       "📢 customerDisplayResult → "
+  //           "success=$success, redeemedAmount=$redeemedAmount, points=$points",
+  //     );
+  //
+  //     await _platform.invokeMethod(
+  //       'customerDisplayResult',
+  //       {
+  //         "success": success,
+  //         "redeemedAmount": redeemedAmount,
+  //         "points": points,
+  //         "message": message,
+  //       },
+  //     );
+  //
+  //     print("✅ customerDisplayResult sent");
+  //   } catch (e) {
+  //     print("⚠️ customerDisplayResult error: $e");
+  //   }
+  // }
 }

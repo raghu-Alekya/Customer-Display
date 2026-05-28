@@ -2096,7 +2096,15 @@ class MainActivity : FlutterActivity() {
 
 // ================= TOTALS (UNCHANGED) =================
             grossView.text = formatCurrency(grossTotal)
-            discountView.text = formatCurrency(-discount)
+//            discountView.text = formatCurrency(discount)
+            // ALWAYS TREAT DISCOUNT AS POSITIVE VALUE
+            val actualDiscount =
+                kotlin.math.abs(discount)
+
+// DISPLAY AS NEGATIVE
+            discountView.text =
+                "-${formatCurrency(actualDiscount)}"
+
             totalItemsView.text = "Total Items : $totalItemCount"
 
             findViewById<TextView>(R.id.label_cashback_fee).text = "Cashback Fee"
@@ -2105,8 +2113,12 @@ class MainActivity : FlutterActivity() {
 
             merchantDiscountView.text = formatCurrency(-merchantDiscount)
 
-            val calculatedNetTotal = grossTotal - discount
-            netTotalView.text = formatCurrency(calculatedNetTotal)
+            // NET TOTAL = GROSS - DISCOUNT
+            val calculatedNetTotal =
+                grossTotal - actualDiscount
+
+            netTotalView.text =
+                formatCurrency(calculatedNetTotal)
 
             taxView.text = formatCurrency(tax)
 
@@ -2172,6 +2184,7 @@ class MainActivity : FlutterActivity() {
 
             netPayableView.text = "Total : ${formatCurrency(updatedNet)}"
         }
+
         fun updateRedeemPopupPoints(points: Int) {
 
             Handler(Looper.getMainLooper()).post {
