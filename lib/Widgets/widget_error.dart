@@ -315,7 +315,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
   }
 
-  double getCurrentMerchantDiscount(Map<String, dynamic> order) {
+  double getCurrentMerchantDiscount(Map<String, dynamic> order, {double? grossTotal, double? orderDiscount, double? orderTax}) {
     // If any required key is missing, return 0 immediately
     if (!order.containsKey('merchantDiscountType') &&
         !order.containsKey('merchantDiscountFixed') &&
@@ -323,13 +323,14 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       return 0.0;
     }
 
-    final products = (order['products'] as List?) ?? [];
-
-    double currentGross = 0.0;
-    for (var p in products) {
-      final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
-      final qty = int.tryParse(p['quantity']?.toString() ?? '1') ?? 1;
-      currentGross += price * qty;
+    double currentGross = grossTotal ?? 0.0;
+    if (grossTotal == null) {
+      final products = (order['products'] as List?) ?? [];
+      for (var p in products) {
+        final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+        final qty = int.tryParse(p['quantity']?.toString() ?? '1') ?? 1;
+        currentGross += price * qty;
+      }
     }
 
     final type = order['merchantDiscountType']?.toString() ?? 'fixed';
@@ -342,15 +343,15 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
     double result = 0.0;
     if (type == 'percentage' && perc > 0) {
-      result = (currentGross * perc) / 100.0;
+      double discVal = orderDiscount ?? (order['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+      double base = currentGross - discVal;
+      result = (base * perc) / 100.0;
     } else {
       result = fixed;
     }
 
     //  Ignore floating point noise
-    // return result < 0.000001 ? 0.0 : result;
     return result < 0.000001 ? 0.0 : result;
-
   }
 
   // Build #1.0.104: created this function for initial call & while back to this screen
@@ -4517,6 +4518,24 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       final isPercentageDiscount =
           (offlineOrder['merchantDiscountIsPercentage'] as bool?) ?? false;
       print("🔥 FINAL orderTax CALCULATED from Hive products = $orderTax");
+
+      final String mdType = offlineOrder['merchantDiscountType']?.toString() ?? 'fixed';
+      final double mdPerc = double.tryParse(offlineOrder['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
+      
+      double calculatedPerc = 0.0;
+      if (mdType == 'percentage' && mdPerc > 0) {
+        calculatedPerc = mdPerc;
+      } else if (mdType == 'fixed' && merchantDiscount.abs() > 0) {
+        double base = grossTotal - orderDiscount;
+        if (base > 0) {
+          calculatedPerc = (merchantDiscount.abs() / base) * 100.0;
+        }
+      }
+      
+      if (calculatedPerc > 0) {
+        orderTax = orderTax * (1 - calculatedPerc / 100.0);
+        orderTax = roundTaxHalfUp(orderTax);
+      }
 
       netTotal = grossTotal - orderDiscount - merchantDiscount;
       netPayable = netTotal + orderTax + cashbackFee;

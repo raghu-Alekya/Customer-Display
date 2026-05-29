@@ -2900,10 +2900,13 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       double inputValue = double.parse(parsedValue);
       bool isPercentage = _isPercentageSelected;
 
-      double discountAmount =
-      isPercentage ? (inputValue / 100) * grossTotal : inputValue;
+      // Extract existing order tax and order discount
+      double couponVal = (existingOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
 
-      if (discountAmount > grossTotal) {
+      double discountAmount =
+      isPercentage ? (inputValue / 100) * (grossTotal - couponVal) : inputValue;
+
+      if (discountAmount > (grossTotal - couponVal)) {
         setState(() => _isDiscountLoading = false);
         ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
           const SnackBar(

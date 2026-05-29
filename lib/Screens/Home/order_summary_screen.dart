@@ -1124,6 +1124,21 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       print('   Final Tax Used     : $finalTax');
     }
 
+    double mdPerc = 0.0;
+    final String mdType = offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+    if (mdType == 'percentage' && merchantDiscountPercentage > 0) {
+      mdPerc = merchantDiscountPercentage;
+    } else if (merchantDiscount.abs() > 0) {
+      double base = grossTotal + discount; // discount is algebraic (negative) in this screen
+      if (base > 0) {
+        mdPerc = (merchantDiscount.abs() / base) * 100.0;
+      }
+    }
+
+    if (mdPerc > 0) {
+      finalTax = finalTax * (1 - mdPerc / 100.0);
+    }
+
     final bool taxChanged = (finalTax - tax).abs() > 0.005;
     if (!taxChanged) return;
 
@@ -1557,6 +1572,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isCouponAppliedFromApi = false;
   double couponValue = 0;
   double couponDiscount = 0.0;
+  double merchantDiscountPercentage = 0.0;
 
   bool _isProcessing = false; // Add this flag
 
@@ -3706,6 +3722,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     orderId = widget.orderId;
     ebtTotal = widget.ebtAmount;
 
+    // merchantDiscountPercentage is loaded asynchronously below
+
     _displayDate = widget.formattedDate;
     _displayTime = widget.formattedTime;
     cashbackFee = widget.cashbackFee;
@@ -3771,6 +3789,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (await offlineBox.containsKey(orderIdKey)) {
         final raw = await offlineBox.get(orderIdKey);
         offlineOrder = raw is Map ? Map<String, dynamic>.from(raw) : null;
+        if (offlineOrder != null && offlineOrder!['merchantDiscountPercentage'] != null) {
+          merchantDiscountPercentage = double.tryParse(offlineOrder!['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
+        }
 
         if (offlineOrder != null &&
             offlineOrder!['tenderAmount'] != null &&
@@ -7191,6 +7212,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       //Build #1.0.29:  Fetch the orderServerId from the database
 
       if (orderData.isNotEmpty) {
+        double dbMerchantDiscountPerc = 0.0;
+        try {
+          final box = StorageProvider.offlineOrders;
+          final key = (orderHelper.activeOrderId).toString();
+          if (await box.containsKey(key)) {
+            final raw = await box.get(key);
+            if (raw is Map) {
+              dbMerchantDiscountPerc = double.tryParse(raw['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
+            }
+          }
+        } catch (_) {}
+
         setState(() {
           orderId = orderData.first[AppDBConst.orderServerId] as int? ?? 0;
           orderDateTime =
@@ -7202,10 +7235,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               (orderData.first[AppDBConst.merchantDiscount] as num?)
                   ?.toDouble() ??
                   0.0;
+
           // Keep merchant discount algebraic (negative) for summary display/total logic.
           merchantDiscount = dbMerchantDiscount != 0
               ? -(dbMerchantDiscount.abs())
               : 0.0; // Build #1.0.80
+          merchantDiscountPercentage = dbMerchantDiscountPerc;
           tax =
               (orderData.first[AppDBConst.orderTax] as num?)?.toDouble() ?? 0.0;
           orderTotal =
