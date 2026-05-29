@@ -982,9 +982,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       return 0.0;
     }
 
-    // ─── Only use item-level auto/combo/multipack discounts here.
-    // Do NOT include coupon share — coupon is an order-level discount
-    // already captured in the `discount` state variable.
     double lineItemOnlyDiscount(Map<String, dynamic> item) {
       double n(dynamic v) =>
           v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
@@ -1036,7 +1033,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       (item['items_count'] ?? item['quantity'] ?? 1).toInt();
       final double lineTotal = unitPrice * qty;
 
-      // Use ONLY item-level discount (no coupon share)
       final double itemDiscount = lineItemOnlyDiscount(item);
       final double taxableBase =
       (lineTotal - itemDiscount).clamp(0.0, double.infinity);
@@ -1057,7 +1053,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         toDouble(item['item_tax'] ?? item['tax_amount']);
         if (rawTax > 0 && lineTotal > 0) {
           anyItemHasDiscountOrTaxRate = true;
-          // Scale the original tax proportionally to the taxable base
           itemTax = rawTax * (taxableBase / lineTotal);
         }
       }
@@ -1069,16 +1064,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     final double serverTax = widget.orderTax;
 
-    // Net after ALL discounts (item-level + order-level coupon)
     final double netAfterDiscount =
         totalLineGross - totalLineDiscount + discount + merchantDiscount;
 
     double finalTax;
 
     if (!anyItemHasDiscountOrTaxRate) {
-      // No item-level data at all — use server tax scaled by coupon discount ratio
-      if (serverTax > 0 && discount < 0) {
-        // Coupon was applied: scale server tax by (net / gross) ratio
+      // ── ONLY scale tax by coupon ratio when coupon was applied in THIS session.
+      // For pending/reloaded orders, isCouponAppliedFromApi is false,
+      // so we skip scaling and return the server tax as-is (e.g. $6.36).
+      if (serverTax > 0 && discount < 0 && isCouponAppliedFromApi) {
         final double originalGross = widget.grossTotal;
         if (originalGross > 0) {
           final double taxableNet =
@@ -1094,7 +1089,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         print('── TAX: No item-level data. finalTax=$finalTax');
       }
     } else if (totalTax <= 0 && serverTax > 0) {
-      // Recalc returned 0 but server has a value — check if net > 0
       if (netAfterDiscount > 0.005) {
         finalTax = serverTax;
       } else {
@@ -1104,9 +1098,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         print('── TAX: Recalc=0, server=$serverTax, net=$netAfterDiscount → finalTax=$finalTax');
       }
     } else {
-      // ── KEY FIX: if a coupon discount is also applied on top of
-      // item discounts, scale the recalculated tax further by the
-      // coupon ratio so we don't over-report tax.
       if (discount < 0 && totalLineGross > 0) {
         final double postCouponBase =
         (totalLineGross - totalLineDiscount + discount)
@@ -1191,7 +1182,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       );
     }
   }
-
 
   void _recalculateGrossAndNetFromLineItemDiscounts() {
     if (orderItems.isEmpty) return;
@@ -1311,10 +1301,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final double newGrossForDisplay = productGrossAfterDiscounts + payoutCashbackTotal;
 
     // NetTotal = grossForDisplay + coupon + merchant discount.
-    final double newNetTotal = newGrossForDisplay + discount + merchantDiscount;
+    final double newNetTotal = newGrossForDisplay + discount ;
 
     // Net payable — allow negative for refund/payout-only orders.
-    final double newNetPayable = newNetTotal + tax + cashbackFee;
+    // final double newNetPayable = newNetTotal + tax + cashbackFee
+    final double newNetPayable = newNetTotal + tax + cashbackFee + merchantDiscount;
 
     if (kDebugMode) {
       print('── LINE-ITEM DISCOUNT RECALCULATION ──');
@@ -1364,16 +1355,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       }
 
       final existing = await offlineBox.get(localKey);
-
       if (existing == null) {
         throw Exception("Order data missing");
       }
 
       final offlineOrder = Map<String, dynamic>.from(existing);
 
-      final syncResponse =
-      await orderBloc.syncSingleOfflineOrder(offlineOrder);
-
+      final syncResponse = await orderBloc.syncSingleOfflineOrder(offlineOrder);
       if (syncResponse == null) {
         throw Exception("Sync failed");
       }
@@ -1388,44 +1376,60 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       final result = jsonDecode(rawResponse);
 
       if (result["success"] != true) {
-        throw Exception(result["message"]);
+        throw Exception(result["message"] ?? "Redeem failed");
       }
 
       final data = result["data"] ?? {};
 
-      final pts = int.tryParse(
-        data["available_points"]?.toString() ?? "0",
-      ) ?? 0;
+      final pts = int.tryParse(data["available_points"]?.toString() ?? "0") ?? 0;
+      final redeemedAmount = (data["redeem_amount"] as num?)?.toDouble() ??
+          (data["value_redeemed"] as num?)?.toDouble() ?? 0.0;
 
-      // final redeemedAmount =
-      //     (data["value_redeemed"] as num?)?.toDouble() ?? 0.0;
+      print("✅ Redeem Success → Points: $pts | Redeemed: $redeemedAmount");
 
-      print("SENDING TO CUSTOMER DISPLAY");
-      print("points=$pts");
-      // print("redeemedAmount=$redeemedAmount");
+      // 🔥 UPDATE STATE FIRST
+      setState(() {
+        availablePoints = pts;
+        redeemedValue = redeemedAmount;           // ← CRITICAL
+        mobileController.text = contact;
+        isRedeemAppliedFromApi = true;
+      });
 
+      // Now update customer display with correct value
+      print("📤 Sending to Customer Display: redeemedAmount = $redeemedAmount");
 
-      // UPDATE CUSTOMER DISPLAY
       await customerDisplayChannel.invokeMethod(
         "customerDisplayResult",
         {
           "success": true,
           "points": pts,
-          // "redeemedAmount": redeemedAmount,
+          "redeemedAmount": redeemedAmount,        // ← Use fresh value
         },
       );
 
-      setState(() {
-        availablePoints = pts;
-
-        // keep redeemed value
-        // redeemedValue = redeemedAmount;
-
-        mobileController.text = contact;
-      });
+      // Also update Hive
+      final box = StorageProvider.offlineOrders;
+      final order = Map<String, dynamic>.from(await box.get(localKey));
+      order['redeemed_value'] = redeemedAmount;
+      order['net_payable'] = (order['net_payable'] ?? computedNetPayable) - redeemedAmount;
+      await box.put(localKey, order);
 
     } catch (e) {
-      print("ERROR: $e");
+      print("❌ ERROR in _handleCustomerAddFromDisplay: $e");
+      if (mounted) {
+        setState(() {
+          isButtonDisabled = false;
+          isAddLoading = false;
+        });
+      }
+
+      await customerDisplayChannel.invokeMethod(
+        "customerDisplayResult",
+        {
+          "success": false,
+          "message": e.toString(),
+        },
+      );
     }
   }
 
@@ -6271,7 +6275,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       : () async {
                     // ---------- CANCEL ----------
                     if (showCustomerInput) {
-                      // Only allow cancel if not disabled
                       if (isPaymentDone || redeemedValue > 0) return;
 
                       setState(() {
@@ -6297,13 +6300,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                       final localOrderId = widget.offlineOrderId;
                       if (localOrderId != null) {
-                        await CustomerDisplayHelper.updateCustomerDisplay(
-                            localOrderId);
+                        await CustomerDisplayHelper.updateCustomerDisplay(localOrderId);
                       }
                       return;
                     }
 
-                    // ---------- ADD ----------
                     // ---------- ADD ----------
                     if (!(isPhoneValid || isEmailValid)) return;
 
@@ -6312,12 +6313,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                     final contact = mobileController.text.trim();
 
                     try {
-
                       // ======================================
                       // 1️⃣ LOAD OFFLINE ORDER FROM HIVE
                       // ======================================
                       final offlineBox = StorageProvider.offlineOrders;
-
                       final localKey = widget.offlineOrderId?.toString();
 
                       if (localKey == null) {
@@ -6325,24 +6324,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       }
 
                       final existing = await offlineBox.get(localKey);
-
                       if (existing == null) {
                         throw Exception("Order data missing");
                       }
 
-                      final offlineOrder =
-                      Map<String, dynamic>.from(existing);
-
+                      final offlineOrder = Map<String, dynamic>.from(existing);
                       print("🟡 OFFLINE ORDER LOADED");
 
                       // ======================================
                       // 2️⃣ SYNC ORDER WITH BACKEND
                       // ======================================
-                      final syncResponse =
-                      await orderBloc.syncSingleOfflineOrder(
-                        offlineOrder,
-                      );
-
+                      final syncResponse = await orderBloc.syncSingleOfflineOrder(offlineOrder);
                       print("✅ SYNC RESPONSE points: $syncResponse");
 
                       if (syncResponse == null) {
@@ -6352,8 +6344,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       // ======================================
                       // 3️⃣ GET WOO ORDER ID
                       // ======================================
-                      final int syncedOrderId =
-                          syncResponse["id"] ?? 0;
+                      final int syncedOrderId = syncResponse["id"] ?? 0;
 
                       if (syncedOrderId == 0) {
                         throw Exception("Backend order id missing");
@@ -6364,8 +6355,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       // ======================================
                       // 4️⃣ CALL CREATE CUSTOMER API
                       // ======================================
-                      final rawResponse =
-                      await orderBloc.addLoyaltyPoints(
+                      final rawResponse = await orderBloc.addLoyaltyPoints(
                         orderId: syncedOrderId,
                         contact: contact,
                       );
@@ -6373,7 +6363,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       print("🌐 CUSTOMER RESPONSE: $rawResponse");
 
                       final result = jsonDecode(rawResponse);
-
                       print("✅ FULL CUSTOMER RESULT: $result");
 
                       if (result == null) {
@@ -6381,9 +6370,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       }
 
                       if (result["success"] == false) {
-                        throw Exception(
-                          result["message"] ?? "Customer API failed",
-                        );
+                        throw Exception(result["message"] ?? "Customer API failed");
                       }
 
                       final data = result["data"] ?? {};
@@ -6391,6 +6378,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       final pts = int.tryParse(
                         data["available_points"]?.toString() ?? "0",
                       ) ?? 0;
+
                       // ======================================
                       // 5️⃣ UPDATE UI
                       // ======================================
@@ -6405,15 +6393,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       // 6️⃣ SAVE CONTACT LOCALLY
                       // ======================================
                       offlineOrder["loyaltyContact"] = contact;
-
                       await offlineBox.put(localKey, offlineOrder);
 
                       // ======================================
                       // 7️⃣ UPDATE CUSTOMER DISPLAY
+                      // ✅ FIX: pass redeemedValue (state variable) instead of
+                      //         non-existent newRedeemValue
                       // ======================================
-                      // ======================================
-// 7️⃣ DO NOT REFRESH CUSTOMER DISPLAY
-// ======================================
                       try {
                         await const MethodChannel(
                           'com.alekta.pinakapos/sunmi_display',
@@ -6442,6 +6428,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                             (offlineOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
                             'loyaltyContact': contact,
                             'availablePoints': pts,
+                            // ✅ FIX: use redeemedValue state variable.
+                            // At "Add" time this is 0.0 (no redeem yet), which is correct.
+                            // After the Redeem dialog completes and setState updates
+                            // redeemedValue, any subsequent display refresh will carry
+                            // the real value automatically.
+                            'redeemedAmount': redeemedValue,
                             'summaryEnabled': true,
                           },
                         );
@@ -6450,6 +6442,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           rethrow;
                         }
                       }
+
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
@@ -6459,24 +6452,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           ),
                         );
                       }
-
                     } catch (e) {
-
                       print("❌ ERROR: $e");
 
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(
-                              "Failed: ${e.toString()}",
-                            ),
+                            content: Text("Failed: ${e.toString()}"),
                             backgroundColor: Colors.red,
                           ),
                         );
                       }
-
                     } finally {
-
                       if (mounted) {
                         setState(() => isAddLoading = false);
                       }
@@ -6488,10 +6475,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: isButtonDisabled
-                          ? Colors.grey.shade400 // 🔒 Disabled / Pending
+                          ? Colors.grey.shade400
                           : showCustomerInput
-                          ? Colors.red //  Cancel
-                          : const Color(0xFF3B4259), // ➕ Add
+                          ? Colors.red
+                          : const Color(0xFF3B4259),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: isAddLoading
@@ -6512,7 +6499,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       ),
                     ),
                   ),
-                )
+                ),
               ],
             ),
           ),
@@ -9134,7 +9121,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                   if (availablePoints == 0) {
                                     print(
-                                        "⛔ Redeem blocked: No availablePoints");
+                                        " Redeem blocked: No availablePoints");
                                     return;
                                   }
 
@@ -9195,10 +9182,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                   final redeemApi =
                                   jsonDecode(result["apiResponse"]);
-                                  print("📦 API Raw Response: $redeemApi");
+                                  print("API Raw Response: $redeemApi");
 
                                   if (redeemApi == null) {
-                                    print("❌ ERROR: Redeem API is null");
+                                    print(" ERROR: Redeem API is null");
                                     return;
                                   }
 
@@ -9245,6 +9232,44 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     balanceAmount = newBalanceAmount;
                                     isRedeemAppliedFromApi = true;
                                   });
+
+                           // Refresh customer display with updated redeemedAmount
+                                  if (widget.offlineOrderId != null) {
+                                    try {
+                                      final box = StorageProvider.offlineOrders;
+                                      final localKey = widget.offlineOrderId!.toString();
+                                      final raw = await box.get(localKey);
+                                      if (raw is Map) {
+                                        final offlineOrder = Map<String, dynamic>.from(raw);
+                                        await const MethodChannel(
+                                          'com.alekta.pinakapos/sunmi_display',
+                                        ).invokeMethod(
+                                          'showCustomerData',
+                                          {
+                                            'orderId': widget.offlineOrderId!,
+                                            'items': List<Map<String, dynamic>>.from(
+                                              offlineOrder['products'] ?? [],
+                                            ),
+                                            'grossTotal': (offlineOrder['gross_total'] as num?)?.toDouble() ?? 0.0,
+                                            'discount': (offlineOrder['discount'] as num?)?.toDouble() ?? 0.0,
+                                            'merchantDiscount': (offlineOrder['merchant_discount'] as num?)?.toDouble() ?? 0.0,
+                                            'netTotal': (offlineOrder['net_total'] as num?)?.toDouble() ?? 0.0,
+                                            'tax': (offlineOrder['order_tax'] as num?)?.toDouble() ?? 0.0,
+                                            'netPayable': newBalanceAmount,
+                                            'orderDate': offlineOrder['order_date'] ?? '',
+                                            'orderTime': offlineOrder['order_time'] ?? '',
+                                            'cashbackFee': (offlineOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
+                                            'loyaltyContact': mobileController.text.trim(),
+                                            'availablePoints': newAvailablePoints,
+                                            'redeemedAmount': newRedeemValue, // ✅ now passes the real value
+                                            'summaryEnabled': true,
+                                          },
+                                        );
+                                      }
+                                    } catch (e) {
+                                      print("❌ Failed to refresh customer display after redeem: $e");
+                                    }
+                                  }
 
                                   print("🟩 UI Updated:");
                                   print("➡ redeemedValue: $redeemedValue");

@@ -268,30 +268,14 @@ class MainActivity : FlutterActivity() {
 
                 "customerDisplayResult" -> {
                     val success = call.argument<Boolean>("success") ?: false
+                    val message = call.argument<String>("message") ?: ""
                     val points = call.argument<Int>("points") ?: 0
                     val redeemedAmount = call.argument<Double>("redeemedAmount") ?: 0.0
 
                     Log.d(
                         "CustomerDisplay",
-                        "📥 customerDisplayResult → success=$success, points=$points, redeemedAmount=$redeemedAmount"
+                        "customerDisplayResult → success=$success points=$points redeemedAmount=$redeemedAmount"
                     )
-
-                    Handler(Looper.getMainLooper()).post {
-                        if (customerDisplayPresentation != null) {
-                            customerDisplayPresentation?.updateHeaderPoints(points)
-
-                            if (redeemedAmount > 0) {
-                                customerDisplayPresentation?.showRedeemSummary(redeemedAmount)
-                                Log.d("CustomerDisplay", "✅ Redeem summary shown on customer display: $redeemedAmount")
-                            } else {
-                                customerDisplayPresentation?.restoreSummaryAfterRedeemRemoval()
-                            }
-                        } else {
-                            Log.w("CustomerDisplay", "⚠️ customerDisplayPresentation is null")
-                        }
-                    }
-                    result.success(true)
-                }
 
                     Handler(Looper.getMainLooper()).post {
                         if (!success) {

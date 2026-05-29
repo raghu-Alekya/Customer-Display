@@ -18,6 +18,7 @@ import '../Blocs/Orders/refund_orderlist_bloc.dart';
 import '../Blocs/Orders/refund_validation_bloc.dart';
 import '../Database/db_helper.dart';
 import '../Database/user_db_helper.dart';
+import '../Helper/Extentions/nav_layout_manager.dart';
 import '../Models/Orders/refund_orderlist_model.dart';
 import '../Repositories/Orders/refund_validation_repository.dart';
 import '../Widgets/refund_checkin_popup.dart';
@@ -36,8 +37,8 @@ class CompletedOrdersScreen extends StatefulWidget {
   State<CompletedOrdersScreen> createState() => _CompletedOrdersScreenState();
 }
 
-class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
-  int _selectedSidebarIndex = 5;
+class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> with WidgetsBindingObserver,
+    LayoutSelectionMixin{  int _selectedSidebarIndex = 5;
   int _currentPage = 1;
 
   int itemsPerPage = 10;
@@ -197,6 +198,9 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> {
     Future.delayed(const Duration(milliseconds: 400), () {
       if (mounted) _isModeChangePending = false;
     });
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override

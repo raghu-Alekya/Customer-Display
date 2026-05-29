@@ -858,6 +858,16 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
           final summary = await LocalPaymentDBHelper.instance
               .getPaymentSummaryForOrder(widget.activeOrderId!);
           final paymentCount = (summary['paymentCount'] ?? 0.0).toDouble();
+          // After loading from SQLite / Hive / preview
+          final double authoritativeTax =
+              (_order[AppDBConst.orderTax] as num?)?.toDouble() ??
+                  (_order['wooTax'] as num?)?.toDouble() ??
+                  (_order['order_tax'] as num?)?.toDouble() ?? 0.0;
+
+          uiOrderTax = authoritativeTax;
+          tax = authoritativeTax;
+          _order[AppDBConst.orderTax] = authoritativeTax;
+
           if (paymentCount > 0) {
             tenderAmount = summary['totalPaid'] ?? 0.0;
             final remaining = summary['remainingBalance'];
