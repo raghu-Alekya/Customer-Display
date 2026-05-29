@@ -208,26 +208,31 @@ class CustomerDisplayHelper {
       // ------------------ FILTER PRODUCT LIST ------------------
       final productsRaw = (data["products"] ?? []) as List;
 
-      if (productsRaw.isEmpty) {
+      final payoutsRaw = (data["payouts"] ?? []) as List;
+      final cashbacksRaw = (data["cashbacks"] ?? []) as List;
+
+      if (productsRaw.isEmpty &&
+          payoutsRaw.isEmpty &&
+          cashbacksRaw.isEmpty) {
         print("🟡 [CD] Empty order → showing order with no items");
 
         await CustomerDisplayService.showCustomerData(
-          orderId: serverOrderId,
-          items: [],
-          grossTotal: 0.0,
-          discount: 0.0,
-          merchantDiscount: 0.0,
-          netTotal: 0.0,
-          tax: 0.0,
-          netPayable: 0.0,
-          orderDate: "",
-          orderTime: "",
-          cashbackFee: 0.0,
-          loyaltyContact: "",
-          summaryEnabled: summaryEnabled,
-          discountType: "NONE",
-          discountValue: 0.0,
-          redeemedAmount: 0.0
+            orderId: serverOrderId,
+            items: [],
+            grossTotal: 0.0,
+            discount: 0.0,
+            merchantDiscount: 0.0,
+            netTotal: 0.0,
+            tax: 0.0,
+            netPayable: 0.0,
+            orderDate: "",
+            orderTime: "",
+            cashbackFee: 0.0,
+            loyaltyContact: "",
+            summaryEnabled: summaryEnabled,
+            discountType: "NONE",
+            discountValue: 0.0,
+            redeemedAmount: 0.0
         );
 
         return;
