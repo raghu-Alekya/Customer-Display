@@ -3190,16 +3190,18 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                   fontSize: 15),
                                             ),
                                             Text(
-                                                "${TextConstants.currencySymbol}${netTotal.toStringAsFixed(2)}",
+                                                netTotal < 0
+                                                    ? '-${TextConstants.currencySymbol}${netTotal.abs().toStringAsFixed(2)}'
+                                                    : '${TextConstants.currencySymbol}${netTotal.toStringAsFixed(2)}',
                                                 style: TextStyle(
                                                     fontWeight: FontWeight.bold,
                                                     fontSize: 15,
                                                     color: themeHelper
-                                                                .themeMode ==
-                                                            ThemeMode.dark
+                                                        .themeMode ==
+                                                        ThemeMode.dark
                                                         ? ThemeNotifier.textDark
                                                         : ThemeNotifier
-                                                            .textLight)),
+                                                        .textLight)),
                                           ],
                                         ),
                                         SizedBox(
@@ -3311,7 +3313,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                 ),
                                               ),
                                               Text(
-                                                "- ${TextConstants.currencySymbol}${(_wooOrder?.refundTotal ?? 0).toStringAsFixed(2)}",
+                                                " ${TextConstants.currencySymbol}${(_wooOrder?.refundTotal ?? 0).toStringAsFixed(2)}",
                                                 style: TextStyle(
                                                   fontSize: 14,
                                                   fontWeight: FontWeight.w600,

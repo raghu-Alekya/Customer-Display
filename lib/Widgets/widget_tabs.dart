@@ -22,6 +22,7 @@ import '../Database/order_panel_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/api_response.dart';
 import '../Helper/cashbackhelper.dart';
+import '../Helper/customerdisplayhelper.dart';
 import '../Helper/url_helper.dart';
 import '../Models/Assets/asset_model.dart';
 import '../Models/Orders/orders_model.dart';
@@ -4616,6 +4617,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         total += (p["price"] ?? 0) * (p["quantity"] ?? 1);
       }
 
+
       final updatedOrder = {
         ...existingOrder,
         "products": products,
@@ -4624,6 +4626,17 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       };
 
       await offlineBox.put(key, updatedOrder);
+      try {
+        await CustomerDisplayHelper.updateCustomerDisplay(
+          orderId,
+          summaryEnabled: false,
+        );
+
+        print("📺 Customer display updated after payout");
+      } catch (e) {
+        print("❌ Customer display update failed: $e");
+      }
+
 
       // ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
       //   SnackBar(
@@ -4655,6 +4668,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
     }
   }
 }
+
 
 class TabSideClipper extends CustomClipper<Path> {
   final int selectedIndex;

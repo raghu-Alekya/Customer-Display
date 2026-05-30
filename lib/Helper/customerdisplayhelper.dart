@@ -208,7 +208,12 @@ class CustomerDisplayHelper {
       // ------------------ FILTER PRODUCT LIST ------------------
       final productsRaw = (data["products"] ?? []) as List;
 
-      if (productsRaw.isEmpty) {
+      final payoutsRaw = (data["payouts"] ?? []) as List;
+      final cashbacksRaw = (data["cashbacks"] ?? []) as List;
+
+      if (productsRaw.isEmpty &&
+          payoutsRaw.isEmpty &&
+          cashbacksRaw.isEmpty) {
         print("🟡 [CD] Empty order → showing order with no items");
 
         await CustomerDisplayService.showCustomerData(

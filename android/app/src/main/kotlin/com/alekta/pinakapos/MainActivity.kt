@@ -856,24 +856,41 @@ class MainActivity : FlutterActivity() {
 
         fun updateHeaderPoints(points: Int) {
             Handler(Looper.getMainLooper()).post {
+
                 availablePoints = points
-                val headerPoints = findViewById<TextView>(R.id.customer_points)
+
+                val headerPoints =
+                    findViewById<TextView>(R.id.customer_points)
+
                 if (headerPoints != null) {
                     headerPoints.text = points.toString()
                     headerPoints.visibility = View.VISIBLE
                     headerPoints.invalidate()
                     headerPoints.requestLayout()
-                    Log.d("CustomerDisplay", "HEADER POINTS UPDATED DIRECT FROM API = ${headerPoints.text}")
+
+                    Log.d(
+                        "CustomerDisplay",
+                        "HEADER POINTS UPDATED DIRECT FROM API = ${headerPoints.text}"
+                    )
                 } else {
-                    Log.e("CustomerDisplay", "customer_points header not found")
+                    Log.e(
+                        "CustomerDisplay",
+                        "customer_points header not found"
+                    )
                 }
             }
         }
 
+        //
         fun restoreSummaryAfterRedeemRemoval() {
             Handler(Looper.getMainLooper()).post {
-                val summaryContainer = findViewById<LinearLayout>(R.id.summary_container)
-                val redeemRow = findViewById<LinearLayout>(R.id.redeem_row)
+
+                val summaryContainer =
+                    findViewById<LinearLayout>(R.id.summary_container)
+
+                val redeemRow =
+                    findViewById<LinearLayout>(R.id.redeem_row)
+
                 summaryContainer?.visibility = View.VISIBLE
                 redeemRow?.visibility = View.GONE
 
@@ -882,22 +899,37 @@ class MainActivity : FlutterActivity() {
                     .replace("$", "")
                     .replace(",", "")
                     .trim()
+
                 val currentNet = currentNetText.toDoubleOrNull() ?: 0.0
+
                 val restoredNet = currentNet + redeemedAmount
+
                 this.redeemedAmount = 0.0
+
                 netPayableView.text = "Total : ${formatCurrency(restoredNet)}"
-                Log.d("CustomerDisplay", "Restored net payable = $restoredNet")
+
+                Log.d(
+                    "CustomerDisplay",
+                    "Restored net payable = $restoredNet"
+                )
             }
         }
 
         fun hideRedeemSummary() {
+
             Log.d("CustomerDisplay", "hideRedeemSummary called")
+
             this.redeemedAmount = 0.0
-            val redeemRow = findViewById<LinearLayout>(R.id.redeem_row)
-            val redeemValue = findViewById<TextView>(R.id.value_redeem_amount)
+            val redeemRow =
+                findViewById<LinearLayout>(R.id.redeem_row)
+
+            val redeemValue =
+                findViewById<TextView>(R.id.value_redeem_amount)
+
             redeemRow?.visibility = View.GONE
             redeemValue?.text = formatCurrency(0.0)
         }
+
 
         fun resetCustomerLayoutState() {
             isCustomerLayoutActive = false
@@ -1370,7 +1402,7 @@ class MainActivity : FlutterActivity() {
                 showRedeemPopup(customerValue)
                 MethodChannel(
                     mainActivity.flutterEngine!!.dartExecutor.binaryMessenger,
-                    "com.example.flutter_customer_display/sunmi_display"
+                    "com.alekta.pinakapos/sunmi_display",
                 ).invokeMethod(
                     "customerDisplayRedeemClicked",
                     mapOf("contact" to customerValue)
@@ -1662,21 +1694,36 @@ class MainActivity : FlutterActivity() {
             }
 
             // ===== TOTALS =====
+//            ============ TOTALS (UNCHANGED) =================
             grossView.text = formatCurrency(grossTotal)
-            discountView.text = formatCurrency(-discount)
+//            discountView.text = formatCurrency(discount)
+            // ALWAYS TREAT DISCOUNT AS POSITIVE VALUE
+            val actualDiscount =
+                kotlin.math.abs(discount)
+
+// DISPLAY AS NEGATIVE
+            discountView.text =
+                "-${formatCurrency(actualDiscount)}"
+
             totalItemsView.text = "Total Items : $totalItemCount"
 
             findViewById<TextView>(R.id.label_cashback_fee).text = "Cashback Fee"
-            findViewById<TextView>(R.id.value_cashback_fee).text = formatCurrency(cashbackFee)
+            findViewById<TextView>(R.id.value_cashback_fee).text =
+                formatCurrency(cashbackFee)
 
             merchantDiscountView.text = formatCurrency(-merchantDiscount)
 
-            val calculatedNetTotal = grossTotal - discount
-            netTotalView.text = formatCurrency(calculatedNetTotal)
-            taxView.text = formatCurrency(tax)
-            netPayableView.text = "Total : ${formatCurrency(netPayable)}"
+            // NET TOTAL = GROSS - DISCOUNT
+            val calculatedNetTotal =
+                grossTotal - actualDiscount
 
-            // show redeem row separately
+            netTotalView.text =
+                formatCurrency(calculatedNetTotal)
+
+            taxView.text = formatCurrency(tax)
+
+            netPayableView.text = "Total : ${formatCurrency(netPayable)}"
+// show redeem row separately
             if (summaryEnabled && this.redeemedAmount > 0) {
                 showRedeemSummary(redeemedAmount)
             } else {
@@ -1733,44 +1780,66 @@ class MainActivity : FlutterActivity() {
         }
 
         fun updateRedeemPopupPoints(points: Int) {
+
             Handler(Looper.getMainLooper()).post {
+
                 Log.d("CustomerDisplay", "UPDATING API POINTS = $points")
+
                 this.availablePoints = points
+
                 redeemPointsTextView?.let {
                     it.text = "Available Points: $points"
                     it.visibility = View.VISIBLE
                 }
+
                 pointsView.text = points.toString()
                 pointsView.visibility = View.VISIBLE
-                Log.d("CustomerDisplay", "MAIN HEADER POINTS UPDATED = ${pointsView.text}")
+
+                Log.d(
+                    "CustomerDisplay",
+                    "MAIN HEADER POINTS UPDATED = ${pointsView.text}"
+                )
             }
         }
-
         fun showRedeemPopup(contact: String) {
             Handler(Looper.getMainLooper()).post {
                 isRedeemPopupOpen = true
+
                 val root = findViewById<FrameLayout>(android.R.id.content)
+
                 root.findViewWithTag<View>("redeem_popup")?.let {
                     root.removeView(it)
                 }
+
                 val popupView = LayoutInflater.from(context).inflate(
                     R.layout.redeem_popup_layout,
                     root,
                     false
                 )
+
                 popupView.tag = "redeem_popup"
-                redeemPointsTextView = popupView.findViewById<TextView>(R.id.txt_points)
+
+                redeemPointsTextView =
+                    popupView.findViewById<TextView>(R.id.txt_points)
+
                 redeemPointsTextView?.visibility = View.VISIBLE
                 redeemPointsTextView?.text = "Fetching points..."
-                popupView.findViewById<Button>(R.id.btn_ok).setOnClickListener {
-                    isRedeemPopupOpen = false
-                    root.removeView(popupView)
-                    redeemPointsTextView = null
-                    MethodChannel(
-                        mainActivity.flutterEngine!!.dartExecutor.binaryMessenger,
-                        "com.example.flutter_customer_display/sunmi_display"
-                    ).invokeMethod("customerDisplayPopupClosed", null)
-                }
+                popupView.findViewById<Button>(R.id.btn_ok)
+                    .setOnClickListener {
+                        isRedeemPopupOpen = false
+
+                        root.removeView(popupView)
+                        redeemPointsTextView = null
+
+                        MethodChannel(
+                            mainActivity.flutterEngine!!
+                                .dartExecutor.binaryMessenger,
+                            "com.alekta.pinakapos/sunmi_display"
+                        ).invokeMethod(
+                            "customerDisplayPopupClosed",
+                            null
+                        )
+                    }
                 root.addView(popupView)
             }
         }

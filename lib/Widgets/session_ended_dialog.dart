@@ -71,7 +71,7 @@ class SessionEndedDialog {
 
                     /// IMAGE
                     Image.asset(
-                      'assets/images/session_ended.png',
+                      'assets/session_ended.png',
                       height: 150,
                     ),
 

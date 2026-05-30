@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../Constants/text.dart';
 import '../../Repositories/Orders/order_repository.dart';
 
@@ -306,6 +307,21 @@ class _RedeemPointsDialogState extends State<RedeemPointsDialog> {
 
           // POPUP RETURNS THE API DATA TO ORDER-SUMMARY PAGE
           if (mounted) {
+            const MethodChannel customerDisplayChannel =
+            MethodChannel(
+              'com.alekta.pinakapos/sunmi_display',
+            );
+
+// UPDATE CUSTOMER DISPLAY
+            await customerDisplayChannel.invokeMethod(
+              "customerDisplayResult",
+              {
+                "success": true,
+                "points": availablePoints,
+                "redeemedAmount": valueRedeemed,
+              },
+            );
+
             Navigator.pop(context, {
               "redeemedPoints": redeemPoints,
               "redeemedValue": valueRedeemed,
