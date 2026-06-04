@@ -6091,11 +6091,63 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               <Map<String, dynamic>>[],
                             };
 
-                            updated["tax_discount"] =
-                                totalTaxAfterDiscount;
+                            // Recalculate percentage-based merchant discount w.r.t grossAfterDiscount
+                            final String mdType = updated['merchantDiscountType']?.toString() ?? 'fixed';
+                            final double mdPerc = double.tryParse(updated['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
+                            double recalculatedMerchantDiscount = merchantDiscount;
+                            if (mdType == 'percentage' && mdPerc > 0) {
+                              double base = grossAfterDiscount - orderDiscount.abs();
+                              if (base > 0) {
+                                recalculatedMerchantDiscount = (base * mdPerc) / 100.0;
+                              } else {
+                                recalculatedMerchantDiscount = 0.0;
+                              }
+                              updated['merchantDiscount'] = recalculatedMerchantDiscount;
+
+                              if (updated['discounts'] is List) {
+                                final List list = updated['discounts'] as List;
+                                final updatedDiscounts = <Map<String, dynamic>>[];
+                                for (final item in list) {
+                                  if (item is Map) {
+                                    final m = Map<String, dynamic>.from(item);
+                                    final name = (m['name'] ?? '').toString().toLowerCase();
+                                    if (name.contains('merchant discount') || name.contains('discount')) {
+                                      m['discount_amount'] = -recalculatedMerchantDiscount;
+                                      m['display_amount'] = recalculatedMerchantDiscount;
+                                      m[AppDBConst.itemPrice] = recalculatedMerchantDiscount;
+                                      m[AppDBConst.itemSumPrice] = recalculatedMerchantDiscount;
+                                    }
+                                    updatedDiscounts.add(m);
+                                  }
+                                }
+                                updated['discounts'] = updatedDiscounts;
+                              }
+                            }
+                            
+                            double calculatedPerc = 0.0;
+                            if (mdType == 'percentage' && mdPerc > 0) {
+                              calculatedPerc = mdPerc;
+                            } else if (mdType == 'fixed' && recalculatedMerchantDiscount.abs() > 0) {
+                              double base = grossAfterDiscount - orderDiscount.abs();
+                              if (base > 0) {
+                                calculatedPerc = (recalculatedMerchantDiscount.abs() / base) * 100.0;
+                              }
+                            }
+                            if (calculatedPerc > 0) {
+                              totalTaxAfterDiscount = totalTaxAfterDiscount * (1 - calculatedPerc / 100.0);
+                              totalTaxAfterDiscount = roundTaxHalfUp(totalTaxAfterDiscount);
+                            }
+
+                            updated["tax_discount"] = totalTaxAfterDiscount;
+                            updated["order_tax"] = totalTaxAfterDiscount;
 
                             updated["cashback_fee"] = double.parse(
                                 cashbackFee.toStringAsFixed(2));
+
+                            updated['net_total'] = grossAfterDiscount - orderDiscount.abs() - recalculatedMerchantDiscount;
+                            updated['net_payable'] = updated['net_total'] + totalTaxAfterDiscount + cashbackFee;
+                            merchantDiscount = recalculatedMerchantDiscount;
+
 // =======================================================
 // 🔥 BUILD DISCOUNT LINES (SOURCE OF TRUTH)
 // =======================================================
@@ -6178,8 +6230,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                       orderDiscount: orderDiscount,
                                       merchantDiscount: merchantDiscount,
                                       orderTax: totalTaxAfterDiscount,
-                                      netPayable: (grossAfterDiscount +
-                                          totalTaxAfterDiscount),
+                                      netPayable: updated['net_payable'] ?? (grossAfterDiscount +
+                                          totalTaxAfterDiscount -
+                                          merchantDiscount),
                                       orderId: serverOrderId ??
                                           frozenCheckoutOrderId,
                                       isOfflineSynced: serverOrderId != null,
