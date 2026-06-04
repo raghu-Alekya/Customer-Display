@@ -99,6 +99,8 @@ class CustomerDisplayService {
           "price": item["price"] ?? 0.0,
           "original_price": item["original_price"] ?? item["price"] ?? 0.0,
           "auto_discount": item["auto_discount"] ?? 0.0,
+          "combo_discount": item["combo_discount"] ?? 0.0,
+          "multipack_discount": item["multipack_discount"] ?? 0.0,
           "discount_type": item["discount_type"] ?? "",
           "image": item["image"] ?? "",
         };

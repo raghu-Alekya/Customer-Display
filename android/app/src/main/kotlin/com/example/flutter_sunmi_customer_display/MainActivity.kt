@@ -708,14 +708,16 @@ class MainActivity : FlutterActivity() {
             redeemRow?.visibility = View.GONE
             redeemValue?.text = formatCurrency(0.0)
         }
-
         fun resetCustomerLayoutState() {
             isCustomerLayoutActive = false
             firstOrderShown = false
             isRedeemPopupOpen = false
             phoneInputUnlocked = false
             keepSummaryVisible = false
+
             this.redeemedAmount = 0.0
+            this.availablePoints = 0
+
             currentDisplayedOrderId = -1
 
             Log.d("CustomerDisplay", "🔄 Customer layout state reset")
@@ -1069,7 +1071,15 @@ class MainActivity : FlutterActivity() {
                 isRedeemPopupOpen = false
                 firstOrderShown = false
                 currentDisplayedOrderId = -1
-                this.redeemedAmount = 0.0// IMPORTANT RESET
+                this.redeemedAmount = 0.0
+                this.availablePoints = 0
+
+                try {
+                    val pointsView = findViewById<TextView>(R.id.customer_points)
+                    pointsView?.text = "0"
+                } catch (e: Exception) {
+                    Log.d("CustomerDisplay", "customer_points not available in welcome layout")
+                }// IMPORTANT RESET
 
                 setContentView(R.layout.welcome_layout)
 
@@ -1336,6 +1346,14 @@ class MainActivity : FlutterActivity() {
                 )
 
                 this.redeemedAmount = 0.0
+                this.availablePoints = 0
+
+                try {
+                    pointsView.text = "0"
+                } catch (e: Exception) {
+                    Log.e("CustomerDisplay", "Unable to reset points")
+                }
+
                 isRedeemPopupOpen = false
                 keepSummaryVisible = false
 
@@ -1722,24 +1740,29 @@ class MainActivity : FlutterActivity() {
             // Items exist → Show list
             // -----------------------------------------------------
             orderIdView.text = "#$orderId"
-            this.availablePoints =
-                if (availablePoints > 0) availablePoints else this.availablePoints
 
+// Always use the latest value received
+            this.availablePoints = availablePoints
+
+// Update UI
             pointsView.text = this.availablePoints.toString()
+
+            Log.d(
+                "CustomerDisplay",
+                "HEADER POINTS UPDATED = ${this.availablePoints}"
+            )
 
             Log.d(
                 "CustomerDisplay",
                 "HEADER POINTS = ${this.availablePoints}"
             )
+
             Log.d(
                 "CustomerDisplay",
-                "HEADER POINTS FROM updateCustomerData = ${availablePoints}"
+                "HEADER POINTS FROM updateCustomerData = $availablePoints"
             )
-            itemsContainer.removeAllViews()
 
-            var totalItemCount = 0
             val itemsHeader = findViewById<LinearLayout>(R.id.items_header)
-
 // ✅ Show header only when real items exist
             val hasRealItems = items.any {
                 val n = it["name"] as? String ?: ""
@@ -1748,8 +1771,12 @@ class MainActivity : FlutterActivity() {
             itemsHeader.visibility = if (hasRealItems) View.VISIBLE else View.GONE
 
 
+            var totalItemCount = 0
+
+
 
             for ((index, item) in items.withIndex()) {
+
 
                 val name = (item["name"] as? String) ?: ""
 
@@ -1798,6 +1825,8 @@ class MainActivity : FlutterActivity() {
 
                 val originalPrice =
                     (item["original_price"] as? Number)?.toDouble() ?: price
+                val comboDiscount = (item["combo_discount"] as? Number)?.toDouble() ?: 0.0
+                val multipackDiscount = (item["multipack_discount"] as? Number)?.toDouble() ?: 0.0
 
                 val discountValue =
                     (item["auto_discount"] as? Number)?.toDouble() ?: 0.0
@@ -1805,6 +1834,18 @@ class MainActivity : FlutterActivity() {
                 val discountType =
                     (item["discount_type"] as? String)?.trim() ?: ""
 
+                val discountValue: Double = when {
+                    discountType.contains("multipack") ->
+                        if (multipackDiscount > 0) multipackDiscount else autoDiscount
+                    discountType.contains("combo") || discountType.contains("mixmatch") ->
+                        if (comboDiscount > 0) comboDiscount else autoDiscount
+                    discountType.contains("auto") -> autoDiscount
+                    else -> when {
+                        multipackDiscount > 0 -> multipackDiscount
+                        comboDiscount > 0 -> comboDiscount
+                        else -> autoDiscount
+                    }
+                }
                 val hasDiscount = discountValue > 0
                 val originalTotal = price * qty
                 val discountedTotal = originalTotal - discountValue
@@ -1868,18 +1909,20 @@ class MainActivity : FlutterActivity() {
 
                 val (displayText, displayColor) = when {
                     rawType.contains("mixmatch") || rawType.contains("mix_match") ->
-                        "COMBO DISCOUNT" to Color.parseColor("#FF9800") // 🟠 Orange
-
+                        "COMBO DISCOUNT" to Color.parseColor("#FF9800")
                     rawType.contains("multipack") || rawType.contains("multi_pack") ->
-                        "MULTIPACK DISCOUNT" to Color.parseColor("#2196F3") // 🔵 Blue
-
+                        "MULTIPACK DISCOUNT" to Color.parseColor("#2196F3")
                     rawType.contains("auto") ->
                         "AUTO DISCOUNT" to Color.RED
-
+                    multipackDiscount > 0 ->
+                        "MULTIPACK DISCOUNT" to Color.parseColor("#2196F3")
+                    comboDiscount > 0 ->
+                        "COMBO DISCOUNT" to Color.parseColor("#FF9800")
+                    autoDiscount > 0 ->
+                        "AUTO DISCOUNT" to Color.RED
                     else ->
-                        rawType.uppercase() to Color.RED
+                        "DISCOUNT" to Color.RED
                 }
-
 
                 if (hasDiscount && showDiscountDetails) {
                     val discountText = TextView(context).apply {
@@ -1889,6 +1932,8 @@ class MainActivity : FlutterActivity() {
                     }
                     itemColumn.addView(discountText)
                 }
+
+
 
 
 // ================= QTY × PRICE (1.0f) =================
@@ -2121,6 +2166,9 @@ class MainActivity : FlutterActivity() {
                 formatCurrency(calculatedNetTotal)
 
             taxView.text = formatCurrency(tax)
+            Log.d("CustomerDisplay", "TAX BEFORE DISPLAY = $tax")
+            taxView.text = formatCurrency(tax)
+            Log.d("CustomerDisplay", "TAX TEXT AFTER DISPLAY = ${taxView.text}")
 
             netPayableView.text = "Total : ${formatCurrency(netPayable)}"
 // show redeem row separately

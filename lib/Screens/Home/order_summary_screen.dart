@@ -469,6 +469,7 @@ class OrderSummaryScreen extends StatefulWidget {
   final double ebtAmount; //  NEW
   final double discountAmount;
   final bool itemPricesAlreadyAdjusted;
+  // bool isCustomerFieldDisabled = false;
 
   const OrderSummaryScreen({
     required this.formattedDate,
@@ -509,6 +510,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool _paymentDialogShown = false;
   bool get isOrderPending => orderStatus == 'pending';
   LastPaymentInfo? _lastPayment;
+  bool isCustomerFieldDisabled = false;
 
   final PaymentBloc paymentBloc =
   PaymentBloc(PaymentRepository()); // Added PaymentBloc
@@ -6134,9 +6136,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                             alignment: Alignment.centerLeft,
                             child: StatefulBuilder(
                               builder: (context, innerSetState) {
+                                print(
+                                    "BUILD -> isCustomerFieldDisabled=$isCustomerFieldDisabled, "
+                                        "showCustomerInput=$showCustomerInput"
+                                );
                                 return TextField(
                                   controller: mobileController,
-                                  enabled: !isCustomerFieldDisabled,
+                                  enabled: true,
+                                  readOnly: showCustomerInput,
+                                  enableInteractiveSelection: !showCustomerInput,
                                   keyboardType: TextInputType.emailAddress,
                                   inputFormatters: [
                                     TextInputFormatter.withFunction(
@@ -6210,6 +6218,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         isPhoneValid = false;
                         isEmailValid = false;
                         isRedeemActive = false;
+                        // Enable field again
+                        isCustomerFieldDisabled = false;
                       });
 
                       final offlineBox = StorageProvider.offlineOrders;
@@ -6275,6 +6285,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                     // ---------- ADD ----------
                     // ---------- ADD ----------
                     if (!(isPhoneValid || isEmailValid)) return;
+
+                    // ✅ Close keyboard immediately
+                    FocusManager.instance.primaryFocus?.unfocus();
 
                     setState(() => isAddLoading = true);
 
@@ -6368,8 +6381,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         availablePoints = pts;
                         isRedeemActive = true;
                         showCustomerInput = true;
+
+                        // Disable field after successful add
+                        isCustomerFieldDisabled = true;
                       });
 
+                      print(
+                          "AFTER ADD -> isCustomerFieldDisabled = $isCustomerFieldDisabled"
+                      );
                       // ======================================
                       // 6️⃣ SAVE CONTACT LOCALLY
                       // ======================================

@@ -30,6 +30,7 @@ import '../Database/store_db_helper.dart';
 import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/api_response.dart';
+import '../Helper/customerdisplayhelper.dart';
 import '../Models/Orders/get_orders_model.dart';
 import '../Models/Payment/payment_model.dart';
 import '../Repositories/Payment/payment_repository.dart';
@@ -3734,8 +3735,51 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                 final price =
                                     (item[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
 
+                                // ── Read all discount variants ──────────────────────────────
+                                final double _autoD =
+                                    (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ??
+                                        (item['auto_discount'] as num?)?.toDouble() ??
+                                        (item['autoDiscount'] as num?)?.toDouble() ??
+                                        (item[AppDBConst.displayAutoDiscount] as num?)?.toDouble() ??
+                                        0.0;
+
+                                final double _comboD =
+                                    (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ??
+                                        (item['combo_discount_total'] as num?)?.toDouble() ??
+                                        (item['comboDiscountTotal'] as num?)?.toDouble() ??
+                                        (item['mixmatch_discount_total'] as num?)?.toDouble() ??
+                                        0.0;
+
+                                final double _multipackD =
+                                    (item[AppDBConst.multipackDiscount] as num?)?.toDouble() ??
+                                        (item['multipack_discount_total'] as num?)?.toDouble() ??
+                                        (item['multipackDiscountTotal'] as num?)?.toDouble() ??
+                                        0.0;
+
+                                final String _dtype =
+                                (item['discount_type'] ?? '').toString().toLowerCase();
+
+                                // ── Resolve correct discount per type (same logic as summary screen) ──
+                                double _resolvedAuto = 0.0;
+                                double _resolvedCombo = 0.0;
+                                double _resolvedMultipack = 0.0;
+
+                                if (_dtype == 'multipack') {
+                                  _resolvedMultipack = _multipackD > 0 ? _multipackD : _autoD;
+                                } else if (_dtype == 'combo' || _dtype == 'mixmatch') {
+                                  _resolvedCombo = _comboD > 0 ? _comboD : _autoD;
+                                } else {
+                                  // 'auto' or empty — but also handle when backend puts
+                                  // multipack/combo amount into auto_discount key
+                                  _resolvedAuto = _autoD;
+                                  _resolvedCombo = _comboD;
+                                  _resolvedMultipack = _multipackD;
+                                }
+
+                                print("REDEEM VALUE FROM PENDING ORDER = $redeemValue");
                                 print(
-                                  "DISPLAY ITEM => ${item[AppDBConst.itemName]} | Qty: $qty | Price: $price",
+                                  "DISPLAY ITEM => ${item[AppDBConst.itemName]} | Qty: $qty | Price: $price"
+                                      " | auto=$_resolvedAuto | combo=$_resolvedCombo | multi=$_resolvedMultipack | type=$_dtype",
                                 );
 
                                 return {
@@ -3744,12 +3788,22 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                   "price": price,
                                   "original_price":
                                   (item["original_price"] as num?)?.toDouble() ?? price,
-                                  "auto_discount":
-                                  (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0,
-                                  "discount_type": item["discount_type"]?.toString() ?? "",
+                                  "auto_discount": _resolvedAuto,
+                                  "combo_discount": _resolvedCombo,
+                                  "multipack_discount": _resolvedMultipack,
+                                  "discount_type": _dtype,
                                   "image": item["image"]?.toString() ?? "",
                                 };
                               }).toList();
+                              print("======== CUSTOMER DISPLAY ========");
+                              print("Gross Total: $grossTotal");
+                              print("Order Discount: $uiOrderDiscount");
+                              print("Merchant Discount: $merchantDiscount");
+                              print("Tax: $uiOrderTax");
+                              print("Net Payable: $netPayable");
+                              print("==================================");
+
+                              CustomerDisplayHelper.skipNextPendingOrderRefresh = true;
 
                               await CustomerDisplayService.showCustomerData(
                                 orderId: frozenSummaryOrderId,
