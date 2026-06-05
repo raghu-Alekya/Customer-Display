@@ -5,7 +5,9 @@ import '../Database/order_panel_db_helper.dart';
 import '../Preferences/pinaka_preferences.dart';
 import '../services/CustomerDisplayService.dart';
 
+
 class CustomerDisplayHelper {
+  static bool skipNextPendingOrderRefresh = false;
   /// 🔹 Show welcome after login success, including optional logo
   static Future<void> updateWelcomeWithStore(
       String storeId,
@@ -46,6 +48,13 @@ class CustomerDisplayHelper {
         bool summaryEnabled = false,
       }) async {
     try {
+
+      // Skip refresh after navigating from Pending Order
+      if (skipNextPendingOrderRefresh) {
+        print("⛔ [CD] Skipping customer display refresh for pending order");
+        skipNextPendingOrderRefresh = false;
+        return;
+      }
 
       final int? activeId = OrderHelper().activeOrderId;
 
@@ -359,6 +368,11 @@ class CustomerDisplayHelper {
             "original_price": unitPrice,
             "auto_discount": totalDiscount,
             "discount_type": discountMeta["type"] ?? "",
+            "combo_discount": item["combo_discount"] ??
+                (item['combo_discount_total'] as num?)?.toDouble() ?? 0.0,
+            "multipack_discount": item["multipack_discount"] ??
+                (item['multipack_discount_total'] as num?)?.toDouble() ?? 0.0,
+
             "unit_discount": perUnitDiscount,
             "discount_source": discountMeta["source"] ?? "",
             "rule_id": discountMeta["rule_id"] ?? "",

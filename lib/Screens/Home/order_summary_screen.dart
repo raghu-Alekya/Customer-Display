@@ -9,6 +9,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:intl/intl.dart'; // Added for date formatting
 import 'package:pinaka_pos/Database/assets_db_helper.dart';
@@ -35,6 +36,7 @@ import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/api_response.dart';
 import '../../Helper/customerdisplayhelper.dart';
+import '../../Helper/url_helper.dart';
 import '../../Models/Payment/payment_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
 import '../../Repositories/Orders/order_repository.dart';
@@ -84,13 +86,13 @@ class LastPaymentInfo {
   });
 
   Map<String, dynamic> toJson() => {
-        "method": method,
-        "amount": amount,
-        "paymentId": paymentId,
-        "sunmiTxnId": sunmiTxnId,
-        "sunmiOrderId": sunmiOrderId,
-        "sunmiDeviceId": sunmiDeviceId,
-      };
+    "method": method,
+    "amount": amount,
+    "paymentId": paymentId,
+    "sunmiTxnId": sunmiTxnId,
+    "sunmiOrderId": sunmiOrderId,
+    "sunmiDeviceId": sunmiDeviceId,
+  };
 
   factory LastPaymentInfo.fromJson(Map<String, dynamic> json) {
     return LastPaymentInfo(
@@ -128,9 +130,9 @@ bool _couponHiveEntryIsRedeem(Map<String, dynamic> c) {
 }
 
 Map<String, dynamic> _mergeRedeemIntoCouponResponse(
-  dynamic prevCouponResponse,
-  String redeemCode,
-) {
+    dynamic prevCouponResponse,
+    String redeemCode,
+    ) {
   Map<String, dynamic> base = {};
   if (prevCouponResponse is Map) {
     base = Map<String, dynamic>.from(prevCouponResponse);
@@ -146,11 +148,11 @@ Map<String, dynamic> _mergeRedeemIntoCouponResponse(
   }
   final trimmed = redeemCode.trim();
   final keptIssued =
-      prevCoupons.where((c) => !_couponHiveEntryIsRedeem(c)).toList();
+  prevCoupons.where((c) => !_couponHiveEntryIsRedeem(c)).toList();
   final otherRedeems = prevCoupons
       .where((c) =>
-          _couponHiveEntryIsRedeem(c) &&
-          c['code']?.toString().trim() != trimmed)
+  _couponHiveEntryIsRedeem(c) &&
+      c['code']?.toString().trim() != trimmed)
       .toList();
   base['coupons'] = [
     ...keptIssued,
@@ -161,10 +163,10 @@ Map<String, dynamic> _mergeRedeemIntoCouponResponse(
 }
 
 void _enrichRedeemCouponIdsFromWoo(
-  Map<String, dynamic> offlineOrder,
-  Map<String, dynamic> wooResult,
-  String appliedCode,
-) {
+    Map<String, dynamic> offlineOrder,
+    Map<String, dynamic> wooResult,
+    String appliedCode,
+    ) {
   final cr = offlineOrder['coupon_response'];
   if (cr is! Map) return;
   final map = Map<String, dynamic>.from(cr);
@@ -214,9 +216,9 @@ String _orderSummaryLineVariationName(Map<String, dynamic> item) {
 
 String _orderSummaryNormalizeSku(dynamic raw) {
   return (raw ?? '').toString().trim().toLowerCase().replaceAll(
-        RegExp(r'[^a-z0-9]'),
-        '',
-      );
+    RegExp(r'[^a-z0-9]'),
+    '',
+  );
 }
 
 bool _cachedProductMapIndicatesEbt(Map<String, dynamic> p) {
@@ -253,8 +255,8 @@ bool _cachedProductMapIndicatesEbt(Map<String, dynamic> p) {
 
 /// When SQLite/Hive mismatch left lines without badges, use TopBar merged product list (same as POS search).
 Future<void> _mergeOrderSummaryLineItemsFromProductCache(
-  List<Map<String, dynamic>> lineItems,
-) async {
+    List<Map<String, dynamic>> lineItems,
+    ) async {
   try {
     final all = await TopBar.mergedCachedProductsForSearch();
     final byId = <int, Map<String, dynamic>>{};
@@ -286,7 +288,7 @@ Future<void> _mergeOrderSummaryLineItemsFromProductCache(
           line[AppDBConst.itemProductId] ??
           line['item_product_id'];
       final int? pid =
-          pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
+      pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
       if (pid == null || pid <= 0) continue;
 
       final p = byId[pid];
@@ -313,8 +315,8 @@ Future<void> _mergeOrderSummaryLineItemsFromProductCache(
         if (!isChildVariation) continue;
 
         final vId = int.tryParse(
-              (p['id'] ?? p['variation_id'] ?? 0).toString(),
-            ) ??
+          (p['id'] ?? p['variation_id'] ?? 0).toString(),
+        ) ??
             0;
         if (vId <= 0) continue;
 
@@ -341,9 +343,9 @@ Future<void> _mergeOrderSummaryLineItemsFromProductCache(
 /// Pending orders often load line items from SQLite without EBT/variation flags
 /// while the same cart still exists in Hive `products`. Merge so badges match the order panel.
 void _mergeOrderSummaryLineItemsFromHive(
-  List<Map<String, dynamic>> lineItems,
-  Map<String, dynamic>? hiveOrder,
-) {
+    List<Map<String, dynamic>> lineItems,
+    Map<String, dynamic>? hiveOrder,
+    ) {
   if (hiveOrder == null) return;
   final rawProducts = hiveOrder['products'];
   if (rawProducts is! List || rawProducts.isEmpty) return;
@@ -356,7 +358,7 @@ void _mergeOrderSummaryLineItemsFromHive(
         line[AppDBConst.itemProductId] ??
         line['item_product_id'];
     final int? pid =
-        pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
+    pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
 
     Map<String, dynamic>? matched;
     for (final p in rawProducts) {
@@ -364,7 +366,7 @@ void _mergeOrderSummaryLineItemsFromHive(
       final m = Map<String, dynamic>.from(p);
       final pPidRaw = m['product_id'] ?? m['id'];
       final pPid =
-          pPidRaw is int ? pPidRaw : int.tryParse(pPidRaw?.toString() ?? '');
+      pPidRaw is int ? pPidRaw : int.tryParse(pPidRaw?.toString() ?? '');
       if (pid != null && pPid != null && pPid == pid) {
         matched = m;
         break;
@@ -508,7 +510,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   LastPaymentInfo? _lastPayment;
 
   final PaymentBloc paymentBloc =
-      PaymentBloc(PaymentRepository()); // Added PaymentBloc
+  PaymentBloc(PaymentRepository()); // Added PaymentBloc
   final ScrollController _scrollController = ScrollController();
   int? userId; // Build #1.0.29: To store user ID
   String? userDisplayName; // Build #1.0.29: To store user ID
@@ -1001,7 +1003,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       double mixmatch = n(item['mixmatch_discount_total']);
 
       final String dtype =
-          (item['discount_type'] ?? '').toString().toLowerCase();
+      (item['discount_type'] ?? '').toString().toLowerCase();
 
       if (dtype == 'auto' || dtype.isEmpty) return posAuto;
       if (dtype == 'combo' || dtype == 'mixmatch')
@@ -1017,9 +1019,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     for (final item in orderItems) {
       final String itemType =
-          (item['item_type'] ?? '').toString().toLowerCase();
+      (item['item_type'] ?? '').toString().toLowerCase();
       final String itemName =
-          (item['item_name'] ?? '').toString().toLowerCase();
+      (item['item_name'] ?? '').toString().toLowerCase();
 
       if (itemType.contains('discount') ||
           itemType.contains('coupon') ||
@@ -1036,7 +1038,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
       final double itemDiscount = lineItemOnlyDiscount(item);
       final double taxableBase =
-          (lineTotal - itemDiscount).clamp(0.0, double.infinity);
+      (lineTotal - itemDiscount).clamp(0.0, double.infinity);
 
       totalLineGross += lineTotal;
       totalLineDiscount += itemDiscount;
@@ -1070,14 +1072,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     double finalTax;
 
     if (!anyItemHasDiscountOrTaxRate) {
-      // ── ONLY scale tax by coupon ratio when coupon was applied in THIS session.
-      // For pending/reloaded orders, isCouponAppliedFromApi is false,
-      // so we skip scaling and return the server tax as-is (e.g. $6.36).
-      if (serverTax > 0 && discount < 0 && isCouponAppliedFromApi) {
+      // ✅ FIX: When coupon is applied (discount < 0), always scale the server tax
+      // regardless of isCouponAppliedFromApi flag, because we're in the apply flow
+      if (serverTax > 0 && discount < 0) {
         final double originalGross = widget.grossTotal;
         if (originalGross > 0) {
           final double taxableNet =
-              (originalGross + discount).clamp(0.0, double.infinity);
+          (originalGross + discount).clamp(0.0, double.infinity);
           finalTax = serverTax * (taxableNet / originalGross);
         } else {
           finalTax = 0.0;
@@ -1086,7 +1087,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         finalTax = serverTax > 0 ? serverTax : totalTax;
       }
       if (kDebugMode) {
-        print('── TAX: No item-level data. finalTax=$finalTax');
+        print('── TAX: No item-level data. finalTax=$finalTax, discount=$discount');
       }
     } else if (totalTax <= 0 && serverTax > 0) {
       if (netAfterDiscount > 0.005) {
@@ -1095,16 +1096,18 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         finalTax = 0.0;
       }
       if (kDebugMode) {
-        print(
-            '── TAX: Recalc=0, server=$serverTax, net=$netAfterDiscount → finalTax=$finalTax');
+        print('── TAX: Recalc=0, server=$serverTax, net=$netAfterDiscount → finalTax=$finalTax');
       }
     } else {
+      // ── KEY FIX: if a coupon discount is also applied on top of
+      // item discounts, scale the recalculated tax further by the
+      // coupon ratio so we don't over-report tax.
       if (discount < 0 && totalLineGross > 0) {
         final double postCouponBase =
-            (totalLineGross - totalLineDiscount + discount)
-                .clamp(0.0, double.infinity);
+        (totalLineGross - totalLineDiscount + discount)
+            .clamp(0.0, double.infinity);
         final double preCouponBase =
-            (totalLineGross - totalLineDiscount).clamp(0.01, double.infinity);
+        (totalLineGross - totalLineDiscount).clamp(0.01, double.infinity);
         totalTax = totalTax * (postCouponBase / preCouponBase);
         totalTax = double.parse(totalTax.toStringAsFixed(4));
       }
@@ -1192,8 +1195,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           }
           await box.put(orderKey, offlineOrder);
           if (kDebugMode) {
-            print(
-                "💾 [CD/Summary] Updated Hive with recalculated tax: $finalTax, netPayable: $newNetPayable");
+            print("💾 [CD/Summary] Updated Hive with recalculated tax: $finalTax, netPayable: $newNetPayable");
           }
         }
       } catch (e) {
@@ -1225,9 +1227,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     for (final item in orderItems) {
       final String itemType =
-          (item['item_type'] ?? '').toString().toLowerCase();
+      (item['item_type'] ?? '').toString().toLowerCase();
       final String itemName =
-          (item['item_name'] ?? '').toString().toLowerCase();
+      (item['item_name'] ?? '').toString().toLowerCase();
 
       // ── Payout / cashback detection — check BOTH item_type AND item_name
       // because some items have empty item_type but name = "Payout" or "Cashback"
@@ -1262,11 +1264,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       final double lineOriginalTotal = unitPrice * qty;
 
       final double lineGross =
-          itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
+      itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
       recalculatedGrossTotal += lineGross;
 
       final String dtype =
-          (item['discount_type'] ?? '').toString().toLowerCase();
+      (item['discount_type'] ?? '').toString().toLowerCase();
 
       double autoDiscount = [
         item['auto_discount'],
@@ -1431,8 +1433,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       final data = result["data"] ?? {};
 
       final pts = int.tryParse(
-            data["available_points"]?.toString() ?? "0",
-          ) ??
+        data["available_points"]?.toString() ?? "0",
+      ) ??
           0;
 
       // final redeemedAmount =
@@ -1489,7 +1491,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         "🔄 Redeem Requested: $redeemedAmount | Current computedNetPayable: $computedNetPayable | Tendered: $tenderAmount");
 
     final double availableBalance =
-        (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
+    (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
     final double actualRedeem = redeemedAmount.clamp(0.0, availableBalance);
 
     setState(() {
@@ -1557,7 +1559,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isLoading = false; // Add this to track loading state
   bool isSummaryLoading = false;
   String?
-      _processingPaymentMethod; // Track which payment method is currently processing
+  _processingPaymentMethod; // Track which payment method is currently processing
   // final TextEditingController _paymentController = TextEditingController();
   var _printerSettings = PrinterSettings();
   List<int> bytes = [];
@@ -1571,7 +1573,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   Map<String, dynamic>? offlineOrder;
 
   double?
-      _currentPaymentRemainingBalance; // Track remaining balance from current payment
+  _currentPaymentRemainingBalance; // Track remaining balance from current payment
   Map<String, dynamic>? _lastPaymentDetails; // Store details of last payment
 
   double discountValue = 0.0;
@@ -1611,12 +1613,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       }
 
       final payments =
-          await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
+      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
       final box = StorageProvider.offlineOrders;
       final key = orderId.toString();
       final rawStored = await box.get(key);
       final stored =
-          Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
+      Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
       final double originalEbt =
           (stored["originalEbt"] as num?)?.toDouble() ?? ebtTotal;
 
@@ -1730,40 +1732,40 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         // Payment method totals
         payByCash = payments
             .where((p) =>
-                p.paymentMethod.toLowerCase() ==
-                TextConstants.cash.toLowerCase())
+        p.paymentMethod.toLowerCase() ==
+            TextConstants.cash.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
 
         payByCard = payments
             .where((p) =>
-                p.paymentMethod.toLowerCase() ==
-                TextConstants.card.toLowerCase())
+        p.paymentMethod.toLowerCase() ==
+            TextConstants.card.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
 
         payByEbt = payments
             .where((p) =>
-                p.paymentMethod.toLowerCase() ==
-                TextConstants.ebtText.toLowerCase())
+        p.paymentMethod.toLowerCase() ==
+            TextConstants.ebtText.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
 
         payByOther = payments
             .where((p) =>
-                p.paymentMethod.toLowerCase() !=
-                    TextConstants.cash.toLowerCase() &&
-                p.paymentMethod.toLowerCase() !=
-                    TextConstants.card.toLowerCase() &&
-                p.paymentMethod.toLowerCase() !=
-                    TextConstants.ebtText.toLowerCase())
+        p.paymentMethod.toLowerCase() !=
+            TextConstants.cash.toLowerCase() &&
+            p.paymentMethod.toLowerCase() !=
+                TextConstants.card.toLowerCase() &&
+            p.paymentMethod.toLowerCase() !=
+                TextConstants.ebtText.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
 
         // Match API-path logic: non-EBT overflow should reduce remaining EBT.
         final double nonEbtOrderValue =
-            (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
+        (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
         final double nonEbtPaid = payByCash + payByOther;
         final double overflowToEbt =
-            nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
+        nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
         final double remainingEbt =
-            (originalEbt - payByEbt).clamp(0.0, double.infinity);
+        (originalEbt - payByEbt).clamp(0.0, double.infinity);
         ebtTotal = (remainingEbt - overflowToEbt).clamp(0.0, double.infinity);
 
         isPaymentStarted = totalPaid > 0;
@@ -1789,7 +1791,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     if (orderId == null || orderId == 0) return;
 
     final payments =
-        await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
+    await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
 
     if (payments.isEmpty) {
       print("📊 No payment history found for Order #$orderId");
@@ -2049,7 +2051,7 @@ Previous Remaining: \$${remaining.toStringAsFixed(2)}
             _successPopupShown = true;
             final boxData = await box.get(key);
             final cr =
-                boxData is Map ? (boxData as Map)["coupon_response"] : null;
+            boxData is Map ? (boxData as Map)["coupon_response"] : null;
             final couponResponse = cr is Map
                 ? Map<String, dynamic>.from(cr as Map)
                 : <String, dynamic>{};
@@ -2290,7 +2292,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     final String datetime =
-        DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
     final localPayment = LocalPayment(
       orderId: orderId ?? 0,
@@ -2313,7 +2315,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     try {
       // Save to Isar
       final savedPayment =
-          await LocalPaymentDBHelper.instance.savePayment(localPayment);
+      await LocalPaymentDBHelper.instance.savePayment(localPayment);
 
       if (kDebugMode) {
         print("\n PAYMENT SAVED TO ISAR SUCCESSFULLY!");
@@ -2394,7 +2396,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         // Order items
         'order_items':
-            orderItems.map((item) => Map<String, dynamic>.from(item)).toList(),
+        orderItems.map((item) => Map<String, dynamic>.from(item)).toList(),
 
         // Financial details
         'gross_total': grossTotal,
@@ -2471,7 +2473,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final rawUpdated = await box.get(key);
       final updatedOrder =
-          Map<String, dynamic>.from(rawUpdated is Map ? rawUpdated : {});
+      Map<String, dynamic>.from(rawUpdated is Map ? rawUpdated : {});
 
       //  Extract updated values
       final double updatedPaid =
@@ -2581,7 +2583,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final rawExisting = await box.get(key);
       final existing =
-          Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+      Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
       final payments = existing['payments'] as List<dynamic>? ?? [];
 
       return payments.map((p) => Map<String, dynamic>.from(p)).toList();
@@ -2754,7 +2756,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       print("Auto-filling current payment remaining balance: $amountToUse");
       _rawAmount = (amountToUse * 100).round();
       amountController.text =
-          '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
 
       setState(() {
         _isAmountEntered = true;
@@ -2837,7 +2839,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final key = (orderId ?? 0).toString();
       final boxDataKey = await box.get(key);
       final cr =
-          boxDataKey is Map ? (boxDataKey as Map)["coupon_response"] : null;
+      boxDataKey is Map ? (boxDataKey as Map)["coupon_response"] : null;
       final couponResponse = cr is Map
           ? Map<String, dynamic>.from(cr as Map)
           : <String, dynamic>{};
@@ -2898,7 +2900,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     StreamSubscription? subscription;
     subscription = paymentBloc.createPaymentStream.listen(
-      (paymentResponse) async {
+          (paymentResponse) async {
         if (paymentResponse.status == Status.COMPLETED &&
             paymentResponse.data != null) {
           final serverPaymentId = paymentResponse.data!.paymentId;
@@ -2979,7 +2981,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   Future<void> retrySyncUnsyncedPayments() async {
     final unsyncedPayments =
-        await LocalPaymentDBHelper.instance.getUnsyncedPayments();
+    await LocalPaymentDBHelper.instance.getUnsyncedPayments();
 
     if (unsyncedPayments.isEmpty) {
       if (kDebugMode) {
@@ -3015,17 +3017,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   void _selectPaymentMethod(
-    String method, {
-    bool autoFillAmount = false,
-    double? maxAllowedAmount,
-  }) {
+      String method, {
+        bool autoFillAmount = false,
+        double? maxAllowedAmount,
+      }) {
     setState(() {
       selectedPaymentMethod = method;
 
       if (autoFillAmount && maxAllowedAmount != null) {
         _rawAmount = (maxAllowedAmount * 100).toInt();
         amountController.text =
-            '${TextConstants.currencySymbol}${maxAllowedAmount.toStringAsFixed(2)}';
+        '${TextConstants.currencySymbol}${maxAllowedAmount.toStringAsFixed(2)}';
         _isAmountEntered = true;
         _amountErrorText = null;
       }
@@ -3050,7 +3052,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       _rawAmount = (allowedAmount * 100).round();
 
       amountController.text =
-          '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
 
       _amountErrorText = null;
       _isAmountEntered = _rawAmount > 0;
@@ -3147,9 +3149,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   void _handlePay() {
     if (balanceAmount <= 0 &&
         (double.tryParse(amountController.text
-                    .replaceAll(TextConstants.currencySymbol, '')
-                    .trim()) ??
-                0) >
+            .replaceAll(TextConstants.currencySymbol, '')
+            .trim()) ??
+            0) >
             0) {
       print(
           "⚠️ DEFENSIVE RESET: balance=0 but amount entered > 0 → forcing reset after possible void");
@@ -3189,7 +3191,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (enteredCents > ebtCents) {
         setState(() {
           _amountErrorText =
-              "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
+          "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
         });
         return;
       }
@@ -3206,6 +3208,279 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // ✅ All payment methods (Cash, Card, Wallet, EBT) now call the local storage API
     _callCreatePaymentAPI(); // uses validated amount
     _resetAmountAfterPay();
+  }
+
+
+  /// Card payment: sync order → call create-payment API → show partial/full popup.
+  /// Called only when selectedPaymentMethod == TextConstants.card.
+  /// Does NOT touch any existing methods.
+  ///
+
+  Future<String> _getTokenFromDb() async {
+    final db = await DBHelper.instance.database;
+    final result = await db.query(
+      AppDBConst.userTable,
+      where:
+      '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+      orderBy: '${AppDBConst.userId} DESC',
+      limit: 1,
+    );
+
+    if (result.isEmpty) {
+      throw Exception('No active user token found');
+    }
+
+    final token = result.first[AppDBConst.userToken] as String;
+    if (kDebugMode) print('Token from DB: $token');
+    return token;
+  }
+
+  Future<void> _handleCardPaymentViaAPI() async {
+    final double amount = double.tryParse(
+      amountController.text
+          .replaceAll(TextConstants.currencySymbol, '')
+          .trim(),
+    ) ??
+        0.0;
+
+    if (amount <= 0) {
+      setState(() => _amountErrorText = TextConstants.amountValidation);
+      return;
+    }
+    _amountErrorText = null;
+
+    // ── 1. Show loading ──────────────────────────────────────
+    setState(() {
+      isLoading = true;
+      _processingPaymentMethod = TextConstants.card;
+    });
+    _showPaymentProgressDialog(context);
+
+    try {
+      // ── 2. Sync offline order → get WooCommerce order id ──
+      final box = StorageProvider.offlineOrders;
+      final String orderKey = widget.offlineOrderId?.toString() ??
+          widget.orderId?.toString() ??
+          orderId?.toString() ??
+          "";
+
+      int wooOrderId = 0;
+
+      if (orderKey.isNotEmpty) {
+        final raw = await box.get(orderKey);
+        if (raw is Map) {
+          final offlineMap = Map<String, dynamic>.from(raw);
+
+          // Use already-synced wooOrderId if available
+          final cached = offlineMap["wooOrderId"];
+          wooOrderId = (cached is int)
+              ? cached
+              : int.tryParse(cached?.toString() ?? "") ?? 0;
+
+          // If not synced yet, sync now
+          if (wooOrderId == 0) {
+            final syncResult =
+            await OrderRepository().syncSingleOfflineOrder(offlineMap);
+            if (syncResult is Map) {
+              wooOrderId = (syncResult?["id"] as num?)?.toInt() ?? 0;
+              // Persist wooOrderId for future use
+              offlineMap["wooOrderId"] = wooOrderId;
+              await box.put(orderKey, offlineMap);
+            }
+          }
+        }
+      }
+
+      // Fall back to widget orderId when Hive has no entry
+      if (wooOrderId == 0) {
+        wooOrderId = widget.orderId ?? orderId ?? 0;
+      }
+
+      if (wooOrderId == 0) {
+        _hidePaymentProgressDialog();
+        setState(() {
+          isLoading = false;
+          _processingPaymentMethod = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Could not resolve order – please try again"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // ── 3. Build auth header ──────────────────────────────
+      final String token = await _getTokenFromDb();
+
+      // ── 4. Call create-payment API ────────────────────────
+
+      // final uri = Uri.parse(
+      //   "https://merchantretail.alektasolutions.com/wp-json/pinaka-pos/v1/payments/create-payment",
+      // );
+      final uri = Uri.parse(
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment",
+      );
+
+      final http.Response response = await http.post(
+        uri,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+
+          // "Authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczpcL1wvbWVyY2hhbnRyZXRhaWwuYWxla3Rhc29sdXRpb25zLmNvbSIsImlhdCI6MTc4MDMxNzgwNCwibmJmIjoxNzgwMzE3ODA0LCJleHAiOjE3ODI5MDk4MDQsImRhdGEiOnsidXNlciI6eyJpZCI6MTAwfX19.GyW9z_hXvbCKILL9N_jDm_SAzqom4dzx3XvaQwx0C1I",
+        },
+        body: jsonEncode({
+          "order_id":wooOrderId,
+          "amount": (amount * 100).round(), // API expects paise/cents as integer
+          "payment_method": "card",
+          "shift_id": shiftId,
+        }),
+      );
+
+      _hidePaymentProgressDialog();
+      setState(() {
+        isLoading = false;
+        _processingPaymentMethod = null;
+      });
+
+      if (kDebugMode) {
+        print("Card payment API → ${response.statusCode}");
+        print("Body: ${response.body}");
+      }
+
+      final Map<String, dynamic> body =
+      jsonDecode(response.body) as Map<String, dynamic>;
+
+      // ── 5. Handle response ────────────────────────────────
+      if (body["success"] != true) {
+        // duplicate / validation / any other failure
+        final String msg =
+            body["message"]?.toString() ?? "Card payment failed";
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+        );
+        return;
+      }
+
+      // ── 6. success: true → update local state & save ──────
+      final double currentBalance = balanceAmount;
+      final double newTender = tenderAmount + amount;
+      double newBalance = (currentBalance - amount).clamp(0.0, double.infinity);
+      double newChange = 0.0;
+      if (amount > currentBalance) {
+        newChange = amount - currentBalance;
+        newBalance = 0.0;
+      }
+
+      final bool isFullPayment = newBalance <= 0;
+
+      // Save as a local payment record (mirrors cash flow)
+      final String datetimeStr =
+      DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
+      final localPayment = LocalPayment(
+        orderId: orderId ?? 0,
+        title: TextConstants.card,
+        amount: amount,
+        paymentMethod: TextConstants.card,
+        shiftId: shiftId,
+        vendorId: vendorId,
+        userId: userId ?? 0,
+        serviceType: serviceType,
+        datetime: datetimeStr,
+        notes: "card via API – wooOrderId: $wooOrderId",
+        isSynced: true, // already sent to server
+        createdAt: DateTime.now(),
+        remainingBalance: newBalance,
+        status: isFullPayment
+            ? PaymentDbStatus.completed
+            : PaymentDbStatus.pending,
+      );
+
+      final saved =
+      await LocalPaymentDBHelper.instance.savePayment(localPayment);
+
+      _lastPayment = LastPaymentInfo(
+        method: TextConstants.card,
+        amount: amount,
+        paymentId: saved.id.toString(),
+        sunmiTxnId: null,
+        sunmiOrderId: null,
+      );
+
+      await _savePaymentToHive(
+        amount: amount,
+        paymentMethod: TextConstants.card,
+        transactionId: "card_api_${saved.id}",
+        localPayment: saved,
+      );
+      await _saveLocalPaymentToHive(saved);
+
+      setState(() {
+        isPaymentStarted = true;
+        paidAmount = amount;
+        paymentId = saved.id.toString();
+        tenderAmount = newTender;
+        balanceAmount = newBalance;
+        changeAmount = newChange;
+        payByCard += amount;
+        _currentPaymentRemainingBalance =
+        isFullPayment ? null : newBalance;
+        _lastPaymentDetails = {
+          "amount": amount,
+          "method": TextConstants.card,
+          "remainingBalance": newBalance,
+          "previousBalance": currentBalance,
+          "datetime": DateTime.now().toIso8601String(),
+          "paymentNumber":
+          (_lastPaymentDetails?["paymentNumber"] ?? 0) + 1,
+        };
+      });
+
+      _resetAmountAfterPay();
+
+      // ── 7. Show popup ─────────────────────────────────────
+      if (isFullPayment && !_successPopupShown) {
+        _successPopupShown = true;
+        await CustomerDisplayService.showThankYou();
+        await orderHelper.setActiveOrder(null);
+        await CustomerDisplayService.resetDisplay();
+
+        final boxData = await box.get(orderKey);
+        final cr = boxData is Map ? boxData["coupon_response"] : null;
+        final couponResponse = cr is Map
+            ? Map<String, dynamic>.from(cr)
+            : <String, dynamic>{};
+
+        _showPaymentDialog(
+          context,
+          newTender,
+          changeAmount: newChange,
+          showChange: newChange > 0,
+          couponResponse: couponResponse,
+        );
+      } else if (!isFullPayment && amount > 0) {
+        _showPartialPaymentDialog(context, amount);
+      }
+    } catch (e, st) {
+      _hidePaymentProgressDialog();
+      setState(() {
+        isLoading = false;
+        _processingPaymentMethod = null;
+      });
+      if (kDebugMode) {
+        print("_handleCardPaymentViaAPI error: $e");
+        print(st);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Card payment error: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   // void _handlePay() {
@@ -3340,7 +3615,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // Get existing order
       final rawExisting = await box.get(key);
       final existing =
-          Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+      Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
 
       // Get existing payments array or create new one
       List<dynamic> payments = existing['payments'] ?? [];
@@ -3523,7 +3798,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         Text(
                           'Time: ${DateFormat('HH:mm:ss').format(time)}',
                           style:
-                              TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          TextStyle(fontSize: 12, color: Colors.grey[600]),
                         ),
                     ],
                   ),
@@ -3562,7 +3837,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final rawExisting = await box.get(key);
       final existing =
-          Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+      Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
       final payments = existing['payments'] as List<dynamic>? ?? [];
 
       return payments.map((p) => Map<String, dynamic>.from(p)).toList();
@@ -3731,7 +4006,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     grossTotal = widget.grossTotal;
     discount = widget.orderDiscount;
     merchantDiscount =
-        (widget.merchantDiscount != 0) ? -(widget.merchantDiscount.abs()) : 0.0;
+    (widget.merchantDiscount != 0) ? -(widget.merchantDiscount.abs()) : 0.0;
     tax = widget.orderTax;
     orderId = widget.orderId;
     ebtTotal = widget.ebtAmount;
@@ -3799,7 +4074,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (await box.containsKey(key)) {
         final rawExisting = await box.get(key);
         final existing =
-            Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+        Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
 
         if (widget.ebtAmount > 0 &&
             existing["originalEbt"] != widget.ebtAmount) {
@@ -3819,8 +4094,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         if (offlineOrder != null &&
             offlineOrder!['merchantDiscountPercentage'] != null) {
           merchantDiscountPercentage = double.tryParse(
-                  offlineOrder!['merchantDiscountPercentage']?.toString() ??
-                      '0') ??
+              offlineOrder!['merchantDiscountPercentage']?.toString() ??
+                  '0') ??
               0.0;
         }
 
@@ -4043,7 +4318,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   static const MethodChannel _paymentChannel =
-      MethodChannel("sunmi_payment_channel");
+  MethodChannel("sunmi_payment_channel");
 
   Future<void> _openSunmiVoidScreen({
     required double amount,
@@ -4145,7 +4420,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       selectedPaymentMethod = TextConstants.card;
 
       final String datetime =
-          DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+      DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
       final localPayment = LocalPayment(
         orderId: widget.orderId ?? 0,
@@ -4168,14 +4443,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         isSynced: false,
         createdAt: DateTime.now(),
         remainingBalance:
-            (balanceAmount - paidAmount).clamp(0.0, double.infinity),
+        (balanceAmount - paidAmount).clamp(0.0, double.infinity),
         status:
-            PaymentDbStatus.pending, // Will be marked completed later if needed
+        PaymentDbStatus.pending, // Will be marked completed later if needed
       );
 
       // 1. Save to Isar
       final savedPayment =
-          await LocalPaymentDBHelper.instance.savePayment(localPayment);
+      await LocalPaymentDBHelper.instance.savePayment(localPayment);
 
       // 2. Save to Hive (this is what powers your session history)
       await _savePaymentToHive(
@@ -4226,11 +4501,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Future<void> _createPaymentFromSunmi(
-    double amount,
-    Map<String, dynamic> sunmi,
-  ) async {
+      double amount,
+      Map<String, dynamic> sunmi,
+      ) async {
     final String datetime =
-        DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
     final paymentRequest = PaymentRequestModel(
       title: "Card",
@@ -4262,92 +4537,92 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     StreamSubscription? subscription;
     subscription =
         paymentBloc.createPaymentStream.listen((paymentResponse) async {
-      print("");
-      print(" ================= SUNMI PAYMENT FULL RESPONSE =================");
+          print("");
+          print(" ================= SUNMI PAYMENT FULL RESPONSE =================");
 
-      print("STATUS → ${paymentResponse.status}");
-      print("RAW RESPONSE OBJECT → $paymentResponse");
+          print("STATUS → ${paymentResponse.status}");
+          print("RAW RESPONSE OBJECT → $paymentResponse");
 
-      //  ERROR
-      if (paymentResponse.status == Status.ERROR) {
-        print(" ERROR MESSAGE → ${paymentResponse.message}");
-        print(" ERROR DATA → ${paymentResponse.data}");
-        print(
-            "===============================================================");
-        subscription?.cancel();
-        return;
-      }
+          //  ERROR
+          if (paymentResponse.status == Status.ERROR) {
+            print(" ERROR MESSAGE → ${paymentResponse.message}");
+            print(" ERROR DATA → ${paymentResponse.data}");
+            print(
+                "===============================================================");
+            subscription?.cancel();
+            return;
+          }
 
-      //  SUCCESS
-      if (paymentResponse.status == Status.COMPLETED &&
-          paymentResponse.data != null) {
-        final data = paymentResponse.data!;
+          //  SUCCESS
+          if (paymentResponse.status == Status.COMPLETED &&
+              paymentResponse.data != null) {
+            final data = paymentResponse.data!;
 
-        print(" MESSAGE → ${data.message}");
-        print(" PAYMENT ID → ${data.paymentId}");
-        print(" ORDER ID → ${data.orderId}");
-        print("ORDER STATUS → ${data.orderStatus}");
+            print(" MESSAGE → ${data.message}");
+            print(" PAYMENT ID → ${data.paymentId}");
+            print(" ORDER ID → ${data.orderId}");
+            print("ORDER STATUS → ${data.orderStatus}");
 
-        // =====================================================
-        //  STORE LAST PAYMENT INFO (FOR VOID)
-        //=====================
-        _lastPayment = LastPaymentInfo(
-          method: TextConstants.card,
-          amount: amount,
-          paymentId: data.paymentId?.toString(),
+            // =====================================================
+            //  STORE LAST PAYMENT INFO (FOR VOID)
+            //=====================
+            _lastPayment = LastPaymentInfo(
+              method: TextConstants.card,
+              amount: amount,
+              paymentId: data.paymentId?.toString(),
 
-          sunmiTxnId: sunmi["transactionId"]?.toString(),
-          sunmiOrderId: sunmi["orderId"]?.toString(),
-          sunmiDeviceId: sunmi["deviceID"]?.toString(), //  FIX
-        );
+              sunmiTxnId: sunmi["transactionId"]?.toString(),
+              sunmiOrderId: sunmi["orderId"]?.toString(),
+              sunmiDeviceId: sunmi["deviceID"]?.toString(), //  FIX
+            );
 
 // Keep for API void usage
-        paymentId = data.paymentId?.toString();
+            paymentId = data.paymentId?.toString();
 
-        // =====================================================
-        //  SAVE TO HIVE (SURVIVES APP RESTART)
-        // =====================================================
-        try {
-          final box = StorageProvider.offlineOrders;
-          final key = (orderId ?? 0).toString();
+            // =====================================================
+            //  SAVE TO HIVE (SURVIVES APP RESTART)
+            // =====================================================
+            try {
+              final box = StorageProvider.offlineOrders;
+              final key = (orderId ?? 0).toString();
 
-          final hasKey = await box.containsKey(key);
-          final raw = hasKey ? await box.get(key) : null;
-          final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
+              final hasKey = await box.containsKey(key);
+              final raw = hasKey ? await box.get(key) : null;
+              final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
 
-          existing["lastPayment"] = _lastPayment!.toJson();
-          await box.put(key, existing);
+              existing["lastPayment"] = _lastPayment!.toJson();
+              await box.put(key, existing);
 
-          print("💾 LAST PAYMENT SAVED TO HIVE");
-          print("   → method = ${_lastPayment!.method}");
-          print("   → amount = ${_lastPayment!.amount}");
-          print("   → sunmiTxn = ${_lastPayment!.sunmiTxnId}");
-          print("   → paymentId = ${_lastPayment!.paymentId}");
-        } catch (e) {
-          print(" Failed saving last payment to Hive: $e");
-        }
+              print("💾 LAST PAYMENT SAVED TO HIVE");
+              print("   → method = ${_lastPayment!.method}");
+              print("   → amount = ${_lastPayment!.amount}");
+              print("   → sunmiTxn = ${_lastPayment!.sunmiTxnId}");
+              print("   → paymentId = ${_lastPayment!.paymentId}");
+            } catch (e) {
+              print(" Failed saving last payment to Hive: $e");
+            }
 
-        // 🔹 FULL DATA DUMP
-        try {
-          print("📦 FULL DATA JSON ↓↓↓");
-          print(jsonEncode(data.toJson()));
-        } catch (e) {
-          print("⚠ toJson() not available");
-          print(data);
-        }
-      }
+            // 🔹 FULL DATA DUMP
+            try {
+              print("📦 FULL DATA JSON ↓↓↓");
+              print(jsonEncode(data.toJson()));
+            } catch (e) {
+              print("⚠ toJson() not available");
+              print(data);
+            }
+          }
 
-      print("===============================================================");
-      subscription?.cancel();
-    });
+          print("===============================================================");
+          subscription?.cancel();
+        });
   }
 
   Future<void> updateOfflineOrderRedeem(
-    String orderId,
-    double redeemedValue,
-    int redeemedPoints,
-    int updatedAvailablePoints,
-  ) async {
+      String orderId,
+      double redeemedValue,
+      int redeemedPoints,
+      int updatedAvailablePoints,
+      ) async {
     final box = StorageProvider.offlineOrders;
     final existing = await box.get(orderId);
 
@@ -4445,7 +4720,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (await box.containsKey(key)) {
         final rawStored = await box.get(key);
         final stored =
-            Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
+        Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
         redeemedValue = (stored["redeemed_value"] as num?)?.toDouble() ?? 0.0;
       }
     } catch (_) {
@@ -4459,7 +4734,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (await box.containsKey(key)) {
         final rawStored = await box.get(key);
         final stored =
-            Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
+        Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
         if (stored["remainingEbt"] != null) {
           ebtTotal = (stored["remainingEbt"] as num).toDouble();
         } else if (stored["originalEbt"] != null) {
@@ -4475,18 +4750,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     _paymentListSubscription?.cancel();
     _paymentListSubscription =
         paymentBloc.paymentsListStream.listen((response) async {
-      if (response.status == Status.COMPLETED) {
-        final data = response.data ?? [];
-        if (data.isNotEmpty) {
-          await _processPaymentList(data);
-        } else {
-          // API returned empty - use LocalPayment as source of truth
-          // (fixes balance showing net payable when payments exist locally but not yet synced)
-          await _calculateBalanceFromPaymentHistory();
-        }
-      }
-      if (mounted) setState(() => isSummaryLoading = false);
-    });
+          if (response.status == Status.COMPLETED) {
+            final data = response.data ?? [];
+            if (data.isNotEmpty) {
+              await _processPaymentList(data);
+            } else {
+              // API returned empty - use LocalPayment as source of truth
+              // (fixes balance showing net payable when payments exist locally but not yet synced)
+              await _calculateBalanceFromPaymentHistory();
+            }
+          }
+          if (mounted) setState(() => isSummaryLoading = false);
+        });
   }
 
   Future<void> _processPaymentList(List<PaymentListModel> payments) async {
@@ -4541,13 +4816,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     //  REMAINING EBT AFTER EBT PAYMENTS
     // ===================================================
     final double remainingEbt =
-        originalEbt - ebtPaid < 0 ? 0.0 : originalEbt - ebtPaid;
+    originalEbt - ebtPaid < 0 ? 0.0 : originalEbt - ebtPaid;
 
     // ===================================================
     //  NON-EBT PORTION
     // ===================================================
     final double nonEbtOrderValue =
-        basePayable - originalEbt < 0 ? 0.0 : basePayable - originalEbt;
+    basePayable - originalEbt < 0 ? 0.0 : basePayable - originalEbt;
 
     final double nonEbtPaid = cashTotal + otherTotal;
 
@@ -4555,10 +4830,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     //  CASH / CARD OVERFLOW REDUCES EBT
     // ===================================================
     final double overflowToEbt =
-        nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
+    nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
 
     final double finalRemainingEbt =
-        remainingEbt - overflowToEbt < 0 ? 0.0 : remainingEbt - overflowToEbt;
+    remainingEbt - overflowToEbt < 0 ? 0.0 : remainingEbt - overflowToEbt;
 
     // ===================================================
     //  APPLY REDEEM (DISCOUNT ONLY)
@@ -4998,10 +5273,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (kDebugMode) print("⚡ FAKE PAYMENT SUCCESS MODE ACTIVE ⚡");
 
       double amount = double.tryParse(
-            amountController.text
-                .replaceAll(TextConstants.currencySymbol, '')
-                .trim(),
-          ) ??
+        amountController.text
+            .replaceAll(TextConstants.currencySymbol, '')
+            .trim(),
+      ) ??
           0.0;
 
       final double currentBalance = balanceAmount;
@@ -5064,7 +5339,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         final d = await box.get(key);
         final cr = d is Map ? d["coupon_response"] : null;
         final couponResponse =
-            cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+        cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
 
         // Update Hive order status
         // final box = StorageProvider.offlineOrders;
@@ -5118,7 +5393,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       try {
         final saved =
-            await LocalPaymentDBHelper.instance.savePayment(localPayment);
+        await LocalPaymentDBHelper.instance.savePayment(localPayment);
         _lastPayment?.paymentId = "local_${saved.id}";
         _updateHivePaymentData(localPayment);
 
@@ -5150,10 +5425,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     double amount = double.tryParse(
-          amountController.text
-              .replaceAll(TextConstants.currencySymbol, '')
-              .trim(),
-        ) ??
+      amountController.text
+          .replaceAll(TextConstants.currencySymbol, '')
+          .trim(),
+    ) ??
         0.0;
 
     if (!isCard) {
@@ -5197,131 +5472,131 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     StreamSubscription? subscription;
     subscription =
         paymentBloc.createPaymentStream.listen((paymentResponse) async {
-      if (kDebugMode) print("Payment stream response: $paymentResponse");
+          if (kDebugMode) print("Payment stream response: $paymentResponse");
 
-      if (paymentResponse.status == Status.ERROR) {
-        if (!skipPopup)
-          _hidePaymentProgressDialog();
-        else if (Navigator.canPop(context)) Navigator.pop(context);
+          if (paymentResponse.status == Status.ERROR) {
+            if (!skipPopup)
+              _hidePaymentProgressDialog();
+            else if (Navigator.canPop(context)) Navigator.pop(context);
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Payment failed: ${paymentResponse.message}"),
-            backgroundColor: Colors.red,
-          ),
-        );
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Payment failed: ${paymentResponse.message}"),
+                backgroundColor: Colors.red,
+              ),
+            );
 
-        setState(() {
-          _processingPaymentMethod = null;
-          isLoading = false;
-          _successPopupShown = false;
-        });
+            setState(() {
+              _processingPaymentMethod = null;
+              isLoading = false;
+              _successPopupShown = false;
+            });
 
-        subscription?.cancel();
-        return;
-      }
+            subscription?.cancel();
+            return;
+          }
 
-      if (paymentResponse.status == Status.COMPLETED &&
-          paymentResponse.data != null &&
-          paymentResponse.data!.message == "Payment Created Successfully") {
-        if (!skipPopup) _hidePaymentProgressDialog();
+          if (paymentResponse.status == Status.COMPLETED &&
+              paymentResponse.data != null &&
+              paymentResponse.data!.message == "Payment Created Successfully") {
+            if (!skipPopup) _hidePaymentProgressDialog();
 
-        final paymentData = paymentResponse.data!;
-        paidAmount = amount;
-        paymentId = paymentData.paymentId.toString();
+            final paymentData = paymentResponse.data!;
+            paidAmount = amount;
+            paymentId = paymentData.paymentId.toString();
 
-        final bool isFullPayment = amount >= remainingBalance;
-        final bool isPartialPayment = !isFullPayment && amount > 0;
+            final bool isFullPayment = amount >= remainingBalance;
+            final bool isPartialPayment = !isFullPayment && amount > 0;
 
-        // Update balances
-        tenderAmount += amount;
-        final String paidMethod = selectedPaymentMethod!.toLowerCase().trim();
-        if (paidMethod == TextConstants.cash.toLowerCase()) {
-          payByCash += amount;
-        } else if (paidMethod == TextConstants.card.toLowerCase()) {
-          payByCard += amount;
-        } else if (paidMethod == TextConstants.ebtText.toLowerCase()) {
-          payByEbt += amount;
-          ebtTotal = (ebtTotal - amount).clamp(0.0, double.infinity);
-        } else {
-          payByOther += amount;
-        }
-        if (isFullPayment) {
-          balanceAmount = 0.0;
-          changeAmount = amount - remainingBalance;
-        } else {
-          balanceAmount = remainingBalance - amount;
-          changeAmount = 0.0;
-        }
-        balanceAmount = double.parse(balanceAmount.toStringAsFixed(2));
+            // Update balances
+            tenderAmount += amount;
+            final String paidMethod = selectedPaymentMethod!.toLowerCase().trim();
+            if (paidMethod == TextConstants.cash.toLowerCase()) {
+              payByCash += amount;
+            } else if (paidMethod == TextConstants.card.toLowerCase()) {
+              payByCard += amount;
+            } else if (paidMethod == TextConstants.ebtText.toLowerCase()) {
+              payByEbt += amount;
+              ebtTotal = (ebtTotal - amount).clamp(0.0, double.infinity);
+            } else {
+              payByOther += amount;
+            }
+            if (isFullPayment) {
+              balanceAmount = 0.0;
+              changeAmount = amount - remainingBalance;
+            } else {
+              balanceAmount = remainingBalance - amount;
+              changeAmount = 0.0;
+            }
+            balanceAmount = double.parse(balanceAmount.toStringAsFixed(2));
 
-        // ─── Save last payment info ───
-        _lastPayment = LastPaymentInfo(
-          method: selectedPaymentMethod!,
-          amount: amount,
-          paymentId: paymentId,
-          sunmiTxnId: null,
-        );
+            // ─── Save last payment info ───
+            _lastPayment = LastPaymentInfo(
+              method: selectedPaymentMethod!,
+              amount: amount,
+              paymentId: paymentId,
+              sunmiTxnId: null,
+            );
 
-        try {
-          final box = StorageProvider.offlineOrders;
-          final key = (orderId ?? 0).toString();
-          final hasKey = await box.containsKey(key);
-          final raw = hasKey ? await box.get(key) : null;
-          final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
-          existing["lastPayment"] = _lastPayment!.toJson();
-          existing["balanceAmount"] = balanceAmount;
-          existing["paidAmount"] = tenderAmount;
-          existing["tenderAmount"] = tenderAmount;
-          existing["ebtTotal"] = ebtTotal;
-          await box.put(key, existing);
-        } catch (e) {
-          print("⚠ Hive update error: $e");
-        }
+            try {
+              final box = StorageProvider.offlineOrders;
+              final key = (orderId ?? 0).toString();
+              final hasKey = await box.containsKey(key);
+              final raw = hasKey ? await box.get(key) : null;
+              final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
+              existing["lastPayment"] = _lastPayment!.toJson();
+              existing["balanceAmount"] = balanceAmount;
+              existing["paidAmount"] = tenderAmount;
+              existing["tenderAmount"] = tenderAmount;
+              existing["ebtTotal"] = ebtTotal;
+              await box.put(key, existing);
+            } catch (e) {
+              print("⚠ Hive update error: $e");
+            }
 
-        if (mounted)
-          setState(() {
-            _processingPaymentMethod = null;
-            isLoading = false;
-            _currentPaymentRemainingBalance =
+            if (mounted)
+              setState(() {
+                _processingPaymentMethod = null;
+                isLoading = false;
+                _currentPaymentRemainingBalance =
                 isPartialPayment ? balanceAmount : null;
-            _lastPaymentDetails = {
-              'amount': amount,
-              'method': selectedPaymentMethod!,
-              'remainingBalance': balanceAmount,
-              'previousBalance': remainingBalance,
-              'datetime': DateTime.now().toIso8601String(),
-            };
-          });
+                _lastPaymentDetails = {
+                  'amount': amount,
+                  'method': selectedPaymentMethod!,
+                  'remainingBalance': balanceAmount,
+                  'previousBalance': remainingBalance,
+                  'datetime': DateTime.now().toIso8601String(),
+                };
+              });
 
-        // ─── Full: success receipt dialog | Partial: "next payment" dialog ───
-        // Progress overlay was already closed above for both paths (!skipPopup).
-        if (isFullPayment && !_successPopupShown) {
-          _successPopupShown = true;
+            // ─── Full: success receipt dialog | Partial: "next payment" dialog ───
+            // Progress overlay was already closed above for both paths (!skipPopup).
+            if (isFullPayment && !_successPopupShown) {
+              _successPopupShown = true;
 
-          final box = StorageProvider.offlineOrders;
-          final key = (orderId ?? 0).toString();
-          final rawBox = await box.get(key);
-          final cr = rawBox is Map ? rawBox["coupon_response"] : null;
-          final couponResponse =
+              final box = StorageProvider.offlineOrders;
+              final key = (orderId ?? 0).toString();
+              final rawBox = await box.get(key);
+              final cr = rawBox is Map ? rawBox["coupon_response"] : null;
+              final couponResponse =
               cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
 
-          _showPaymentDialog(
-            context,
-            amount,
-            changeAmount: changeAmount,
-            showChange: changeAmount > 0,
-            couponResponse: couponResponse,
-          );
-        } else if (isPartialPayment && amount > 0) {
-          await _showPartialPaymentDialog(context, amount);
-        }
+              _showPaymentDialog(
+                context,
+                amount,
+                changeAmount: changeAmount,
+                showChange: changeAmount > 0,
+                couponResponse: couponResponse,
+              );
+            } else if (isPartialPayment && amount > 0) {
+              await _showPartialPaymentDialog(context, amount);
+            }
 
-        amountController.clear();
-        _fetchPaymentsByOrderId();
-        subscription?.cancel();
-      }
-    });
+            amountController.clear();
+            _fetchPaymentsByOrderId();
+            subscription?.cancel();
+          }
+        });
   }
 
   void _hidePaymentProgressDialog() {
@@ -5384,42 +5659,42 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               horizontal: 30, vertical: 8),
                           decoration: themeHelper.themeMode == ThemeMode.dark
                               ? ShapeDecoration(
-                                  color: const Color(
-                                      0xFF1F1D2B), // dark background
-                                  shape: RoundedRectangleBorder(
-                                    // side: BorderSide(
-                                    //   width: 0,
-                                    //   color: Colors.black.withOpacity(0.20),
-                                    // ),
-                                    borderRadius: BorderRadius.only(
-                                      bottomLeft: Radius.circular(
-                                          ResponsiveLayout.getRadius(10)),
-                                      bottomRight: Radius.circular(
-                                          ResponsiveLayout.getRadius(10)),
-                                    ),
-                                  ),
-                                )
+                            color: const Color(
+                                0xFF1F1D2B), // dark background
+                            shape: RoundedRectangleBorder(
+                              // side: BorderSide(
+                              //   width: 0,
+                              //   color: Colors.black.withOpacity(0.20),
+                              // ),
+                              borderRadius: BorderRadius.only(
+                                bottomLeft: Radius.circular(
+                                    ResponsiveLayout.getRadius(10)),
+                                bottomRight: Radius.circular(
+                                    ResponsiveLayout.getRadius(10)),
+                              ),
+                            ),
+                          )
                               : BoxDecoration(
-                                  color: Colors.white, // light background
-                                  borderRadius: BorderRadius.only(
-                                    bottomLeft: Radius.circular(
-                                        ResponsiveLayout.getRadius(10)),
-                                    bottomRight: Radius.circular(
-                                        ResponsiveLayout.getRadius(10)),
-                                  ),
-                                ),
+                            color: Colors.white, // light background
+                            borderRadius: BorderRadius.only(
+                              bottomLeft: Radius.circular(
+                                  ResponsiveLayout.getRadius(10)),
+                              bottomRight: Radius.circular(
+                                  ResponsiveLayout.getRadius(10)),
+                            ),
+                          ),
                           child: Container(
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
                               color: themeHelper.themeMode == ThemeMode.dark
                                   ? const Color(
-                                      0xFF303136) // dark mode background
+                                  0xFF303136) // dark mode background
                                   : Colors.white, // light mode background
                               border: Border.all(
                                 color: themeHelper.themeMode == ThemeMode.dark
                                     ? Color(
-                                        0xFF303136) // optional darker border for dark mode
+                                    0xFF303136) // optional darker border for dark mode
                                     : const Color(0xFFEDF2F9),
                                 width: 2,
                               ),
@@ -5428,7 +5703,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                 BoxShadow(
                                   color: themeHelper.themeMode == ThemeMode.dark
                                       ? Colors.black.withOpacity(
-                                          0.3) // subtle shadow in dark mode
+                                      0.3) // subtle shadow in dark mode
                                       : Colors.white,
                                   blurRadius: 8,
                                   offset: const Offset(2, 4),
@@ -5456,12 +5731,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   borderColor: const Color(0xFF9CCD7B),
                                   iconColor: Color(0xFF9CCD7B),
                                   isLoading: _processingPaymentMethod ==
-                                          TextConstants.cash &&
+                                      TextConstants.cash &&
                                       isLoading,
                                   isDisabled:
-                                      _processingPaymentMethod != null &&
-                                          _processingPaymentMethod !=
-                                              TextConstants.cash,
+                                  _processingPaymentMethod != null &&
+                                      _processingPaymentMethod !=
+                                          TextConstants.cash,
                                   onTap: () async {
                                     _selectPaymentMethod(TextConstants.cash);
                                     // await CustomerService
@@ -5498,13 +5773,20 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                   isLoading: false,
                                   isDisabled: false,
+                                  // onTap: () async {
+                                  //   _selectPaymentMethod(
+                                  //     TextConstants.card,
+                                  //     //autoFillAmount: true,
+                                  //     maxAllowedAmount: balanceAmount,
+                                  //   );
+                                  //   _handlePay();
+                                  // },
                                   onTap: () async {
                                     _selectPaymentMethod(
                                       TextConstants.card,
-                                      //autoFillAmount: true,
                                       maxAllowedAmount: balanceAmount,
                                     );
-                                    _handlePay();
+                                    await _handleCardPaymentViaAPI();
                                   },
                                 ),
                                 _buildPaymentModeButton(
@@ -5554,43 +5836,43 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   borderColor: const Color(0xFF84A2CB),
                                   iconColor: Colors.white,
                                   isLoading: _processingPaymentMethod ==
-                                          TextConstants.ebtText &&
+                                      TextConstants.ebtText &&
                                       isLoading,
                                   isDisabled:
-                                      _processingPaymentMethod != null &&
-                                          _processingPaymentMethod !=
-                                              TextConstants.ebtText,
+                                  _processingPaymentMethod != null &&
+                                      _processingPaymentMethod !=
+                                          TextConstants.ebtText,
                                   onTap: () {
                                     // 1️⃣ Check if there is any EBT left
                                     if (ebtTotal <= 0) {
                                       setState(() => _amountErrorText =
-                                          "No EBT balance available");
+                                      "No EBT balance available");
                                       return;
                                     }
 
                                     // 2️⃣ Determine the maximum allowed amount
                                     final allowedAmount =
-                                        balanceAmount.clamp(0.0, ebtTotal);
+                                    balanceAmount.clamp(0.0, ebtTotal);
 
                                     if (allowedAmount <= 0) {
                                       setState(() => _amountErrorText =
-                                          "Cannot pay with EBT, balance is zero");
+                                      "Cannot pay with EBT, balance is zero");
                                       return;
                                     }
 
                                     // 3️⃣ Respect user-entered partial amount when present.
                                     final enteredAmount = double.tryParse(
-                                          amountController.text
-                                              .replaceAll(
-                                                  TextConstants.currencySymbol,
-                                                  '')
-                                              .trim(),
-                                        ) ??
+                                      amountController.text
+                                          .replaceAll(
+                                          TextConstants.currencySymbol,
+                                          '')
+                                          .trim(),
+                                    ) ??
                                         0.0;
 
                                     final amountToUse = enteredAmount > 0
                                         ? enteredAmount.clamp(
-                                            0.0, allowedAmount)
+                                        0.0, allowedAmount)
                                         : allowedAmount;
 
                                     if (amountToUse <= 0) {
@@ -5611,7 +5893,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                         _rawAmount =
                                             (normalizedAmount * 100).round();
                                         amountController.text =
-                                            '${TextConstants.currencySymbol}${normalizedAmount.toStringAsFixed(2)}';
+                                        '${TextConstants.currencySymbol}${normalizedAmount.toStringAsFixed(2)}';
                                         _isAmountEntered = true;
                                         _amountErrorText = null;
                                       });
@@ -5623,7 +5905,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     setState(() {
                                       _rawAmount = 0;
                                       amountController.text =
-                                          '${TextConstants.currencySymbol}0.00';
+                                      '${TextConstants.currencySymbol}0.00';
                                       _isAmountEntered = false;
                                       _amountErrorText = null;
                                     });
@@ -5652,7 +5934,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final Color dialogBg = isDark ? const Color(0xFF252837) : Colors.white;
     final Color textPrimary = isDark ? Colors.white : const Color(0xFF1F2937);
     final Color textSecondary =
-        isDark ? Colors.white70 : const Color(0xFF6B7280);
+    isDark ? Colors.white70 : const Color(0xFF6B7280);
 
     showDialog(
       context: context,
@@ -5762,7 +6044,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
                   borderRadius:
-                      BorderRadius.circular(ResponsiveLayout.getRadius(15)),
+                  BorderRadius.circular(ResponsiveLayout.getRadius(15)),
                 ),
                 child: Row(
                   children: [
@@ -5850,15 +6132,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final order = orderHelper.activeOrderId != null
         ? orderHelper.orders.firstWhere(
-            (o) => o[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-            orElse: () => {},
-          )
+          (o) => o[AppDBConst.orderServerId] == orderHelper.activeOrderId,
+      orElse: () => {},
+    )
         : {};
 
     if (order.isNotEmpty && order[AppDBConst.orderDate] != null) {
       try {
         final DateTime createdDateTime =
-            DateTime.parse(order[AppDBConst.orderDate].toString());
+        DateTime.parse(order[AppDBConst.orderDate].toString());
         _displayDate =
             DateFormat(TextConstants.dateFormat).format(createdDateTime);
         _displayTime =
@@ -6113,10 +6395,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
               // Remaining balance
               final double effectiveRemaining =
-                  (_currentPaymentRemainingBalance != null &&
-                          _currentPaymentRemainingBalance! > 0)
-                      ? _currentPaymentRemainingBalance!
-                      : balanceAmount;
+              (_currentPaymentRemainingBalance != null &&
+                  _currentPaymentRemainingBalance! > 0)
+                  ? _currentPaymentRemainingBalance!
+                  : balanceAmount;
 
 // Always update customer display
               if (orderId != null) {
@@ -6237,9 +6519,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           'Customer :',
                           style: TextStyle(
                             color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white70
-                                    : const Color(0xFF115ACD),
+                            Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white70
+                                : const Color(0xFF115ACD),
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
@@ -6251,14 +6533,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                             padding: const EdgeInsets.symmetric(horizontal: 15),
                             decoration: BoxDecoration(
                               color: Theme.of(context).brightness ==
-                                      Brightness.dark
+                                  Brightness.dark
                                   ? const Color(0xFF2C2C2E)
                                   : Colors.white,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                 width: 1,
                                 color: Theme.of(context).brightness ==
-                                        Brightness.dark
+                                    Brightness.dark
                                     ? Colors.grey.shade700
                                     : Colors.black.withOpacity(0.20),
                               ),
@@ -6266,30 +6548,36 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                             alignment: Alignment.centerLeft,
                             child: StatefulBuilder(
                               builder: (context, innerSetState) {
+                                print(
+                                    "BUILD -> isCustomerFieldDisabled=$isCustomerFieldDisabled, "
+                                        "showCustomerInput=$showCustomerInput"
+                                );
                                 return TextField(
                                   controller: mobileController,
-                                  enabled: !isCustomerFieldDisabled,
+                                  enabled: true,
+                                  readOnly: showCustomerInput,
+                                  enableInteractiveSelection: !showCustomerInput,
                                   keyboardType: TextInputType.emailAddress,
                                   inputFormatters: [
                                     TextInputFormatter.withFunction(
-                                        (oldValue, newValue) {
-                                      final text = newValue.text;
+                                            (oldValue, newValue) {
+                                          final text = newValue.text;
 
-                                      // If input is only digits → Mobile number
-                                      if (RegExp(r'^\d*$').hasMatch(text)) {
-                                        if (text.length > 10) {
-                                          return oldValue; // block extra digits
-                                        }
-                                      }
-                                      // Otherwise → Email
-                                      else {
-                                        if (text.length > 50) {
-                                          return oldValue; // block extra characters
-                                        }
-                                      }
+                                          // If input is only digits → Mobile number
+                                          if (RegExp(r'^\d*$').hasMatch(text)) {
+                                            if (text.length > 10) {
+                                              return oldValue; // block extra digits
+                                            }
+                                          }
+                                          // Otherwise → Email
+                                          else {
+                                            if (text.length > 50) {
+                                              return oldValue; // block extra characters
+                                            }
+                                          }
 
-                                      return newValue;
-                                    }),
+                                          return newValue;
+                                        }),
                                   ],
                                   onChanged: (value) {
                                     setState(() {
@@ -6310,7 +6598,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     fontSize: 16,
                                     fontWeight: FontWeight.w500,
                                     color: Theme.of(context).brightness ==
-                                            Brightness.dark
+                                        Brightness.dark
                                         ? Colors.white
                                         : const Color(0xFF313131),
                                   ),
@@ -6331,243 +6619,263 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   onTap: isButtonDisabled
                       ? null
                       : () async {
-                          // ---------- CANCEL ----------
-                          if (showCustomerInput) {
-                            // Only allow cancel if not disabled
-                            if (isPaymentDone || redeemedValue > 0) return;
+                    // ---------- CANCEL ----------
+                    if (showCustomerInput) {
+                      // Only allow cancel if not disabled
+                      if (isPaymentDone || redeemedValue > 0) return;
 
-                            setState(() {
-                              mobileController.clear();
-                              showCustomerInput = false;
-                              isPhoneValid = false;
-                              isEmailValid = false;
-                              isRedeemActive = false;
-                            });
+                      setState(() {
+                        mobileController.clear();
+                        showCustomerInput = false;
+                        isPhoneValid = false;
+                        isEmailValid = false;
+                        isRedeemActive = false;
+                        // Enable field again
+                        isCustomerFieldDisabled = false;
+                      });
 
-                            final offlineBox = StorageProvider.offlineOrders;
-                            final localKey = widget.offlineOrderId?.toString();
+                      final offlineBox = StorageProvider.offlineOrders;
+                      final localKey = widget.offlineOrderId?.toString();
 
-                            if (localKey != null) {
-                              final existing = await offlineBox.get(localKey);
-                              if (existing != null) {
-                                final d = Map<String, dynamic>.from(
-                                    existing is Map ? existing : {});
-                                d["loyaltyContact"] = "";
-                                await offlineBox.put(localKey, d);
-                              }
-                            }
+                      if (localKey != null) {
+                        final existing = await offlineBox.get(localKey);
+                        if (existing != null) {
+                          final d = Map<String, dynamic>.from(
+                              existing is Map ? existing : {});
+                          d["loyaltyContact"] = "";
+                          await offlineBox.put(localKey, d);
+                        }
+                      }
 
-                            final localOrderId = widget.offlineOrderId;
-                            if (localOrderId != null) {
-                              final customerItems = orderItems.map((item) {
-                                return {
-                                  "name": item["item_name"] ?? "",
-                                  "qty": item["items_count"] ?? 1,
-                                  "price": item["item_price"] ?? 0.0,
-                                  "image": item["item_image"] ?? "",
-                                };
-                              }).toList();
+                      final localOrderId = widget.offlineOrderId;
+                      if (localOrderId != null) {
+                        final customerItems = orderItems.map((item) {
 
-                              await CustomerDisplayService.showCustomerData(
-                                orderId: localOrderId ?? 0,
+                          return {
+                            "name": item["item_name"] ?? "",
+                            "qty": item["items_count"] ?? 1,
+                            "price": item["item_price"] ?? 0.0,
+                            "image": item["item_image"] ?? "",
+                          };
 
-                                items: customerItems,
+                        }).toList();
 
-                                grossTotal: grossTotal,
+                        await CustomerDisplayService.showCustomerData(
 
-                                discount: discount,
+                          orderId: localOrderId ?? 0,
 
-                                merchantDiscount: merchantDiscount,
+                          items: customerItems,
 
-                                // ✅ FIX NET TOTAL
-                                netTotal: grossTotal - discount.abs(),
+                          grossTotal: grossTotal,
 
-                                tax: tax,
+                          discount: discount,
 
-                                netPayable: computedNetPayable,
+                          merchantDiscount: merchantDiscount,
 
-                                cashbackFee: cashbackFee,
+                          // ✅ FIX NET TOTAL
+                          netTotal:
+                          grossTotal -
+                              discount.abs(),
 
-                                redeemedAmount: redeemedValue.toDouble(),
+                          tax: tax,
 
-                                loyaltyContact: "",
+                          netPayable: computedNetPayable,
 
-                                summaryEnabled: true,
-                              );
-                            }
-                            return;
-                          }
+                          cashbackFee: cashbackFee,
 
-                          // ---------- ADD ----------
-                          // ---------- ADD ----------
-                          if (!(isPhoneValid || isEmailValid)) return;
+                          redeemedAmount:
+                          redeemedValue.toDouble(),
 
-                          setState(() => isAddLoading = true);
+                          loyaltyContact: "",
 
-                          final contact = mobileController.text.trim();
+                          summaryEnabled: true,
+                        );
+                      }
+                      return;
+                    }
 
-                          try {
-                            // ======================================
-                            // 1️⃣ LOAD OFFLINE ORDER FROM HIVE
-                            // ======================================
-                            final offlineBox = StorageProvider.offlineOrders;
+                    // ---------- ADD ----------
+                    // ---------- ADD ----------
+                    if (!(isPhoneValid || isEmailValid)) return;
 
-                            final localKey = widget.offlineOrderId?.toString();
+                    // ✅ Close keyboard immediately
+                    FocusManager.instance.primaryFocus?.unfocus();
 
-                            if (localKey == null) {
-                              throw Exception("Offline order not found");
-                            }
+                    setState(() => isAddLoading = true);
 
-                            final existing = await offlineBox.get(localKey);
+                    final contact = mobileController.text.trim();
 
-                            if (existing == null) {
-                              throw Exception("Order data missing");
-                            }
+                    try {
 
-                            final offlineOrder =
-                                Map<String, dynamic>.from(existing);
+                      // ======================================
+                      // 1️⃣ LOAD OFFLINE ORDER FROM HIVE
+                      // ======================================
+                      final offlineBox = StorageProvider.offlineOrders;
 
-                            print("🟡 OFFLINE ORDER LOADED");
+                      final localKey = widget.offlineOrderId?.toString();
 
-                            // ======================================
-                            // 2️⃣ SYNC ORDER WITH BACKEND
-                            // ======================================
-                            final syncResponse =
-                                await orderBloc.syncSingleOfflineOrder(
-                              offlineOrder,
-                            );
+                      if (localKey == null) {
+                        throw Exception("Offline order not found");
+                      }
 
-                            print("✅ SYNC RESPONSE points: $syncResponse");
+                      final existing = await offlineBox.get(localKey);
 
-                            if (syncResponse == null) {
-                              throw Exception("Sync failed");
-                            }
+                      if (existing == null) {
+                        throw Exception("Order data missing");
+                      }
 
-                            // ======================================
-                            // 3️⃣ GET WOO ORDER ID
-                            // ======================================
-                            final int syncedOrderId = syncResponse["id"] ?? 0;
+                      final offlineOrder =
+                      Map<String, dynamic>.from(existing);
 
-                            if (syncedOrderId == 0) {
-                              throw Exception("Backend order id missing");
-                            }
+                      print("🟡 OFFLINE ORDER LOADED");
 
-                            print("🟢 WOO ORDER ID lo: $syncedOrderId");
+                      // ======================================
+                      // 2️⃣ SYNC ORDER WITH BACKEND
+                      // ======================================
+                      final syncResponse =
+                      await orderBloc.syncSingleOfflineOrder(
+                        offlineOrder,
+                      );
 
-                            // ======================================
-                            // 4️⃣ CALL CREATE CUSTOMER API
-                            // ======================================
-                            final rawResponse =
-                                await orderBloc.addLoyaltyPoints(
-                              orderId: syncedOrderId,
-                              contact: contact,
-                            );
+                      print("✅ SYNC RESPONSE points: $syncResponse");
 
-                            print("🌐 CUSTOMER RESPONSE: $rawResponse");
+                      if (syncResponse == null) {
+                        throw Exception("Sync failed");
+                      }
 
-                            final result = jsonDecode(rawResponse);
+                      // ======================================
+                      // 3️⃣ GET WOO ORDER ID
+                      // ======================================
+                      final int syncedOrderId =
+                          syncResponse["id"] ?? 0;
 
-                            print("✅ FULL CUSTOMER RESULT: $result");
+                      if (syncedOrderId == 0) {
+                        throw Exception("Backend order id missing");
+                      }
 
-                            if (result == null) {
-                              throw Exception("Empty customer response");
-                            }
+                      print("🟢 WOO ORDER ID lo: $syncedOrderId");
 
-                            if (result["success"] == false) {
-                              throw Exception(
-                                result["message"] ?? "Customer API failed",
-                              );
-                            }
+                      // ======================================
+                      // 4️⃣ CALL CREATE CUSTOMER API
+                      // ======================================
+                      final rawResponse =
+                      await orderBloc.addLoyaltyPoints(
+                        orderId: syncedOrderId,
+                        contact: contact,
+                      );
 
-                            final data = result["data"] ?? {};
+                      print("🌐 CUSTOMER RESPONSE: $rawResponse");
 
-                            final pts = int.tryParse(
-                                  data["available_points"]?.toString() ?? "0",
-                                ) ??
-                                0;
-                            // ======================================
-                            // 5️⃣ UPDATE UI
-                            // ======================================
-                            setState(() {
-                              loyaltyData = data;
-                              availablePoints = pts;
-                              isRedeemActive = true;
-                              showCustomerInput = true;
-                            });
+                      final result = jsonDecode(rawResponse);
 
-                            // ======================================
-                            // 6️⃣ SAVE CONTACT LOCALLY
-                            // ======================================
-                            offlineOrder["loyaltyContact"] = contact;
+                      print("✅ FULL CUSTOMER RESULT: $result");
 
-                            await offlineBox.put(localKey, offlineOrder);
+                      if (result == null) {
+                        throw Exception("Empty customer response");
+                      }
 
-                            // ======================================
-                            // 7️⃣ UPDATE CUSTOMER DISPLAY
-                            // ======================================
-                            // ======================================
+                      if (result["success"] == false) {
+                        throw Exception(
+                          result["message"] ?? "Customer API failed",
+                        );
+                      }
+
+                      final data = result["data"] ?? {};
+
+                      final pts = int.tryParse(
+                        data["available_points"]?.toString() ?? "0",
+                      ) ?? 0;
+                      // ======================================
+                      // 5️⃣ UPDATE UI
+                      // ======================================
+                      setState(() {
+                        loyaltyData = data;
+                        availablePoints = pts;
+                        isRedeemActive = true;
+                        showCustomerInput = true;
+
+                        // Disable field after successful add
+                        isCustomerFieldDisabled = true;
+                      });
+
+                      print(
+                          "AFTER ADD -> isCustomerFieldDisabled = $isCustomerFieldDisabled"
+                      );
+                      // ======================================
+                      // 6️⃣ SAVE CONTACT LOCALLY
+                      // ======================================
+                      offlineOrder["loyaltyContact"] = contact;
+
+                      await offlineBox.put(localKey, offlineOrder);
+
+                      // ======================================
+                      // 7️⃣ UPDATE CUSTOMER DISPLAY
+                      // ======================================
+                      // ======================================
 // 7️⃣ DO NOT REFRESH CUSTOMER DISPLAY
 // ======================================
-                            try {
-                              await const MethodChannel(
-                                'com.alekta.pinakapos/sunmi_display',
-                              ).invokeMethod(
-                                'showCustomerData',
-                                {
-                                  'orderId': int.tryParse(localKey) ?? 0,
-                                  'items': List<Map<String, dynamic>>.from(
-                                    offlineOrder['products'] ?? [],
-                                  ),
-                                  'grossTotal': grossTotal,
-                                  'discount': discount,
-                                  'merchantDiscount': merchantDiscount,
-                                  'netTotal': NetTotal,
-                                  'tax': tax,
-                                  'netPayable': computedNetPayable,
-                                  'orderDate': offlineOrder['order_date'] ?? '',
-                                  'orderTime': offlineOrder['order_time'] ?? '',
-                                  'cashbackFee':
-                                      (offlineOrder['cashback_fee'] as num?)
-                                              ?.toDouble() ??
-                                          0.0,
-                                  'loyaltyContact': contact,
-                                  'availablePoints': pts,
-                                  'summaryEnabled': true,
-                                },
-                              );
-                            } on PlatformException catch (e) {
-                              if (e.code != 'NO_DISPLAY') {
-                                rethrow;
-                              }
-                            }
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text("Customer Added Successfully!"),
-                                  backgroundColor: Colors.green,
-                                  duration: Duration(seconds: 1),
-                                ),
-                              );
-                            }
-                          } catch (e) {
-                            print("❌ ERROR: $e");
+                      try {
+                        await const MethodChannel(
+                          'com.alekta.pinakapos/sunmi_display',
+                        ).invokeMethod(
+                          'showCustomerData',
+                          {
+                            'orderId': int.tryParse(localKey) ?? 0,
+                            'items': List<Map<String, dynamic>>.from(
+                              offlineOrder['products'] ?? [],
+                            ),
+                            'grossTotal': grossTotal,
+                            'discount': discount,
+                            'merchantDiscount': merchantDiscount,
+                            'netTotal': NetTotal,
+                            'tax': tax,
+                            'netPayable': computedNetPayable,
+                            'orderDate': offlineOrder['order_date'] ?? '',
+                            'orderTime': offlineOrder['order_time'] ?? '',
+                            'cashbackFee':
+                            (offlineOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
+                            'loyaltyContact': contact,
+                            'availablePoints': pts,
+                            'summaryEnabled': true,
+                          },
+                        );
+                      } on PlatformException catch (e) {
+                        if (e.code != 'NO_DISPLAY') {
+                          rethrow;
+                        }
+                      }
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Customer Added Successfully!"),
+                            backgroundColor: Colors.green,
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                      }
 
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    "Failed: ${e.toString()}",
-                                  ),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                            }
-                          } finally {
-                            if (mounted) {
-                              setState(() => isAddLoading = false);
-                            }
-                          }
-                        },
+                    } catch (e) {
+
+                      print("❌ ERROR: $e");
+
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              "Failed: ${e.toString()}",
+                            ),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+
+                    } finally {
+
+                      if (mounted) {
+                        setState(() => isAddLoading = false);
+                      }
+                    }
+                  },
                   child: Container(
                     height: 44,
                     width: 126,
@@ -6576,29 +6884,29 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       color: isButtonDisabled
                           ? Colors.grey.shade400 // 🔒 Disabled / Pending
                           : showCustomerInput
-                              ? Colors.red // ❌ Cancel
-                              : const Color(0xFF3B4259), // ➕ Add
+                          ? Colors.red // ❌ Cancel
+                          : const Color(0xFF3B4259), // ➕ Add
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: isAddLoading
                         ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                         : Text(
-                            showCustomerInput ? '× Cancel' : '+ Add',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                      showCustomerInput ? '× Cancel' : '+ Add',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                )
+                ),
               ],
             ),
           ),
@@ -6618,7 +6926,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
                   borderRadius:
-                      BorderRadius.circular(ResponsiveLayout.getRadius(15)),
+                  BorderRadius.circular(ResponsiveLayout.getRadius(15)),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(
@@ -6662,7 +6970,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         Text(
                           userRole ?? TextConstants.unknown,
                           style:
-                              const TextStyle(color: Colors.grey, fontSize: 12),
+                          const TextStyle(color: Colors.grey, fontSize: 12),
                         ),
                       ],
                     ),
@@ -6943,7 +7251,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 child: Container(
                     decoration: BoxDecoration(
                       borderRadius:
-                          BorderRadius.circular(ResponsiveLayout.getRadius(10)),
+                      BorderRadius.circular(ResponsiveLayout.getRadius(10)),
                       color: themeHelper.themeMode == ThemeMode.dark
                           ? ThemeNotifier.secondaryBackground
                           : Colors.white,
@@ -6964,7 +7272,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Container(
                 decoration: BoxDecoration(
                   borderRadius:
-                      BorderRadius.circular(ResponsiveLayout.getRadius(6)),
+                  BorderRadius.circular(ResponsiveLayout.getRadius(6)),
                   color: themeHelper.themeMode == ThemeMode.dark
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
@@ -6975,230 +7283,230 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   curve: Curves.easeInOut,
                   child: _showFullSummary
                       ? Container(
-                          height: ResponsiveLayout.getHeight(205),
-                          margin: EdgeInsets.only(
-                            top: ResponsiveLayout.getPadding(0),
-                            right: ResponsiveLayout.getPadding(1),
-                            left: ResponsiveLayout.getPadding(1),
-                            bottom: ResponsiveLayout.getPadding(3),
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.only(
-                                topRight: Radius.circular(8),
-                                topLeft: Radius.circular(8)),
-                            color: themeHelper.themeMode == ThemeMode.dark
-                                ? ThemeNotifier.orderPanelSummary
-                                : Colors.white,
-                            boxShadow: [
-                              // Shadow at the top
-                              BoxShadow(
-                                color: themeHelper.themeMode == ThemeMode.dark
-                                    ? Color(0xFFF0F0F0).withOpacity(
-                                        0.15) // dark mode top shadow
-                                    : Colors.black.withOpacity(
-                                        0.15), // light mode top shadow
-                                // color: Colors.black.withOpacity(0.15),
-                                offset: Offset(
-                                    0, -4), // 0 horizontal, -4 vertical (up)
-                                blurRadius: 6,
-                                spreadRadius: -0.5,
+                    height: ResponsiveLayout.getHeight(205),
+                    margin: EdgeInsets.only(
+                      top: ResponsiveLayout.getPadding(0),
+                      right: ResponsiveLayout.getPadding(1),
+                      left: ResponsiveLayout.getPadding(1),
+                      bottom: ResponsiveLayout.getPadding(3),
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.only(
+                          topRight: Radius.circular(8),
+                          topLeft: Radius.circular(8)),
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.orderPanelSummary
+                          : Colors.white,
+                      boxShadow: [
+                        // Shadow at the top
+                        BoxShadow(
+                          color: themeHelper.themeMode == ThemeMode.dark
+                              ? Color(0xFFF0F0F0).withOpacity(
+                              0.15) // dark mode top shadow
+                              : Colors.black.withOpacity(
+                              0.15), // light mode top shadow
+                          // color: Colors.black.withOpacity(0.15),
+                          offset: Offset(
+                              0, -4), // 0 horizontal, -4 vertical (up)
+                          blurRadius: 6,
+                          spreadRadius: -0.5,
+                        ),
+                      ],
+                    ),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: ResponsiveLayout.getPadding(8),
+                    ),
+                    child: isSummaryLoading
+                        ? Center(child: CircularProgressIndicator())
+                        : ScrollConfiguration(
+                      behavior: NoScrollbarBehavior()
+                          .copyWith(overscroll: false),
+                      // thumbVisibility: true,
+                      // radius: Radius.circular(10),
+                      child: SingleChildScrollView(
+                        physics: BouncingScrollPhysics(),
+                        child: Column(
+                          children: [
+                            _buildOrderCalculation(
+                              TextConstants.grossTotal,
+                              grossTotal < 0
+                                  ? '-${TextConstants.currencySymbol}${grossTotal.abs().toStringAsFixed(2)}'
+                                  : '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
+                              isTotal: true,
+                            ),
+
+                            _buildOrderCalculation(
+                                TextConstants.discountText,
+                                '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}',
+                                isDiscount: true),
+
+                            ShaderMask(
+                              shaderCallback: (Rect bounds) {
+                                return LinearGradient(
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                  colors: themeHelper.themeMode ==
+                                      ThemeMode.dark
+                                      ? [
+                                    Colors.white
+                                        .withOpacity(0.1),
+                                    Colors.white
+                                        .withOpacity(0.7),
+                                    Colors.white
+                                        .withOpacity(0.1),
+                                  ]
+                                      : [
+                                    Colors.black
+                                        .withOpacity(0.1),
+                                    Colors.black
+                                        .withOpacity(0.7),
+                                    Colors.black
+                                        .withOpacity(0.1),
+                                  ],
+                                  stops: const [0.0, 0.5, 1.0],
+                                ).createShader(bounds);
+                              },
+                              blendMode: BlendMode.srcIn,
+                              child: DottedLine(
+                                dashLength: 6,
+                                dashGapLength: 4,
+                                lineThickness: 1,
+                                direction: Axis.horizontal,
+                                dashColor: themeHelper.themeMode ==
+                                    ThemeMode.dark
+                                    ? Colors.white
+                                    : Colors
+                                    .black, // ✅ ensures gradient works correctly
                               ),
-                            ],
-                          ),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: ResponsiveLayout.getPadding(8),
-                          ),
-                          child: isSummaryLoading
-                              ? Center(child: CircularProgressIndicator())
-                              : ScrollConfiguration(
-                                  behavior: NoScrollbarBehavior()
-                                      .copyWith(overscroll: false),
-                                  // thumbVisibility: true,
-                                  // radius: Radius.circular(10),
-                                  child: SingleChildScrollView(
-                                    physics: BouncingScrollPhysics(),
-                                    child: Column(
-                                      children: [
-                                        _buildOrderCalculation(
-                                          TextConstants.grossTotal,
-                                          grossTotal < 0
-                                              ? '-${TextConstants.currencySymbol}${grossTotal.abs().toStringAsFixed(2)}'
-                                              : '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
-                                          isTotal: true,
-                                        ),
+                            ),
+                            _buildOrderCalculation(
+                              TextConstants.NetTotal,
+                              NetTotal < 0
+                                  ? '-${TextConstants.currencySymbol}${NetTotal.abs().toStringAsFixed(2)}'
+                                  : '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
+                            ),
 
-                                        _buildOrderCalculation(
-                                            TextConstants.discountText,
-                                            '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}',
-                                            isDiscount: true),
+                            // _buildOrderCalculation(
+                            //     TextConstants.taxText,
+                            //     '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
+                            // if (merchantDiscount < 0)
+                            //   _buildOrderCalculation(
+                            //     TextConstants.merchantDiscount,
+                            //     '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
+                            //   ),
+                            //Raghu--**
+                            if (merchantDiscount < 0)
+                              _buildOrderCalculation(
+                                merchantDiscountPercentage > 0
+                                    ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
+                                    : TextConstants.merchantDiscount,
+                                '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
+                              ),
 
-                                        ShaderMask(
-                                          shaderCallback: (Rect bounds) {
-                                            return LinearGradient(
-                                              begin: Alignment.centerLeft,
-                                              end: Alignment.centerRight,
-                                              colors: themeHelper.themeMode ==
-                                                      ThemeMode.dark
-                                                  ? [
-                                                      Colors.white
-                                                          .withOpacity(0.1),
-                                                      Colors.white
-                                                          .withOpacity(0.7),
-                                                      Colors.white
-                                                          .withOpacity(0.1),
-                                                    ]
-                                                  : [
-                                                      Colors.black
-                                                          .withOpacity(0.1),
-                                                      Colors.black
-                                                          .withOpacity(0.7),
-                                                      Colors.black
-                                                          .withOpacity(0.1),
-                                                    ],
-                                              stops: const [0.0, 0.5, 1.0],
-                                            ).createShader(bounds);
-                                          },
-                                          blendMode: BlendMode.srcIn,
-                                          child: DottedLine(
-                                            dashLength: 6,
-                                            dashGapLength: 4,
-                                            lineThickness: 1,
-                                            direction: Axis.horizontal,
-                                            dashColor: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                ? Colors.white
-                                                : Colors
-                                                    .black, // ✅ ensures gradient works correctly
-                                          ),
-                                        ),
-                                        _buildOrderCalculation(
-                                          TextConstants.NetTotal,
-                                          NetTotal < 0
-                                              ? '-${TextConstants.currencySymbol}${NetTotal.abs().toStringAsFixed(2)}'
-                                              : '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
-                                        ),
+                            _buildOrderCalculation(
+                              TextConstants.taxText,
+                              '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}',
+                            ),
 
-                                        // _buildOrderCalculation(
-                                        //     TextConstants.taxText,
-                                        //     '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
-                                        // if (merchantDiscount < 0)
-                                        //   _buildOrderCalculation(
-                                        //     TextConstants.merchantDiscount,
-                                        //     '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
-                                        //   ),
-                                        //Raghu--**
-                                        if (merchantDiscount < 0)
-                                          _buildOrderCalculation(
-                                            merchantDiscountPercentage > 0
-                                                ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
-                                                : TextConstants.merchantDiscount,
-                                            '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
-                                          ),
+                            if (cashbackFee > 0)
+                              _buildOrderCalculation(
+                                TextConstants.cashbackFee,
+                                '${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}',
+                              ),
 
-                                        _buildOrderCalculation(
-                                          TextConstants.taxText,
-                                          '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}',
-                                        ),
+                            /// Service Charges
+                            _buildOrderCalculation(
+                                TextConstants.servicecharges,
+                                '${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}'),
 
-                                        if (cashbackFee > 0)
-                                          _buildOrderCalculation(
-                                            TextConstants.cashbackFee,
-                                            '${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}',
-                                          ),
+                            if (redeemedValue > 0)
+                              _buildOrderCalculation(
+                                "Redeemed Amount",
+                                '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
+                              ),
 
-                                        /// Service Charges
-                                        _buildOrderCalculation(
-                                            TextConstants.servicecharges,
-                                            '${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}'),
+                            ShaderMask(
+                              shaderCallback: (Rect bounds) {
+                                return LinearGradient(
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                  colors: themeHelper.themeMode ==
+                                      ThemeMode.dark
+                                      ? [
+                                    Colors.white
+                                        .withOpacity(0.1),
+                                    Colors.white
+                                        .withOpacity(0.7),
+                                    Colors.white
+                                        .withOpacity(0.1),
+                                  ]
+                                      : [
+                                    Colors.black
+                                        .withOpacity(0.1),
+                                    Colors.black
+                                        .withOpacity(0.7),
+                                    Colors.black
+                                        .withOpacity(0.1),
+                                  ],
+                                  stops: const [0.0, 0.5, 1.0],
+                                ).createShader(bounds);
+                              },
+                              blendMode: BlendMode.srcIn,
+                              child: DottedLine(
+                                dashLength: 6,
+                                dashGapLength: 4,
+                                lineThickness: 1,
+                                direction: Axis.horizontal,
+                                dashColor: themeHelper.themeMode ==
+                                    ThemeMode.dark
+                                    ? Colors.white
+                                    : Colors
+                                    .black, // ✅ ensures gradient works correctly
+                              ),
+                            ),
 
-                                        if (redeemedValue > 0)
-                                          _buildOrderCalculation(
-                                            "Redeemed Amount",
-                                            '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
-                                          ),
+                            _buildOrderCalculation(
+                              TextConstants.netPayable,
+                              computedNetPayable < 0
+                                  ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}'
+                                  : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                              isTotal: true,
+                            ),
 
-                                        ShaderMask(
-                                          shaderCallback: (Rect bounds) {
-                                            return LinearGradient(
-                                              begin: Alignment.centerLeft,
-                                              end: Alignment.centerRight,
-                                              colors: themeHelper.themeMode ==
-                                                      ThemeMode.dark
-                                                  ? [
-                                                      Colors.white
-                                                          .withOpacity(0.1),
-                                                      Colors.white
-                                                          .withOpacity(0.7),
-                                                      Colors.white
-                                                          .withOpacity(0.1),
-                                                    ]
-                                                  : [
-                                                      Colors.black
-                                                          .withOpacity(0.1),
-                                                      Colors.black
-                                                          .withOpacity(0.7),
-                                                      Colors.black
-                                                          .withOpacity(0.1),
-                                                    ],
-                                              stops: const [0.0, 0.5, 1.0],
-                                            ).createShader(bounds);
-                                          },
-                                          blendMode: BlendMode.srcIn,
-                                          child: DottedLine(
-                                            dashLength: 6,
-                                            dashGapLength: 4,
-                                            lineThickness: 1,
-                                            direction: Axis.horizontal,
-                                            dashColor: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                ? Colors.white
-                                                : Colors
-                                                    .black, // ✅ ensures gradient works correctly
-                                          ),
-                                        ),
+                            // if (redeemedValue > 0)
+                            //   _buildOrderCalculation(
+                            //     "Redeemed Amount",
+                            //     '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
+                            //   ),
+                            _buildOrderCalculation(
+                              "Pay by Card",
+                              '${TextConstants.currencySymbol}${payByCard.toStringAsFixed(2)}',
+                            ),
 
-                                        _buildOrderCalculation(
-                                          TextConstants.netPayable,
-                                          computedNetPayable < 0
-                                              ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}'
-                                              : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
-                                          isTotal: true,
-                                        ),
+                            _buildOrderCalculation(
+                                TextConstants.payByCash,
+                                '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
+                            _buildOrderCalculation(
+                              "Pay by EBT",
+                              '${TextConstants.currencySymbol}${payByEbt.toStringAsFixed(2)}',
+                            ),
 
-                                        // if (redeemedValue > 0)
-                                        //   _buildOrderCalculation(
-                                        //     "Redeemed Amount",
-                                        //     '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
-                                        //   ),
-                                        _buildOrderCalculation(
-                                          "Pay by Card",
-                                          '${TextConstants.currencySymbol}${payByCard.toStringAsFixed(2)}',
-                                        ),
+                            _buildOrderCalculation(
+                                TextConstants.payByOther,
+                                '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
 
-                                        _buildOrderCalculation(
-                                            TextConstants.payByCash,
-                                            '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
-                                        _buildOrderCalculation(
-                                          "Pay by EBT",
-                                          '${TextConstants.currencySymbol}${payByEbt.toStringAsFixed(2)}',
-                                        ),
+                            _buildOrderCalculation(
+                                TextConstants.tenderAmount,
+                                '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'),
 
-                                        _buildOrderCalculation(
-                                            TextConstants.payByOther,
-                                            '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
-
-                                        _buildOrderCalculation(
-                                            TextConstants.tenderAmount,
-                                            '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'),
-
-                                        _buildOrderCalculation(
-                                            TextConstants.change,
-                                            '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                        )
+                            _buildOrderCalculation(
+                                TextConstants.change,
+                                '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
                       : SizedBox.shrink(),
                 ),
               ),
@@ -7217,9 +7525,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.only(
                       bottomRight:
-                          Radius.circular(ResponsiveLayout.getRadius(6)),
+                      Radius.circular(ResponsiveLayout.getRadius(6)),
                       bottomLeft:
-                          Radius.circular(ResponsiveLayout.getRadius(6)),
+                      Radius.circular(ResponsiveLayout.getRadius(6)),
                       topLeft: _showFullSummary
                           ? Radius.zero
                           : Radius.circular(ResponsiveLayout.getRadius(6)),
@@ -7261,9 +7569,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           Text(
                             _showFullSummary
                                 ? '${TextConstants.netPayable} : '
-                                    '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}'
+                                '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}'
                                 : '${TextConstants.netPayable} '
-                                    '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}',
+                                '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
@@ -7296,13 +7604,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   final OrderHelper orderHelper =
-      OrderHelper(); // Helper instance to manage orders
+  OrderHelper(); // Helper instance to manage orders
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
     if (orderHelper.activeOrderId != null) {
       var orderData =
-          await orderHelper.getOrderById(orderHelper.activeOrderId!);
+      await orderHelper.getOrderById(orderHelper.activeOrderId!);
       List<Map<String, dynamic>> items = await orderHelper
           .getOrderItems(orderData.first[AppDBConst.orderServerId]);
 
@@ -7317,7 +7625,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             final raw = await box.get(key);
             if (raw is Map) {
               dbMerchantDiscountPerc = double.tryParse(
-                      raw['merchantDiscountPercentage']?.toString() ?? '0') ??
+                  raw['merchantDiscountPercentage']?.toString() ?? '0') ??
                   0.0;
             }
           }
@@ -7326,13 +7634,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         setState(() {
           orderId = orderData.first[AppDBConst.orderServerId] as int? ?? 0;
           orderDateTime =
-              "${orderData.first[AppDBConst.orderDate]} ${orderData.first[AppDBConst.orderTime]}";
+          "${orderData.first[AppDBConst.orderDate]} ${orderData.first[AppDBConst.orderTime]}";
           discount =
               (orderData.first[AppDBConst.orderDiscount] as num?)?.toDouble() ??
                   0.0; // Fetch discount
           final dbMerchantDiscount =
               (orderData.first[AppDBConst.merchantDiscount] as num?)
-                      ?.toDouble() ??
+                  ?.toDouble() ??
                   0.0;
 
           // Keep merchant discount algebraic (negative) for summary display/total logic.
@@ -7346,7 +7654,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               (orderData.first[AppDBConst.orderTotal] as num?)?.toDouble() ??
                   0.0; // Build #1.0.80
           cashbackFee = (orderData.first[AppDBConst.orderCashbackFee] as num?)
-                  ?.toDouble() ??
+              ?.toDouble() ??
               0.0;
           orderStatus = (orderData.first[AppDBConst.orderStatus] as String?) ??
               TextConstants.processing; // Build  #1.0.177
@@ -7408,7 +7716,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final String itemType =
         orderItem['item_type']?.toString().toLowerCase() ?? '';
     final String itemNameLower =
-        (orderItem['item_name']?.toString() ?? '').toLowerCase();
+    (orderItem['item_name']?.toString() ?? '').toLowerCase();
 
     // Hide merchant discount line-items from the list (keep it in totals section).
     if (itemType.contains('discount') ||
@@ -7462,12 +7770,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     double autoDiscount = _num(orderItem['auto_discount']) != 0
         ? _num(orderItem['auto_discount'])
         : _num(orderItem['auto_discount_total']) != 0
-            ? _num(orderItem['auto_discount_total'])
-            : _num(orderItem['autoDiscount']) != 0
-                ? _num(orderItem['autoDiscount'])
-                : _num(orderItem['autoDiscountTotal']) != 0
-                    ? _num(orderItem['autoDiscountTotal'])
-                    : _num(orderItem['display_auto_discount']);
+        ? _num(orderItem['auto_discount_total'])
+        : _num(orderItem['autoDiscount']) != 0
+        ? _num(orderItem['autoDiscount'])
+        : _num(orderItem['autoDiscountTotal']) != 0
+        ? _num(orderItem['autoDiscountTotal'])
+        : _num(orderItem['display_auto_discount']);
 
     // double comboDiscount = _num(orderItem['combo_discount_total']) +
     //     _num(orderItem['comboDiscountTotal']) +
@@ -7533,11 +7841,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     print(
       "SUMMARY ITEM -> ${orderItem['item_name']} "
-      "TYPE:$discountType "
-      "AUTO:$autoDiscount "
-      "COMBO:$comboDiscount "
-      "MIX:$mixMatchDiscount "
-      "MULTIPACK:$multipackDiscount",
+          "TYPE:$discountType "
+          "AUTO:$autoDiscount "
+          "COMBO:$comboDiscount "
+          "MIX:$mixMatchDiscount "
+          "MULTIPACK:$multipackDiscount",
     );
     return Column(
       children: [
@@ -7608,7 +7916,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                 Container(
                                   height: 14,
                                   padding:
-                                      const EdgeInsets.symmetric(horizontal: 6),
+                                  const EdgeInsets.symmetric(horizontal: 6),
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(
                                     color: Colors.green,
@@ -7682,8 +7990,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                             color: isCoupon || isPayout
                                 ? Colors.red
                                 : themeHelper.themeMode == ThemeMode.dark
-                                    ? ThemeNotifier.textDark
-                                    : ThemeNotifier.textLight,
+                                ? ThemeNotifier.textDark
+                                : ThemeNotifier.textLight,
                           ),
                         ),
                       ),
@@ -7692,18 +8000,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       SizedBox(
                         height: 12,
                         child: ((hasAutoDiscount ||
-                                    isComboDiscount ||
-                                    isMultipackDiscount) &&
-                                !isPayoutOrCoupon)
+                            isComboDiscount ||
+                            isMultipackDiscount) &&
+                            !isPayoutOrCoupon)
                             ? Text(
-                                "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  height: 1.0,
-                                  color: Colors.grey,
-                                  decoration: TextDecoration.lineThrough,
-                                ),
-                              )
+                          "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
+                          style: const TextStyle(
+                            fontSize: 12,
+                            height: 1.0,
+                            color: Colors.grey,
+                            decoration: TextDecoration.lineThrough,
+                          ),
+                        )
                             : const SizedBox.shrink(),
                       ),
 
@@ -7732,7 +8040,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   /// 🔹 Reusable badge widget
   Widget _discountBadge(String text, Color color, {double? amount}) {
     final double? displayAmount =
-        (amount != null && amount > 0) ? amount : null;
+    (amount != null && amount > 0) ? amount : null;
     return Text(
       displayAmount == null
           ? text
@@ -7754,24 +8062,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final themeHelper = Provider.of<ThemeNotifier>(context);
     if (label == TextConstants.tenderAmount) {
       amount =
-          '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}';
     } else if (label == TextConstants.change) {
       amount =
-          '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}';
     } else if (label == TextConstants.total) {
       amount =
-          '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
+      '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
     } else if (label == TextConstants.payByCash) {
       amount = '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}';
     } else if (label == TextConstants.payByOther) {
       amount =
-          '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
     } else if (label == TextConstants.discountText) {
       amount =
-          '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}'; // Display discount from DB
+      '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}'; // Display discount from DB
     } else if (label == TextConstants.netPayable) {
       amount =
-          '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}';
     }
     // Determine colors and icons based on label
     Color labelColor = themeHelper.themeMode == ThemeMode.dark
@@ -7886,9 +8194,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   onTap: isPaymentStarted
                       ? null
                       : () async {
-                          setState(() => redeemedValue = 0);
-                          await _removeRedeemedAmount();
-                        },
+                    setState(() => redeemedValue = 0);
+                    await _removeRedeemedAmount();
+                  },
                   child: Padding(
                     padding: const EdgeInsets.only(left: 5),
                     child: Icon(
@@ -7955,8 +8263,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
 // 🔥 GET WOO ORDER ID
     final int order = int.tryParse(
-          offlineOrder["wooOrderId"]?.toString() ?? "0",
-        ) ??
+      offlineOrder["wooOrderId"]?.toString() ?? "0",
+    ) ??
         0;
 
     if (order == 0) {
@@ -7995,12 +8303,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // API VALUES
       // =====================================
       final double updatedOrderTotal = double.tryParse(
-            data["order_total"]?.toString() ?? "0",
-          ) ??
+        data["order_total"]?.toString() ?? "0",
+      ) ??
           widget.netPayable;
       final int updatedPoints = int.tryParse(
-            data["available_points"]?.toString() ?? "0",
-          ) ??
+        data["available_points"]?.toString() ?? "0",
+      ) ??
           availablePoints;
 
 // UPDATE UI
@@ -8065,7 +8373,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     } finally {
       if (mounted) {
         setState(
-          () => isSummaryLoading = false,
+              () => isSummaryLoading = false,
         );
       }
     }
@@ -8135,7 +8443,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final themeHelper = Provider.of<ThemeNotifier>(context);
     bool hasEbtItem =
-        orderItems.any((item) => _orderSummaryLineEbtEligible(item));
+    orderItems.any((item) => _orderSummaryLineEbtEligible(item));
     final bool hasOnlyCashbackOrPayoutItems = orderItems.isNotEmpty &&
         orderItems.every((item) {
           final type = (item['item_type'] ?? item['type'] ?? '')
@@ -8172,7 +8480,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment:
-              CrossAxisAlignment.start, // Changed to start for better alignment
+          CrossAxisAlignment.start, // Changed to start for better alignment
           children: [
             Expanded(
               flex: 3,
@@ -8180,7 +8488,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 // Remove SingleChildScrollView to avoid height issues
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment:
-                    MainAxisAlignment.start, // Changed from spaceEvenly
+                MainAxisAlignment.start, // Changed from spaceEvenly
                 children: [
                   SizedBox(height: ResponsiveLayout.getHeight(6)),
 
@@ -8208,35 +8516,35 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   ),
                                   decoration: BoxDecoration(
                                     color:
-                                        themeHelper.themeMode == ThemeMode.dark
-                                            ? Color(0xFF1F1D2B)
-                                            : Colors.white,
+                                    themeHelper.themeMode == ThemeMode.dark
+                                        ? Color(0xFF1F1D2B)
+                                        : Colors.white,
                                     borderRadius: BorderRadius.circular(
                                         ResponsiveLayout.getRadius(8)),
                                   ),
                                   child: Column(
                                     crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                    CrossAxisAlignment.start,
                                     children: [
                                       Column(
                                         crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                         children: [
                                           Container(
                                             height:
-                                                ResponsiveLayout.getHeight(60),
+                                            ResponsiveLayout.getHeight(60),
                                             padding: EdgeInsets.symmetric(
                                               horizontal:
-                                                  ResponsiveLayout.getPadding(
-                                                      16),
+                                              ResponsiveLayout.getPadding(
+                                                  16),
                                             ),
                                             decoration: BoxDecoration(
                                               color: themeHelper.themeMode ==
-                                                      ThemeMode.dark
+                                                  ThemeMode.dark
                                                   ? const Color(0xFF40424F)
                                                   : const Color(0xFFF9FBFF),
                                               borderRadius:
-                                                  BorderRadius.circular(10),
+                                              BorderRadius.circular(10),
                                               boxShadow: const [
                                                 BoxShadow(
                                                   color: Color(0x22000000),
@@ -8255,11 +8563,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                         .getFontSize(18),
                                                     fontWeight: FontWeight.w600,
                                                     color:
-                                                        themeHelper.themeMode ==
-                                                                ThemeMode.dark
-                                                            ? Colors.white
-                                                            : const Color(
-                                                                0xFF0D47A1),
+                                                    themeHelper.themeMode ==
+                                                        ThemeMode.dark
+                                                        ? Colors.white
+                                                        : const Color(
+                                                        0xFF0D47A1),
                                                   ),
                                                 ),
 
@@ -8271,95 +8579,95 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                     height: ResponsiveLayout
                                                         .getHeight(44),
                                                     padding:
-                                                        EdgeInsets.symmetric(
+                                                    EdgeInsets.symmetric(
                                                       horizontal:
-                                                          ResponsiveLayout
-                                                              .getPadding(12),
+                                                      ResponsiveLayout
+                                                          .getPadding(12),
                                                     ),
                                                     decoration: BoxDecoration(
                                                       color: themeHelper
-                                                                  .themeMode ==
-                                                              ThemeMode.dark
+                                                          .themeMode ==
+                                                          ThemeMode.dark
                                                           ? const Color(
-                                                              0xFF1F1D2B)
+                                                          0xFF1F1D2B)
                                                           : Colors.white,
                                                       borderRadius:
-                                                          BorderRadius.circular(
-                                                              8),
+                                                      BorderRadius.circular(
+                                                          8),
                                                       border: Border.all(
                                                         color: _amountErrorText !=
-                                                                null
+                                                            null
                                                             ? Colors.red
                                                             : themeHelper
-                                                                        .themeMode ==
-                                                                    ThemeMode
-                                                                        .dark
-                                                                ? Colors.white24
-                                                                : const Color(
-                                                                    0xFFB6C6E3),
+                                                            .themeMode ==
+                                                            ThemeMode
+                                                                .dark
+                                                            ? Colors.white24
+                                                            : const Color(
+                                                            0xFFB6C6E3),
                                                         width:
-                                                            _amountErrorText !=
-                                                                    null
-                                                                ? 1.5
-                                                                : 1.0,
+                                                        _amountErrorText !=
+                                                            null
+                                                            ? 1.5
+                                                            : 1.0,
                                                       ),
                                                       boxShadow: [
                                                         if (themeHelper
-                                                                .themeMode !=
+                                                            .themeMode !=
                                                             ThemeMode.dark)
                                                           BoxShadow(
                                                             color: Colors.black
                                                                 .withOpacity(
-                                                                    0.05),
+                                                                0.05),
                                                             blurRadius: 4,
                                                             offset:
-                                                                const Offset(
-                                                                    0, 2),
+                                                            const Offset(
+                                                                0, 2),
                                                           ),
                                                       ],
                                                     ),
                                                     alignment:
-                                                        Alignment.centerRight,
+                                                    Alignment.centerRight,
                                                     child: TextField(
                                                       controller:
-                                                          amountController,
+                                                      amountController,
                                                       keyboardType:
-                                                          const TextInputType
-                                                              .numberWithOptions(
-                                                              decimal: true),
+                                                      const TextInputType
+                                                          .numberWithOptions(
+                                                          decimal: true),
                                                       textInputAction:
-                                                          TextInputAction.done,
+                                                      TextInputAction.done,
                                                       enabled: true,
                                                       readOnly: true,
                                                       textAlign:
-                                                          TextAlign.right,
+                                                      TextAlign.right,
                                                       autofocus: false,
                                                       cursorColor: themeHelper
-                                                                  .themeMode ==
-                                                              ThemeMode.dark
+                                                          .themeMode ==
+                                                          ThemeMode.dark
                                                           ? Colors.white
                                                           : const Color(
-                                                              0xFF1F1D2B),
+                                                          0xFF1F1D2B),
                                                       decoration:
-                                                          InputDecoration(
+                                                      InputDecoration(
                                                         border:
-                                                            InputBorder.none,
+                                                        InputBorder.none,
                                                         isDense: true,
                                                         contentPadding:
-                                                            EdgeInsets.zero,
+                                                        EdgeInsets.zero,
                                                         hintText:
-                                                            '${TextConstants.currencySymbol}0.00',
+                                                        '${TextConstants.currencySymbol}0.00',
                                                         hintStyle: TextStyle(
                                                           color: themeHelper
-                                                                      .themeMode ==
-                                                                  ThemeMode.dark
+                                                              .themeMode ==
+                                                              ThemeMode.dark
                                                               ? Colors.white38
                                                               : Colors
-                                                                  .grey[400],
+                                                              .grey[400],
                                                           fontSize:
-                                                              ResponsiveLayout
-                                                                  .getFontSize(
-                                                                      22),
+                                                          ResponsiveLayout
+                                                              .getFontSize(
+                                                              22),
                                                         ),
 
                                                         // errorText: _amountErrorText,
@@ -8370,34 +8678,34 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       ),
                                                       style: TextStyle(
                                                         fontSize:
-                                                            ResponsiveLayout
-                                                                .getFontSize(
-                                                                    22),
+                                                        ResponsiveLayout
+                                                            .getFontSize(
+                                                            22),
                                                         fontWeight:
-                                                            FontWeight.bold,
+                                                        FontWeight.bold,
                                                         color: themeHelper
-                                                                    .themeMode ==
-                                                                ThemeMode.dark
+                                                            .themeMode ==
+                                                            ThemeMode.dark
                                                             ? const Color(
-                                                                0xFFFFFFFF)
+                                                            0xFFFFFFFF)
                                                             : const Color(
-                                                                0xFF1F1D2B),
+                                                            0xFF1F1D2B),
                                                       ),
                                                       inputFormatters: [
                                                         FilteringTextInputFormatter
                                                             .allow(RegExp(
-                                                                r'^\d*\.?\d{0,2}')),
+                                                            r'^\d*\.?\d{0,2}')),
                                                       ],
                                                       onTap: () {
                                                         // Select all text when tapped (makes overwriting easy)
                                                         amountController
-                                                                .selection =
+                                                            .selection =
                                                             TextSelection(
-                                                          baseOffset: 0,
-                                                          extentOffset:
+                                                              baseOffset: 0,
+                                                              extentOffset:
                                                               amountController
                                                                   .text.length,
-                                                        );
+                                                            );
                                                       },
                                                       // ────────────────────────────────────────────────
                                                       // IMPORTANT: Detect real user typing
@@ -8405,25 +8713,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       onChanged: (value) {
                                                         // Mark that user is actively typing → prevent auto-fill later
                                                         _userManuallyEnteredAmount =
-                                                            true;
+                                                        true;
 
                                                         // Optional: clean up pasted currency symbol
                                                         String clean = value
                                                             .replaceAll(
-                                                                TextConstants
-                                                                    .currencySymbol,
-                                                                '')
+                                                            TextConstants
+                                                                .currencySymbol,
+                                                            '')
                                                             .trim();
                                                         if (clean != value) {
                                                           amountController
-                                                                  .value =
+                                                              .value =
                                                               TextEditingValue(
-                                                            text: clean,
-                                                            selection: TextSelection
-                                                                .collapsed(
+                                                                text: clean,
+                                                                selection: TextSelection
+                                                                    .collapsed(
                                                                     offset: clean
                                                                         .length),
-                                                          );
+                                                              );
                                                         }
                                                       },
                                                     ),
@@ -8453,11 +8761,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                       SizedBox(
                                           height:
-                                              ResponsiveLayout.getHeight(8)),
+                                          ResponsiveLayout.getHeight(8)),
 
                                       SizedBox(
                                           height:
-                                              ResponsiveLayout.getHeight(12)),
+                                          ResponsiveLayout.getHeight(12)),
 
 // NUM PAD - FIXED LOGIC
                                       Expanded(
@@ -8513,31 +8821,31 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                             Expanded(
                                               child: PaymentNumPad(
                                                 numPadType:
-                                                    CustomTypeNumPad.payment,
+                                                CustomTypeNumPad.payment,
                                                 isDarkTheme:
-                                                    themeHelper.themeMode ==
-                                                        ThemeMode.dark,
+                                                themeHelper.themeMode ==
+                                                    ThemeMode.dark,
                                                 getPaidAmount: () =>
-                                                    amountController.text,
+                                                amountController.text,
                                                 balanceAmount:
-                                                    selectedPaymentMethod ==
-                                                            TextConstants
-                                                                .ebtText
-                                                        ? min(
-                                                            ebtTotal,
-                                                            _currentPaymentRemainingBalance ??
-                                                                balanceAmount,
-                                                          )
-                                                        : (_currentPaymentRemainingBalance ??
-                                                            balanceAmount),
+                                                selectedPaymentMethod ==
+                                                    TextConstants
+                                                        .ebtText
+                                                    ? min(
+                                                  ebtTotal,
+                                                  _currentPaymentRemainingBalance ??
+                                                      balanceAmount,
+                                                )
+                                                    : (_currentPaymentRemainingBalance ??
+                                                    balanceAmount),
                                                 onDigitPressed: (value) {
                                                   _userManuallyEnteredAmount =
-                                                      true; // User touched → block future auto-fill
+                                                  true; // User touched → block future auto-fill
 
                                                   int digit = value == '00'
                                                       ? 0
                                                       : int.tryParse(value) ??
-                                                          0;
+                                                      0;
 
                                                   int newAmount = value == '00'
                                                       ? _rawAmount * 100
@@ -8551,8 +8859,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   if (selectedPaymentMethod ==
                                                       TextConstants.ebtText) {
                                                     maxAmount = (min(ebtTotal,
-                                                                effectiveBalance) *
-                                                            100)
+                                                        effectiveBalance) *
+                                                        100)
                                                         .toInt();
                                                   } else if (selectedPaymentMethod ==
                                                       TextConstants.card) {
@@ -8570,7 +8878,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   double displayValue =
                                                       _rawAmount / 100.0;
                                                   amountController.text =
-                                                      '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+                                                  '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
                                                   setState(() {
                                                     _isAmountEntered =
@@ -8579,11 +8887,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                 },
                                                 onClearPressed: () {
                                                   _userManuallyEnteredAmount =
-                                                      true;
+                                                  true;
 
                                                   _rawAmount = 0;
                                                   amountController.text =
-                                                      '${TextConstants.currencySymbol}0.00';
+                                                  '${TextConstants.currencySymbol}0.00';
                                                   _amountErrorText = null;
 
                                                   setState(() {
@@ -8592,13 +8900,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                 },
                                                 onDeletePressed: () {
                                                   _userManuallyEnteredAmount =
-                                                      true;
+                                                  true;
 
                                                   _rawAmount = _rawAmount ~/ 10;
                                                   double displayValue =
                                                       _rawAmount / 100.0;
                                                   amountController.text =
-                                                      '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+                                                  '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
                                                   setState(() {
                                                     _isAmountEntered =
@@ -8608,7 +8916,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                 onQuickAmountSelected:
                                                     (double selectedAmount) {
                                                   _userManuallyEnteredAmount =
-                                                      true;
+                                                  true;
 
                                                   double amountToUse =
                                                       selectedAmount;
@@ -8625,7 +8933,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       (amountToUse * 100)
                                                           .round();
                                                   amountController.text =
-                                                      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+                                                  '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
 
                                                   setState(() {
                                                     _amountErrorText = null;
@@ -8638,16 +8946,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                 },
                                                 onPayPressed: () async {
                                                   String cleanAmount =
-                                                      amountController.text
-                                                          .replaceAll(
-                                                              TextConstants
-                                                                  .currencySymbol,
-                                                              '')
-                                                          .trim();
+                                                  amountController.text
+                                                      .replaceAll(
+                                                      TextConstants
+                                                          .currencySymbol,
+                                                      '')
+                                                      .trim();
 
                                                   double amount =
                                                       double.tryParse(
-                                                              cleanAmount) ??
+                                                          cleanAmount) ??
                                                           0.0;
 
                                                   double effectiveBalance =
@@ -8660,10 +8968,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   double previousBalance =
                                                       effectiveBalance;
                                                   double newBalance =
-                                                      (effectiveBalance -
-                                                              amount)
-                                                          .clamp(0,
-                                                              double.infinity);
+                                                  (effectiveBalance -
+                                                      amount)
+                                                      .clamp(0,
+                                                      double.infinity);
                                                   double newTenderAmount =
                                                       tenderAmount + amount;
                                                   double newChange = 0.0;
@@ -8689,17 +8997,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                         TextConstants.ebtText) {
                                                       payByEbt += amount;
                                                       ebtTotal = (ebtTotal -
-                                                              amount)
+                                                          amount)
                                                           .clamp(0,
-                                                              double.infinity);
+                                                          double.infinity);
                                                     }
 
                                                     isPaymentStarted = true;
 
                                                     int newPaymentNumber =
                                                         (_lastPaymentDetails?[
-                                                                    'paymentNumber'] ??
-                                                                0) +
+                                                        'paymentNumber'] ??
+                                                            0) +
                                                             1;
 
                                                     if (newBalance > 0) {
@@ -8708,24 +9016,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       _lastPaymentDetails = {
                                                         'amount': amount,
                                                         'method':
-                                                            selectedPaymentMethod,
+                                                        selectedPaymentMethod,
                                                         'remainingBalance':
-                                                            newBalance,
+                                                        newBalance,
                                                         'previousBalance':
-                                                            previousBalance,
+                                                        previousBalance,
                                                         'datetime': DateTime
-                                                                .now()
+                                                            .now()
                                                             .toIso8601String(),
                                                         'paymentNumber':
-                                                            newPaymentNumber,
+                                                        newPaymentNumber,
                                                         'totalPaid':
-                                                            newTenderAmount,
+                                                        newTenderAmount,
                                                       };
                                                     } else {
                                                       _currentPaymentRemainingBalance =
-                                                          null;
+                                                      null;
                                                       _lastPaymentDetails =
-                                                          null;
+                                                      null;
                                                     }
                                                   });
 
@@ -8734,7 +9042,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   // ────────────────────────────────────────────────
                                                   _rawAmount = 0;
                                                   amountController.text =
-                                                      '${TextConstants.currencySymbol}0.00';
+                                                  '${TextConstants.currencySymbol}0.00';
                                                   _isAmountEntered = false;
 
                                                   // DO NOT call _autoFillRemainingBalance() here anymore!
@@ -8751,16 +9059,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                     final key = (orderId ?? 0)
                                                         .toString();
                                                     final boxData =
-                                                        await box.get(key);
+                                                    await box.get(key);
                                                     final cr = boxData is Map
                                                         ? (boxData as Map)[
-                                                            "coupon_response"]
+                                                    "coupon_response"]
                                                         : null;
                                                     final couponResponse = cr
-                                                            is Map
+                                                    is Map
                                                         ? Map<String,
-                                                                dynamic>.from(
-                                                            cr as Map)
+                                                        dynamic>.from(
+                                                        cr as Map)
                                                         : <String, dynamic>{};
 
                                                     _showPaymentDialog(
@@ -8769,7 +9077,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       changeAmount: newChange,
                                                       showChange: newChange > 0,
                                                       couponResponse:
-                                                          couponResponse,
+                                                      couponResponse,
                                                     );
                                                   }
 
@@ -8859,30 +9167,30 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     ),
                                     decoration: BoxDecoration(
                                       color: themeHelper.themeMode ==
-                                              ThemeMode.dark
+                                          ThemeMode.dark
                                           ? const Color(
-                                              0xFF091B34) // dark background
+                                          0xFF091B34) // dark background
                                           : const Color(
-                                              0xFFF4FCF7), // light mode background
+                                          0xFFF4FCF7), // light mode background
                                       borderRadius: BorderRadius.circular(6),
                                       border: Border(
                                         top: BorderSide(
                                           color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
+                                              ThemeMode.dark
                                               ? const Color(0xFF091B34)
                                               : const Color(0xFF3EAE4C),
                                           width: 1,
                                         ),
                                         right: BorderSide(
                                           color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
+                                              ThemeMode.dark
                                               ? const Color(0xFF091B34)
                                               : const Color(0xFF3EAE4C),
                                           width: 1,
                                         ),
                                         bottom: BorderSide(
                                           color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
+                                              ThemeMode.dark
                                               ? const Color(0xFF091B34)
                                               : const Color(0xFF3EAE4C),
                                           width: 1,
@@ -8898,7 +9206,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                           : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
                                       leftBarColor: const Color(0xFF3EAE4C),
                                       amountColor: themeHelper.themeMode ==
-                                              ThemeMode.dark
+                                          ThemeMode.dark
                                           ? Colors.white
                                           : Colors.black,
                                     ),
@@ -8915,7 +9223,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       children: [
                                         SizedBox(
                                             height:
-                                                ResponsiveLayout.getHeight(10)),
+                                            ResponsiveLayout.getHeight(10)),
                                         Container(
                                           padding: const EdgeInsets.only(
                                             top: 6,
@@ -8924,29 +9232,29 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                           ),
                                           decoration: BoxDecoration(
                                             color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
+                                                ThemeMode.dark
                                                 ? const Color(0xFF091B34)
                                                 : const Color(0xFFE6F3FF),
                                             borderRadius:
-                                                BorderRadius.circular(6),
+                                            BorderRadius.circular(6),
                                             border: Border(
                                               top: BorderSide(
                                                 color: themeHelper.themeMode ==
-                                                        ThemeMode.dark
+                                                    ThemeMode.dark
                                                     ? const Color(0xFF091B34)
                                                     : const Color(0xFF3B7DDD),
                                                 width: 1,
                                               ),
                                               right: BorderSide(
                                                 color: themeHelper.themeMode ==
-                                                        ThemeMode.dark
+                                                    ThemeMode.dark
                                                     ? const Color(0xFF091B34)
                                                     : const Color(0xFF3B7DDD),
                                                 width: 1,
                                               ),
                                               bottom: BorderSide(
                                                 color: themeHelper.themeMode ==
-                                                        ThemeMode.dark
+                                                    ThemeMode.dark
                                                     ? const Color(0xFF091B34)
                                                     : const Color(0xFF3B7DDD),
                                                 width: 1,
@@ -8960,12 +9268,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                             '${TextConstants.currencySymbol}${_currentPaymentRemainingBalance!.toStringAsFixed(2)}',
                                             leftBarColor:
-                                                const Color(0xFF3B7DDD),
+                                            const Color(0xFF3B7DDD),
                                             amountColor:
-                                                themeHelper.themeMode ==
-                                                        ThemeMode.dark
-                                                    ? Colors.white
-                                                    : Colors.black,
+                                            themeHelper.themeMode ==
+                                                ThemeMode.dark
+                                                ? Colors.white
+                                                : Colors.black,
                                             isPaymentBalance: true,
                                           ),
                                         ),
@@ -8981,28 +9289,28 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       ),
                                       decoration: BoxDecoration(
                                         color: themeHelper.themeMode ==
-                                                ThemeMode.dark
+                                            ThemeMode.dark
                                             ? const Color(0xFF091B34)
                                             : const Color(0xFFFCF4F4),
                                         borderRadius: BorderRadius.circular(6),
                                         border: Border(
                                           top: BorderSide(
                                             color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
+                                                ThemeMode.dark
                                                 ? const Color(0xFF091B34)
                                                 : const Color(0xFFE85C43),
                                             width: 1,
                                           ),
                                           right: BorderSide(
                                             color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
+                                                ThemeMode.dark
                                                 ? const Color(0xFF091B34)
                                                 : const Color(0xFFE85C43),
                                             width: 1,
                                           ),
                                           bottom: BorderSide(
                                             color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
+                                                ThemeMode.dark
                                                 ? const Color(0xFF091B34)
                                                 : const Color(0xFFE85C43),
                                             width: 1,
@@ -9017,7 +9325,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                             : '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
                                         leftBarColor: const Color(0xFFE85C43),
                                         amountColor: themeHelper.themeMode ==
-                                                ThemeMode.dark
+                                            ThemeMode.dark
                                             ? Colors.white
                                             : Colors.black,
                                       ),
@@ -9035,28 +9343,28 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     ),
                                     decoration: BoxDecoration(
                                       color: themeHelper.themeMode ==
-                                              ThemeMode.dark
+                                          ThemeMode.dark
                                           ? const Color(0xFF091B34)
                                           : const Color(0xFFF4F7FC),
                                       borderRadius: BorderRadius.circular(6),
                                       border: Border(
                                         top: BorderSide(
                                           color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
+                                              ThemeMode.dark
                                               ? const Color(0xFF091B34)
                                               : const Color(0xFF3B7DDD),
                                           width: 1,
                                         ),
                                         right: BorderSide(
                                           color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
+                                              ThemeMode.dark
                                               ? const Color(0xFF091B34)
                                               : const Color(0xFF3B7DDD),
                                           width: 1,
                                         ),
                                         bottom: BorderSide(
                                           color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
+                                              ThemeMode.dark
                                               ? const Color(0xFF091B34)
                                               : const Color(0xFF3B7DDD),
                                           width: 1,
@@ -9071,7 +9379,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                           : '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
                                       leftBarColor: const Color(0xFF3B7DDD),
                                       amountColor: themeHelper.themeMode ==
-                                              ThemeMode.dark
+                                          ThemeMode.dark
                                           ? Colors.white
                                           : Colors.black,
                                     ),
@@ -9142,7 +9450,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                     child: Container(
                       width: double.infinity,
                       padding:
-                          EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                      EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                       decoration: BoxDecoration(
                         color: themeHelper.themeMode == ThemeMode.dark
                             ? const Color(0xFF303136)
@@ -9281,7 +9589,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   print("🟦 Processing API response...");
 
                                   final redeemApi =
-                                      jsonDecode(result["apiResponse"]);
+                                  jsonDecode(result["apiResponse"]);
                                   print("📦 API Raw Response: $redeemApi");
 
                                   if (redeemApi == null) {
@@ -9300,21 +9608,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                   // Extract values
                                   final double newRedeemValue = double.tryParse(
-                                          data["redeem_amount"].toString()) ??
+                                      data["redeem_amount"].toString()) ??
                                       0.0;
 
                                   final int usedPoints = int.tryParse(
-                                          data["redeem_points"].toString()) ??
+                                      data["redeem_points"].toString()) ??
                                       0;
 
                                   final int newAvailablePoints = int.tryParse(
-                                          data["available_points"]
-                                              .toString()) ??
+                                      data["available_points"]
+                                          .toString()) ??
                                       availablePoints;
 
                                   final double newBalanceAmount =
                                       double.tryParse(
-                                              data["order_total"].toString()) ??
+                                          data["order_total"].toString()) ??
                                           computedNetPayable;
 
                                   print("🔢 Extracted API Values:");
@@ -9390,15 +9698,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                 // 🔥 Disable when coupon already applied
                                 isActive:
-                                    !(offlineOrder?["coupon_applied"] == true ||
-                                        isCouponActive),
+                                !(offlineOrder?["coupon_applied"] == true ||
+                                    isCouponActive),
 
                                 onTap: () async {
                                   if (offlineOrder == null) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
                                           content:
-                                              Text("No offline order found")),
+                                          Text("No offline order found")),
                                     );
                                     return;
                                   }
@@ -9527,7 +9835,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
 
       final keptRedeems =
-          prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
+      prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
 
       final mergedResponse = Map<String, dynamic>.from(response);
       mergedResponse["coupons"] = [...issueCoupons, ...keptRedeems];
@@ -9733,9 +10041,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return Dialog(
           backgroundColor: dialogBg,
           insetPadding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: Stack(
@@ -9851,7 +10159,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor:
-                                Colors.red.shade400, // soft light red
+                            Colors.red.shade400, // soft light red
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
@@ -9922,11 +10230,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Widget _buildCouponButton(
-    String title,
-    String iconPath, {
-    required VoidCallback onTap,
-    bool isActive = true,
-  }) {
+      String title,
+      String iconPath, {
+        required VoidCallback onTap,
+        bool isActive = true,
+      }) {
     return InkWell(
       onTap: isActive ? onTap : null,
       child: Container(
@@ -9986,11 +10294,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Widget _buildRedeemCouponButton(
-    String title,
-    String iconPath, {
-    required VoidCallback onTap,
-    bool isActive = true,
-  }) {
+      String title,
+      String iconPath, {
+        required VoidCallback onTap,
+        bool isActive = true,
+      }) {
     return InkWell(
       onTap: isActive ? onTap : null,
       child: Container(
@@ -10410,7 +10718,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // THEME COLORS
     final Color dialogBg = isDark ? const Color(0xFF252837) : Colors.white;
     final Color borderColor =
-        isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade300;
+    isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade300;
     final Color textPrimary = isDark ? Colors.white : Colors.black87;
     final Color textSecondary = isDark ? Colors.white70 : Colors.black54;
     final Color hintColor = isDark ? Colors.white38 : Colors.grey;
@@ -10435,143 +10743,143 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           /// 🔹 YOUR EXISTING DIALOG
           Center(
               child: WillPopScope(
-            onWillPop: () async {
-              ScannerGuard.isCouponPopupOpen = false;
-              return true;
-            },
-            child: BarcodeKeyboardListener(
-              bufferDuration: const Duration(milliseconds: 600),
-              onBarcodeScanned: (barcode) {
-                final code = barcode.trim();
-                print("🎯 Coupon QR/Barcode scanned → $code");
+                onWillPop: () async {
+                  ScannerGuard.isCouponPopupOpen = false;
+                  return true;
+                },
+                child: BarcodeKeyboardListener(
+                  bufferDuration: const Duration(milliseconds: 600),
+                  onBarcodeScanned: (barcode) {
+                    final code = barcode.trim();
+                    print("🎯 Coupon QR/Barcode scanned → $code");
 
-                _couponCtrl.text = code; // ✅ Correct prefill
-              },
-              child: Dialog(
-                backgroundColor: dialogBg,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Container(
-                  padding: const EdgeInsets.all(26),
-                  width: MediaQuery.of(context).size.width * 0.30,
-                  decoration: BoxDecoration(
-                    color: dialogBg,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      if (!isDark)
-                        BoxShadow(
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                          color: Colors.black.withOpacity(0.15),
-                        ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: Text(
-                          "Apply Coupon",
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: redPrimary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      TextField(
-                        controller: _couponCtrl,
-                        keyboardType: TextInputType.number,
-                        style: TextStyle(color: textPrimary),
-                        decoration: InputDecoration(
-                          labelText: "Enter Coupon Code",
-                          labelStyle: TextStyle(color: textSecondary),
-                          hintStyle: TextStyle(color: hintColor),
-                          filled: true,
-                          fillColor:
-                              isDark ? const Color(0xFF2C2C2C) : Colors.white,
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide(color: redPrimary, width: 1),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide:
-                                BorderSide(color: borderColor, width: 1.0),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 25),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            style: TextButton.styleFrom(
-                              foregroundColor: redPrimary,
-                              side: BorderSide(color: redPrimary, width: 1),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 18,
-                                vertical: 10,
-                              ),
+                    _couponCtrl.text = code; // ✅ Correct prefill
+                  },
+                  child: Dialog(
+                    backgroundColor: dialogBg,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.all(26),
+                      width: MediaQuery.of(context).size.width * 0.30,
+                      decoration: BoxDecoration(
+                        color: dialogBg,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          if (!isDark)
+                            BoxShadow(
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                              color: Colors.black.withOpacity(0.15),
                             ),
-                            onPressed: () {
-                              ScannerGuard.isCouponPopupOpen =
-                                  false; // CLOSE FLAG
-                              Navigator.pop(context);
-                            },
-                            child: const Text(
-                              "Cancel",
-                              style: TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: redPrimary,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 12,
-                              ),
-                            ),
-                            onPressed: () async {
-                              final code = _couponCtrl.text.trim();
-
-                              if (code.isEmpty) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content:
-                                        const Text("Please enter coupon code"),
-                                    backgroundColor: Colors.redAccent,
-                                  ),
-                                );
-                                return;
-                              }
-
-                              ScannerGuard.isCouponPopupOpen =
-                                  false; // CLOSE FLAG
-                              Navigator.pop(context);
-                              await _applyCoupon(code);
-                            },
-                            child: const Text("Apply"),
-                          ),
                         ],
-                      )
-                    ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Center(
+                            child: Text(
+                              "Apply Coupon",
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: redPrimary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          TextField(
+                            controller: _couponCtrl,
+                            keyboardType: TextInputType.number,
+                            style: TextStyle(color: textPrimary),
+                            decoration: InputDecoration(
+                              labelText: "Enter Coupon Code",
+                              labelStyle: TextStyle(color: textSecondary),
+                              hintStyle: TextStyle(color: hintColor),
+                              filled: true,
+                              fillColor:
+                              isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: redPrimary, width: 1),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderSide:
+                                BorderSide(color: borderColor, width: 1.0),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 25),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  foregroundColor: redPrimary,
+                                  side: BorderSide(color: redPrimary, width: 1),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 18,
+                                    vertical: 10,
+                                  ),
+                                ),
+                                onPressed: () {
+                                  ScannerGuard.isCouponPopupOpen =
+                                  false; // CLOSE FLAG
+                                  Navigator.pop(context);
+                                },
+                                child: const Text(
+                                  "Cancel",
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: redPrimary,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
+                                  ),
+                                ),
+                                onPressed: () async {
+                                  final code = _couponCtrl.text.trim();
+
+                                  if (code.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content:
+                                        const Text("Please enter coupon code"),
+                                        backgroundColor: Colors.redAccent,
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  ScannerGuard.isCouponPopupOpen =
+                                  false; // CLOSE FLAG
+                                  Navigator.pop(context);
+                                  await _applyCoupon(code);
+                                },
+                                child: const Text("Apply"),
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ))
+              ))
         ]);
       },
     ).then((_) {
@@ -10610,9 +10918,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           if (item is! Map) continue;
 
           final Map<String, dynamic> couponMap =
-              Map<String, dynamic>.from(item);
+          Map<String, dynamic>.from(item);
           final String existingCode =
-              (couponMap["code"]?.toString() ?? "").trim().toLowerCase();
+          (couponMap["code"]?.toString() ?? "").trim().toLowerCase();
 
           if (existingCode == code) {
             // 🔥 ONLY block with "already applied" if it is ALREADY REDEEMED
@@ -10654,7 +10962,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // Sync to server
       final result =
-          await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+      await OrderRepository().syncSingleOfflineOrder(offlineOrder);
 
       if (result == null || result is! Map<String, dynamic>) {
         offlineOrder["coupon_response"] = originalCouponResponse;
@@ -10786,11 +11094,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Widget _buildAmountDisplay(
-    String label,
-    String amount, {
-    required Color leftBarColor,
-    Color? amountColor = Colors.black,
-  }) {
+      String label,
+      String amount, {
+        required Color leftBarColor,
+        Color? amountColor = Colors.black,
+      }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
     return Container(
@@ -10863,10 +11171,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       onTap: () {
         // Remove '$' and ensure the value is numeric
         String cleanAmount =
-            amount.replaceAll(TextConstants.currencySymbol, '');
+        amount.replaceAll(TextConstants.currencySymbol, '');
         double numericValue = double.parse(cleanAmount);
         amountController.text =
-            '${TextConstants.currencySymbol} ${numericValue.toStringAsFixed(2)}';
+        '${TextConstants.currencySymbol} ${numericValue.toStringAsFixed(2)}';
         setState(() {});
       },
       child: Container(
@@ -10956,15 +11264,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Widget _buildPaymentModeButton(
-    String label,
-    Widget iconWidget, {
-    required LinearGradient gradient,
-    required Color borderColor,
-    Color? iconColor, // optional
-    VoidCallback? onTap,
-    bool isLoading = false,
-    bool isDisabled = false,
-  }) {
+      String label,
+      Widget iconWidget, {
+        required LinearGradient gradient,
+        required Color borderColor,
+        Color? iconColor, // optional
+        VoidCallback? onTap,
+        bool isLoading = false,
+        bool isDisabled = false,
+      }) {
     double _scale = 1.0;
     final bool isEnabled = !isDisabled && !isLoading && onTap != null;
 
@@ -10973,25 +11281,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return GestureDetector(
           onTapDown: isEnabled
               ? (_) {
-                  setState(() {
-                    _scale = 0.95; // press effect
-                  });
-                }
+            setState(() {
+              _scale = 0.95; // press effect
+            });
+          }
               : null,
           onTapUp: isEnabled
               ? (_) {
-                  setState(() {
-                    _scale = 1.0;
-                  });
-                  if (onTap != null) onTap();
-                }
+            setState(() {
+              _scale = 1.0;
+            });
+            if (onTap != null) onTap();
+          }
               : null,
           onTapCancel: isEnabled
               ? () {
-                  setState(() {
-                    _scale = 1.0;
-                  });
-                }
+            setState(() {
+              _scale = 1.0;
+            });
+          }
               : null,
           child: AnimatedScale(
             scale: _scale,
@@ -11006,7 +11314,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 decoration: BoxDecoration(
                   gradient: gradient,
                   borderRadius:
-                      BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                  BorderRadius.circular(ResponsiveLayout.getRadius(8)),
                   border: Border.all(color: borderColor),
                   boxShadow: const [
                     BoxShadow(
@@ -11020,7 +11328,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   color: Colors.transparent,
                   child: InkWell(
                     borderRadius:
-                        BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                    BorderRadius.circular(ResponsiveLayout.getRadius(8)),
                     onTap: isEnabled ? onTap : null,
                     splashColor: Colors.white24,
                     highlightColor: Colors.transparent,
@@ -11036,14 +11344,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           ),
                           child: isLoading
                               ? SizedBox(
-                                  width: ResponsiveLayout.getIconSize(24),
-                                  height: ResponsiveLayout.getIconSize(24),
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                        borderColor),
-                                  ),
-                                )
+                            width: ResponsiveLayout.getIconSize(24),
+                            height: ResponsiveLayout.getIconSize(24),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  borderColor),
+                            ),
+                          )
                               : iconWidget,
                         ),
                         SizedBox(width: ResponsiveLayout.getWidth(12)),
@@ -11069,11 +11377,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Widget _buildPaymentOptionButton(
-    String title,
-    String iconPath, {
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
+      String title,
+      String iconPath, {
+        required bool isActive,
+        required VoidCallback onTap,
+      }) {
     return InkWell(
       onTap: isActive ? onTap : null,
       child: Container(
@@ -11172,11 +11480,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       serviceType: serviceType,
       datetime: voidDateTime,
       notes:
-          "Local void of ${method} payment – original ID: ${_lastPayment?.paymentId ?? 'local'}",
+      "Local void of ${method} payment – original ID: ${_lastPayment?.paymentId ?? 'local'}",
       isSynced: false,
       createdAt: now,
       remainingBalance:
-          (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
+      (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
       status: PaymentDbStatus.voided,
       serverPaymentId: int.tryParse(_lastPayment?.paymentId ?? "0"),
     );
@@ -11186,7 +11494,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       //  2. Save void payment (Isar + Hive mirroring)
       // ────────────────────────────────────────────────
       final savedVoid =
-          await LocalPaymentDBHelper.instance.savePayment(negativePayment);
+      await LocalPaymentDBHelper.instance.savePayment(negativePayment);
       print(
           "Void saved in Isar → ID: ${savedVoid.id} | amount: -${voidedAmount.toStringAsFixed(2)}");
 
@@ -11219,7 +11527,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         if (!isPartial) {
           // Most important resets for full void
           _currentPaymentRemainingBalance =
-              null; // no longer "in partial session"
+          null; // no longer "in partial session"
           _successPopupShown = false; // allow success dialog again
           isPaymentStarted = false; // visually reset "payment in progress"
         }
@@ -11454,7 +11762,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   .getPaymentsByOrderId(orderId!);
               final pendingPayments = payments
                   .where((p) =>
-                      p.amount > 0 && p.status == PaymentDbStatus.pending)
+              p.amount > 0 && p.status == PaymentDbStatus.pending)
                   .toList();
               if (pendingPayments.isNotEmpty) {
                 for (final p in pendingPayments) {
@@ -11646,7 +11954,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     try {
       final box = StorageProvider.offlineOrders;
       final String hiveKey =
-          localOrderId.toString(); // key is the local order ID
+      localOrderId.toString(); // key is the local order ID
 
       if (!(await box.containsKey(hiveKey))) return;
 
@@ -11692,6 +12000,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       print("✅ Hive order #$localOrderId marked as processing");
     } catch (e) {
       print("❌ _markHiveOrderCompleted error: $e");
+    }
+  }
+
+
+  // ── ADD THIS NEW HELPER (paste just before doBackgroundWork inside _showPaymentDialog) ──
+  Future<void> _checkAndClearActiveOrderBeforeThankYou() async {
+    try {
+      // If order panel has an active order, clear it first so display resets cleanly
+      if (orderHelper.activeOrderId != null) {
+        await orderHelper.setActiveOrder(null);
+        OrderHelper.isOrderPanelLoaded = false;
+        OrderHelper.notifyOrderPanelToRefresh();
+        // Small delay so the panel registers the clear before display updates
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+      await CustomerDisplayService.showThankYou();
+    } catch (e) {
+      print(">>> Error in _checkAndClearActiveOrderBeforeThankYou: $e");
     }
   }
 
@@ -11875,13 +12201,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   void _showPaymentDialog(
-    BuildContext context,
-    double amount, {
-    double? changeAmount,
-    required bool showChange,
-    Map<String, dynamic>? couponResponse,
-    bool isVoidDisabled = false,
-  }) async {
+      BuildContext context,
+      double amount, {
+        double? changeAmount,
+        required bool showChange,
+        Map<String, dynamic>? couponResponse,
+        bool isVoidDisabled = false,
+      }) async {
     if (_isShowingPaymentDialog) {
       print("Payment dialog already showing → skipping duplicate call");
       return;
@@ -11894,6 +12220,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // ── Helper: update customer display ──────────────────────
     Future<void> updateCustomerDisplayWelcome() async {
       try {
+        if (orderHelper.activeOrderId != null) {
+          await orderHelper.setActiveOrder(null);
+          OrderHelper.isOrderPanelLoaded = false;
+          OrderHelper.notifyOrderPanelToRefresh();
+          await Future.delayed(const Duration(milliseconds: 150));
+        }
+        final storeInfo = PinakaPreferences.getLoggedInStore();
         if (storeInfo.isNotEmpty) {
           await CustomerDisplayHelper.updateWelcomeWithStore(
             storeInfo['storeId'] ?? '0',
@@ -11905,7 +12238,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           await CustomerDisplayService.showWelcome();
         }
       } catch (e) {
-        print(">>> Error updating customer display: $e");
+        print(">>> customer display error: $e");
       }
     }
 
@@ -12008,10 +12341,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             }
           });
         },
+
         // ── NO RECEIPT ───────────────────────────────────────
+
         onNoReceipt: () async {
           try {
-            await CustomerDisplayService.showThankYou();
+
+            await _checkAndClearActiveOrderBeforeThankYou();
+
+            // await CustomerDisplayService.showThankYou();
           } catch (e) {
             print(">>> Error showing Thank You screen: $e");
           }
@@ -12020,8 +12358,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
           doBackgroundWork();
 
-          OrderHelper.isOrderPanelLoaded = false;
-          OrderHelper.notifyOrderPanelToRefresh();
+          // await _checkAndClearActiveOrderBeforeThankYou();
 
           Navigator.pushReplacement(
             context,
@@ -12029,6 +12366,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             result: TextConstants.refresh,
           );
         },
+
 
         // ── DONE (Print / Email / SMS) ────────────────────────
         onDone: (selectedOption, {String? email}) async {
@@ -12060,9 +12398,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               StreamSubscription? subscription;
               subscription =
                   paymentBloc.sendOrderDetailsStream.listen((response) {
-                subscription?.cancel();
-                print(">>> Email sent");
-              });
+                    subscription?.cancel();
+                    print(">>> Email sent");
+                  });
             }
 
             doBackgroundWork();
@@ -12268,7 +12606,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
           // Customer display
           try {
-            await CustomerDisplayService.showThankYou();
+            await _checkAndClearActiveOrderBeforeThankYou();
+
           } catch (e) {
             print(">>> Error updating customer display: $e");
           }
@@ -12438,6 +12777,44 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 // KEY FIX: Navigate IMMEDIATELY, sync in background
 // ============================================================
 
+  // void _showExitPaymentConfirmation(BuildContext context) {
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     useRootNavigator: false,
+  //     builder: (dialogCtx) => PaymentDialog(
+  //       status: PaymentStatus.exitConfirmation,
+  //       onExitCancel: () {
+  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
+  //       },
+  //       onExitConfirm: () {
+  //         // ✅ STEP 1: Close dialog IMMEDIATELY
+  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
+  //
+  //         // ✅ STEP 2: Navigate IMMEDIATELY — no await
+  //         OrderHelper.isOrderPanelLoaded = false;
+  //         OrderHelper.notifyOrderPanelToRefresh();
+  //         Navigator.pushReplacement(
+  //           context,
+  //           MaterialPageRoute(builder: (_) => POSHomeScreen()),
+  //           result: TextConstants.refresh,
+  //         );
+  //
+  //         // ✅ STEP 3: Sync in background AFTER navigation
+  //         Future(() async {
+  //           try {
+  //             await _syncCurrentOfflineOrder();
+  //             print("✅ Background: Exit sync completed");
+  //           } catch (e) {
+  //             print("❌ Background: Exit sync failed: $e");
+  //           }
+  //         });
+  //       },
+  //     ),
+  //   );
+  // }
+
+
   void _showExitPaymentConfirmation(BuildContext context) {
     showDialog(
       context: context,
@@ -12445,23 +12822,40 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       useRootNavigator: false,
       builder: (dialogCtx) => PaymentDialog(
         status: PaymentStatus.exitConfirmation,
-        onExitCancel: () {
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
-        },
-        onExitConfirm: () {
-          // ✅ STEP 1: Close dialog IMMEDIATELY
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
 
-          // ✅ STEP 2: Navigate IMMEDIATELY — no await
+        onExitCancel: () {
+          if (Navigator.of(dialogCtx).canPop()) {
+            Navigator.of(dialogCtx).pop();
+          }
+        },
+
+        onExitConfirm: () async {
+          // Close popup
+          if (Navigator.of(dialogCtx).canPop()) {
+            Navigator.of(dialogCtx).pop();
+          }
+
+          // Customer display
+          try {
+            await CustomerDisplayService.showThankYou();
+          } catch (e) {
+            print(">>> Error updating customer display: $e");
+          }
+
+          // Refresh order panel
           OrderHelper.isOrderPanelLoaded = false;
           OrderHelper.notifyOrderPanelToRefresh();
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => POSHomeScreen()),
-            result: TextConstants.refresh,
-          );
 
-          // ✅ STEP 3: Sync in background AFTER navigation
+          // Navigate safely
+          if (context.mounted) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => POSHomeScreen(),
+              ),
+            );
+          }
+
+          // Background sync
           Future(() async {
             try {
               await _syncCurrentOfflineOrder();
@@ -12474,6 +12868,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     );
   }
+
 
   Future<Map<String, dynamic>?> loadPrinterData() async {
     var printerDB = await PrinterDBHelper().getPrinterFromDB();
@@ -12515,7 +12910,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final decodedImage = img.decodeImage(imageBytes)!;
       img.Image thumbnail = img.copyResize(decodedImage, height: 280);
       img.Image originalImg =
-          img.copyResize(decodedImage, width: 470, height: 280);
+      img.copyResize(decodedImage, width: 470, height: 280);
       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
       var padding = (originalImg.width - thumbnail.width) / 2;
       drawImage(originalImg, thumbnail, dstX: padding.toInt());
@@ -12708,9 +13103,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           : 0.0;
 
       double comboDiscount =
-          (discountType == 'combo' || discountType == 'mixmatch')
-              ? (item['auto_discount'] ?? 0).toDouble()
-              : 0.0;
+      (discountType == 'combo' || discountType == 'mixmatch')
+          ? (item['auto_discount'] ?? 0).toDouble()
+          : 0.0;
 
       // Auto Discount
       if (autoDiscount > 0 && !isPayoutOrCoupon) {
@@ -13019,7 +13414,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
     switch (result) {
       case Ok<BluetoothPrinter>():
-        // BluetoothPrinter printer = result.value;
+      // BluetoothPrinter printer = result.value;
         break;
       case Error<BluetoothPrinter>():
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -13101,7 +13496,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   .getPaymentsByOrderId(orderId!);
               final pendingPayments = payments
                   .where((p) =>
-                      p.amount > 0 && p.status == PaymentDbStatus.pending)
+              p.amount > 0 && p.status == PaymentDbStatus.pending)
                   .toList();
               if (pendingPayments.isNotEmpty) {
                 for (final p in pendingPayments) {
@@ -13138,7 +13533,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   .getPaymentsByOrderId(orderId!);
               final pendingPayments = payments
                   .where((p) =>
-                      p.amount > 0 && p.status == PaymentDbStatus.pending)
+              p.amount > 0 && p.status == PaymentDbStatus.pending)
                   .toList();
               if (pendingPayments.isNotEmpty) {
                 for (final p in pendingPayments) {
@@ -13194,37 +13589,37 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             StreamSubscription? subscription;
             subscription =
                 paymentBloc.sendOrderDetailsStream.listen((response) {
-              if (response.status == Status.COMPLETED) {
-                if (kDebugMode) {
-                  print("Email sent successfully: ${response.data!.message}");
-                }
-                if (Misc.showDebugSnackBar) {
-                  // Build #1.0.254
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(response.data!.message),
-                      backgroundColor: Colors.green,
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
-                }
-              } else if (response.status == Status.ERROR) {
-                if (kDebugMode) {
-                  print("Failed to send email: ${response.message}");
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(TextConstants.failedSendEmail),
-                    backgroundColor: Colors.red,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
-              }
-              subscription?.cancel();
-              // Proceed to complete the order after email API response
-              changeStatusToCompletedAndExit(true,
-                  selectedOption: selectedOption);
-            });
+                  if (response.status == Status.COMPLETED) {
+                    if (kDebugMode) {
+                      print("Email sent successfully: ${response.data!.message}");
+                    }
+                    if (Misc.showDebugSnackBar) {
+                      // Build #1.0.254
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(response.data!.message),
+                          backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  } else if (response.status == Status.ERROR) {
+                    if (kDebugMode) {
+                      print("Failed to send email: ${response.message}");
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(TextConstants.failedSendEmail),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                  subscription?.cancel();
+                  // Proceed to complete the order after email API response
+                  changeStatusToCompletedAndExit(true,
+                      selectedOption: selectedOption);
+                });
           } else {
             // For non-email options, proceed directly to complete the order
             changeStatusToCompletedAndExit(true,
@@ -13422,12 +13817,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   // }
 
   Widget _buildPaymentAmountDisplay(
-    String label,
-    String amount, {
-    required Color leftBarColor,
-    Color? amountColor = Colors.black,
-    bool isPaymentBalance = false, // NEW: Add this flag
-  }) {
+      String label,
+      String amount, {
+        required Color leftBarColor,
+        Color? amountColor = Colors.black,
+        bool isPaymentBalance = false, // NEW: Add this flag
+      }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
     return Container(

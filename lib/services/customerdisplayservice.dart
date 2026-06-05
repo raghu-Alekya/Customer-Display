@@ -86,7 +86,7 @@ class CustomerDisplayService {
     String storeName = '',
     String? storeLogoUrl,
     bool summaryEnabled = true,
-    String discountType = ", required redeemedAmount",
+    String discountType = "",
     double discountValue = 0.0,
   }) async {
     try {
@@ -99,6 +99,8 @@ class CustomerDisplayService {
           "price": item["price"] ?? 0.0,
           "original_price": item["original_price"] ?? item["price"] ?? 0.0,
           "auto_discount": item["auto_discount"] ?? 0.0,
+          "combo_discount": item["combo_discount"] ?? 0.0,
+          "multipack_discount": item["multipack_discount"] ?? 0.0,
           "discount_type": item["discount_type"] ?? "",
           "image": item["image"] ?? "",
         };
@@ -129,4 +131,32 @@ class CustomerDisplayService {
       print("Customer display error: $e");
     }
   }
+/// 🔹 Update redeem / summary state on customer display
+// static Future<void> customerDisplayResult({
+//   required bool success,
+//   required double redeemedAmount,
+//   required int points,
+//   String message = "",
+// }) async {
+//   try {
+//     print(
+//       "📢 customerDisplayResult → "
+//           "success=$success, redeemedAmount=$redeemedAmount, points=$points",
+//     );
+//
+//     await _platform.invokeMethod(
+//       'customerDisplayResult',
+//       {
+//         "success": success,
+//         "redeemedAmount": redeemedAmount,
+//         "points": points,
+//         "message": message,
+//       },
+//     );
+//
+//     print("✅ customerDisplayResult sent");
+//   } catch (e) {
+//     print("⚠️ customerDisplayResult error: $e");
+//   }
+// }
 }
