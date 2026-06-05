@@ -312,8 +312,22 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     };
     OrderHelper.orderPanelRefreshNotifier
         .addListener(_orderPanelRefreshListener!);
-  }
+    // CUSTOMER DISPLAY CALLBACK
+    customerDisplayChannel.setMethodCallHandler((call) async {
+      if (call.method == "showNextActiveOrder") {
+        await fetchOrdersData();
 
+        if (orderHelper.activeOrderId != null) {
+          await CustomerDisplayHelper.updateCustomerDisplay(
+            orderHelper.activeOrderId!,
+            summaryEnabled: false,
+          );
+        } else {
+          await CustomerDisplayService.showWelcome();
+        }
+      }
+    });
+  }
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) {
@@ -368,42 +382,72 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       print(
           "##### fetchOrdersData -> isOrderPanelLoaded : ${OrderHelper.isOrderPanelLoaded}");
     }
+
     if (OrderHelper.isOrderPanelLoaded) {
       setState(() => _isFetchingInitialData = false);
-      // Use loadData (Hive) for consistency with offline mode - avoids full reload when data already available
+
       await orderHelper.loadData();
-      if (mounted) await _getOrderTabs();
+
+      if (mounted) {
+        await _getOrderTabs();
+
+        // 🔥 Sync active order to customer display
+        if (orderHelper.activeOrderId != null) {
+          await CustomerDisplayHelper.updateCustomerDisplay(
+            orderHelper.activeOrderId!,
+          );
+        } else {
+          await CustomerDisplayService.showWelcome();
+        }
+      }
       return;
     }
-    // ✅ Indicate that we are fetching
+
     setState(() {
       _isFetchingInitialData = true;
       _isLoading = true;
     });
 
     try {
-      // 🔹 Load offline data directly through OrderHelper
       final helper = OrderHelper();
-      await helper.loadData(); // Already loads Hive offline orders
+      await helper.loadData();
 
       if (kDebugMode) {
         print("📦 Offline orders loaded: ${helper.orders.length}");
+        print("📦 Active Order: ${helper.activeOrderId}");
       }
 
-      // ✅ Mark panel loaded and render
       OrderHelper.isOrderPanelLoaded = true;
-      if (mounted) await _getOrderTabs(); // Use offline OrderHelper.orders
+
+      if (mounted) {
+        await _getOrderTabs();
+
+        // 🔥 IMPORTANT
+        if (helper.activeOrderId != null) {
+          print(
+              "🖥️ Updating customer display with active order ${helper.activeOrderId}");
+
+          await CustomerDisplayHelper.updateCustomerDisplay(
+            helper.activeOrderId!,
+          );
+        } else {
+          print("🖥️ No active order → Welcome screen");
+          await CustomerDisplayService.showWelcome();
+        }
+      }
     } catch (e, s) {
       if (kDebugMode) {
         print("❌ Error loading offline orders in fetchOrdersData: $e");
         print("Stack trace: $s");
       }
     } finally {
-      setState(() {
-        _isFetchingInitialData = false;
-        _isLoading = false;
-        _isSwitchingOrder = false;   // ← ADD THIS LINE
-      });
+      if (mounted) {
+        setState(() {
+          _isFetchingInitialData = false;
+          _isLoading = false;
+          _isSwitchingOrder = false;
+        });
+      }
     }
   }
 
@@ -544,27 +588,27 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
     final int? activeId = orderHelper.activeOrderId;
 
-// 🔥 HANDLE ALL INVALID ACTIVE ORDER CASES
+// Active order no longer exists in visible tabs
     if (activeId != null && !visibleOrderIds.contains(activeId)) {
       if (kDebugMode) {
-        print("🟥 Active order $activeId is no longer visible → resetting");
+        print("🟥 Active order $activeId is no longer visible");
       }
 
       if (visibleOrderIds.isNotEmpty) {
-        //  Switch to newest visible order
-        final newActiveId = visibleOrderIds.last;
+        final int newActiveId = visibleOrderIds.last;
 
         await orderHelper.setActiveOrder(newActiveId);
         await orderHelper.saveLastActiveOrderId(newActiveId);
 
-        //  ONLY update display if active order exists
-        if (newActiveId != 0) {
-          print("Showing new active order on display → $newActiveId");
-          await CustomerDisplayHelper.updateCustomerDisplay(newActiveId);
-        }
+        print("✅ Switched to next active order: $newActiveId");
 
+        await fetchOrderItems();
+
+        await CustomerDisplayHelper.updateCustomerDisplay(
+          newActiveId,
+          summaryEnabled: false,
+        );
       } else {
-        // ❌ NO orders left → FULL RESET
         await orderHelper.setActiveOrder(null);
 
         if (mounted) {
@@ -573,11 +617,18 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           });
         }
 
-        print("✅ No active orders → showing welcome screen");
+        print("✅ No active orders remaining");
 
-        // ✅ ALWAYS fallback to welcome when no orders
         await CustomerDisplayService.showWelcome();
       }
+    } else if (activeId != null) {
+      // Active order still valid
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        activeId,
+        summaryEnabled: false,
+      );
+    } else {
+      await CustomerDisplayService.showWelcome();
     }
 
     _initializeTabController();
@@ -4650,14 +4701,44 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                       }
                                     },
                                     backgroundColor: Colors.transparent,
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.delete, color: Colors.red),
-                                        const SizedBox(height: 4),
-                                        const Text(TextConstants.deleteText,
-                                            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                                      ],
+                                    child: RepaintBoundary(
+                                      child: Container(
+                                        width: double.infinity,
+                                        height: double.infinity,
+                                        decoration: const BoxDecoration(
+                                          gradient: LinearGradient(
+                                            begin: Alignment.topCenter,
+                                            end: Alignment.bottomCenter,
+                                            colors: [
+                                              Color(0xFFFF1744),
+                                              Color(0xFFFF4081),
+                                            ],
+                                          ),
+                                          borderRadius: BorderRadius.only(
+                                            topRight: Radius.circular(12),
+                                            bottomRight: Radius.circular(12),
+                                          ),
+                                        ),
+                                        child: const Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.delete_outline,
+                                              color: Colors.white,
+                                              size: 28,
+                                            ),
+                                            SizedBox(height: 6),
+                                            Text(
+                                              TextConstants.deleteText,
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ],

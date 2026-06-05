@@ -6557,7 +6557,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   enabled: true,
                                   readOnly: showCustomerInput,
                                   enableInteractiveSelection: !showCustomerInput,
-                                  keyboardType: TextInputType.emailAddress,
+                                  keyboardType: TextInputType.number,
                                   inputFormatters: [
                                     TextInputFormatter.withFunction(
                                             (oldValue, newValue) {
@@ -6589,7 +6589,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     });
                                   },
                                   decoration: const InputDecoration(
-                                    hintText: 'Add Mobile No or Email',
+                                    hintText: 'Add Mobile No ',
                                     border: InputBorder.none,
                                     isCollapsed: true,
                                     counterText: '',

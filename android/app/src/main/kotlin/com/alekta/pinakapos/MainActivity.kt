@@ -698,12 +698,16 @@ class MainActivity : FlutterActivity() {
         summaryEnabled: Boolean,
         redeemedAmount: Double
     ): Boolean {
+        // 🔥 ADD THIS LINE HERE (FIRST LINE)
         isOrderActive = true
+
 
         if (customerDisplayPresentation == null) {
             Log.d("CustomerDisplay", "CustomerDisplayPresentation null, recreating display")
+
             val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
             val displays = displayManager.displays
+
             if (displays.size > 1) {
                 val secondaryDisplay = displays[1]
                 customerDisplayPresentation = CustomerDisplayPresentation(
@@ -714,7 +718,6 @@ class MainActivity : FlutterActivity() {
                 customerDisplayPresentation?.show()
             }
         }
-
         customerDisplayPresentation?.updateCustomerData(
             orderId,
             storeId,
@@ -741,22 +744,34 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun showThankYouOnCustomerDisplay(): Boolean {
-        val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+
+        val displayManager =
+            getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+
         val displays = displayManager.displays
-        Log.d("CustomerDisplay", "Detected displays: ${displays.size} for Thank You")
+
+        Log.d(
+            "CustomerDisplay",
+            "Detected displays: ${displays.size} for Thank You"
+        )
 
         return if (displays.size > 1) {
+
             val secondaryDisplay = displays[1]
 
-            if (customerDisplayPresentation == null ||
+            if (
+                customerDisplayPresentation == null ||
                 customerDisplayPresentation?.display != secondaryDisplay
             ) {
                 customerDisplayPresentation?.dismiss()
-                customerDisplayPresentation = CustomerDisplayPresentation(
-                    this@MainActivity,
-                    this@MainActivity,
-                    secondaryDisplay
-                )
+
+                customerDisplayPresentation =
+                    CustomerDisplayPresentation(
+                        this@MainActivity,
+                        this@MainActivity,
+                        secondaryDisplay
+                    )
+
                 customerDisplayPresentation?.show()
             }
 
@@ -764,23 +779,28 @@ class MainActivity : FlutterActivity() {
             customerDisplayPresentation?.showThankYouLayout()
 
             Handler(Looper.getMainLooper()).postDelayed({
+
                 Log.d("CustomerDisplay", "Thank You timeout finished")
+
                 isShowingThankYou = false
                 isOrderActive = false
+
                 customerDisplayPresentation?.resetCustomerLayoutState()
+
                 MethodChannel(
                     flutterEngine?.dartExecutor?.binaryMessenger!!,
-                    CHANNEL
+                    "com.alekta.pinakapos/sunmi_display"
                 ).invokeMethod("showNextActiveOrder", null)
+
             }, 5000)
 
             true
+
         } else {
             isShowingThankYou = false
             false
         }
     }
-
     // =====================================================================
     // CustomerDisplayPresentation
     // =====================================================================

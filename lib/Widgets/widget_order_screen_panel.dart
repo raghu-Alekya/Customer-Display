@@ -3116,7 +3116,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                   : '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
                                               style: TextStyle(
                                                 fontWeight: FontWeight.bold,
-                                                fontSize: 14,
+                                                fontSize: 18,
                                                 color: themeHelper.themeMode ==
                                                         ThemeMode.dark
                                                     ? ThemeNotifier.textDark
@@ -3673,91 +3673,99 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                         ),
                             )
                           : ElevatedButton(
-                              //Build 1.1.36: on pay tap calling updateOrderProducts api call
-                              onPressed: netPayable >= 0 &&
-                                      orderItems.isNotEmpty
-                                  ? () async {
-                                      if (orderHelper.activeOrderId != null) {
-                                        final int frozenSummaryOrderId =
-                                            orderHelper.activeOrderId!;
-                                        setState(() => _isPayBtnLoading = true);
-                                        _initialFetchDone =
-                                            false; // Build #1.0.143: Track initial fetch of fetchOrdersData
-                                        // await Navigator.push(
-                                        //   context,
-                                        //   MaterialPageRoute(builder: (context) => OrderSummaryScreen()),
-                                        // );
-                                        // On the first screen (Screen 1)
-                                        // Navigator.push(context, MaterialPageRoute(builder: (_) => OrderSummaryScreen())).then((result) {
-                                        //   if (result == 'refresh') {
-                                        //     setState(() {
-                                        //       // Update state to refresh the UI
-                                        //     });
-                                        //   }
-                                        // });
-                                        // Build #1.0.104: refresh when back to this screen
-                                        List<Map<String, dynamic>>
-                                            visibleLineItems(
-                                          List<Map<String, dynamic>> items,
-                                        ) {
-                                          return items.where((item) {
-                                            final nameLower =
-                                                (item[AppDBConst.itemName] ??
-                                                        '')
-                                                    .toString()
-                                                    .trim()
-                                                    .toLowerCase();
+                        //Build 1.1.36: on pay tap calling updateOrderProducts api call
+                        onPressed: netPayable >= 0 &&
+                            orderItems.isNotEmpty
+                            ? () async {
+                          if (orderHelper.activeOrderId != null) {
+                            final int frozenSummaryOrderId =
+                            orderHelper.activeOrderId!;
+                            setState(() => _isPayBtnLoading = true);
+                            _initialFetchDone =
+                            false; // Build #1.0.143: Track initial fetch of fetchOrdersData
+                            // await Navigator.push(
+                            //   context,
+                            //   MaterialPageRoute(builder: (context) => OrderSummaryScreen()),
+                            // );
+                            // On the first screen (Screen 1)
+                            // Navigator.push(context, MaterialPageRoute(builder: (_) => OrderSummaryScreen())).then((result) {
+                            //   if (result == 'refresh') {
+                            //     setState(() {
+                            //       // Update state to refresh the UI
+                            //     });
+                            //   }
+                            // });
+                            // Build #1.0.104: refresh when back to this screen
+                            List<Map<String, dynamic>>
+                            visibleLineItems(
+                                List<Map<String, dynamic>> items,
+                                ) {
+                              return items.where((item) {
+                                final nameLower =
+                                (item[AppDBConst.itemName] ??
+                                    '')
+                                    .toString()
+                                    .trim()
+                                    .toLowerCase();
 
-                                            final itemTypeLower =
-                                                (item['item_type'] ??
-                                                        '') // ✅ FIXED KEY
-                                                    .toString()
-                                                    .trim()
-                                                    .toLowerCase();
+                                final itemTypeLower =
+                                (item['item_type'] ??
+                                    '') // ✅ FIXED KEY
+                                    .toString()
+                                    .trim()
+                                    .toLowerCase();
 
-                                            final isNonProduct = nameLower
-                                                    .contains('discount') ||
-                                                nameLower.contains('coupon') ||
-                                                nameLower.contains('loyalty') ||
-                                                nameLower
-                                                    .contains('redeemed') ||
-                                                nameLower.contains('points') ||
-                                                itemTypeLower
-                                                    .contains('discount') ||
-                                                itemTypeLower.contains(
-                                                    'coupon') || // ✅ WILL MATCH
-                                                itemTypeLower
-                                                    .contains('loyalty');
+                                final isNonProduct = nameLower
+                                    .contains('discount') ||
+                                    nameLower.contains('coupon') ||
+                                    nameLower.contains('loyalty') ||
+                                    nameLower
+                                        .contains('redeemed') ||
+                                    nameLower.contains('points') ||
+                                    itemTypeLower
+                                        .contains('discount') ||
+                                    itemTypeLower.contains(
+                                        'coupon') || // ✅ WILL MATCH
+                                    itemTypeLower
+                                        .contains('loyalty');
 
 
 
-                                            return !isNonProduct;
-                                          }).toList();
-                                        }
+                                return !isNonProduct;
+                              }).toList();
+                            }
 
-                                        final box =
-                                            StorageProvider.offlineOrders;
+                            final box =
+                                StorageProvider.offlineOrders;
 
-                             // Prefer server order id if exists, else offline id
-                                        final hiveKey =
-                                            frozenSummaryOrderId.toString();
+                            // Prefer server order id if exists, else offline id
+                            final hiveKey =
+                            frozenSummaryOrderId.toString();
 
-                                        final int? selectedOrderId = widget.activeOrderId;
+                            final int? selectedOrderId = widget.activeOrderId;
 
-                                        final boxData = await box.get(hiveKey);
-                                        final double discountAmount = ((boxData
-                                                        is Map
-                                                    ? boxData["discount_amount"]
-                                                    : null) ??
-                                                0.0)
-                                            .toDouble();
+                            final boxData = await box.get(hiveKey);
+                            final double discountAmount = ((boxData
+                            is Map
+                                ? boxData["discount_amount"]
+                                : null) ??
+                                0.0)
+                                .toDouble();
+                            // ADD THIS
+                            final double redeemValue = ((boxData is Map
+                                ? boxData["redeemed_value"]   // change key if needed
+                                : null) ??
+                                0.0)
+                                .toDouble();
 
-                                        if (kDebugMode) {
-                                          print(
-                                              "🏷 Passing Discount Amount = $discountAmount");
-                                        }
+                            print("REDEEM VALUE FROM PENDING ORDER = $redeemValue");
 
-                                        final filteredItems = visibleLineItems(orderItems);
+                            if (kDebugMode) {
+                              print(
+                                  "🏷 Passing Discount Amount = $discountAmount");
+                            }
+
+                            final filteredItems = visibleLineItems(orderItems);
 
 // 🔥 NEW: Fix price before sending to OrderSummaryScreen
 //                                         final List<Map<String, dynamic>> itemsForSummary = filteredItems.map((item) {
@@ -3788,290 +3796,278 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 //                                           return newItem;
 //                                         }).toList();
 
-                                        // 🔥 NEW: Fix price before sending to OrderSummaryScreen (Enhanced for all discount types)
-                                        final List<Map<String, dynamic>> itemsForSummary = filteredItems.map((item) {
-                                          final Map<String, dynamic> newItem = Map<String, dynamic>.from(item);
+                            // 🔥 NEW: Fix price before sending to OrderSummaryScreen (Enhanced for all discount types)
+                            final List<Map<String, dynamic>> itemsForSummary = filteredItems.map((item) {
+                              final Map<String, dynamic> newItem = Map<String, dynamic>.from(item);
 
-                                          final double qty = (item[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
-                                          final double sumPrice = (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
+                              final double qty = (item[AppDBConst.itemCount] as num?)?.toDouble() ?? 1.0;
+                              final double sumPrice = (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0;
 
-                                          // Get all discount amounts for this item
-                                          final double autoDiscount = (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
-                                          final double multipackDiscount = (item[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
-                                          final double comboDiscount = (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
-                                          final double totalItemDiscount = autoDiscount + multipackDiscount + comboDiscount;
+                              // Get all discount amounts for this item
+                              final double autoDiscount = (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0;
+                              final double multipackDiscount = (item[AppDBConst.multipackDiscount] as num?)?.toDouble() ?? 0.0;
+                              final double comboDiscount = (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0;
+                              final double totalItemDiscount = autoDiscount + multipackDiscount + comboDiscount;
 
-                                          // Current discounted unit price from DB
-                                          double currentUnitPrice = (item[AppDBConst.itemPrice] as num?)?.toDouble() ??
-                                              (item[AppDBConst.itemUnitPrice] as num?)?.toDouble() ?? 0.0;
+                              // Current discounted unit price from DB
+                              double currentUnitPrice = (item[AppDBConst.itemPrice] as num?)?.toDouble() ??
+                                  (item[AppDBConst.itemUnitPrice] as num?)?.toDouble() ?? 0.0;
 
+                              if (currentUnitPrice == 0.0 && sumPrice > 0 && qty > 0) {
+                                currentUnitPrice = sumPrice / qty;
+                              }
 
+                              // If item has discounts, restore the original pre-discount price for display
+                              // The summary screen uses itemPrice as the "unit price" shown with strikethrough
+                              if (totalItemDiscount > 0 && qty > 0) {
+                                final double originalUnitPrice = currentUnitPrice + (totalItemDiscount / qty);
+                                newItem[AppDBConst.itemPrice] = originalUnitPrice;
+                                newItem[AppDBConst.itemUnitPrice] = originalUnitPrice;
+                                // item_sum_price must also reflect the pre-discount total so the summary
+                                // screen can subtract discounts from it and show the correct final price
+                                newItem[AppDBConst.itemSumPrice] = originalUnitPrice * qty;
+                              }
 
-                                          if (currentUnitPrice == 0.0 && sumPrice > 0 && qty > 0) {
-                                            currentUnitPrice = sumPrice / qty;
-                                          }
+                              newItem['original_price'] = currentUnitPrice;
+                              newItem['regular_price'] = (item[AppDBConst.itemRegularPrice] as num?)?.toDouble() ?? currentUnitPrice;
 
-                                          // If item has discounts, restore the original pre-discount price for display
-                                          // The summary screen uses itemPrice as the "unit price" shown with strikethrough
-                                          if (totalItemDiscount > 0 && qty > 0) {
-                                            final double originalUnitPrice = currentUnitPrice + (totalItemDiscount / qty);
-                                            newItem[AppDBConst.itemPrice] = originalUnitPrice;
-                                            newItem[AppDBConst.itemUnitPrice] = originalUnitPrice;
-                                            // item_sum_price must also reflect the pre-discount total so the summary
-                                            // screen can subtract discounts from it and show the correct final price
-                                            newItem[AppDBConst.itemSumPrice] = originalUnitPrice * qty;
-                                          }
+                              return newItem;
+                            }).toList();
 
-                                          newItem['original_price'] = currentUnitPrice;
-                                          newItem['regular_price'] = (item[AppDBConst.itemRegularPrice] as num?)?.toDouble() ?? currentUnitPrice;
-
-                                          return newItem;
-                                        }).toList();
-
-                                        print("🔎 AFTER PRICE FIX FOR SUMMARY");
-                                        for (var item in itemsForSummary) {
-                                          print(
-                                              "Name: ${item[AppDBConst.itemName]} | "
-                                                  "Sent Price: ${item[AppDBConst.itemPrice]} | "
-                                                  "Regular: ${item[AppDBConst.itemRegularPrice]} | "
-                                                  "Qty: ${item[AppDBConst.itemCount]}");
+                            print("🔎 AFTER PRICE FIX FOR SUMMARY");
+                            for (var item in itemsForSummary) {
+                              print(
+                                  "Name: ${item[AppDBConst.itemName]} | "
+                                      "Sent Price: ${item[AppDBConst.itemPrice]} | "
+                                      "Regular: ${item[AppDBConst.itemRegularPrice]} | "
+                                      "Qty: ${item[AppDBConst.itemCount]}");
 
 
-                                          print("🚀 NAVIGATING TO ORDER SUMMARY");
-                                          print("   netPayable          : ${netPayable.toStringAsFixed(2)}");
-                                          print("   uiNetPayable        : ${uiNetPayable.toStringAsFixed(2)}");
-                                          print("   grossTotal          : ${grossTotal.toStringAsFixed(2)}");
-                                          print("   orderDiscount       : ${orderDiscount.toStringAsFixed(2)}");
-                                          print("   merchantDiscount    : ${merchantDiscount.toStringAsFixed(2)}");
-                                          print("   orderTax            : ${orderTax.toStringAsFixed(2)}");
-                                          print("   cashbackFee         : ${cashbackFee.toStringAsFixed(2)}");
-                                          print("   uiGrossTotal        : ${uiGrossTotal.toStringAsFixed(2)}");
-                                        }
+                              print("🚀 NAVIGATING TO ORDER SUMMARY");
+                              print("   netPayable          : ${netPayable.toStringAsFixed(2)}");
+                              print("   uiNetPayable        : ${uiNetPayable.toStringAsFixed(2)}");
+                              print("   grossTotal          : ${grossTotal.toStringAsFixed(2)}");
+                              print("   orderDiscount       : ${orderDiscount.toStringAsFixed(2)}");
+                              print("   merchantDiscount    : ${merchantDiscount.toStringAsFixed(2)}");
+                              print("   orderTax            : ${orderTax.toStringAsFixed(2)}");
+                              print("   cashbackFee         : ${cashbackFee.toStringAsFixed(2)}");
+                              print("   uiGrossTotal        : ${uiGrossTotal.toStringAsFixed(2)}");
+                            }
 
-                                        final double redeemValue = ((boxData is Map
-                                            ? boxData["redeemed_value"]   // change key if needed
-                                            : null) ??
-                                            0.0)
-                                            .toDouble();
+                            // Customer display update
+                            try {
+                              final customerDisplayItems = itemsForSummary.map((item) {
+                                final qty = (item[AppDBConst.itemCount] as num?)?.toInt() ?? 1;
+                                final price =
+                                    (item[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
 
-                                        // Customer display update
-                                        try {
-                                          final customerDisplayItems = itemsForSummary.map((item) {
-                                            final qty = (item[AppDBConst.itemCount] as num?)?.toInt() ?? 1;
-                                            final price =
-                                                (item[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
+                                // ── Read all discount variants ──────────────────────────────
+                                final double _autoD =
+                                    (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ??
+                                        (item['auto_discount'] as num?)?.toDouble() ??
+                                        (item['autoDiscount'] as num?)?.toDouble() ??
+                                        (item[AppDBConst.displayAutoDiscount] as num?)?.toDouble() ??
+                                        0.0;
 
-                                            // ── Read all discount variants ──────────────────────────────
-                                            final double _autoD =
-                                                (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ??
-                                                    (item['auto_discount'] as num?)?.toDouble() ??
-                                                    (item['autoDiscount'] as num?)?.toDouble() ??
-                                                    (item[AppDBConst.displayAutoDiscount] as num?)?.toDouble() ??
-                                                    0.0;
+                                final double _comboD =
+                                    (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ??
+                                        (item['combo_discount_total'] as num?)?.toDouble() ??
+                                        (item['comboDiscountTotal'] as num?)?.toDouble() ??
+                                        (item['mixmatch_discount_total'] as num?)?.toDouble() ??
+                                        0.0;
 
-                                            final double _comboD =
-                                                (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ??
-                                                    (item['combo_discount_total'] as num?)?.toDouble() ??
-                                                    (item['comboDiscountTotal'] as num?)?.toDouble() ??
-                                                    (item['mixmatch_discount_total'] as num?)?.toDouble() ??
-                                                    0.0;
+                                final double _multipackD =
+                                    (item[AppDBConst.multipackDiscount] as num?)?.toDouble() ??
+                                        (item['multipack_discount_total'] as num?)?.toDouble() ??
+                                        (item['multipackDiscountTotal'] as num?)?.toDouble() ??
+                                        0.0;
 
-                                            final double _multipackD =
-                                                (item[AppDBConst.multipackDiscount] as num?)?.toDouble() ??
-                                                    (item['multipack_discount_total'] as num?)?.toDouble() ??
-                                                    (item['multipackDiscountTotal'] as num?)?.toDouble() ??
-                                                    0.0;
+                                final String _dtype =
+                                (item['discount_type'] ?? '').toString().toLowerCase();
 
-                                            final String _dtype =
-                                            (item['discount_type'] ?? '').toString().toLowerCase();
+                                // ── Resolve correct discount per type (same logic as summary screen) ──
+                                double _resolvedAuto = 0.0;
+                                double _resolvedCombo = 0.0;
+                                double _resolvedMultipack = 0.0;
 
-                                            // ── Resolve correct discount per type (same logic as summary screen) ──
-                                            double _resolvedAuto = 0.0;
-                                            double _resolvedCombo = 0.0;
-                                            double _resolvedMultipack = 0.0;
+                                if (_dtype == 'multipack') {
+                                  _resolvedMultipack = _multipackD > 0 ? _multipackD : _autoD;
+                                } else if (_dtype == 'combo' || _dtype == 'mixmatch') {
+                                  _resolvedCombo = _comboD > 0 ? _comboD : _autoD;
+                                } else {
+                                  // 'auto' or empty — but also handle when backend puts
+                                  // multipack/combo amount into auto_discount key
+                                  _resolvedAuto = _autoD;
+                                  _resolvedCombo = _comboD;
+                                  _resolvedMultipack = _multipackD;
+                                }
 
-                                            if (_dtype == 'multipack') {
-                                              _resolvedMultipack = _multipackD > 0 ? _multipackD : _autoD;
-                                            } else if (_dtype == 'combo' || _dtype == 'mixmatch') {
-                                              _resolvedCombo = _comboD > 0 ? _comboD : _autoD;
-                                            } else {
-                                              // 'auto' or empty — but also handle when backend puts
-                                              // multipack/combo amount into auto_discount key
-                                              _resolvedAuto = _autoD;
-                                              _resolvedCombo = _comboD;
-                                              _resolvedMultipack = _multipackD;
-                                            }
+                                print("REDEEM VALUE FROM PENDING ORDER = $redeemValue");
+                                print(
+                                  "DISPLAY ITEM => ${item[AppDBConst.itemName]} | Qty: $qty | Price: $price"
+                                      " | auto=$_resolvedAuto | combo=$_resolvedCombo | multi=$_resolvedMultipack | type=$_dtype",
+                                );
 
-                                            print("REDEEM VALUE FROM PENDING ORDER = $redeemValue");
-                                            print(
-                                              "DISPLAY ITEM => ${item[AppDBConst.itemName]} | Qty: $qty | Price: $price"
-                                                  " | auto=$_resolvedAuto | combo=$_resolvedCombo | multi=$_resolvedMultipack | type=$_dtype",
-                                            );
+                                return {
+                                  "name": item[AppDBConst.itemName]?.toString() ?? "",
+                                  "qty": qty,
+                                  "price": price,
+                                  "original_price":
+                                  (item["original_price"] as num?)?.toDouble() ?? price,
+                                  "auto_discount": _resolvedAuto,
+                                  "combo_discount": _resolvedCombo,
+                                  "multipack_discount": _resolvedMultipack,
+                                  "discount_type": _dtype,
+                                  "image": item["image"]?.toString() ?? "",
+                                };
+                              }).toList();
+                              print("======== CUSTOMER DISPLAY ========");
+                              print("Gross Total: $grossTotal");
+                              print("Order Discount: $uiOrderDiscount");
+                              print("Merchant Discount: $merchantDiscount");
+                              print("Tax: $uiOrderTax");
+                              print("Net Payable: $netPayable");
+                              print("==================================");
 
-                                            return {
-                                              "name": item[AppDBConst.itemName]?.toString() ?? "",
-                                              "qty": qty,
-                                              "price": price,
-                                              "original_price":
-                                              (item["original_price"] as num?)?.toDouble() ?? price,
-                                              "auto_discount": _resolvedAuto,
-                                              "combo_discount": _resolvedCombo,
-                                              "multipack_discount": _resolvedMultipack,
-                                              "discount_type": _dtype,
-                                              "image": item["image"]?.toString() ?? "",
-                                            };
-                                          }).toList();
-                                          print("======== CUSTOMER DISPLAY ========");
-                                          print("Gross Total: $grossTotal");
-                                          print("Order Discount: $uiOrderDiscount");
-                                          print("Merchant Discount: $merchantDiscount");
-                                          print("Tax: $uiOrderTax");
-                                          print("Net Payable: $netPayable");
-                                          print("==================================");
+                              CustomerDisplayHelper.skipNextPendingOrderRefresh = true;
 
-                                          CustomerDisplayHelper.skipNextPendingOrderRefresh = true;
+                              if (selectedOrderId != null) {
+                                await CustomerDisplayService.showCustomerData(
+                                  orderId: selectedOrderId,
+                                  items: customerDisplayItems,
+                                  grossTotal: grossTotal.toDouble(),
+                                  discount: uiOrderDiscount.toDouble(),
+                                  merchantDiscount: merchantDiscount.toDouble(),
+                                  tax: uiOrderTax.toDouble(),
+                                  cashbackFee: cashbackFee.toDouble(),
+                                  netPayable: netPayable.toDouble(),
+                                  netTotal: (grossTotal -
+                                      uiOrderDiscount -
+                                      merchantDiscount)
+                                      .toDouble(),
+                                  orderDate: displayDate,
+                                  orderTime: displayTime,
+                                  redeemedAmount: redeemValue,
+                                  summaryEnabled: true,
+                                );
+                              }
+                            } catch (e) {
+                              print(">>> Customer display update failed: $e");
+                            }
+                            // navigation to order summary
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => OrderSummaryScreen(
+                                  orderItems:itemsForSummary,
+                                  // filteredItems, //  ONLY product items
+                                  formattedDate: displayDate,
+                                  formattedTime: displayTime,
+                                  grossTotal: grossTotal.toDouble(),
+                                  // grossTotal: itemRegularPrice,           // Keep your current gross for totals
+                                  // orderDiscount: orderDiscount,
+                                  orderDiscount: uiOrderDiscount,
 
-                                          await CustomerDisplayService.showCustomerData(
-                                            orderId: frozenSummaryOrderId,
-                                            items: customerDisplayItems,
+                                  merchantDiscount:
+                                  merchantDiscount,
+                                  orderTax: uiOrderTax,
+                                  netPayable: netPayable.toDouble(),
 
-                                            // EXACT SAME AS ORDER SUMMARY
-                                            grossTotal: grossTotal.toDouble(),
-                                            discount: uiOrderDiscount.toDouble(),
-                                            merchantDiscount: merchantDiscount.toDouble(),
-                                            tax: uiOrderTax.toDouble(),
-                                            cashbackFee: cashbackFee.toDouble(),
-                                            netPayable: netPayable.toDouble(),
+                                  orderId: selectedOrderId,
 
-                                            // subtotal before final total
-                                            netTotal: (grossTotal -
-                                                uiOrderDiscount -
-                                                merchantDiscount)
-                                                .toDouble(),
+                                  offlineOrderId:
+                                  frozenSummaryOrderId,
+                                  cashbackFee: cashbackFee,
+                                  ebtAmount: ebtAmount,
+                                  discountAmount: discountAmount,
+                                  itemPricesAlreadyAdjusted: true, // ADD THIS — prices fixed in panel, skip double-subtract
 
-                                            orderDate: displayDate,
-                                            orderTime: displayTime,
-                                            loyaltyContact: '',
-                                            redeemedAmount: redeemValue,
-                                            summaryEnabled: true,
-                                          );
-                                        } catch (e) {
-                                          print(">>> Customer display update failed: $e");
-                                        }
-
-                                        final result = await Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => OrderSummaryScreen(
-                                              orderItems:itemsForSummary,
-                                                  // filteredItems, //  ONLY product items
-                                              formattedDate: displayDate,
-                                              formattedTime: displayTime,
-                                              grossTotal: grossTotal.toDouble(),
-                                              // grossTotal: itemRegularPrice,           // Keep your current gross for totals
-                                              // orderDiscount: orderDiscount,
-                                              orderDiscount: uiOrderDiscount,
-
-                                              merchantDiscount:
-                                                  merchantDiscount,
-                                              orderTax: uiOrderTax,
-                                              netPayable: netPayable.toDouble(),
-
-                                              orderId: selectedOrderId,
-
-                                              offlineOrderId:
-                                                  frozenSummaryOrderId,
-                                              cashbackFee: cashbackFee,
-                                              ebtAmount: ebtAmount,
-                                              discountAmount: discountAmount,
-                                              itemPricesAlreadyAdjusted: true, // ADD THIS — prices fixed in panel, skip double-subtract
-
-                                            ),
-                                          ),
-                                        );
-
-                                        if (kDebugMode) {
-                                          print(
-                                              "###### OrderScreenPanel: Returned from OrderSummaryScreen with result: $result");
-                                        }
-                                        // Handle refresh if result is 'refresh'
-                                        if (result == TextConstants.refresh) {
-                                          // Build #1.0.175: added TextConstants
-                                          if (kDebugMode) {
-                                            print(
-                                                "###### OrderScreenPanel: Refresh signal received, reinitializing entire screen");
-                                          }
-
-                                          // Build #1.0.143: Fixed Issue : After return from order summary screen , total order screen not refreshing with updated response
-                                          widget.refreshOrderList?.call();
-                                        }
-                                        setState(
-                                            () => _isPayBtnLoading = false);
-
-                                        ///No need to update here now, may cause empty items added to order
-                                        //     // Assign the subscription to your class variable
-                                        //     _updateOrderSubscription = orderBloc.updateOrderStream.listen((response) async {
-                                        //       if (!mounted) return; // Safety check
-                                        //       if (response.status == Status.LOADING) { // Build #1.0.80
-                                        //         const Center(child: CircularProgressIndicator());
-                                        //       }else if (response.status == Status.COMPLETED) {
-                                        //         if (kDebugMode) {
-                                        //           print("###### updateOrder COMPLETED");
-                                        //         }
-                                        //
-                                        //         setState(() => _isPayBtnLoading = false); // dismiss the loader
-                                        //
-                                        //         Navigator.push(
-                                        //           context,
-                                        //           MaterialPageRoute(builder: (context) => OrderSummaryScreen()),
-                                        //         );
-                                        //       } else if (response.status == Status.ERROR) {
-                                        //         ScaffoldMessenger.of(context).showSnackBar(
-                                        //           SnackBar(content: Text(response.message ?? "Failed to update order")),
-                                        //         );
-                                        //       }
-                                        //     });
-                                        //
-                                        //     // Prepare line items for API
-                                        //     List<OrderLineItem> lineItems = orderItems.map((item) => OrderLineItem(
-                                        //       productId: item[AppDBConst.itemId],
-                                        //       quantity: item[AppDBConst.itemCount],
-                                        //     )).toList();
-                                        //
-                                        //     // Call API
-                                        //     await orderBloc.updateOrderProducts(
-                                        //       dbOrderId: orderHelper.activeOrderId!,
-                                        //       orderId: serverOrderId,
-                                        //       lineItems: lineItems,
-                                        //     );
-                                      }
-                                    }
-                                  : null,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor:
-                                    netPayable >= 0 && orderItems.isNotEmpty
-                                        ? const Color(0xFFFF6B6B)
-                                        : Colors.grey, // Coral red color
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
-                              child:
-                                  _isPayBtnLoading //Build 1.1.36: added loader for pay button in order panel
-                                      ? CircularProgressIndicator(
-                                          color: Colors.white)
-                                      : Text(
-                                          // "${TextConstants.pay} ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
-                                          TextConstants
-                                              .pay, // Build #1.0.175: No need show amount on PAY button in order screen panel
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                            ),
+                            );
+
+                            if (kDebugMode) {
+                              print(
+                                  "###### OrderScreenPanel: Returned from OrderSummaryScreen with result: $result");
+                            }
+                            // Handle refresh if result is 'refresh'
+                            if (result == TextConstants.refresh) {
+                              // Build #1.0.175: added TextConstants
+                              if (kDebugMode) {
+                                print(
+                                    "###### OrderScreenPanel: Refresh signal received, reinitializing entire screen");
+                              }
+
+                              // Build #1.0.143: Fixed Issue : After return from order summary screen , total order screen not refreshing with updated response
+                              widget.refreshOrderList?.call();
+                            }
+                            setState(
+                                    () => _isPayBtnLoading = false);
+
+                            ///No need to update here now, may cause empty items added to order
+                            //     // Assign the subscription to your class variable
+                            //     _updateOrderSubscription = orderBloc.updateOrderStream.listen((response) async {
+                            //       if (!mounted) return; // Safety check
+                            //       if (response.status == Status.LOADING) { // Build #1.0.80
+                            //         const Center(child: CircularProgressIndicator());
+                            //       }else if (response.status == Status.COMPLETED) {
+                            //         if (kDebugMode) {
+                            //           print("###### updateOrder COMPLETED");
+                            //         }
+                            //
+                            //         setState(() => _isPayBtnLoading = false); // dismiss the loader
+                            //
+                            //         Navigator.push(
+                            //           context,
+                            //           MaterialPageRoute(builder: (context) => OrderSummaryScreen()),
+                            //         );
+                            //       } else if (response.status == Status.ERROR) {
+                            //         ScaffoldMessenger.of(context).showSnackBar(
+                            //           SnackBar(content: Text(response.message ?? "Failed to update order")),
+                            //         );
+                            //       }
+                            //     });
+                            //
+                            //     // Prepare line items for API
+                            //     List<OrderLineItem> lineItems = orderItems.map((item) => OrderLineItem(
+                            //       productId: item[AppDBConst.itemId],
+                            //       quantity: item[AppDBConst.itemCount],
+                            //     )).toList();
+                            //
+                            //     // Call API
+                            //     await orderBloc.updateOrderProducts(
+                            //       dbOrderId: orderHelper.activeOrderId!,
+                            //       orderId: serverOrderId,
+                            //       lineItems: lineItems,
+                            //     );
+                          }
+                        }
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                          netPayable >= 0 && orderItems.isNotEmpty
+                              ? const Color(0xFFFF6B6B)
+                              : Colors.grey, // Coral red color
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child:
+                        _isPayBtnLoading //Build 1.1.36: added loader for pay button in order panel
+                            ? CircularProgressIndicator(
+                            color: Colors.white)
+                            : Text(
+                          // "${TextConstants.pay} ${TextConstants.currencySymbol}${netPayable.toStringAsFixed(2)}",
+                          TextConstants
+                              .pay, // Build #1.0.175: No need show amount on PAY button in order screen panel
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
                     )
                   else
                     SizedBox(),
