@@ -1828,11 +1828,8 @@ class MainActivity : FlutterActivity() {
                 val comboDiscount = (item["combo_discount"] as? Number)?.toDouble() ?: 0.0
                 val multipackDiscount = (item["multipack_discount"] as? Number)?.toDouble() ?: 0.0
 
-                val discountValue =
-                    (item["auto_discount"] as? Number)?.toDouble() ?: 0.0
-
-                val discountType =
-                    (item["discount_type"] as? String)?.trim() ?: ""
+                val autoDiscount = (item["auto_discount"] as? Number)?.toDouble() ?: 0.0
+                val discountType = (item["discount_type"] as? String)?.trim()?.lowercase() ?: ""
 
                 val discountValue: Double = when {
                     discountType.contains("multipack") ->

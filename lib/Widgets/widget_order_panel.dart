@@ -3428,6 +3428,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final int customLen = customItems.length;
     final int payoutsLen = payouts.length;
     final bool useIndex = itemIndex != null && itemIndex >= 0;
+    final Map<int, double> _hiveTaxRateByProductId = {};
+    final Map<int, String> _hiveTaxStatusByProductId = {};
 
     // 🟦 DELETE PAYOUT
     if (itemType == 'payout') {
@@ -3726,9 +3728,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
 
       if (!itemType.contains('custom')) {
-        const double defaultNonEbtTaxRate = 9.1;
+        // const double defaultNonEbtTaxRate = 9.1;
+        // final int productId =
+        //     int.tryParse((p['product_id'] ?? p['id'])?.toString() ?? '0') ?? 0;
         final int productId =
             int.tryParse((p['product_id'] ?? p['id'])?.toString() ?? '0') ?? 0;
+
+        final double defaultNonEbtTaxRate =_hiveTaxRateByProductId[productId] ?? 0.0;
         final bool isEbt = p['is_ebt_eligible'] == true;
         final lineTaxStatus =
         (p['tax_status'] ?? 'taxable').toString().toLowerCase();
@@ -3746,7 +3752,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           }
           orderTax += fallbackTax;
         }
-      } else {
+      }
+      else {
         orderTax += getCustomItemTax(
           taxClass: p['tax_class'] ?? '',
           unitPrice: price,
@@ -4288,14 +4295,34 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     double orderTax = 0.0;
     int totalItems = 0;
 
+// Build a quick lookup: productId → tax_rate from the offline order's products list
+// This is the fix: when orderItems doesn't carry tax_rate, we fall back to this map
+    final Map<int, double> _hiveTaxRateByProductId = {};
+    final Map<int, String> _hiveTaxStatusByProductId = {};
+
+    if (rawOfflineOrder != null) {
+      final hiveProducts = (rawOfflineOrder['products'] as List?) ?? [];
+      for (final p in hiveProducts) {
+        final int pid = int.tryParse(
+            (p['product_id'] ?? p['id'] ?? '0').toString()) ??
+            0;
+        if (pid <= 0) continue;
+        final double rate =
+            double.tryParse(p['tax_rate']?.toString() ?? '0') ?? 0.0;
+        final String status =
+        (p['tax_status'] ?? 'taxable').toString().toLowerCase();
+        if (rate > 0) _hiveTaxRateByProductId[pid] = rate;
+        _hiveTaxStatusByProductId[pid] = status;
+      }
+    }
+
     for (final item in orderItems) {
       final itemType = (item['item_type'] ?? '').toString().toLowerCase();
 
-      // FIX: Skip merchant discount line items — already handled via merchantDiscount from Hive
-      // Prevents double-subtraction: once via negative price in grossTotal, once via merchantDiscount in netTotal
+      // Skip merchant discount line items to prevent double-subtraction
       if (itemType == 'discount') continue;
 
-      final qty = (item['items_count'] ?? 1) as int;
+      final qty = ((item['items_count'] ?? 1) as num).toInt();
       final price = ((item['item_price'] ?? 0) as num).toDouble();
       final itemTotal = price * qty;
       grossTotal += itemTotal;
@@ -4305,75 +4332,66 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       final bool isCashback = itemType.contains('cashback');
       final bool isCoupon = itemType.contains('coupon');
 
-      final double taxRate = double.tryParse(
-          item['tax_rate']?.toString() ??
-              item['tax_Rate']?.toString() ??
-              '0') ??
-          0.0;
-      // final double taxRate = double.tryParse(
-      //     item['tax_rate']?.toString() ??
-      //         item['tax_Rate']?.toString() ??
-      //         '0') ??
-      //     0.0;
-      double itemTax = taxRate > 0
-          ? roundTaxHalfUp(((price * taxRate) / 100) * qty)
-          : 0.0;
+      if (isPayout || isCashback || isCoupon) continue;
 
-      if (!isPayout && !isCashback && !isCoupon) {
-        // First try the stored item_tax
-        itemTax = ((item['item_tax'] ?? 0) as num).toDouble();
+      double itemTax = 0.0;
 
-        // If item_tax is zero/missing, compute it
-        if (itemTax <= 0) {
-          final bool isEbt = item['is_ebt_eligible'] == true;
-          final int productId =
-              int.tryParse((item['product_id'] ?? 0).toString()) ?? 0;
+      // Step 1: use stored item_tax if available and non-zero
+      itemTax = ((item['item_tax'] ?? 0) as num).toDouble();
 
-          final String taxClass =
-          (item['tax_class'] ?? '').toString();
+      if (itemTax <= 0) {
+        final bool isEbt = item['is_ebt_eligible'] == true;
+        final int productId =
+            int.tryParse((item['product_id'] ?? 0).toString()) ?? 0;
 
-          final double taxRate = double.tryParse(
-              (item['tax_rate'] ?? item['tax_Rate'] ?? '0').toString()) ??
-              0.0;
+        // Step 2: resolve tax_rate — prefer item field, fall back to Hive product list
+        double resolvedTaxRate = double.tryParse(
+            (item['tax_rate'] ?? item['tax_Rate'] ?? '0').toString()) ??
+            0.0;
 
-          final String lineTaxStatus =
-          (item['tax_status'] ?? 'taxable')
-              .toString()
-              .toLowerCase();
+        // KEY FIX: if item didn't carry tax_rate, get it from the Hive product map
+        if (resolvedTaxRate <= 0 && productId > 0) {
+          resolvedTaxRate = _hiveTaxRateByProductId[productId] ?? 0.0;
+        }
 
-          const double defaultNonEbtTaxRate = 9.1;
+        final String lineTaxStatus =
+        (item['tax_status'] ?? _hiveTaxStatusByProductId[productId] ?? 'taxable')
+            .toString()
+            .toLowerCase();
+        debugPrint("============== ITEM TAX DEBUG ==============");
+        debugPrint("Item Name: ${item['item_name']}");
+        debugPrint("Product ID: $productId");
+        debugPrint("Qty: $qty");
+        debugPrint("Price: $price");
+        debugPrint("Tax Status: $lineTaxStatus");
+        // debugPrint("Tax Class: $taxClass");
+        debugPrint("tax_rate fielllllld = ${item['tax_rate']}");
+        debugPrint("lineTaxRate = $lineTaxStatus");
+        debugPrint("item_tax field = ${item['item_tax']}");
 
-          if (isEbt) {
-            itemTax = 0.0;
-          } else if (itemType.contains('custom')) {
-            if (taxRate > 0) {
-              itemTax =
-                  roundTaxHalfUp(((price * taxRate) / 100) * qty);
-            }
-          } else if (productId > 0) {
-            final lineTaxRate =
-                double.tryParse((item['tax_rate'] ?? '0').toString()) ??
-                    0.0;
-
-            if (lineTaxStatus == 'taxable' && lineTaxRate > 0) {
-              itemTax = ((price * qty) * lineTaxRate) / 100;
-            } else {
-              itemTax = getProductTaxFromHive(productId, price, qty);
-
-              if (itemTax <= 0 && lineTaxStatus != 'none') {
-                itemTax =
-                    ((price * qty) * defaultNonEbtTaxRate) / 100;
-              }
+        if (isEbt) {
+          itemTax = 0.0;
+        } else if (itemType.contains('custom')) {
+          if (resolvedTaxRate > 0) {
+            itemTax = roundTaxHalfUp(((price * resolvedTaxRate) / 100) * qty);
+          }
+        } else if (productId > 0) {
+          if (lineTaxStatus == 'taxable' && resolvedTaxRate > 0) {
+            // Use the resolved rate (from item or Hive fallback)
+            itemTax = roundTaxHalfUp(((price * qty) * resolvedTaxRate) / 100);
+          } else if (lineTaxStatus != 'none') {
+            // Last resort: Isar all_products_list lookup
+            itemTax = getProductTaxFromHive(productId, price, qty);
+            // If still zero, use resolved rate as emergency fallback
+            if (itemTax <= 0 && resolvedTaxRate > 0) {
+              itemTax = roundTaxHalfUp(((price * qty) * resolvedTaxRate) / 100);
             }
           }
         }
-
-        orderTax += itemTax;
       }
 
+      orderTax += itemTax;
     }
-
-
     final double netTotal = grossTotal - orderDiscount - merchantDiscount;
     final double netPayable = netTotal + orderTax + cashbackFee;
 
@@ -5871,8 +5889,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                   final String wTaxStatus = (item['tax_status'] ?? 'taxable').toString().toLowerCase();
                                   final double wTaxRate = double.tryParse(
                                       (item['tax_rate'] ?? item['tax_Rate'] ?? '0').toString()) ?? 0.0;
-                                  const double defaultNonEbtTaxRate = 9.1;
+                                  // const double defaultNonEbtTaxRate = 9.1;
+                                  double defaultNonEbtTaxRate = 0.0;
 
+                                  if (wProductId > 0) {
+                                    defaultNonEbtTaxRate =
+                                        _hiveTaxRateByProductId[wProductId] ?? 0.0;
+                                  }
                                   if (wIsEbt) {
                                     seededTax = 0.0;
                                   } else if (wItemType.contains('custom')) {
@@ -5926,7 +5949,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               if (productId > 0) {
                                 final bool isEbt =
                                     item['is_ebt_eligible'] == true;
-                                const double defaultNonEbtTaxRate = 9.1;
+                                // const double defaultNonEbtTaxRate = 9.1;
+                                final double defaultNonEbtTaxRate =
+                                    _hiveTaxRateByProductId[productId] ?? 0.0;
                                 final lineTaxStatus =
                                 (item['tax_status'] ?? 'taxable')
                                     .toString()
@@ -5948,8 +5973,18 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                   if (itemTax <= 0 && lineTaxStatus != 'none') {
                                     // Fallback to seeded item_tax from panel totals
                                     itemTax = (item['item_tax'] as num?)?.toDouble() ?? 0.0;
+
                                     if (itemTax <= 0) {
-                                      const double defaultNonEbtTaxRate = 9.1;
+                                      final int productId =
+                                          int.tryParse((item['product_id'] ?? 0).toString()) ?? 0;
+
+                                      final double defaultNonEbtTaxRate =
+                                          _hiveTaxRateByProductId[productId] ?? 0.0;
+
+                                      debugPrint(
+                                          "⚠️ Using product tax rate fallback: $defaultNonEbtTaxRate");
+                                      // const double defaultNonEbtTaxRate = 9.1;
+
                                       itemTax = ((discountedUnitPrice * qty) * defaultNonEbtTaxRate) / 100;
                                     }
                                   }
