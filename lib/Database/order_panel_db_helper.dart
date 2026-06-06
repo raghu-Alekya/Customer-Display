@@ -122,16 +122,17 @@ class OrderHelper {
     loadData(); // Load existing order data on initialization
   }
 
-  double getCurrentMerchantDiscount(Map<String, dynamic> order) {
-    final products = (order['products'] as List?) ?? [];
-
-    double currentGross = 0.0;
-    for (var p in products) {
-      final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
-      final qty = int.tryParse(p['quantity']?.toString() ?? '1') ?? 1;
-      currentGross += price * qty;
+  double getCurrentMerchantDiscount(Map<String, dynamic> order,
+      {double? grossTotal, double? orderDiscount, double? orderTax}) {
+    double currentGross = grossTotal ?? 0.0;
+    if (grossTotal == null) {
+      final products = (order['products'] as List?) ?? [];
+      for (var p in products) {
+        final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+        final qty = int.tryParse(p['quantity']?.toString() ?? '1') ?? 1;
+        currentGross += price * qty;
+      }
     }
-
     final type = order['merchantDiscountType']?.toString() ?? 'fixed';
     final perc = double.tryParse(
             order['merchantDiscountPercentage']?.toString() ?? '0') ??
@@ -139,9 +140,11 @@ class OrderHelper {
     final fixed =
         double.tryParse(order['merchantDiscountFixed']?.toString() ?? '0') ??
             0.0;
-
     if (type == 'percentage' && perc > 0) {
-      return (currentGross * perc) / 100.0;
+      double discVal =
+          orderDiscount ?? (order['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+      double base = currentGross - discVal;
+      return (base * perc) / 100.0;
     } else {
       return fixed;
     }
@@ -333,12 +336,35 @@ class OrderHelper {
     double cbFee = (order['cashbackFee'] as num?)?.toDouble() ?? 0.0;
     if (cashbacks.isEmpty) cbFee = 0.0;
 
-    grossTotal += payoutTotal + cashbackTotal;
+   grossTotal += payoutTotal + cashbackTotal;
 
     double orderDiscount = (order['orderDiscount'] as num?)?.toDouble() ?? 0.0;
-    double merchantDiscount = getCurrentMerchantDiscount(order);
+    double merchantDiscount = getCurrentMerchantDiscount(order,
+        grossTotal: grossTotal,
+        orderDiscount: orderDiscount,
+        orderTax: orderTax);
     print("🟢 merchant discount: $merchantDiscount");
 
+    final String mdType = order['merchantDiscountType']?.toString() ?? 'fixed';
+    final double mdPerc = double.tryParse(
+            order['merchantDiscountPercentage']?.toString() ?? '0') ??
+        0.0;
+
+    double calculatedPerc = 0.0;
+    if (mdType == 'percentage' && mdPerc > 0) {
+      calculatedPerc = mdPerc;
+    } else if (mdType == 'fixed' && merchantDiscount.abs() > 0) {
+      double base = grossTotal - orderDiscount;
+      if (base > 0) {
+        calculatedPerc = (merchantDiscount.abs() / base) * 100.0;
+      }
+    }
+
+    if (calculatedPerc > 0) {
+      orderTax = orderTax * (1 - calculatedPerc / 100.0);
+      orderTax = roundTaxHalfUp(orderTax);
+    }
+//////
     double netTotal = grossTotal - orderDiscount - merchantDiscount;
     double netPayable = netTotal + orderTax + cbFee;
 
@@ -3176,42 +3202,4 @@ class OrderHelper {
     }
   }
 
-// If using a StatefulWidget
-// Future<void> updateItemQuantity(int itemId, int quantity) async {
-//   final db = await DBHelper.instance.database;
-//
-//   // Calculate the new sum price based on the updated quantity
-//   final item = await db.query(
-//     AppDBConst.purchasedItemsTable,
-//     where: '${AppDBConst.itemId} = ?',
-//     whereArgs: [itemId],
-//   );
-//
-//   if (item.isNotEmpty) {
-//     double price = (item.first[AppDBConst.itemPrice] as num).toDouble();
-//     double newSumPrice = price * quantity;
-//
-//     await db.update(
-//         AppDBConst.purchasedItemsTable,
-//         {
-//           AppDBConst.itemCount: quantity,
-//           AppDBConst.itemSumPrice: newSumPrice
-//         },
-//         where: '${AppDBConst.itemId} = ?',
-//         whereArgs: [itemId]
-//     );
-//
-//     if (kDebugMode) {
-//       print('#### Item quantity updated: ID=$itemId, Quantity=$quantity');
-//     }
-//
-//     // After database update, refresh the UI
-//     // setState(() {
-//     //   // If needed, update any widget state variables here
-//     // });
-//
-//     // Or if using a provider
-//     // Provider.of<YourProvider>(context, listen: false).refreshItems();
-//   }
-// }
 }

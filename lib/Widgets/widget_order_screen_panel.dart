@@ -6,6 +6,7 @@ import 'package:flutter/material.dart' hide MetaData;
 import 'package:flutter/services.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:pinaka_pos/Helper/Extentions/extensions.dart';
+import 'package:pinaka_pos/Helper/Extentions/money_rounding_helper.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:thermal_printer/esc_pos_utils_platform/esc_pos_utils_platform.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
@@ -1846,7 +1847,36 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     if (isPayoutOrCashbackOnlyOrder) {
       orderTax = 0.0;
     }
+////
 
+// Recalculate percentage-based merchant discount w.r.t grossTotal
+    final String mdType = order['merchantDiscountType']?.toString() ?? 'fixed';
+    final double mdPerc = double.tryParse(order['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
+    
+    double calculatedPerc = 0.0;
+    if (mdType == 'percentage' && mdPerc > 0) {
+      calculatedPerc = mdPerc;
+      double base = grossTotal - orderDiscount.abs();
+      if (base > 0) {
+        merchantDiscount = -(base * mdPerc / 100.0);
+      } else {
+        merchantDiscount = 0.0;
+      }
+    } else if (mdType == 'fixed' && merchantDiscount.abs() > 0) {
+      double base = grossTotal - orderDiscount.abs();
+      if (base > 0) {
+        calculatedPerc = (merchantDiscount.abs() / base) * 100.0;
+      }
+    }
+
+    if (order['offline'] != true && calculatedPerc > 0) {
+      orderTax = orderTax * (1 - calculatedPerc / 100.0);
+      orderTax = roundTaxHalfUp(orderTax);
+    }
+
+
+
+///
     // ----------- ONLINE TOTAL COMPUTATION -----------
     // NET TOTAL (no tax)
     // Algebraic addition: grossTotal + orderDiscount + merchantDiscount

@@ -6,8 +6,24 @@ allprojects {
     }
 }
 
-subprojects {
-    if (it.name != 'app') {
+subprojects { project ->
+    if (project.name != 'app') {
+        project.afterEvaluate {
+            if (project.hasProperty('android')) {
+                project.android {
+                    if (namespace == null) {
+                        namespace project.group.toString().isEmpty() ? "com.example.${project.name}" : project.group
+                    }
+                    compileSdkVersion 35
+                    println "Configured subproject :${project.name} with compileSdkVersion 35 and namespace ${namespace}"
+                }
+            }
+        }
+    }
+}
+
+subprojects { project ->
+    if (project.name != 'app') {
         evaluationDependsOn(':app')
     }
 }
