@@ -6862,12 +6862,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                         //       ? '-${TextConstants.currencySymbol}${NetTotal.abs().toStringAsFixed(2)}'
                                         //       : '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
                                         // ),
-
+                                      
                                         _buildOrderCalculation(
                                           TextConstants.NetTotal,
-                                          (grossTotal - discount) < 0
-                                              ? '-${TextConstants.currencySymbol}${(grossTotal - discount).abs().toStringAsFixed(2)}'
-                                              : '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}',
+                                          //(grossTotal - discount) < 0
+                                             NetTotal < 0
+                                              // ? '-${TextConstants.currencySymbol}${(grossTotal - discount).abs().toStringAsFixed(2)}'
+                                              // : '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}',
+                                              ? '-${TextConstants.currencySymbol}${NetTotal.abs().toStringAsFixed(2)}'
+                                              : '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
                                         ),
                                         //Raghu--**
                                         if (merchantDiscount < 0)
