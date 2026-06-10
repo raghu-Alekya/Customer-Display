@@ -106,26 +106,18 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
   }
 
   Future<void> _onFetchProductsForCategory(
-    FetchProductsForCategory event,
-    Emitter<ProductState> emit,
-  ) async {
-    final requestId = ++_latestCategoryRequestId;
+      FetchProductsForCategory event,
+      Emitter<ProductState> emit,
+      ) async {
 
-    // clear old items immediately + show loader
-    emit(const ProductLoading());
+    emit(ProductLoading());
 
     try {
-      final products = await _repository.getProductsByCategory(
-        event.categoryId,
-      );
-
-      // ignore old response
-      if (requestId != _latestCategoryRequestId) return;
+      final products =
+      await _repository.getProductsByCategory(event.categoryId);
 
       emit(ProductLoaded(products));
     } catch (e) {
-      if (requestId != _latestCategoryRequestId) return;
-
       emit(ProductError(e.toString()));
     }
   }

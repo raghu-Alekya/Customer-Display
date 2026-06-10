@@ -724,18 +724,22 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                 //       .read<ProductBloc>()
                 //       .add(FetchProductsForCategory(c.id));
                 // },
-                onTap: () {
-                  setState(() {
-                    selectedCategory = index;
-                    selectedSubcategory = -1;
-                    selectedSubcategoryId = null;
-                  });
+                  onTap: () {
+                    setState(() {
+                      selectedCategory = index;
+                      selectedSubcategory = -1;
+                      selectedSubcategoryId = null;
+                    });
 
-                  // Load subcategories only
-                  context.read<SubcategoryBloc>().add(
-                    FetchSubcategories(c.id),
-                  );
-                },
+                    // Clear old products
+                    context.read<ProductBloc>().add(
+                      ClearProducts(),
+                    );
+
+                    context.read<SubcategoryBloc>().add(
+                      FetchSubcategories(c.id),
+                    );
+                  },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                   decoration: BoxDecoration(
