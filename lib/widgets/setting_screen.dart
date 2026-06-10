@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:keyos_app/widgets/printer_settings_screen.dart';
+import 'package:kiosk/widgets/printer_settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsScreen extends StatefulWidget {

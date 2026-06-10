@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:keyos_app/widgets/kiosk_header_widgets.dart';
+import 'package:kiosk/widgets/kiosk_header_widgets.dart';
 
 class UpiMethodScreen extends StatelessWidget {
   final String orderType;

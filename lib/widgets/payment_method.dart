@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:keyos_app/cart_manger.dart';
-import 'package:keyos_app/repository/order_repository.dart';
-import 'package:keyos_app/widgets/kiosk_header_widgets.dart';
-import 'package:keyos_app/widgets/upi_method.dart';
+import 'package:kiosk/cart_manger.dart';
+import 'package:kiosk/repository/order_repository.dart';
+import 'package:kiosk/widgets/kiosk_header_widgets.dart';
+import 'package:kiosk/widgets/upi_method.dart';
 
 import 'card_method.dart';
 import 'cash_method.dart';

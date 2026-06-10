@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:keyos_app/widgets/kiosk_header_widgets.dart';
-import 'package:keyos_app/widgets/payment_method.dart';
+import 'package:kiosk/widgets/kiosk_header_widgets.dart';
+// import 'package:kiosk/_app/widgets/payment_method.dart';
+import 'package:kiosk/widgets/payment_method.dart';
 import 'cart_manger.dart';
 import 'customize_screen.dart';
 import 'model/addon_model.dart';

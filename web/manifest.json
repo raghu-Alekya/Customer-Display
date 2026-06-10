@@ -1,6 +1,6 @@
 {
-    "name": "keyos_app",
-    "short_name": "keyos_app",
+    "name": "kiosk_app",
+    "short_name": "kiosk_app",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

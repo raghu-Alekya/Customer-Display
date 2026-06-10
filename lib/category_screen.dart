@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'package:keyos_app/repository/addon_repository.dart';
-import 'package:keyos_app/widgets/search.dart';
+import 'package:kiosk/repository/addon_repository.dart';
+import 'package:kiosk/widgets/search.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'Homescreen.dart';
@@ -20,8 +20,8 @@ import 'customize_screen.dart';
 import 'model/category_model.dart';
 import 'model/product model.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:keyos_app/widgets/kiosk_header_widgets.dart';
-import 'package:keyos_app/widgets/kiosk_loading.dart';
+import 'package:kiosk/widgets/kiosk_header_widgets.dart';
+import 'package:kiosk/widgets/kiosk_loading.dart';
 
 class FoodUiScreen extends StatefulWidget {
   final String orderType;
@@ -730,11 +730,8 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                     selectedSubcategory = -1;
                     selectedSubcategoryId = null;
                   });
-                  //** Raghu modified the code to load the select cat. items() */
-                  // ✅ Clear old products and show loader immediately
-                  context.read<ProductBloc>().add(const SetProductLoading());
 
-                  // ✅ Only load subcategories
+                  // Load subcategories only
                   context.read<SubcategoryBloc>().add(
                     FetchSubcategories(c.id),
                   );
@@ -811,6 +808,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
   }
 
   Widget _foodGrid() {
+    print("🔥 FoodGrid Rebuild");
     return BlocBuilder<ProductBloc, ProductState>(
       builder: (context, state) {
         // Initial empty state
@@ -884,6 +882,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
   }
 
   Widget _productCard(ProductModel item) {
+    print("🔥 Product Card ${item.name}");
     final Color typeColor = item.isVeg == true
         ? Colors.green
         : item.isVeg == false
@@ -1009,21 +1008,18 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
           color: const Color(0xFFF2F4F7),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: const Icon(Icons.fastfood_rounded, size: 26, color: Colors.black54),
+        child: const Icon(
+          Icons.fastfood_rounded,
+          size: 26,
+          color: Colors.black54,
+        ),
       );
     }
-    // 🔹 Debug: check if this URL is already cached
-    () async {
-      final fileInfo =
-          await DefaultCacheManager().getFileFromCache(imageUrl);
-      final fromCache = fileInfo != null;
-      print('Product image [$imageUrl] cached before build? $fromCache');
-    }();
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: CachedNetworkImage(
-        imageUrl: imageUrl,       // <-- use imageUrl here
+        imageUrl: imageUrl,
         height: _productImageSize,
         width: _productImageSize,
         fit: BoxFit.cover,
@@ -1040,7 +1036,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
           width: _productImageSize,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: Color(0xFFF2F4F7),
+            color: const Color(0xFFF2F4F7),
             borderRadius: BorderRadius.circular(10),
           ),
           child: const Icon(

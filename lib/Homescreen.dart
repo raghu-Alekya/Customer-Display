@@ -2,8 +2,8 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:keyos_app/widgets/printer_settings_screen.dart';
-import 'package:keyos_app/widgets/setting_screen.dart';
+import 'package:kiosk/widgets/printer_settings_screen.dart';
+import 'package:kiosk/widgets/setting_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'bloc/promotion_bloc.dart';

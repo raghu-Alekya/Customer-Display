@@ -2,12 +2,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
-import 'package:keyos_app/repository/category_data_resource.dart';
-import 'package:keyos_app/repository/product_data_resource.dart';
-import 'package:keyos_app/repository/user_login_repository.dart';
-import 'package:keyos_app/repository/promotion_repository.dart';
-import 'package:keyos_app/repository/store_details_repository.dart';
-import 'package:keyos_app/widgets/kiosk_frame.dart';
+import 'package:kiosk/repository/category_data_resource.dart';
+import 'package:kiosk/repository/product_data_resource.dart';
+import 'package:kiosk/repository/user_login_repository.dart';
+import 'package:kiosk/repository/promotion_repository.dart';
+import 'package:kiosk/repository/store_details_repository.dart';
+import 'package:kiosk/widgets/kiosk_frame.dart';
 
 import 'bloc/category_bloc.dart';
 import 'bloc/product_bloc.dart';

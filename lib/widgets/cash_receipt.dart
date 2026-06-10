@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:keyos_app/cart_manger.dart';
-import 'package:keyos_app/Homescreen.dart';
+import 'package:kiosk/cart_manger.dart';
+import 'package:kiosk/Homescreen.dart';
 
 class PrintReceiptScreen extends StatelessWidget {
   final double total;

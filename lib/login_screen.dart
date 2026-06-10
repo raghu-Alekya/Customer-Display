@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:keyos_app/repository/login_repository.dart';
-import 'package:keyos_app/user_login.dart';
+import 'package:kiosk/repository/login_repository.dart';
+import 'package:kiosk/user_login.dart';
 
 import '../splashscreen.dart';
 import 'bloc/login_bloc.dart';

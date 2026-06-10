@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:keyos_app/widgets/kiosk_header_widgets.dart';
+import 'package:kiosk/widgets/kiosk_header_widgets.dart';
 
 import 'cart_manger.dart';
 import 'model/addon_model.dart';
