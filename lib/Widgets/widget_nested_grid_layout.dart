@@ -598,6 +598,69 @@ class NestedGridWidget extends StatelessWidget {
 
 
                             //  PRODUCE (WEIGHED ITEMS) HANDLING
+                            // final bool hasProduceTag = tags.any((t) {
+                            //   final slug = (t["slug"] ?? "").toString().toLowerCase();
+                            //   final name = (t["name"] ?? "").toString().toLowerCase();
+                            //   return slug.contains("produce") || name.contains("produce");
+                            // });
+                            //
+                            // if (hasProduceTag) {
+                            //   print(" Produce product detected → Showing AutoWeightPriceDialog");
+                            //
+                            //   // Show AutoWeightPriceDialog
+                            //   final result = await showDialog(
+                            //     context: context,
+                            //     barrierDismissible: false,
+                            //     builder: (_) => AutoWeightPriceDialog(
+                            //       productName: productName,
+                            //       unitPrice: productPrice,
+                            //     ),
+                            //   );
+                            //
+                            //   if (result == null) {
+                            //     print(" Auto weight cancelled");
+                            //     return;
+                            //   }
+                            //
+                            //   final double finalPrice = result["finalPrice"];
+                            //   final double weight = result["weight"];
+                            //
+                            //   print(" Weight: ${weight}kg, Final Price: ₹$finalPrice");
+                            //
+                            //   await orderHelper.addItemToOrder(
+                            //     null,
+                            //     productName,
+                            //     productImage,
+                            //     finalPrice,
+                            //     1, // quantity is 1 since weight determines the amount
+                            //     productSku,
+                            //     activeOrderId,
+                            //     type: 'weighted', // Use a special type for weighed items
+                            //     weightQty: weight,
+                            //     productId: productId,
+                            //     variationId: -1,
+                            //     salesPrice: finalPrice,
+                            //     regularPrice: productPrice,
+                            //     unitPrice: productPrice,
+                            //     isEbtEligible: isEbtEligible,
+                            //     // You might want to store weight info in metadata
+                            //     // metaData: {
+                            //     //   'weight': weight,
+                            //     //   'unit': 'kg',
+                            //     // },
+                            //     onItemAdded: () async {
+                            //       print(" Weighted product added successfully!");
+                            //       onItemTapped(index, variantAdded: false);
+                            //     },
+                            //   );
+                            //
+                            //   return; //  IMPORTANT: Stop further processing
+                            // }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRODUCE / WEIGHTED ITEM — Use LIVE scale weight + Clear after add
+// ─────────────────────────────────────────────────────────────────────────────
                             final bool hasProduceTag = tags.any((t) {
                               final slug = (t["slug"] ?? "").toString().toLowerCase();
                               final name = (t["name"] ?? "").toString().toLowerCase();
@@ -605,56 +668,57 @@ class NestedGridWidget extends StatelessWidget {
                             });
 
                             if (hasProduceTag) {
-                              print(" Produce product detected → Showing AutoWeightPriceDialog");
+                              final weightProvider = Provider.of<WeightProvider>(context, listen: false);
 
-                              // Show AutoWeightPriceDialog
-                              final result = await showDialog(
-                                context: context,
-                                barrierDismissible: false,
-                                builder: (_) => AutoWeightPriceDialog(
-                                  productName: productName,
-                                  unitPrice: productPrice,
-                                ),
-                              );
+                              // Parse current weight from display text
+                              double liveWeight = 0.0;
+                              try {
+                                final parts = weightProvider.weightText.trim().split(' ');
+                                if (parts.isNotEmpty) {
+                                  liveWeight = double.tryParse(parts[0]) ?? 0.0;
+                                }
+                              } catch (_) {}
 
-                              if (result == null) {
-                                print(" Auto weight cancelled");
-                                return;
-                              }
+                              // Convert lb to kg (adjust if your scale uses different unit)
+                              final double weightKg = liveWeight > 0 ? liveWeight * 0.453592 : 0.0;
 
-                              final double finalPrice = result["finalPrice"];
-                              final double weight = result["weight"];
+                              // Fallback
+                              final double weightToUse = weightKg > 0.00001 ? weightKg : 0.0001;
 
-                              print(" Weight: ${weight}kg, Final Price: ₹$finalPrice");
+                              final double finalPrice = productPrice * weightToUse;
 
+                              // if (weightKg <= 0.0001 && mounted) {
+                              //   ScaffoldMessenger.of(context).showSnackBar(
+                              //     const SnackBar(
+                              //       content: Text('Scale not detected — using 100g default'),
+                              //       duration: Duration(seconds: 2),
+                              //     ),
+                              //   );
+                              // }
+
+                              // Add the item
                               await orderHelper.addItemToOrder(
                                 null,
                                 productName,
                                 productImage,
                                 finalPrice,
-                                1, // quantity is 1 since weight determines the amount
+                                1,
                                 productSku,
                                 activeOrderId,
-                                type: 'weighted', // Use a special type for weighed items
-                                weightQty: weight,
+                                type: 'weighted',
+                                weightQty: weightToUse,
                                 productId: productId,
                                 variationId: -1,
                                 salesPrice: finalPrice,
                                 regularPrice: productPrice,
                                 unitPrice: productPrice,
                                 isEbtEligible: isEbtEligible,
-                                // You might want to store weight info in metadata
-                                // metaData: {
-                                //   'weight': weight,
-                                //   'unit': 'kg',
-                                // },
-                                onItemAdded: () async {
-                                  print(" Weighted product added successfully!");
-                                  onItemTapped(index, variantAdded: false);
-                                },
+                                  onItemAdded: () async {
+                                          print(" Weighted product added successfully!");
+                                          onItemTapped(index, variantAdded: false);
+                                        },
                               );
-
-                              return; //  IMPORTANT: Stop further processing
+                              return;
                             }
 
 

@@ -93,6 +93,10 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   // ── PRODUCT META CACHE ─────────────────────────────────────────────────────
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
 
+
+// ── FASTKEY ITEMS IN-MEMORY CACHE (Prevents repeated DB/API calls) ────────
+  static final Map<int, List<Map<String, dynamic>>> _fastKeyItemsCache = {};
+
   // ── SESSION-LEVEL API SEARCH CACHE (mirrors TopBar._apiSearchCache) ────────
   static final Map<String, List<Map<String, dynamic>>> _fastKeyApiSearchCache = {};
 
@@ -511,6 +515,9 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       }
     });
 
+    // ✅ CLEAR CACHE for deleted tab
+    _clearFastKeyCache(tabId: fastKeyTabServerId);
+
     if (nextActiveTabId != null) {
       fastKeyTabIdNotifier.value = nextActiveTabId;
       await fastKeyDBHelper.saveActiveFastKeyTab(nextActiveTabId);
@@ -600,20 +607,30 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   }
 
   Future<void> _loadFastKeyTabItems() async {
-    if (kDebugMode) {
-      print("FastKey Screen _loadFastKeyTabItems $_fastKeyTabId");
+    if (_fastKeyTabId == null) {
+      setState(() => isItemsLoading = false);
+      return;
     }
 
-    if (_fastKeyTabId == null) {
-      setState(() {
-        isItemsLoading = false;
-      });
+    // ── NEW: Check In-Memory Cache First (Fastest) ─────────────────────
+    if (_fastKeyItemsCache.containsKey(_fastKeyTabId!)) {
+      if (kDebugMode) {
+        print("⚡ FastKeyScreen: Loading from IN-MEMORY CACHE for tab $_fastKeyTabId");
+      }
+      if (mounted) {
+        setState(() {
+          fastKeyProductItems = List<Map<String, dynamic>>.from(_fastKeyItemsCache[_fastKeyTabId!]!);
+          reorderedIndices = List.filled(fastKeyProductItems.length, null);
+          isItemsLoading = false;
+        });
+      }
+      await _resolveFastKeyMeta(); // Still refresh meta if needed
       return;
     }
 
     await _awaitMergedProductCacheReadyForFastKeys();
 
-    // ALWAYS CHECK LOCAL DB FIRST
+    // ALWAYS CHECK LOCAL DB FIRST (your original logic)
     final cachedItems = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
 
     if (cachedItems.isNotEmpty) {
@@ -621,8 +638,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         print("✅ Loading FastKey items from LOCAL DB CACHE");
       }
 
-      final preparedItems =
-      await _prepareFastKeyItemsForInitialUi(cachedItems);
+      final preparedItems = await _prepareFastKeyItemsForInitialUi(cachedItems);
 
       if (mounted) {
         setState(() {
@@ -632,13 +648,18 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         });
       }
 
+      // ── NEW: Store in memory cache ─────────────────────
+      _fastKeyItemsCache[_fastKeyTabId!] = List<Map<String, dynamic>>.from(preparedItems);
+
       return;
     }
 
-    // CACHE MISS → API
-    final tabs =
-    await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId!);
+    // CACHE MISS → API (your original logic)
+    if (kDebugMode) {
+      print("🌐 Cache miss → Fetching FastKey items from API");
+    }
 
+    final tabs = await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId!);
     if (tabs.isEmpty) {
       if (mounted) {
         setState(() {
@@ -646,28 +667,15 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           isItemsLoading = false;
         });
       }
-
-      if (kDebugMode) {
-        print("❌ No FastKey tab found");
-      }
-
       return;
     }
 
     final fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
 
-    if (kDebugMode) {
-      print("🌐 Cache miss → Fetching FastKey items from API");
-    }
-
-    await _fastKeyProductBloc.fetchProductsByFastKeyId(
-      _fastKeyTabId!,
-      fastKeyServerId,
-    );
+    await _fastKeyProductBloc.fetchProductsByFastKeyId(_fastKeyTabId!, fastKeyServerId);
 
     final apiItems = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
-    final preparedItems =
-    await _prepareFastKeyItemsForInitialUi(apiItems);
+    final preparedItems = await _prepareFastKeyItemsForInitialUi(apiItems);
 
     if (mounted) {
       setState(() {
@@ -675,6 +683,17 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         reorderedIndices = List.filled(fastKeyProductItems.length, null);
         isItemsLoading = false;
       });
+    }
+
+    // ── NEW: Store in memory cache after API load ─────────────────────
+    _fastKeyItemsCache[_fastKeyTabId!] = List<Map<String, dynamic>>.from(preparedItems);
+  }
+  /// Clear cache when tab is deleted or items change significantly
+  void _clearFastKeyCache({int? tabId}) {
+    if (tabId != null) {
+      _fastKeyItemsCache.remove(tabId);
+    } else {
+      _fastKeyItemsCache.clear();
     }
   }
 
@@ -723,8 +742,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     return prepared;
   }
 
-  /// Fills `type`, `variations`, `fast_key_item_tags`, `is_ebt_eligible` from
-  /// Hive `sku_*` cache when the fast-key SQLite row has no tags/type.
+
   Future<void> _enrichFastKeyItemFromSkuHive(Map<String, dynamic> item) async {
     final sku = (item['fast_key_item_sku'] ?? '').toString().trim();
     if (sku.isEmpty || sku == 'N/A') return;
@@ -851,6 +869,9 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       }
       return;
     }
+    // Clear memory cache before refresh
+    _clearFastKeyCache(tabId: _fastKeyTabId);
+
     if (kDebugMode) {
       print("FastKey Screen _loadFastKeyTabItems $_fastKeyTabId");
     }
@@ -891,6 +912,93 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   }
 
   // Build #1.0.87: code updated
+  // Future<void> _addFastKeyTabItem(
+  //     String name, String image, String price) async {
+  //   if (_fastKeyTabId == null) {
+  //     if (kDebugMode) {
+  //       print("### FastKeyScreen: _addFastKeyTabItem aborted, no tab selected");
+  //     }
+  //     return;
+  //   }
+  //   var tabs =
+  //   await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
+  //   if (tabs.isEmpty) {
+  //     if (kDebugMode) {
+  //       print("### FastKeyScreen: _addFastKeyTabItem aborted, tab not found");
+  //     }
+  //     return;
+  //   }
+  //   var fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
+  //   var countProductInFastKey = fastKeyProductItems.length;
+  //   FastKeyProductItem item = FastKeyProductItem(
+  //       productId: selectedProduct!['id'], slNumber: countProductInFastKey + 1);
+  //
+  //   StreamSubscription? subscription;
+  //   subscription =
+  //       _fastKeyProductBloc.addProductsStream.listen((response) async {
+  //         if (!mounted) {
+  //           subscription?.cancel();
+  //           return;
+  //         }
+  //         print("response ---- ${response.status}");
+  //         if (response.status == Status.COMPLETED) {
+  //           if (kDebugMode) {
+  //             print("#### FastKeyScreen: addProducts Status COMPLETED");
+  //           }
+  //           setState(() => isAddingItemLoading = false);
+  //           if (!isBulkAdding) {
+  //             _refreshFastKeyTabItems();
+  //           }
+  //           subscription?.cancel();
+  //         } else if (response.status == Status.ERROR) {
+  //           if (response.message!.contains('Unauthorised')) {
+  //             if (kDebugMode) {
+  //               print("Fast key 4 ---- Unauthorised : ${response.message!}");
+  //             }
+  //             WidgetsBinding.instance.addPostFrameCallback((_) {
+  //               if (mounted) {
+  //                 Navigator.pushReplacement(context,
+  //                     MaterialPageRoute(builder: (context) => LoginScreen()));
+  //
+  //                 if (kDebugMode) {
+  //                   print("message --- ${response.message}");
+  //                 }
+  //                 ScaffoldMessenger.of(context).showSnackBar(
+  //                   const SnackBar(
+  //                     content:
+  //                     Text("Unauthorised. Session is expired on this device."),
+  //                     backgroundColor: Colors.red,
+  //                     duration: Duration(seconds: 2),
+  //                   ),
+  //                 );
+  //               }
+  //             });
+  //           } else {
+  //             if (kDebugMode) {
+  //               print("Failed to add item to fastkey: ${response.message}");
+  //             }
+  //             ScaffoldMessenger.of(context).showSnackBar(
+  //               SnackBar(
+  //                 content: Text(TextConstants.failedToAddItemToFastKey),
+  //                 backgroundColor: Colors.red,
+  //                 duration: const Duration(seconds: 2),
+  //               ),
+  //             );
+  //           }
+  //           subscription?.cancel();
+  //         } else if (response.status == Status.LOADING) {
+  //           if (kDebugMode) {
+  //             print("### FastKeyScreen: Adding item to FastKey, loading...");
+  //           }
+  //           setState(() => isItemsLoading = true);
+  //         }
+  //       });
+  //
+  //   /// addProducts API CALL
+  //   await _fastKeyProductBloc
+  //       .addProducts(fastKeyId: fastKeyServerId, products: [item]);
+  // }
+
   Future<void> _addFastKeyTabItem(
       String name, String image, String price) async {
     if (_fastKeyTabId == null) {
@@ -924,6 +1032,10 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             if (kDebugMode) {
               print("#### FastKeyScreen: addProducts Status COMPLETED");
             }
+
+            // ✅ CLEAR CACHE so next load gets fresh data
+            _clearFastKeyCache(tabId: _fastKeyTabId);
+
             setState(() => isAddingItemLoading = false);
             if (!isBulkAdding) {
               _refreshFastKeyTabItems();
@@ -1001,6 +1113,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                   "### FastKeyScreen: Product deleted successfully from FastKey: ${response.data!.fastkeyId}");
             }
             await _refreshFastKeyTabItems();
+
             if (Misc.showDebugSnackBar) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(

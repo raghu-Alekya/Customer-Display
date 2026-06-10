@@ -2183,6 +2183,39 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           }
         }
 
+        // final bool hasProduceTag = tags.any((t) {
+        //   final slug = (t["slug"] ?? "").toString().toLowerCase();
+        //   final name = (t["name"] ?? "").toString().toLowerCase();
+        //   return slug.contains("produce") || name.contains("produce");
+        // });
+        //
+        // if (hasProduceTag) {
+        //   final result = await showDialog(
+        //       context: context,
+        //       barrierDismissible: false,
+        //       builder: (_) => AutoWeightPriceDialog(
+        //           productName: productName, unitPrice: productPrice));
+        //   if (result == null) return;
+        //   await orderHelper.addItemToOrder(null, productName, productImage,
+        //       result["finalPrice"], 1, productSku, activeOrderId,
+        //       type: 'weighted',
+        //       weightQty: (result["weight"] as num?)?.toDouble(),
+        //       productId: productId,
+        //       variationId: -1,
+        //       salesPrice: result["finalPrice"],
+        //       regularPrice: productPrice,
+        //       unitPrice: productPrice,
+        //       isEbtEligible: isEbtEligible,
+        //       onItemAdded: () async => _refreshOrderList());
+        //   return;
+        // }
+
+        // bala
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRODUCE / WEIGHTED ITEM — Use LIVE scale weight + Clear after add
+// ─────────────────────────────────────────────────────────────────────────────
         final bool hasProduceTag = tags.any((t) {
           final slug = (t["slug"] ?? "").toString().toLowerCase();
           final name = (t["name"] ?? "").toString().toLowerCase();
@@ -2190,25 +2223,74 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         });
 
         if (hasProduceTag) {
-          final result = await showDialog(
-              context: context,
-              barrierDismissible: false,
-              builder: (_) => AutoWeightPriceDialog(
-                  productName: productName, unitPrice: productPrice));
-          if (result == null) return;
-          await orderHelper.addItemToOrder(null, productName, productImage,
-              result["finalPrice"], 1, productSku, activeOrderId,
-              type: 'weighted',
-              weightQty: (result["weight"] as num?)?.toDouble(),
-              productId: productId,
-              variationId: -1,
-              salesPrice: result["finalPrice"],
-              regularPrice: productPrice,
-              unitPrice: productPrice,
-              isEbtEligible: isEbtEligible,
-              onItemAdded: () async => _refreshOrderList());
+          final weightProvider = Provider.of<WeightProvider>(context, listen: false);
+
+          // Parse current weight from display text
+          double liveWeight = 0.0;
+          try {
+            final parts = weightProvider.weightText.trim().split(' ');
+            if (parts.isNotEmpty) {
+              liveWeight = double.tryParse(parts[0]) ?? 0.0;
+            }
+          } catch (_) {}
+
+          // Convert lb to kg (adjust if your scale uses different unit)
+          final double weightKg = liveWeight > 0 ? liveWeight * 0.453592 : 0.0;
+
+          // Fallback
+          final double weightToUse = weightKg > 0.00001 ? weightKg : 0.0001;
+
+          final double finalPrice = productPrice * weightToUse;
+
+          if (weightKg <= 0.0001 && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Scale not detected — using 100g default'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+
+          // Add the item
+          await orderHelper.addItemToOrder(
+            null,
+            productName,
+            productImage,
+            finalPrice,
+            1,
+            productSku,
+            activeOrderId,
+            type: 'weighted',
+            weightQty: weightToUse,
+            productId: productId,
+            variationId: -1,
+            salesPrice: finalPrice,
+            regularPrice: productPrice,
+            unitPrice: productPrice,
+            isEbtEligible: isEbtEligible,
+            onItemAdded: () async {
+              _refreshOrderList();
+
+              // ←←← CLEAR SCALE WEIGHT AFTER SUCCESSFUL ADD
+              weightProvider.updateWeight(0.0);
+
+              // Optional: Show feedback
+              // if (mounted) {
+              //   ScaffoldMessenger.of(context).showSnackBar(
+              //     const SnackBar(
+              //       content: Text('Item added • Scale reset'),
+              //       duration: Duration(seconds: 1),
+              //       backgroundColor: Colors.green,
+              //     ),
+              //   );
+              // }
+            },
+          );
           return;
         }
+
+
+
 
         double finalPrice = productPrice;
         final bool hasVariablePriceTag = tags.any((t) {

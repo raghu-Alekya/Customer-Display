@@ -2037,47 +2037,111 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       t.slug?.toLowerCase() == "produce" ||
           t.name?.toLowerCase() == "produce");
 
-      if (hasProduceTag) {
-        await WidgetsBinding.instance.endOfFrame;
-        if (!mounted) return;
+      // if (hasProduceTag) {
+      //   await WidgetsBinding.instance.endOfFrame;
+      //   if (!mounted) return;
+      //
+      //   _dialogOpen = true;
+      //   Map<String, dynamic>? result;
+      //   try {
+      //     result = await showDialog<Map<String, dynamic>>(
+      //       context: context,
+      //       barrierDismissible: false,
+      //       useRootNavigator: true,
+      //       builder: (dialogCtx) => ChangeNotifierProvider.value(
+      //         value: Provider.of<WeightProvider>(context, listen: false),
+      //         child: AutoWeightPriceDialog(
+      //           productName: product.name ?? "Product",
+      //           unitPrice: unitPrice,
+      //         ),
+      //       ),
+      //     );
+      //   } finally {
+      //     _dialogOpen = false;
+      //   }
+      //
+      //   if (!mounted) return;
+      //   if (result == null) return;
+      //
+      //   final double finalPrice = (result["finalPrice"] as num).toDouble();
+      //   final double weightValue = (result["weight"] as num).toDouble();
+      //
+      //   setState(() => isAddingItemLoading = true);
+      //
+      //   await orderHelper.addItemToOrder(
+      //     product.id!,
+      //     product.name ?? 'Unknown',
+      //     product.images?.isNotEmpty == true ? product.images!.first : '',
+      //     finalPrice,
+      //     1,
+      //     product.sku ?? '',
+      //     int.parse(activeOrderId),
+      //     type: "weighted",
+      //     weightQty: weightValue,
+      //     productId: product.id,
+      //     variationId: -1,
+      //     unitPrice: unitPrice,
+      //     salesPrice: finalPrice,
+      //     regularPrice: unitPrice,
+      //     combo: null,
+      //     isEbtEligible: isEbtEligible,
+      //     onItemAdded: () {
+      //       _removeOverlay();
+      //       _clearSearch();
+      //       if (mounted) setState(() => isAddingItemLoading = false);
+      //       widget.onProductSelected?.call(product);
+      //     },
+      //   );
+      //   return;
+      // }
 
-        _dialogOpen = true;
-        Map<String, dynamic>? result;
+
+      if (hasProduceTag) {
+        final weightProvider =
+        Provider.of<WeightProvider>(context, listen: false);
+
+        // Parse current weight from scale display
+        double liveWeight = 0.0;
         try {
-          result = await showDialog<Map<String, dynamic>>(
-            context: context,
-            barrierDismissible: false,
-            useRootNavigator: true,
-            builder: (dialogCtx) => ChangeNotifierProvider.value(
-              value: Provider.of<WeightProvider>(context, listen: false),
-              child: AutoWeightPriceDialog(
-                productName: product.name ?? "Product",
-                unitPrice: unitPrice,
-              ),
+          final parts = weightProvider.weightText.trim().split(' ');
+          if (parts.isNotEmpty) {
+            liveWeight = double.tryParse(parts[0]) ?? 0.0;
+          }
+        } catch (_) {}
+
+        // Convert lb → kg
+        final double weightKg =
+        liveWeight > 0 ? liveWeight * 0.453592 : 0.0;
+
+        // Fallback weight
+        final double weightToUse =
+        weightKg > 0.00001 ? weightKg : 0.0001;
+
+        final double finalPrice = unitPrice * weightToUse;
+
+        if (weightKg <= 0.0001 && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Scale not detected — using 100g default'),
+              duration: Duration(seconds: 2),
             ),
           );
-        } finally {
-          _dialogOpen = false;
         }
-
-        if (!mounted) return;
-        if (result == null) return;
-
-        final double finalPrice = (result["finalPrice"] as num).toDouble();
-        final double weightValue = (result["weight"] as num).toDouble();
 
         setState(() => isAddingItemLoading = true);
 
         await orderHelper.addItemToOrder(
           product.id!,
           product.name ?? 'Unknown',
-          product.images?.isNotEmpty == true ? product.images!.first : '',
+          product.images?.isNotEmpty == true
+              ? product.images!.first
+              : '',
           finalPrice,
           1,
           product.sku ?? '',
           int.parse(activeOrderId),
-          type: "weighted",
-          weightQty: weightValue,
+          type: 'weighted',
+          weightQty: weightToUse,
           productId: product.id,
           variationId: -1,
           unitPrice: unitPrice,
@@ -2085,13 +2149,29 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           regularPrice: unitPrice,
           combo: null,
           isEbtEligible: isEbtEligible,
-          onItemAdded: () {
-            _removeOverlay();
-            _clearSearch();
-            if (mounted) setState(() => isAddingItemLoading = false);
-            widget.onProductSelected?.call(product);
-          },
+          // onItemAdded: () {
+          //
+          //
+          //   // Reset scale
+          //   weightProvider.updateWeight(0.0);
+          //
+          //   _removeOverlay();
+          //   _clearSearch();
+          //
+          //   if (mounted) {
+          //     setState(() => isAddingItemLoading = false);
+          //   }
+          //
+          //   widget.onProductSelected?.call(product);
+          // },
+            onItemAdded: () {
+                    _removeOverlay();
+                    _clearSearch();
+                    if (mounted) setState(() => isAddingItemLoading = false);
+                    widget.onProductSelected?.call(product);
+                  },
         );
+
         return;
       }
 

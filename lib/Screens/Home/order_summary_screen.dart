@@ -38,6 +38,7 @@ import '../../Helper/api_response.dart';
 import '../../Helper/customerdisplayhelper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Payment/payment_model.dart';
+import '../../Models/Payment/void_payment_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
 import '../../Repositories/Orders/order_repository.dart';
 import '../../Repositories/Payment/payment_repository.dart';
@@ -562,6 +563,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   DateTime? _lastOrderSyncAt;
   String? _lastSyncedOrderKey;
   bool isButtonDisabled = false;
+
+  bool _isCardPaymentCancelled = false;
+
 
   double ebtTotal = 0.0;
   double payByEbt = 0.0; // ADD THIS
@@ -1383,6 +1387,25 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         balanceAmount = newNetPayable;
       }
     });
+    // ✅ NEW: Persist the UI merchant discount amount so syncSingleOfflineOrder uses it exactly.
+    Future.microtask(() async {
+      try {
+        final String orderKey = widget.offlineOrderId?.toString() ??
+            widget.orderId?.toString() ??
+            orderId?.toString() ??
+            "";
+        if (orderKey.isNotEmpty) {
+          final box = StorageProvider.offlineOrders;
+          final raw = await box.get(orderKey);
+          if (raw != null) {
+            final updated = Map<String, dynamic>.from(raw);
+            updated['uiMerchantDiscountAmount'] = merchantDiscount.abs();
+            await box.put(orderKey, updated);
+          }
+        }
+      } catch (_) {}
+    });
+
   }
 
   static const MethodChannel customerDisplayChannel = MethodChannel(
@@ -1719,6 +1742,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         };
       }
 
+      // Keep void target on the latest positive payment (skip void rows).
+      _lastPayment = null;
+      for (final p in payments.reversed) {
+        if (p.amount > 0 && p.status != PaymentDbStatus.voided) {
+          _lastPayment = LastPaymentInfo(
+            method: p.paymentMethod,
+            amount: p.amount,
+            paymentId: (p.serverPaymentId ?? p.id).toString(),
+            sunmiTxnId: p.sunmiTxnId,
+            sunmiOrderId: p.sunmiOrderId,
+            sunmiDeviceId: p.sunmiDeviceId,
+          );
+          break;
+        }
+      }
+
       setState(() {
         tenderAmount = totalPaid;
         balanceAmount = actualRemaining;
@@ -1769,6 +1808,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         ebtTotal = (remainingEbt - overflowToEbt).clamp(0.0, double.infinity);
 
         isPaymentStarted = totalPaid > 0;
+        if (actualRemaining > 0) {
+          _successPopupShown = false;
+        }
       });
 
       stored["originalEbt"] = originalEbt;
@@ -2798,63 +2840,49 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 // Show success popup
   Future<void> _showPaymentSuccessPopup(
       double amount, LocalPayment payment) async {
-    final bool isPaymentComplete = balanceAmount <= 0;
+    // CRITICAL: Always refresh balance from full history first
+    await _calculateBalanceFromPaymentHistory();
+    await _printPaymentHistorySummary(); // for debugging
 
-    //  Clear the payment-specific balance display when order is fully paid
-    if (isPaymentComplete) {
+    final bool isPaymentComplete = balanceAmount <= 0.01; // tolerance for floating point
+
+    print("🔍 _showPaymentSuccessPopup → balanceAmount=$balanceAmount | isComplete=$isPaymentComplete | currentRemaining=$_currentPaymentRemainingBalance");
+
+    if (isPaymentComplete && !_successPopupShown) {
+      _successPopupShown = true;
       setState(() {
         _currentPaymentRemainingBalance = null;
         _lastPaymentDetails = null;
       });
-    }
 
-    if (kDebugMode) {
-      print("\n PAYMENT STATUS");
-      print("   Balance: \$${balanceAmount.toStringAsFixed(2)}");
-      print("   Complete: $isPaymentComplete");
-      print("   Current Payment Remaining: $_currentPaymentRemainingBalance");
-      print("   Popup Shown: $_successPopupShown\n");
-    }
+      print("✅ FULL PAYMENT COMPLETE → Showing Success Dialog");
 
-    if (isPaymentComplete && !_successPopupShown) {
-      _successPopupShown = true;
-      // ✅ ADD THIS LINE (CRITICAL FIX)
-      await CustomerDisplayService.showThankYou();
-      // ✅ STEP 2: CLEAR ACTIVE ORDER (CRITICAL)
-      await orderHelper.setActiveOrder(null);
-
-      // ✅ STEP 3: RESET DISPLAY (FINAL STATE)
-      await CustomerDisplayService.resetDisplay();
-
-      print("✅ Payment complete → display reset");
-      // ✅ SHOW SUCCESS SNACKBAR
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Order successfully completed"),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
       final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
-      final boxDataKey = await box.get(key);
-      final cr =
-      boxDataKey is Map ? (boxDataKey as Map)["coupon_response"] : null;
+      final boxData = await box.get(key);
+      final cr = boxData is Map ? boxData["coupon_response"] : null;
       final couponResponse = cr is Map
-          ? Map<String, dynamic>.from(cr as Map)
+          ? Map<String, dynamic>.from(cr)
           : <String, dynamic>{};
 
       _showPaymentDialog(
         context,
         tenderAmount,
         changeAmount: changeAmount,
-        showChange: changeAmount != null && changeAmount! > 0,
+        showChange: changeAmount > 0,
         couponResponse: couponResponse,
       );
-    } else if (balanceAmount > 0) {
-      //  AUTO-FILL BEFORE SHOWING PARTIAL DIALOG
-      // _autoFillRemainingBalance();
+    }
+    else if (balanceAmount > 0.01) {
+      print("🟡 Partial payment detected → Showing Partial Dialog");
       _showPartialPaymentDialog(context, amount);
+    } else {
+      // Edge case: balance very close to zero
+      print("⚠️ Balance near zero → Treating as complete");
+      _successPopupShown = true;
+      setState(() => _currentPaymentRemainingBalance = null);
+      // Show success dialog anyway
+      _showPaymentDialog(context, tenderAmount, showChange: false);
     }
   }
 
@@ -3146,7 +3174,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //   _resetAmountAfterPay();
   // }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+// PATCH: Replace _handlePay() with this version.
+//
+// Root cause: after a partial payment _successPopupShown is already true,
+// so when the customer pays the remaining balance the guard inside
+// _callCreatePaymentAPI blocks the full-success dialog.
+//
+// Fix (zero old-code changes): reset _successPopupShown to false right before
+// _callCreatePaymentAPI whenever the entered amount will fully settle the order.
+// ─────────────────────────────────────────────────────────────────────────────
+
   void _handlePay() {
+    // Defensive reset: balance already 0 but user somehow entered an amount.
     if (balanceAmount <= 0 &&
         (double.tryParse(amountController.text
             .replaceAll(TextConstants.currencySymbol, '')
@@ -3154,13 +3194,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             0) >
             0) {
       print(
-          "⚠️ DEFENSIVE RESET: balance=0 but amount entered > 0 → forcing reset after possible void");
+          "⚠️ DEFENSIVE RESET: balance=0 but amount entered > 0 → forcing reset");
       setState(() {
         _successPopupShown = false;
         _currentPaymentRemainingBalance = null;
+        _lastPaymentDetails = null;
         isPaymentStarted = false;
       });
       _calculateBalanceFromPaymentHistory();
+      return;
     }
 
     final cleanAmount = amountController.text
@@ -3168,11 +3210,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         .trim();
 
     final double amount = double.tryParse(cleanAmount) ?? 0.0;
-    final int enteredCents = (amount * 100).round();
-    final int ebtCents = (ebtTotal * 100).round();
 
     // Basic validation
-    if (enteredCents <= 0 && computedNetPayable > 0) {
+    if (amount <= 0 && computedNetPayable > 0) {
       setState(() {
         _amountErrorText = TextConstants.amountValidation;
       });
@@ -3182,13 +3222,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     // EBT validation
     if (selectedPaymentMethod == TextConstants.ebtText) {
-      if (ebtCents <= 0) {
+      if (ebtTotal <= 0) {
         setState(() {
           _amountErrorText = "No EBT balance available";
         });
         return;
       }
-      if (enteredCents > ebtCents) {
+      if (amount > ebtTotal) {
         setState(() {
           _amountErrorText =
           "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
@@ -3197,24 +3237,155 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
     }
 
-    // ✅ REMOVED the Sunmi‑only branch for Card.
-    // Now Card payments go through the same flow as Cash / EBT.
-    // The original code was:
-    // if (selectedPaymentMethod == TextConstants.card) {
-    //   _openSunmiSaleScreen(...);
-    //   return;
-    // }
+    // ── Determine whether this payment will complete the order ──────────────
+    final double currentRemaining =
+        _currentPaymentRemainingBalance ?? balanceAmount;
 
-    // ✅ All payment methods (Cash, Card, Wallet, EBT) now call the local storage API
-    _callCreatePaymentAPI(); // uses validated amount
+    final bool willCompletePayment =
+        amount >= (currentRemaining - 0.01); // floating-point tolerance
+
+    print("💰 _handlePay → Amount: \$$amount | "
+        "Current Remaining: \$$currentRemaining | "
+        "Will Complete: $willCompletePayment");
+
+    // ── KEY FIX ─────────────────────────────────────────────────────────────
+    // If this payment will fully settle the order, reset _successPopupShown so
+    // _callCreatePaymentAPI is allowed to show the full-payment success dialog.
+    // This is the ONLY change vs the original method.
+    if (willCompletePayment && _successPopupShown) {
+      _successPopupShown = false;
+      print("🔄 _handlePay: reset _successPopupShown → full-payment dialog allowed");
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
+    // Save payment (local + sync)
+    _callCreatePaymentAPI();
+
+    // Reset input field immediately
     _resetAmountAfterPay();
-  }
 
+    // If this payment completes the order → clear partial state
+    if (willCompletePayment) {
+      setState(() {
+        _currentPaymentRemainingBalance = null;
+        _lastPaymentDetails = null;
+      });
+    }
+
+    // Force refresh balance calculation
+    Future.microtask(() {
+      _calculateBalanceFromPaymentHistory();
+    });
+  }
 
   /// Card payment: sync order → call create-payment API → show partial/full popup.
   /// Called only when selectedPaymentMethod == TextConstants.card.
   /// Does NOT touch any existing methods.
   ///
+
+  String? _extractServerPaymentId(Map<String, dynamic> body) {
+    final dynamic raw = body['payment_id'] ??
+        (body['data'] is Map ? body['data']['payment_id'] : null) ??
+        (body['data'] is Map ? body['data']['id'] : null);
+    if (raw == null) return null;
+    final s = raw.toString().trim();
+    return s.isEmpty ? null : s;
+  }
+
+  /// Sync offline order to Woo and return the WooCommerce order id (e.g. 40809).
+  Future<int> _resolveWooOrderIdForPayment({bool forceSync = true}) async {
+    final box = StorageProvider.offlineOrders;
+    final String orderKey = widget.offlineOrderId?.toString() ??
+        widget.orderId?.toString() ??
+        orderId?.toString() ??
+        "";
+
+    if (orderKey.isEmpty) {
+      return widget.orderId ?? orderId ?? 0;
+    }
+
+    final raw = await box.get(orderKey);
+    if (raw is! Map) {
+      return widget.orderId ?? orderId ?? 0;
+    }
+
+    var offlineMap = Map<String, dynamic>.from(raw);
+    final int localId = orderId ?? int.tryParse(orderKey) ?? 0;
+    if (localId > 0) {
+      offlineMap['id'] ??= localId;
+      offlineMap['order_id'] ??= localId;
+    }
+
+    int wooOrderId =
+        int.tryParse(offlineMap['wooOrderId']?.toString() ?? '') ?? 0;
+
+    if (forceSync || wooOrderId == 0) {
+      if (kDebugMode) {
+        print(
+            "🔄 Resolving Woo order id → key:$orderKey localId:$localId cached:$wooOrderId");
+      }
+      final syncResult =
+      await OrderRepository().syncSingleOfflineOrder(offlineMap);
+      if (syncResult is Map) {
+        wooOrderId = (syncResult!['id'] as num?)?.toInt() ?? wooOrderId;
+        offlineMap['wooOrderId'] = wooOrderId;
+        offlineMap['synced'] = true;
+        offlineMap['sync_at'] = DateTime.now().toIso8601String();
+        await box.put(orderKey, offlineMap);
+        if (kDebugMode) print("✅ Woo order synced → id: $wooOrderId");
+      }
+    }
+
+    if (wooOrderId == 0) {
+      wooOrderId = widget.orderId ?? orderId ?? 0;
+    }
+    return wooOrderId;
+  }
+
+  Future<void> _voidServerPaymentIfCard({required String? serverPaymentId}) async {
+    if (serverPaymentId == null || serverPaymentId.isEmpty) {
+      if (kDebugMode) print("⚠️ Card void skipped – no server payment_id");
+      return;
+    }
+
+    final int wooOrderId = await _resolveWooOrderIdForPayment(forceSync: false);
+    if (wooOrderId <= 0) {
+      if (kDebugMode) print("⚠️ Card void skipped – wooOrderId missing");
+      return;
+    }
+
+    if (kDebugMode) {
+      print(
+          "🔄 Voiding card payment on server → order:$wooOrderId payment:$serverPaymentId");
+    }
+
+    final completer = Completer<void>();
+    late StreamSubscription sub;
+    sub = paymentBloc.voidPaymentStream.listen((response) {
+      if (response.status == Status.COMPLETED ||
+          response.status == Status.ERROR) {
+        if (kDebugMode) {
+          print(
+              "Card void API → ${response.status} ${response.message ?? response.data?.message}");
+        }
+        if (!completer.isCompleted) completer.complete();
+        sub.cancel();
+      }
+    });
+
+    paymentBloc.voidPayment(VoidPaymentRequestModel(
+      orderId: wooOrderId,
+      paymentId: serverPaymentId,
+    ));
+
+    await completer.future.timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        if (kDebugMode) print("⚠️ Card void API timed out");
+        sub.cancel();
+      },
+    );
+  }
 
   Future<String> _getTokenFromDb() async {
     final db = await DBHelper.instance.database;
@@ -3235,7 +3406,622 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     return token;
   }
 
+  // Future<double> _refreshBalanceAndCheckCompletion() async {
+  //   // Force a complete refresh of payment history
+  //   await _calculateBalanceFromPaymentHistory();
+  //   await _printPaymentHistorySummary();
+  //
+  //   // Small delay to ensure state is updated
+  //   await Future.delayed(const Duration(milliseconds: 100));
+  //
+  //   // Recalculate final balance
+  //   final totalPaid = payByCash + payByCard + payByEbt + payByOther;
+  //   final remaining = (computedNetPayable - totalPaid).clamp(0.0, double.infinity);
+  //
+  //   print("🔄 Balance refresh - Total Paid: \$${totalPaid.toStringAsFixed(2)}, Remaining: \$${remaining.toStringAsFixed(2)}");
+  //
+  //   if (remaining <= 0.01) {
+  //     // This is a FULL payment
+  //     setState(() {
+  //       balanceAmount = 0.0;
+  //       _currentPaymentRemainingBalance = null;
+  //       _lastPaymentDetails = null;
+  //     });
+  //   } else if (remaining > 0.01 && remaining < computedNetPayable) {
+  //     // This is a PARTIAL payment
+  //     setState(() {
+  //       balanceAmount = remaining;
+  //       _currentPaymentRemainingBalance = remaining;
+  //     });
+  //   }
+  //
+  //   return remaining;
+  // }
+
+
+  Future<double> _refreshBalanceAndCheckCompletion() async {
+    // Force a complete refresh of payment history
+    await _calculateBalanceFromPaymentHistory();
+    await _printPaymentHistorySummary();
+
+    // Small delay to ensure state is updated
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    // Recalculate final balance
+    final totalPaid = payByCash + payByCard + payByEbt + payByOther;
+    final remaining = (computedNetPayable - totalPaid).clamp(0.0, double.infinity);
+
+    print("🔄 Balance refresh - Total Paid: \$${totalPaid.toStringAsFixed(2)}, Remaining: \$${remaining.toStringAsFixed(2)}");
+
+    if (remaining <= 0.01) {
+      // This is a FULL payment
+      setState(() {
+        balanceAmount = 0.0;
+        _currentPaymentRemainingBalance = null;
+        _lastPaymentDetails = null;
+      });
+    } else if (remaining > 0.01 && remaining < computedNetPayable) {
+      // This is a PARTIAL payment
+      setState(() {
+        balanceAmount = remaining;
+        _currentPaymentRemainingBalance = remaining;
+      });
+    }
+
+    return remaining;
+  }
+
+  // Future<void> _handleCardPaymentViaAPI() async {
+  //   _isCardPaymentCancelled = false;
+  //
+  //   final double amount = double.tryParse(
+  //     amountController.text
+  //         .replaceAll(TextConstants.currencySymbol, '')
+  //         .trim(),
+  //   ) ??
+  //       0.0;
+  //
+  //   if (amount <= 0) {
+  //     setState(() => _amountErrorText = TextConstants.amountValidation);
+  //     return;
+  //   }
+  //
+  //   // ✅ FIX: Prevent paying more than balance amount
+  //
+  //   final double effectiveBalance = _currentPaymentRemainingBalance ?? balanceAmount;
+  //   final double tolerance = 0.0000000001;
+  //   if (amount > effectiveBalance + tolerance) {
+  //     setState(() => _amountErrorText =
+  //     "Amount cannot exceed balance amount (${TextConstants.currencySymbol}${effectiveBalance.toStringAsFixed(2)})");
+  //
+  //     _rawAmount = (effectiveBalance * 100).round();
+  //     amountController.text = '${TextConstants.currencySymbol}${effectiveBalance.toStringAsFixed(2)}';
+  //     _isAmountEntered = true;
+  //
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text("Amount adjusted to balance amount (${TextConstants.currencySymbol}${effectiveBalance.toStringAsFixed(2)})"),
+  //         backgroundColor: Colors.orange,
+  //         duration: const Duration(seconds: 2),
+  //       ),
+  //     );
+  //     return;
+  //   }
+  //
+  //   _amountErrorText = null;
+  //
+  //   // Store the CURRENT balance BEFORE payment starts (this is key for detecting full vs partial)
+  //   final double balanceBeforePayment = effectiveBalance;
+  //   final bool willBeFullPayment = amount >= (balanceBeforePayment - 0.01);
+  //
+  //   print("💰 CARD PAYMENT - Amount: \$$amount | Balance before: \$$balanceBeforePayment | Will be full: $willBeFullPayment");
+  //
+  //   // ── 1. Show loading ──────────────────────────────────────
+  //   setState(() {
+  //     isLoading = true;
+  //     _processingPaymentMethod = TextConstants.card;
+  //   });
+  //   _showPaymentProgressDialog(context);
+  //
+  //   try {
+  //     // ── 2. Sync offline order → get WooCommerce order id ──
+  //     final String orderKey = widget.offlineOrderId?.toString() ??
+  //         widget.orderId?.toString() ??
+  //         orderId?.toString() ??
+  //         "";
+  //     final box = StorageProvider.offlineOrders;
+  //
+  //     final int wooOrderId = await _resolveWooOrderIdForPayment(forceSync: true);
+  //
+  //     if (wooOrderId == 0) {
+  //       _hidePaymentProgressDialog();
+  //       setState(() {
+  //         isLoading = false;
+  //         _processingPaymentMethod = null;
+  //       });
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(
+  //           content: Text("Could not resolve order – please try again"),
+  //           backgroundColor: Colors.red,
+  //         ),
+  //       );
+  //       return;
+  //     }
+  //
+  //     if (_isCardPaymentCancelled) {
+  //       if (kDebugMode) print("Card payment cancelled before API call");
+  //       return;
+  //     }
+  //
+  //     // ── 3. Build auth header ──────────────────────────────
+  //     final String token = await _getTokenFromDb();
+  //
+  //     if (_isCardPaymentCancelled) {
+  //       if (kDebugMode) print("Card payment cancelled after token fetch");
+  //       return;
+  //     }
+  //
+  //     // ── 4. Call create-payment API ────────────────────────
+  //     final uri = Uri.parse(
+  //       "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment",
+  //     );
+  //
+  //     final http.Response response = await http.post(
+  //       uri,
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //         "Authorization": "Bearer $token",
+  //       },
+  //       body: jsonEncode({
+  //         "order_id": wooOrderId,
+  //         "amount": (amount * 100).round(),
+  //         "payment_method": "card",
+  //         "shift_id": shiftId,
+  //       }),
+  //     );
+  //
+  //     _hidePaymentProgressDialog();
+  //     setState(() {
+  //       isLoading = false;
+  //       _processingPaymentMethod = null;
+  //     });
+  //
+  //     if (kDebugMode) {
+  //       print("Card payment API → ${response.statusCode}");
+  //       print("Body: ${response.body}");
+  //     }
+  //
+  //     final Map<String, dynamic> body = jsonDecode(response.body) as Map<String, dynamic>;
+  //
+  //     // ── 5. Handle response ────────────────────────────────
+  //     if (body["success"] != true) {
+  //       final String msg = body["message"]?.toString() ?? "Card payment failed";
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(content: Text(msg), backgroundColor: Colors.red),
+  //       );
+  //       setState(() {
+  //         selectedPaymentMethod = TextConstants.cash;
+  //       });
+  //       _resetAmountAfterPay();
+  //       return;
+  //     }
+  //
+  //     if (_isCardPaymentCancelled) {
+  //       if (kDebugMode) print("Card payment cancelled after API response");
+  //       return;
+  //     }
+  //
+  //     // ── 6. success: true → update local state & save ──────
+  //     final String? serverPaymentId = _extractServerPaymentId(body);
+  //     final double currentBalance = balanceAmount;
+  //     final double newTender = tenderAmount + amount;
+  //     double newBalance = (currentBalance - amount).clamp(0.0, double.infinity);
+  //     double newChange = 0.0;
+  //     if (amount > currentBalance) {
+  //       newChange = amount - currentBalance;
+  //       newBalance = 0.0;
+  //     }
+  //
+  //     // ⭐ CRITICAL FIX: Determine isFullPayment based on balance before payment, not after
+  //     final bool isFullPayment = newBalance <= 0.01;
+  //
+  //     print("🎯 Payment determination - isFullPayment: $isFullPayment, newBalance: $newBalance, amount: $amount, balanceBefore: $currentBalance");
+  //
+  //     // Save as a local payment record
+  //     final String datetimeStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+  //
+  //     final localPayment = LocalPayment(
+  //       orderId: orderId ?? 0,
+  //       title: TextConstants.card,
+  //       amount: amount,
+  //       paymentMethod: TextConstants.card,
+  //       shiftId: shiftId,
+  //       vendorId: vendorId,
+  //       userId: userId ?? 0,
+  //       serviceType: serviceType,
+  //       datetime: datetimeStr,
+  //       notes: "card via API – wooOrderId: $wooOrderId",
+  //       isSynced: true,
+  //       createdAt: DateTime.now(),
+  //       remainingBalance: newBalance,
+  //       status: isFullPayment ? PaymentDbStatus.completed : PaymentDbStatus.pending,
+  //     );
+  //
+  //     final saved = await LocalPaymentDBHelper.instance.savePayment(localPayment);
+  //
+  //     if (serverPaymentId != null) {
+  //       final int? sid = int.tryParse(serverPaymentId);
+  //       if (sid != null) {
+  //         await LocalPaymentDBHelper.instance.markAsSynced(saved.id, sid);
+  //       }
+  //     }
+  //
+  //     _lastPayment = LastPaymentInfo(
+  //       method: TextConstants.card,
+  //       amount: amount,
+  //       paymentId: serverPaymentId ?? saved.id.toString(),
+  //       sunmiTxnId: null,
+  //       sunmiOrderId: null,
+  //     );
+  //
+  //     await _savePaymentToHive(
+  //       amount: amount,
+  //       paymentMethod: TextConstants.card,
+  //       transactionId: "card_api_${saved.id}",
+  //       localPayment: saved,
+  //     );
+  //     await _saveLocalPaymentToHive(saved);
+  //
+  //     // ⭐ CRITICAL: Force refresh balance calculation to ensure consistency
+  //     await _calculateBalanceFromPaymentHistory();
+  //
+  //     // ⭐ CRITICAL: Force refresh balance calculation to ensure consistency
+  //     final double refreshedRemaining = await _refreshBalanceAndCheckCompletion();
+  //     final bool isActuallyFull = refreshedRemaining <= 0.00001;
+  //
+  //     print("🔄 After refresh - isActuallyFull: $isActuallyFull, refreshedRemaining: $refreshedRemaining");
+  //
+  //     setState(() {
+  //       isPaymentStarted = true;
+  //       paidAmount = amount;
+  //       paymentId = saved.id.toString();
+  //       tenderAmount = newTender;
+  //       balanceAmount = newBalance;
+  //       changeAmount = newChange;
+  //       payByCard += amount;
+  //       _currentPaymentRemainingBalance = isActuallyFull ? null : refreshedRemaining;
+  //       _lastPaymentDetails = {
+  //         "amount": amount,
+  //         "method": TextConstants.card,
+  //         "remainingBalance": refreshedRemaining,
+  //         "previousBalance": currentBalance,
+  //         "datetime": DateTime.now().toIso8601String(),
+  //         "paymentNumber": (_lastPaymentDetails?["paymentNumber"] ?? 0) + 1,
+  //       };
+  //     });
+  //
+  //     _resetAmountAfterPay();
+  //
+  //     // ── 7. Show popup based on ACTUAL payment completion ──
+  //     // ⭐ CRITICAL FIX: Use refreshed balance to determine popup type
+  //     if (isActuallyFull) {
+  //       // ✅ FULL PAYMENT - Show success dialog
+  //       print("✅ FULL PAYMENT DETECTED - Showing success dialog");
+  //
+  //       _successPopupShown = true;
+  //       await CustomerDisplayService.showThankYou();
+  //       await orderHelper.setActiveOrder(null);
+  //       await CustomerDisplayService.resetDisplay();
+  //
+  //       final boxData = await box.get(orderKey);
+  //       final cr = boxData is Map ? boxData["coupon_response"] : null;
+  //       final couponResponse = cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+  //
+  //       if (mounted) {
+  //         setState(() {
+  //           _currentPaymentRemainingBalance = null;
+  //           _lastPaymentDetails = null;
+  //         });
+  //       }
+  //
+  //       await Future.delayed(const Duration(milliseconds: 100));
+  //
+  //       if (mounted) {
+  //         _showPaymentDialog(
+  //           context,
+  //           newTender,
+  //           changeAmount: newChange,
+  //           showChange: newChange > 0,
+  //           couponResponse: couponResponse,
+  //         );
+  //       }
+  //     } else if (!isActuallyFull && amount > 0) {
+  //       // 🟡 PARTIAL PAYMENT - Show partial dialog
+  //       print("🟡 PARTIAL PAYMENT DETECTED - Showing partial dialog, remaining: $refreshedRemaining");
+  //       if (mounted) {
+  //         _showPartialPaymentDialog(context, amount);
+  //       }
+  //     }
+  //   } catch (e, st) {
+  //     _hidePaymentProgressDialog();
+  //     setState(() {
+  //       isLoading = false;
+  //       _processingPaymentMethod = null;
+  //       selectedPaymentMethod = TextConstants.cash;
+  //     });
+  //     _resetAmountAfterPay();
+  //     if (kDebugMode) {
+  //       print("_handleCardPaymentViaAPI error: $e");
+  //       print(st);
+  //     }
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text("Card payment error: $e"),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //   }
+  // }
+
   Future<void> _handleCardPaymentViaAPI() async {
+    _isCardPaymentCancelled = false;
+
+    // Parse entered amount
+    final double enteredAmount = double.tryParse(
+      amountController.text
+          .replaceAll(TextConstants.currencySymbol, '')
+          .trim(),
+    ) ?? 0.0;
+
+    if (enteredAmount <= 0) {
+      setState(() => _amountErrorText = TextConstants.amountValidation);
+      return;
+    }
+
+    // === FORCE CONSISTENT STATE FIRST ===
+    _recalculateGrossAndNetFromLineItemDiscounts();
+    await _recalculateTaxOnDiscountedItems();
+    await _calculateBalanceFromPaymentHistory();
+
+    final double effectiveBalance = _currentPaymentRemainingBalance ?? balanceAmount;
+
+    // Clamp amount to available balance
+    final double amount = enteredAmount.clamp(0.0, effectiveBalance + 0.01);
+
+    if ((enteredAmount - amount).abs() > 0.01) {
+      setState(() {
+        _rawAmount = (amount * 100).round();
+        amountController.text = '${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}';
+        _isAmountEntered = true;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Amount adjusted to available balance (\$${amount.toStringAsFixed(2)})"),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
+    _amountErrorText = null;
+
+    final double balanceBeforePayment = effectiveBalance;
+    final bool willBeFullPayment = amount >= (balanceBeforePayment - 0.01);
+
+    print("💰 CARD PAYMENT → Amount: \$$amount | Balance before: \$$balanceBeforePayment | Will be FULL: $willBeFullPayment");
+
+    // Show loading
+    setState(() {
+      isLoading = true;
+      _processingPaymentMethod = TextConstants.card;
+    });
+    _showPaymentProgressDialog(context);
+
+    try {
+      // Sync order to get latest WooCommerce ID
+      final int wooOrderId = await _resolveWooOrderIdForPayment(forceSync: true);
+
+      if (wooOrderId == 0) {
+        _hidePaymentProgressDialog();
+        setState(() {
+          isLoading = false;
+          _processingPaymentMethod = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Could not resolve order – please try again"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      if (_isCardPaymentCancelled) return;
+
+      // Get token
+      final String token = await _getTokenFromDb();
+
+      if (_isCardPaymentCancelled) return;
+
+      // Call API
+      final uri = Uri.parse(
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment",
+      );
+
+      final http.Response response = await http.post(
+        uri,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+        body: jsonEncode({
+          "order_id": wooOrderId,
+          "amount": (amount * 100).round(),
+          "payment_method": "card",
+          "shift_id": shiftId,
+        }),
+      );
+
+      _hidePaymentProgressDialog();
+      setState(() {
+        isLoading = false;
+        _processingPaymentMethod = null;
+      });
+
+      if (kDebugMode) {
+        print("Card API Response → ${response.statusCode}");
+        print("Body: ${response.body}");
+      }
+
+      final Map<String, dynamic> body = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (body["success"] != true) {
+        final String msg = body["message"]?.toString() ?? "Card payment failed";
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+        );
+        setState(() => selectedPaymentMethod = TextConstants.cash);
+        _resetAmountAfterPay();
+        return;
+      }
+
+      if (_isCardPaymentCancelled) return;
+
+      // Extract server payment ID
+      final String? serverPaymentId = _extractServerPaymentId(body);
+
+      // Create local payment record
+      final String datetimeStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
+      final localPayment = LocalPayment(
+        orderId: orderId ?? 0,
+        title: TextConstants.card,
+        amount: amount,
+        paymentMethod: TextConstants.card,
+        shiftId: shiftId,
+        vendorId: vendorId,
+        userId: userId ?? 0,
+        serviceType: serviceType,
+        datetime: datetimeStr,
+        notes: "Card payment via API – wooOrderId: $wooOrderId",
+        isSynced: true,
+        createdAt: DateTime.now(),
+        remainingBalance: (balanceBeforePayment - amount).clamp(0.0, double.infinity),
+        status: PaymentDbStatus.pending,
+      );
+
+      final savedPayment = await LocalPaymentDBHelper.instance.savePayment(localPayment);
+
+      if (serverPaymentId != null) {
+        final int? sid = int.tryParse(serverPaymentId);
+        if (sid != null) {
+          await LocalPaymentDBHelper.instance.markAsSynced(savedPayment.id, sid);
+        }
+      }
+
+      _lastPayment = LastPaymentInfo(
+        method: TextConstants.card,
+        amount: amount,
+        paymentId: serverPaymentId ?? savedPayment.id.toString(),
+      );
+
+      // Save to Hive
+      await _savePaymentToHive(
+        amount: amount,
+        paymentMethod: TextConstants.card,
+        transactionId: "card_api_${savedPayment.id}",
+        localPayment: savedPayment,
+      );
+
+      await _saveLocalPaymentToHive(savedPayment);
+
+      // === CRITICAL: Refresh balance after payment save ===
+      await _calculateBalanceFromPaymentHistory();
+      final double finalRemaining = _currentPaymentRemainingBalance ?? balanceAmount;
+      final bool isActuallyFull = finalRemaining <= 0.00000001;
+
+      print("🔄 FINAL STATE → Remaining: $finalRemaining | Is Full Payment: $isActuallyFull");
+
+      // Calculate correct new tender amount (existing tender + this payment)
+      final double newTenderAmount = tenderAmount ;
+
+      // Calculate change if overpaid
+      final double newChangeAmount = amount > balanceBeforePayment
+          ? (amount - balanceBeforePayment)
+          : 0.0;
+
+      // Update UI
+      setState(() {
+        tenderAmount = newTenderAmount;
+        balanceAmount = finalRemaining;
+        payByCard += amount;
+        _currentPaymentRemainingBalance = isActuallyFull ? null : finalRemaining;
+        _lastPaymentDetails = {
+          'amount': amount,
+          'method': TextConstants.card,
+          'remainingBalance': finalRemaining,
+          'previousBalance': balanceBeforePayment,
+          'datetime': DateTime.now().toIso8601String(),
+          'paymentNumber': (_lastPaymentDetails?['paymentNumber'] ?? 0) + 1,
+        };
+      });
+
+      _resetAmountAfterPay();
+
+      // === Show correct dialog based on final state ===
+      if (isActuallyFull) {
+        print("✅ FULL PAYMENT → Showing success dialog with amount: $newTenderAmount");
+        _successPopupShown = true;
+
+        final box = StorageProvider.offlineOrders;
+        final key = (orderId ?? widget.offlineOrderId ?? 0).toString();
+        final raw = await box.get(key);
+        final couponResponse = (raw is Map && raw["coupon_response"] is Map)
+            ? Map<String, dynamic>.from(raw["coupon_response"])
+            : <String, dynamic>{};
+
+        if (mounted) {
+          await CustomerDisplayService.showThankYou();
+          // ✅ Pass the CORRECT amount (total paid, not just this payment)
+          _showPaymentDialog(
+            context,
+            newTenderAmount,  // ← Use total tender amount, not just the payment amount
+            changeAmount: newChangeAmount,
+            showChange: amount > balanceBeforePayment,
+            couponResponse: couponResponse,
+          );
+        }
+      } else {
+        print("🟡 PARTIAL PAYMENT → Showing partial dialog");
+        if (mounted) {
+          _showPartialPaymentDialog(context, amount);
+        }
+      }
+    } catch (e, st) {
+      _hidePaymentProgressDialog();
+      setState(() {
+        isLoading = false;
+        _processingPaymentMethod = null;
+        selectedPaymentMethod = TextConstants.cash;
+      });
+      _resetAmountAfterPay();
+
+      if (kDebugMode) {
+        print("❌ _handleCardPaymentViaAPI error: $e");
+        print(st);
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Card payment error: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleEbtCardPaymentViaAPI() async {
     final double amount = double.tryParse(
       amountController.text
           .replaceAll(TextConstants.currencySymbol, '')
@@ -3247,12 +4033,27 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       setState(() => _amountErrorText = TextConstants.amountValidation);
       return;
     }
+
+    // EBT-specific validation
+    final int enteredCents = (amount * 100).round();
+    final int ebtCents = (ebtTotal * 100).round();
+
+    if (ebtCents <= 0) {
+      setState(() => _amountErrorText = "No EBT balance available");
+      return;
+    }
+    if (enteredCents > ebtCents) {
+      setState(() => _amountErrorText =
+      "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})");
+      return;
+    }
+
     _amountErrorText = null;
 
     // ── 1. Show loading ──────────────────────────────────────
     setState(() {
       isLoading = true;
-      _processingPaymentMethod = TextConstants.card;
+      _processingPaymentMethod = TextConstants.ebtText;
     });
     _showPaymentProgressDialog(context);
 
@@ -3271,19 +4072,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         if (raw is Map) {
           final offlineMap = Map<String, dynamic>.from(raw);
 
-          // Use already-synced wooOrderId if available
           final cached = offlineMap["wooOrderId"];
           wooOrderId = (cached is int)
               ? cached
               : int.tryParse(cached?.toString() ?? "") ?? 0;
 
-          // If not synced yet, sync now
           if (wooOrderId == 0) {
             final syncResult =
             await OrderRepository().syncSingleOfflineOrder(offlineMap);
             if (syncResult is Map) {
               wooOrderId = (syncResult?["id"] as num?)?.toInt() ?? 0;
-              // Persist wooOrderId for future use
               offlineMap["wooOrderId"] = wooOrderId;
               await box.put(orderKey, offlineMap);
             }
@@ -3291,7 +4089,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         }
       }
 
-      // Fall back to widget orderId when Hive has no entry
       if (wooOrderId == 0) {
         wooOrderId = widget.orderId ?? orderId ?? 0;
       }
@@ -3315,10 +4112,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final String token = await _getTokenFromDb();
 
       // ── 4. Call create-payment API ────────────────────────
-
-      // final uri = Uri.parse(
-      //   "https://merchantretail.alektasolutions.com/wp-json/pinaka-pos/v1/payments/create-payment",
-      // );
       final uri = Uri.parse(
         "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment",
       );
@@ -3328,13 +4121,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         headers: {
           "Content-Type": "application/json",
           "Authorization": "Bearer $token",
-
-          // "Authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczpcL1wvbWVyY2hhbnRyZXRhaWwuYWxla3Rhc29sdXRpb25zLmNvbSIsImlhdCI6MTc4MDMxNzgwNCwibmJmIjoxNzgwMzE3ODA0LCJleHAiOjE3ODI5MDk4MDQsImRhdGEiOnsidXNlciI6eyJpZCI6MTAwfX19.GyW9z_hXvbCKILL9N_jDm_SAzqom4dzx3XvaQwx0C1I",
         },
         body: jsonEncode({
-          "order_id":wooOrderId,
-          "amount": (amount * 100).round(), // API expects paise/cents as integer
-          "payment_method": "card",
+          "order_id": wooOrderId,
+          "amount": (amount * 100).round(),
+          "payment_method": "ebt",
           "shift_id": shiftId,
         }),
       );
@@ -3346,7 +4137,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       });
 
       if (kDebugMode) {
-        print("Card payment API → ${response.statusCode}");
+        print("EBT payment API → ${response.statusCode}");
         print("Body: ${response.body}");
       }
 
@@ -3355,9 +4146,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // ── 5. Handle response ────────────────────────────────
       if (body["success"] != true) {
-        // duplicate / validation / any other failure
         final String msg =
-            body["message"]?.toString() ?? "Card payment failed";
+            body["message"]?.toString() ?? "EBT payment failed";
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg), backgroundColor: Colors.red),
         );
@@ -3376,22 +4166,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final bool isFullPayment = newBalance <= 0;
 
-      // Save as a local payment record (mirrors cash flow)
       final String datetimeStr =
       DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
       final localPayment = LocalPayment(
         orderId: orderId ?? 0,
-        title: TextConstants.card,
+        title: TextConstants.ebtText,
         amount: amount,
-        paymentMethod: TextConstants.card,
+        paymentMethod: TextConstants.ebtText,
         shiftId: shiftId,
         vendorId: vendorId,
         userId: userId ?? 0,
         serviceType: serviceType,
         datetime: datetimeStr,
-        notes: "card via API – wooOrderId: $wooOrderId",
-        isSynced: true, // already sent to server
+        notes: "ebt via API – wooOrderId: $wooOrderId",
+        isSynced: true,
         createdAt: DateTime.now(),
         remainingBalance: newBalance,
         status: isFullPayment
@@ -3403,7 +4192,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       await LocalPaymentDBHelper.instance.savePayment(localPayment);
 
       _lastPayment = LastPaymentInfo(
-        method: TextConstants.card,
+        method: TextConstants.ebtText,
         amount: amount,
         paymentId: saved.id.toString(),
         sunmiTxnId: null,
@@ -3412,8 +4201,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       await _savePaymentToHive(
         amount: amount,
-        paymentMethod: TextConstants.card,
-        transactionId: "card_api_${saved.id}",
+        paymentMethod: TextConstants.ebtText,
+        transactionId: "ebt_api_${saved.id}",
         localPayment: saved,
       );
       await _saveLocalPaymentToHive(saved);
@@ -3425,12 +4214,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         tenderAmount = newTender;
         balanceAmount = newBalance;
         changeAmount = newChange;
-        payByCard += amount;
+        payByEbt += amount;
+        // Reduce remaining EBT balance
+        ebtTotal = (ebtTotal - amount).clamp(0.0, double.infinity);
         _currentPaymentRemainingBalance =
         isFullPayment ? null : newBalance;
         _lastPaymentDetails = {
           "amount": amount,
-          "method": TextConstants.card,
+          "method": TextConstants.ebtText,
           "remainingBalance": newBalance,
           "previousBalance": currentBalance,
           "datetime": DateTime.now().toIso8601String(),
@@ -3442,8 +4233,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       _resetAmountAfterPay();
 
       // ── 7. Show popup ─────────────────────────────────────
-      if (isFullPayment && !_successPopupShown) {
-        _successPopupShown = true;
+
+      if (isFullPayment) {
+        _successPopupShown = false; // reset so full dialog always shows
+        // _successPopupShown = true;
         await CustomerDisplayService.showThankYou();
         await orderHelper.setActiveOrder(null);
         await CustomerDisplayService.resetDisplay();
@@ -3471,12 +4264,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         _processingPaymentMethod = null;
       });
       if (kDebugMode) {
-        print("_handleCardPaymentViaAPI error: $e");
+        print("_handleEbtCardPaymentViaAPI error: $e");
         print(st);
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Card payment error: $e"),
+          content: Text("EBT payment error: $e"),
           backgroundColor: Colors.red,
         ),
       );
@@ -5842,73 +6635,123 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   _processingPaymentMethod != null &&
                                       _processingPaymentMethod !=
                                           TextConstants.ebtText,
-                                  onTap: () {
-                                    // 1️⃣ Check if there is any EBT left
+                                  // onTap: () {
+                                  //   // 1️⃣ Check if there is any EBT left
+                                  //   if (ebtTotal <= 0) {
+                                  //     setState(() => _amountErrorText =
+                                  //     "No EBT balance available");
+                                  //     return;
+                                  //   }
+                                  //
+                                  //   // 2️⃣ Determine the maximum allowed amount
+                                  //   final allowedAmount =
+                                  //   balanceAmount.clamp(0.0, ebtTotal);
+                                  //
+                                  //   if (allowedAmount <= 0) {
+                                  //     setState(() => _amountErrorText =
+                                  //     "Cannot pay with EBT, balance is zero");
+                                  //     return;
+                                  //   }
+                                  //
+                                  //   // 3️⃣ Respect user-entered partial amount when present.
+                                  //   final enteredAmount = double.tryParse(
+                                  //     amountController.text
+                                  //         .replaceAll(
+                                  //         TextConstants.currencySymbol,
+                                  //         '')
+                                  //         .trim(),
+                                  //   ) ??
+                                  //       0.0;
+                                  //
+                                  //   final amountToUse = enteredAmount > 0
+                                  //       ? enteredAmount.clamp(
+                                  //       0.0, allowedAmount)
+                                  //       : allowedAmount;
+                                  //
+                                  //   if (amountToUse <= 0) {
+                                  //     setState(() => _amountErrorText =
+                                  //         TextConstants.amountValidation);
+                                  //     return;
+                                  //   }
+                                  //
+                                  //   // 4️⃣ Select EBT only (manual amount entry by user)
+                                  //   _selectPaymentMethod(
+                                  //     TextConstants.ebtText,
+                                  //   );
+                                  //
+                                  //   // If user already entered amount, submit like Cash flow.
+                                  //   if (enteredAmount > 0) {
+                                  //     final normalizedAmount = amountToUse;
+                                  //     setState(() {
+                                  //       _rawAmount =
+                                  //           (normalizedAmount * 100).round();
+                                  //       amountController.text =
+                                  //       '${TextConstants.currencySymbol}${normalizedAmount.toStringAsFixed(2)}';
+                                  //       _isAmountEntered = true;
+                                  //       _amountErrorText = null;
+                                  //     });
+                                  //     _handlePay();
+                                  //     return;
+                                  //   }
+                                  //
+                                  //   // Otherwise keep EBT amount user-driven.
+                                  //   setState(() {
+                                  //     _rawAmount = 0;
+                                  //     amountController.text =
+                                  //     '${TextConstants.currencySymbol}0.00';
+                                  //     _isAmountEntered = false;
+                                  //     _amountErrorText = null;
+                                  //   });
+                                  // },
+                                  ////////////////////EBT update
+
+                                  onTap: () async {
+                                    //  Check if there is any EBT left
                                     if (ebtTotal <= 0) {
-                                      setState(() => _amountErrorText =
-                                      "No EBT balance available");
+                                      setState(() => _amountErrorText = "No EBT balance available");
                                       return;
                                     }
 
-                                    // 2️⃣ Determine the maximum allowed amount
-                                    final allowedAmount =
-                                    balanceAmount.clamp(0.0, ebtTotal);
+                                    //  Determine the maximum allowed amount
+                                    final allowedAmount = balanceAmount.clamp(0.0, ebtTotal);
 
                                     if (allowedAmount <= 0) {
-                                      setState(() => _amountErrorText =
-                                      "Cannot pay with EBT, balance is zero");
+                                      setState(() =>
+                                      _amountErrorText = "Cannot pay with EBT, balance is zero");
                                       return;
                                     }
 
-                                    // 3️⃣ Respect user-entered partial amount when present.
+                                    //  Respect user-entered partial amount when present.
                                     final enteredAmount = double.tryParse(
                                       amountController.text
-                                          .replaceAll(
-                                          TextConstants.currencySymbol,
-                                          '')
+                                          .replaceAll(TextConstants.currencySymbol, '')
                                           .trim(),
                                     ) ??
                                         0.0;
 
                                     final amountToUse = enteredAmount > 0
-                                        ? enteredAmount.clamp(
-                                        0.0, allowedAmount)
+                                        ? enteredAmount.clamp(0.0, allowedAmount)
                                         : allowedAmount;
 
                                     if (amountToUse <= 0) {
-                                      setState(() => _amountErrorText =
-                                          TextConstants.amountValidation);
+                                      setState(
+                                              () => _amountErrorText = TextConstants.amountValidation);
                                       return;
                                     }
 
-                                    // 4️⃣ Select EBT only (manual amount entry by user)
-                                    _selectPaymentMethod(
-                                      TextConstants.ebtText,
-                                    );
+                                    //  Select EBT and fill amount
+                                    _selectPaymentMethod(TextConstants.ebtText);
 
-                                    // If user already entered amount, submit like Cash flow.
-                                    if (enteredAmount > 0) {
-                                      final normalizedAmount = amountToUse;
-                                      setState(() {
-                                        _rawAmount =
-                                            (normalizedAmount * 100).round();
-                                        amountController.text =
-                                        '${TextConstants.currencySymbol}${normalizedAmount.toStringAsFixed(2)}';
-                                        _isAmountEntered = true;
-                                        _amountErrorText = null;
-                                      });
-                                      _handlePay();
-                                      return;
-                                    }
-
-                                    // Otherwise keep EBT amount user-driven.
                                     setState(() {
-                                      _rawAmount = 0;
+                                      _rawAmount = (amountToUse * 100).round();
                                       amountController.text =
-                                      '${TextConstants.currencySymbol}0.00';
-                                      _isAmountEntered = false;
+                                      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+                                      _isAmountEntered = true;
                                       _amountErrorText = null;
                                     });
+
+                                    //  Call EBT API (same as card API flow)
+                                    await _handleEbtCardPaymentViaAPI();
                                   },
                                 ),
                               ],
@@ -5929,12 +6772,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   void _showPaymentProgressDialog(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-
-    // THEME COLORS (same pattern as coupon popup)
     final Color dialogBg = isDark ? const Color(0xFF252837) : Colors.white;
     final Color textPrimary = isDark ? Colors.white : const Color(0xFF1F2937);
-    final Color textSecondary =
-    isDark ? Colors.white70 : const Color(0xFF6B7280);
+    final Color textSecondary = isDark ? Colors.white70 : const Color(0xFF6B7280);
 
     showDialog(
       context: context,
@@ -5998,6 +6838,53 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           color: textSecondary,
                         ),
                       ),
+                    const SizedBox(height: 24),
+                    // ── NEW: Cancel button ──────────────────────
+                    SizedBox(
+                      width: double.infinity,
+                      height: 42,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red, width: 1.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        // onPressed: () {
+                        //   // Close the progress dialog only — stay on the page
+                        //   if (Navigator.canPop(context)) {
+                        //     Navigator.of(context, rootNavigator: false).pop();
+                        //   }
+                        //   // Reset loading state so buttons become active again
+                        //   if (mounted) {
+                        //     setState(() {
+                        //       isLoading = false;
+                        //       _processingPaymentMethod = null;
+                        //     });
+                        //   }
+                        // },
+                        onPressed: () {
+                          _isCardPaymentCancelled = true; // ← SET FLAG
+                          if (Navigator.canPop(context)) {
+                            Navigator.of(context, rootNavigator: false).pop();
+                          }
+                          if (mounted) {
+                            setState(() {
+                              isLoading = false;
+                              _processingPaymentMethod = null;
+                            });
+                          }
+                        },
+                        child: const Text(
+                          "Cancel Payment",
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -6007,6 +6894,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       },
     );
   }
+
 
   Widget _buildHeader() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -11442,135 +12330,226 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   // Build #1.0.175: Modified _handleVoidPayment for partial void with API call
 
+
+
+  // Future<void> _handleVoidPayment(BuildContext context,
+  //     {required bool isPartial}) async {
+  //   if (_lastPayment == null || _lastPayment!.amount <= 0) {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(content: Text("No valid payment to void")),
+  //     );
+  //     return;
+  //   }
+  //
+  //   final voidedAmount = _lastPayment!.amount;
+  //   final method = _lastPayment!.method;
+  //   final serverPaymentId = _lastPayment!.paymentId;
+  //
+  //   if (method.toLowerCase() == TextConstants.card.toLowerCase()) {
+  //     await _voidServerPaymentIfCard(serverPaymentId: serverPaymentId);
+  //   }
+  //
+  //   print("VOID INITIATED → reversing \$${voidedAmount.toStringAsFixed(2)} ($method) | isPartial: $isPartial");
+  //
+  //   final now = DateTime.now();
+  //   final String voidDateTime = DateFormat('yyyy-MM-dd HH:mm:ss').format(now);
+  //
+  //   // Create NEGATIVE payment record
+  //   final negativePayment = LocalPayment(
+  //     orderId: orderId ?? 0,
+  //     title: "Void ($method)",
+  //     amount: -voidedAmount,
+  //     paymentMethod: method,
+  //     shiftId: shiftId,
+  //     vendorId: vendorId,
+  //     userId: userId ?? 0,
+  //     serviceType: serviceType,
+  //     datetime: voidDateTime,
+  //     notes: "Local void of ${method} payment – original ID: ${_lastPayment?.paymentId ?? 'local'}",
+  //     isSynced: false,
+  //     createdAt: now,
+  //     remainingBalance: (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
+  //     status: PaymentDbStatus.voided,
+  //     serverPaymentId: int.tryParse(_lastPayment?.paymentId ?? "0"),
+  //   );
+  //
+  //   try {
+  //     final savedVoid = await LocalPaymentDBHelper.instance.savePayment(negativePayment);
+  //     await _savePaymentToHive(
+  //       amount: -voidedAmount,
+  //       paymentMethod: method,
+  //       transactionId: "void_${savedVoid.id}",
+  //       localPayment: savedVoid,
+  //     );
+  //     await _saveLocalPaymentToHive(savedVoid);
+  //     await _calculateBalanceFromPaymentHistory();
+  //     await _printPaymentHistorySummary();
+  //
+  //     // ✅ FIX: Check if this was a FULL payment void (no remaining balance)
+  //     final bool wasFullPayment = !isPartial && balanceAmount <= 0;
+  //
+  //     setState(() {
+  //       _lastPaymentDetails = null;
+  //       _currentPaymentRemainingBalance = null;
+  //       _successPopupShown = false;
+  //       isPaymentStarted = false;
+  //       selectedPaymentMethod = TextConstants.cash;
+  //     });
+  //
+  //     _resetAmountAfterPay();
+  //
+  //     // ✅ FIX: After FULL VOID, navigate back to home screen immediately
+  //     if (wasFullPayment) {
+  //       print("Full payment voided → navigating to home screen");
+  //       await CustomerDisplayService.showWelcome();
+  //
+  //       if (mounted) {
+  //         OrderHelper.isOrderPanelLoaded = false;
+  //         OrderHelper.notifyOrderPanelToRefresh();
+  //         Navigator.pushReplacement(
+  //           context,
+  //           MaterialPageRoute(builder: (_) => POSHomeScreen()),
+  //           result: TextConstants.refresh,
+  //         );
+  //       }
+  //       return;
+  //     }
+  //
+  //     // // For partial void, just show message
+  //     // ScaffoldMessenger.of(context).showSnackBar(
+  //     //   SnackBar(
+  //     //     content: Text("${isPartial ? 'Partial' : 'Full'} payment of \$${voidedAmount.toStringAsFixed(2)} voided"),
+  //     //     backgroundColor: Colors.orange[800],
+  //     //     duration: const Duration(seconds: 2),
+  //     //   ),
+  //     // );
+  //   } catch (e, stack) {
+  //     print("VOID FAILED: $e");
+  //     print(stack);
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text("Failed to void payment: $e"),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //   }
+  //
+  //   if (mounted) {
+  //     Future.microtask(() async {
+  //       try {
+  //         await _syncCurrentOfflineOrder();
+  //       } catch (e) {
+  //         print("❌ Post-void sync failed: $e");
+  //       }
+  //     });
+  //   }
+  // }
+
   Future<void> _handleVoidPayment(BuildContext context,
       {required bool isPartial}) async {
-    // ────────────────────────────────────────────────
-    //  0. Early validation
-    // ────────────────────────────────────────────────
     if (_lastPayment == null || _lastPayment!.amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("No valid payment to void")),
       );
-      Navigator.of(context).pop(); // close confirmation dialog
       return;
     }
 
     final voidedAmount = _lastPayment!.amount;
     final method = _lastPayment!.method;
+    final serverPaymentId = _lastPayment!.paymentId;
 
-    print(
-        "VOID INITIATED → reversing \$${voidedAmount.toStringAsFixed(2)} ($method) | isPartial: $isPartial");
+    if (method.toLowerCase() == TextConstants.card.toLowerCase()) {
+      await _voidServerPaymentIfCard(serverPaymentId: serverPaymentId);
+    }
+
+    print("VOID INITIATED → reversing \$${voidedAmount.toStringAsFixed(2)} ($method) | isPartial: $isPartial");
 
     final now = DateTime.now();
     final String voidDateTime = DateFormat('yyyy-MM-dd HH:mm:ss').format(now);
 
-    // ────────────────────────────────────────────────
-    //  1. Create NEGATIVE payment record
-    // ────────────────────────────────────────────────
+    // Create NEGATIVE payment record
     final negativePayment = LocalPayment(
       orderId: orderId ?? 0,
       title: "Void ($method)",
       amount: -voidedAmount,
-      // IMPORTANT: use the original payment method so per-method totals (Pay by Cash)
-      // correctly subtract the negative void amount.
       paymentMethod: method,
       shiftId: shiftId,
       vendorId: vendorId,
       userId: userId ?? 0,
       serviceType: serviceType,
       datetime: voidDateTime,
-      notes:
-      "Local void of ${method} payment – original ID: ${_lastPayment?.paymentId ?? 'local'}",
+      notes: "Local void of ${method} payment – original ID: ${_lastPayment?.paymentId ?? 'local'}",
       isSynced: false,
       createdAt: now,
-      remainingBalance:
-      (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
+      remainingBalance: (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
       status: PaymentDbStatus.voided,
       serverPaymentId: int.tryParse(_lastPayment?.paymentId ?? "0"),
     );
 
     try {
-      // ────────────────────────────────────────────────
-      //  2. Save void payment (Isar + Hive mirroring)
-      // ────────────────────────────────────────────────
-      final savedVoid =
-      await LocalPaymentDBHelper.instance.savePayment(negativePayment);
-      print(
-          "Void saved in Isar → ID: ${savedVoid.id} | amount: -${voidedAmount.toStringAsFixed(2)}");
-
+      final savedVoid = await LocalPaymentDBHelper.instance.savePayment(negativePayment);
       await _savePaymentToHive(
         amount: -voidedAmount,
         paymentMethod: method,
         transactionId: "void_${savedVoid.id}",
         localPayment: savedVoid,
       );
-
       await _saveLocalPaymentToHive(savedVoid);
-
-      // ────────────────────────────────────────────────
-      //  3. Refresh balances from full payment history
-      //     (this should now include the -amount entry)
-      // ────────────────────────────────────────────────
       await _calculateBalanceFromPaymentHistory();
       await _printPaymentHistorySummary();
 
-      // ────────────────────────────────────────────────
-      //  4. CRITICAL: Force-reset "payment completed" flags
-      //     Especially important when isPartial == false (full void)
-      // ────────────────────────────────────────────────
+      // ✅ FIX: Check if this was a FULL payment void (no remaining balance)
+      final bool wasFullPayment = !isPartial && balanceAmount <= 0;
+
       setState(() {
-        // Always clear last payment reference
-        _lastPayment = null;
         _lastPaymentDetails = null;
-
-        // If this was a FULL payment void → make sure we allow new full payment
-        if (!isPartial) {
-          // Most important resets for full void
-          _currentPaymentRemainingBalance =
-          null; // no longer "in partial session"
-          _successPopupShown = false; // allow success dialog again
-          isPaymentStarted = false; // visually reset "payment in progress"
-        }
-
-        // Clear the input + payment-method highlight so we don't remain in "EBT zone"
-        // when the user voids and continues paying.
+        _currentPaymentRemainingBalance = null;
+        _successPopupShown = false;
+        isPaymentStarted = false;
         selectedPaymentMethod = TextConstants.cash;
 
-        // Always update main UI flags based on new calculated balance
-        isPaymentStarted = tenderAmount > 0;
+        // ✅ CRITICAL: Clear _lastPayment after void
+        _lastPayment = null;
       });
 
-      // Reset keypad input (amount field) after void.
-      // (Do it outside setState so it also updates controller text.)
       _resetAmountAfterPay();
 
-      // ────────────────────────────────────────────────
-      //  5. Optional: Show feedback (non-intrusive)
-      // ────────────────────────────────────────────────
-      String message = isPartial
-          ? "Partial payment of \$${voidedAmount.toStringAsFixed(2)} voided"
-          : "Full payment of \$${voidedAmount.toStringAsFixed(2)} voided. Ready for new payment.";
+      // ✅ FIX: After FULL VOID, navigate back to home screen immediately
+      if (wasFullPayment) {
+        print("Full payment voided → navigating to home screen");
+        await CustomerDisplayService.showWelcome();
 
+        if (mounted) {
+          OrderHelper.isOrderPanelLoaded = false;
+          OrderHelper.notifyOrderPanelToRefresh();
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => POSHomeScreen()),
+            result: TextConstants.refresh,
+          );
+        }
+        return;
+      }
+
+      // For partial void, just show message
       // ScaffoldMessenger.of(context).showSnackBar(
       //   SnackBar(
-      //     content: Text(message),
+      //     content: Text("${isPartial ? 'Partial' : 'Full'} payment of \$${voidedAmount.toStringAsFixed(2)} voided"),
       //     backgroundColor: Colors.orange[800],
-      //     duration: const Duration(seconds: 4),
+      //     duration: const Duration(seconds: 2),
       //   ),
       // );
     } catch (e, stack) {
       print("VOID FAILED: $e");
       print(stack);
-
-      // ScaffoldMessenger.of(context).showSnackBar(
-      //   SnackBar(
-      //     content: Text("Failed to void payment: $e"),
-      //     backgroundColor: Colors.red,
-      //   ),
-      // );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Failed to void payment: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
 
-    // Push void + updated balances to Woo while Hive still holds wooOrderId
     if (mounted) {
       Future.microtask(() async {
         try {
@@ -11580,11 +12559,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         }
       });
     }
-
-    // Always close the confirmation dialog at the end
-    // if (Navigator.canPop(context)) {
-    //   Navigator.of(context).pop();
-    // }
   }
 
   // Build #1.0.175: New method for void order API call
@@ -11686,6 +12660,66 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   // --------------------
 
+  // Future<void> _showPartialPaymentDialog(BuildContext context, double amount,
+  //     {bool isVoidDisabled = false}) async {
+  //   if (_isShowingPartialDialog) {
+  //     print("Partial dialog already showing → skipping duplicate call");
+  //     return;
+  //   }
+  //   _isShowingPartialDialog = true;
+  //
+  //   final double remainingToShow =
+  //       _currentPaymentRemainingBalance ?? balanceAmount;
+  //   print(
+  //       "Showing Partial Payment Dialog → amount: $amount | remaining: $remainingToShow");
+  //
+  //   await showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (dialogCtx) => PaymentDialog(
+  //       status: PaymentStatus.partial,
+  //       mode: _currentDialogPaymentMode(),
+  //       amount: amount,
+  //       remainingBalance: remainingToShow,
+  //       isVoidDisabled: isVoidDisabled,
+  //       onVoid: () async {
+  //         print("Void tapped from partial dialog");
+  //         // 1. Close the partial dialog cleanly first
+  //         Navigator.of(dialogCtx).pop();
+  //
+  //         // 2. Show void confirmation
+  //         if (!_isShowingPartialDialog) {
+  //           showVoidExitConfirmation(context, false); // false = not partial
+  //         }
+  //         await _showVoidConfirmation(context, isPartial: true);
+  //       },
+  //       onNextPayment: () async {
+  //         // try {
+  //         //   await CustomerDisplayService.showThankYou();
+  //         // } catch (e) {
+  //         //   print(">>> Error showing Thank You screen: $e");
+  //         // }
+  //
+  //         print("Next Payment tapped → closing partial dialog cleanly");
+  //
+  //         Navigator.of(dialogCtx).pop();
+  //
+  //         if (mounted) {
+  //           setState(() {
+  //             selectedPaymentMethod = TextConstants.cash;
+  //           });
+  //           _resetAmountAfterPay();
+  //         }
+  //       },
+  //     ),
+  //   );
+  //
+  //   // Reset guard after dialog is fully closed
+  //   _isShowingPartialDialog = false;
+  //   print("Partial dialog closed → guard reset");
+  // }
+
+
   Future<void> _showPartialPaymentDialog(BuildContext context, double amount,
       {bool isVoidDisabled = false}) async {
     if (_isShowingPartialDialog) {
@@ -11710,40 +12744,53 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         isVoidDisabled: isVoidDisabled,
         onVoid: () async {
           print("Void tapped from partial dialog");
-          // 1. Close the partial dialog cleanly first
           Navigator.of(dialogCtx).pop();
-
-          // 2. Show void confirmation
           if (!_isShowingPartialDialog) {
-            showVoidExitConfirmation(context, false); // false = not partial
+            showVoidExitConfirmation(context, false);
           }
           await _showVoidConfirmation(context, isPartial: true);
         },
+        // onNextPayment: () async {
+        //   print("Next Payment tapped → closing partial dialog cleanly");
+        //
+        //   // ✅ CRITICAL: Clear the remaining balance flag before closing
+        //   // This ensures the next payment doesn't treat it as a partial session
+        //   if (mounted) {
+        //     setState(() {
+        //       _currentPaymentRemainingBalance = null;
+        //       _lastPaymentDetails = null;
+        //       selectedPaymentMethod = TextConstants.cash;
+        //     });
+        //   }
+        //
+        //   Navigator.of(dialogCtx).pop();
+        //
+        //   if (mounted) {
+        //     _resetAmountAfterPay();
+        //   }
+        // },
+
         onNextPayment: () async {
-          // try {
-          //   await CustomerDisplayService.showThankYou();
-          // } catch (e) {
-          //   print(">>> Error showing Thank You screen: $e");
-          // }
-
-          print("Next Payment tapped → closing partial dialog cleanly");
-
-          Navigator.of(dialogCtx).pop();
-
           if (mounted) {
             setState(() {
+              _currentPaymentRemainingBalance = null;
+              _lastPaymentDetails = null;
+              _successPopupShown = false; // ADD THIS LINE
               selectedPaymentMethod = TextConstants.cash;
             });
+          }
+          Navigator.of(dialogCtx).pop();
+          if (mounted) {
             _resetAmountAfterPay();
           }
         },
       ),
     );
 
-    // Reset guard after dialog is fully closed
     _isShowingPartialDialog = false;
     print("Partial dialog closed → guard reset");
   }
+
 
   Future<void> _showVoidConfirmation(BuildContext context,
       {required bool isPartial}) async {
@@ -12088,9 +13135,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     try {
       final box = StorageProvider.offlineOrders;
       final raw = await box.get(orderKey);
-      if (raw is! Map<String, dynamic>) return;
+      if (raw is! Map) return;
 
       var order = Map<String, dynamic>.from(raw);
+      final int localId = orderId ?? int.tryParse(orderKey) ?? 0;
+      if (localId > 0) {
+        order['id'] ??= localId;
+        order['order_id'] ??= localId;
+      }
 
       // === CRITICAL: Handle coupon validation failures ===
       bool syncSuccess = false;
@@ -12200,249 +13252,254 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
-  void _showPaymentDialog(
-      BuildContext context,
-      double amount, {
-        double? changeAmount,
-        required bool showChange,
-        Map<String, dynamic>? couponResponse,
-        bool isVoidDisabled = false,
-      }) async {
-    if (_isShowingPaymentDialog) {
-      print("Payment dialog already showing → skipping duplicate call");
-      return;
-    }
-
-    _isShowingPaymentDialog = true;
-
-    final storeInfo = PinakaPreferences.getLoggedInStore();
-
-    // ── Helper: update customer display ──────────────────────
-    Future<void> updateCustomerDisplayWelcome() async {
-      try {
-        if (orderHelper.activeOrderId != null) {
-          await orderHelper.setActiveOrder(null);
-          OrderHelper.isOrderPanelLoaded = false;
-          OrderHelper.notifyOrderPanelToRefresh();
-          await Future.delayed(const Duration(milliseconds: 150));
-        }
-        final storeInfo = PinakaPreferences.getLoggedInStore();
-        if (storeInfo.isNotEmpty) {
-          await CustomerDisplayHelper.updateWelcomeWithStore(
-            storeInfo['storeId'] ?? '0',
-            storeInfo['storeName'] ?? 'Store',
-            storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
-            storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
-          );
-        } else {
-          await CustomerDisplayService.showWelcome();
-        }
-      } catch (e) {
-        print(">>> customer display error: $e");
-      }
-    }
-
-    // ── Check if this is a negative/payout order ─────────────
-    final bool isNegativeOrder = computedNetPayable <= 0;
-
-    // ── Helper: mark order completed in Hive ─────────────────
-    Future<void> forceMarkHiveOrderCompleted() async {
-      try {
-        final box = StorageProvider.offlineOrders;
-        final String key = (orderId ?? 0).toString();
-        if (!(await box.containsKey(key))) return;
-
-        final raw = await box.get(key);
-        final order = Map<String, dynamic>.from(raw is Map ? raw : {});
-
-        order['order_status'] = 'completed'; // force completed
-        order['updated_at'] = DateTime.now().toIso8601String();
-
-        await box.put(key, order);
-        print("✅ Hive order #$orderId force-marked as completed");
-      } catch (e) {
-        print("❌ forceMarkHiveOrderCompleted error: $e");
-      }
-    }
-
-    // ── Helper: background work (non-blocking) ───────────────
-    void doBackgroundWork() {
-      Future(() async {
-        if (orderId != null && orderId! > 0) {
-          final allPayments = await LocalPaymentDBHelper.instance
-              .getPaymentsByOrderId(orderId!);
-
-          final bool isNegativeOrder = computedNetPayable <= 0;
-
-          for (final p in allPayments) {
-            if (p.status == PaymentDbStatus.pending) {
-              if (p.amount > 0 || isNegativeOrder) {
-                await LocalPaymentDBHelper.instance
-                    .updateStatus(p.id, PaymentDbStatus.completed);
-                print(" Completed payment ID ${p.id} "
-                    "amount:\$${p.amount} isNegativeOrder:$isNegativeOrder");
-              }
-            }
-          }
-        }
-
-        // Sync to backend (your original unchanged _syncCurrentOfflineOrder)
-        try {
-          await _syncCurrentOfflineOrder();
-          print("✅ doBackgroundWork: sync done");
-        } catch (e) {
-          print("❌ doBackgroundWork: sync failed: $e");
-        }
-
-        // Update customer display
-        try {
-          final storeInfo = PinakaPreferences.getLoggedInStore();
-          if (storeInfo.isNotEmpty) {
-            await CustomerDisplayHelper.updateWelcomeWithStore(
-              storeInfo['storeId'] ?? '0',
-              storeInfo['storeName'] ?? 'Store',
-              storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
-              storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
-            );
-          } else {
-            await CustomerDisplayService.showWelcome();
-          }
-        } catch (e) {
-          print(">>> customer display error: $e");
-        }
-      });
-    }
-
-    try {
-      await CustomerDisplayService.showThankYou();
-    } catch (e) {
-      print(">>> Error showing Thank You screen: $e");
-    }
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      useRootNavigator: false,
-      builder: (dialogCtx) => PaymentDialog(
-        status: PaymentStatus.successful,
-        mode: _currentDialogPaymentMode(),
-        amount: amount,
-        changeAmount: showChange ? changeAmount : null,
-        couponResponse: couponResponse,
-        isVoidDisabled: isVoidDisabled,
-
-        // ── VOID ─────────────────────────────────────────────
-        onVoid: () async {
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
-
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            if (!_isShowingPartialDialog) {
-              showVoidExitConfirmation(context, false);
-            }
-          });
-        },
-
-        // ── NO RECEIPT ───────────────────────────────────────
-
-        onNoReceipt: () async {
-          try {
-
-            await _checkAndClearActiveOrderBeforeThankYou();
-
-            // await CustomerDisplayService.showThankYou();
-          } catch (e) {
-            print(">>> Error showing Thank You screen: $e");
-          }
-
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
-
-          doBackgroundWork();
-
-          // await _checkAndClearActiveOrderBeforeThankYou();
-
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => POSHomeScreen()),
-            result: TextConstants.refresh,
-          );
-        },
-
-
-        // ── DONE (Print / Email / SMS) ────────────────────────
-        onDone: (selectedOption, {String? email}) async {
-          try {
-            await CustomerDisplayService.showThankYou();
-          } catch (e) {
-            print(">>> Error showing Thank You screen: $e");
-          }
-
-          print("onDone → $selectedOption, email=$email");
-
-          // ── EMAIL ────────────────────────────────────────────
-          if (selectedOption == TextConstants.email &&
-              email != null &&
-              email.isNotEmpty) {
-            Navigator.of(dialogCtx, rootNavigator: false).pop();
-
-            if (orderId == null || orderId == 0) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(TextConstants.canNotSendEmail),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(milliseconds: 1500),
-                ),
-              );
-            } else {
-              paymentBloc.sendOrderDetails(orderId!, email);
-
-              StreamSubscription? subscription;
-              subscription =
-                  paymentBloc.sendOrderDetailsStream.listen((response) {
-                    subscription?.cancel();
-                    print(">>> Email sent");
-                  });
-            }
-
-            doBackgroundWork();
-
-            OrderHelper.isOrderPanelLoaded = false;
-            OrderHelper.notifyOrderPanelToRefresh();
-
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => POSHomeScreen()),
-              result: TextConstants.refresh,
-            );
-            return;
-          }
-
-          // ── PRINT ─────────────────────────────────────────────
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
-
-          if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
-            Future(() async {
-              await _preparePrintTicket();
-              await _printTicket(manual: true);
-            });
-          }
-
-          doBackgroundWork();
-
-          OrderHelper.isOrderPanelLoaded = false;
-          OrderHelper.notifyOrderPanelToRefresh();
-
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => POSHomeScreen()),
-            result: TextConstants.refresh,
-          );
-        },
-      ),
-    ).then((_) {
-      _isShowingPaymentDialog = false;
-      print("Payment dialog closed → guard reset");
-    });
-  }
+  // void _showPaymentDialog(
+  //     BuildContext context,
+  //     double amount, {
+  //       double? changeAmount,
+  //       required bool showChange,
+  //       Map<String, dynamic>? couponResponse,
+  //       bool isVoidDisabled = false,
+  //     }) async {
+  //   if (_isShowingPaymentDialog) {
+  //     print("Payment dialog already showing → skipping duplicate call");
+  //     return;
+  //   }
+  //
+  //   _isShowingPaymentDialog = true;
+  //
+  //   final storeInfo = PinakaPreferences.getLoggedInStore();
+  //
+  //   // ── Helper: update customer display ──────────────────────
+  //   Future<void> updateCustomerDisplayWelcome() async {
+  //     try {
+  //       if (orderHelper.activeOrderId != null) {
+  //         await orderHelper.setActiveOrder(null);
+  //         OrderHelper.isOrderPanelLoaded = false;
+  //         OrderHelper.notifyOrderPanelToRefresh();
+  //         await Future.delayed(const Duration(milliseconds: 150));
+  //       }
+  //       final storeInfo = PinakaPreferences.getLoggedInStore();
+  //       if (storeInfo.isNotEmpty) {
+  //         await CustomerDisplayHelper.updateWelcomeWithStore(
+  //           storeInfo['storeId'] ?? '0',
+  //           storeInfo['storeName'] ?? 'Store',
+  //           storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
+  //           storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
+  //         );
+  //       } else {
+  //         await CustomerDisplayService.showWelcome();
+  //       }
+  //     } catch (e) {
+  //       print(">>> customer display error: $e");
+  //     }
+  //   }
+  //
+  //   // ── Check if this is a negative/payout order ─────────────
+  //   final bool isNegativeOrder = computedNetPayable <= 0;
+  //
+  //   // ── Helper: mark order completed in Hive ─────────────────
+  //   Future<void> forceMarkHiveOrderCompleted() async {
+  //     try {
+  //       final box = StorageProvider.offlineOrders;
+  //       final String key = (orderId ?? 0).toString();
+  //       if (!(await box.containsKey(key))) return;
+  //
+  //       final raw = await box.get(key);
+  //       final order = Map<String, dynamic>.from(raw is Map ? raw : {});
+  //
+  //       order['order_status'] = 'completed'; // force completed
+  //       order['updated_at'] = DateTime.now().toIso8601String();
+  //
+  //       await box.put(key, order);
+  //       print("✅ Hive order #$orderId force-marked as completed");
+  //     } catch (e) {
+  //       print("❌ forceMarkHiveOrderCompleted error: $e");
+  //     }
+  //   }
+  //
+  //   // ── Helper: background work (non-blocking) ───────────────
+  //   void doBackgroundWork() {
+  //     Future(() async {
+  //       if (orderId != null && orderId! > 0) {
+  //         final allPayments = await LocalPaymentDBHelper.instance
+  //             .getPaymentsByOrderId(orderId!);
+  //
+  //         final bool isNegativeOrder = computedNetPayable <= 0;
+  //
+  //         for (final p in allPayments) {
+  //           if (p.status == PaymentDbStatus.pending) {
+  //             if (p.amount > 0 || isNegativeOrder) {
+  //               await LocalPaymentDBHelper.instance
+  //                   .updateStatus(p.id, PaymentDbStatus.completed);
+  //               print(" Completed payment ID ${p.id} "
+  //                   "amount:\$${p.amount} isNegativeOrder:$isNegativeOrder");
+  //             }
+  //           }
+  //         }
+  //       }
+  //
+  //       // Sync to backend (your original unchanged _syncCurrentOfflineOrder)
+  //       try {
+  //         await _syncCurrentOfflineOrder();
+  //         print("✅ doBackgroundWork: sync done");
+  //       } catch (e) {
+  //         print("❌ doBackgroundWork: sync failed: $e");
+  //       }
+  //
+  //       // Update customer display
+  //       try {
+  //         final storeInfo = PinakaPreferences.getLoggedInStore();
+  //         if (storeInfo.isNotEmpty) {
+  //           await CustomerDisplayHelper.updateWelcomeWithStore(
+  //             storeInfo['storeId'] ?? '0',
+  //             storeInfo['storeName'] ?? 'Store',
+  //             storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
+  //             storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
+  //           );
+  //         } else {
+  //           await CustomerDisplayService.showWelcome();
+  //         }
+  //       } catch (e) {
+  //         print(">>> customer display error: $e");
+  //       }
+  //     });
+  //   }
+  //
+  //   try {
+  //     await CustomerDisplayService.showThankYou();
+  //   } catch (e) {
+  //     print(">>> Error showing Thank You screen: $e");
+  //   }
+  //
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     useRootNavigator: false,
+  //     builder: (dialogCtx) => PaymentDialog(
+  //       status: PaymentStatus.successful,
+  //       mode: _currentDialogPaymentMode(),
+  //       amount: amount,
+  //       changeAmount: showChange ? changeAmount : null,
+  //       couponResponse: couponResponse,
+  //       isVoidDisabled: isVoidDisabled,
+  //
+  //       // ── VOID ─────────────────────────────────────────────
+  //       onVoid: () async {
+  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
+  //
+  //         await Future.delayed(const Duration(milliseconds: 100));
+  //         if (mounted) {
+  //           showVoidExitConfirmation(context, false); // Show VOID confirmation only
+  //         }
+  //
+  //         // SchedulerBinding.instance.addPostFrameCallback((_) {
+  //         //   if (!_isShowingPartialDialog) {
+  //         //     showVoidExitConfirmation(context, false);
+  //         //   }
+  //         // });
+  //       },
+  //
+  //       // ── NO RECEIPT ───────────────────────────────────────
+  //
+  //       onNoReceipt: () async {
+  //         try {
+  //
+  //           await _checkAndClearActiveOrderBeforeThankYou();
+  //
+  //           // await CustomerDisplayService.showThankYou();
+  //         } catch (e) {
+  //           print(">>> Error showing Thank You screen: $e");
+  //         }
+  //
+  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
+  //
+  //         doBackgroundWork();
+  //
+  //         // await _checkAndClearActiveOrderBeforeThankYou();
+  //
+  //         Navigator.pushReplacement(
+  //           context,
+  //           MaterialPageRoute(builder: (_) => POSHomeScreen()),
+  //           result: TextConstants.refresh,
+  //         );
+  //       },
+  //
+  //
+  //       // ── DONE (Print / Email / SMS) ────────────────────────
+  //       onDone: (selectedOption, {String? email}) async {
+  //         try {
+  //           await CustomerDisplayService.showThankYou();
+  //         } catch (e) {
+  //           print(">>> Error showing Thank You screen: $e");
+  //         }
+  //
+  //         print("onDone → $selectedOption, email=$email");
+  //
+  //         // ── EMAIL ────────────────────────────────────────────
+  //         if (selectedOption == TextConstants.email &&
+  //             email != null &&
+  //             email.isNotEmpty) {
+  //           Navigator.of(dialogCtx, rootNavigator: false).pop();
+  //
+  //           if (orderId == null || orderId == 0) {
+  //             ScaffoldMessenger.of(context).showSnackBar(
+  //               SnackBar(
+  //                 content: Text(TextConstants.canNotSendEmail),
+  //                 backgroundColor: Colors.red,
+  //                 duration: const Duration(milliseconds: 1500),
+  //               ),
+  //             );
+  //           } else {
+  //             paymentBloc.sendOrderDetails(orderId!, email);
+  //
+  //             StreamSubscription? subscription;
+  //             subscription =
+  //                 paymentBloc.sendOrderDetailsStream.listen((response) {
+  //                   subscription?.cancel();
+  //                   print(">>> Email sent");
+  //                 });
+  //           }
+  //
+  //           doBackgroundWork();
+  //
+  //           OrderHelper.isOrderPanelLoaded = false;
+  //           OrderHelper.notifyOrderPanelToRefresh();
+  //
+  //           Navigator.pushReplacement(
+  //             context,
+  //             MaterialPageRoute(builder: (_) => POSHomeScreen()),
+  //             result: TextConstants.refresh,
+  //           );
+  //           return;
+  //         }
+  //
+  //         // ── PRINT ─────────────────────────────────────────────
+  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
+  //
+  //         if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
+  //           Future(() async {
+  //             await _preparePrintTicket();
+  //             await _printTicket(manual: true);
+  //           });
+  //         }
+  //
+  //         doBackgroundWork();
+  //
+  //         OrderHelper.isOrderPanelLoaded = false;
+  //         OrderHelper.notifyOrderPanelToRefresh();
+  //
+  //         Navigator.pushReplacement(
+  //           context,
+  //           MaterialPageRoute(builder: (_) => POSHomeScreen()),
+  //           result: TextConstants.refresh,
+  //         );
+  //       },
+  //     ),
+  //   ).then((_) {
+  //     _isShowingPaymentDialog = false;
+  //     print("Payment dialog closed → guard reset");
+  //   });
+  // }
 
 // ============================================================
 // ALSO REPLACE _showPartialPaymentDialog with immediate close on Next Payment
@@ -12585,63 +13642,290 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //     ),
   //   );
   // }
+  
+  void _showPaymentDialog(
+      BuildContext context,
+      double amount, {
+        double? changeAmount,
+        required bool showChange,
+        Map<String, dynamic>? couponResponse,
+        bool isVoidDisabled = false,
+      }) async {
+    if (_isShowingPaymentDialog) {
+      print("Payment dialog already showing → skipping duplicate call");
+      return;
+    }
 
-////
+    _isShowingPaymentDialog = true;
 
-  void showVoidExitConfirmation(BuildContext context, bool isPartial) {
+    final storeInfo = PinakaPreferences.getLoggedInStore();
+
+    // ── Helper: update customer display ──────────────────────
+    Future<void> updateCustomerDisplayWelcome() async {
+      try {
+        if (orderHelper.activeOrderId != null) {
+          await orderHelper.setActiveOrder(null);
+          OrderHelper.isOrderPanelLoaded = false;
+          OrderHelper.notifyOrderPanelToRefresh();
+          await Future.delayed(const Duration(milliseconds: 150));
+        }
+        final storeInfo = PinakaPreferences.getLoggedInStore();
+        if (storeInfo.isNotEmpty) {
+          await CustomerDisplayHelper.updateWelcomeWithStore(
+            storeInfo['storeId'] ?? '0',
+            storeInfo['storeName'] ?? 'Store',
+            storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
+            storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
+          );
+        } else {
+          await CustomerDisplayService.showWelcome();
+        }
+      } catch (e) {
+        print(">>> customer display error: $e");
+      }
+    }
+
+    // ── Check if this is a negative/payout order ─────────────
+    final bool isNegativeOrder = computedNetPayable <= 0;
+
+    // ── Helper: mark order completed in Hive ─────────────────
+    Future<void> forceMarkHiveOrderCompleted() async {
+      try {
+        final box = StorageProvider.offlineOrders;
+        final String key = (orderId ?? 0).toString();
+        if (!(await box.containsKey(key))) return;
+
+        final raw = await box.get(key);
+        final order = Map<String, dynamic>.from(raw is Map ? raw : {});
+
+        order['order_status'] = 'completed';
+        order['updated_at'] = DateTime.now().toIso8601String();
+
+        await box.put(key, order);
+        print("✅ Hive order #$orderId force-marked as completed");
+      } catch (e) {
+        print("❌ forceMarkHiveOrderCompleted error: $e");
+      }
+    }
+
+    // ── Helper: background work (non-blocking) ───────────────
+    void doBackgroundWork() {
+      Future(() async {
+        if (orderId != null && orderId! > 0) {
+          final allPayments = await LocalPaymentDBHelper.instance
+              .getPaymentsByOrderId(orderId!);
+
+          for (final p in allPayments) {
+            if (p.status == PaymentDbStatus.pending) {
+              if (p.amount > 0 || isNegativeOrder) {
+                await LocalPaymentDBHelper.instance
+                    .updateStatus(p.id, PaymentDbStatus.completed);
+                print(" Completed payment ID ${p.id} "
+                    "amount:\$${p.amount} isNegativeOrder:$isNegativeOrder");
+              }
+            }
+          }
+        }
+
+        // Sync to backend
+        try {
+          await _syncCurrentOfflineOrder();
+          print("✅ doBackgroundWork: sync done");
+        } catch (e) {
+          print("❌ doBackgroundWork: sync failed: $e");
+        }
+
+        // Update customer display
+        try {
+          final storeInfo = PinakaPreferences.getLoggedInStore();
+          if (storeInfo.isNotEmpty) {
+            await CustomerDisplayHelper.updateWelcomeWithStore(
+              storeInfo['storeId'] ?? '0',
+              storeInfo['storeName'] ?? 'Store',
+              storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
+              storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
+            );
+          } else {
+            await CustomerDisplayService.showWelcome();
+          }
+        } catch (e) {
+          print(">>> customer display error: $e");
+        }
+      });
+    }
+
+    // ── Helper: navigate to home screen ──────────────────────
+    void navigateToHome() {
+      // Reset panel state
+      OrderHelper.isOrderPanelLoaded = false;
+      OrderHelper.notifyOrderPanelToRefresh();
+
+      // Navigate to home screen
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => POSHomeScreen()),
+        result: TextConstants.refresh,
+      );
+    }
+
+    try {
+      await CustomerDisplayService.showThankYou();
+    } catch (e) {
+      print(">>> Error showing Thank You screen: $e");
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
       useRootNavigator: false,
       builder: (dialogCtx) => PaymentDialog(
-        status: PaymentStatus.exitConfirmation,
-        onExitCancel: () {
+        status: PaymentStatus.successful,
+        mode: _currentDialogPaymentMode(),
+        amount: amount,
+        changeAmount: showChange ? changeAmount : null,
+        couponResponse: couponResponse,
+        isVoidDisabled: isVoidDisabled,
+
+        onVoid: () async {
           Navigator.of(dialogCtx, rootNavigator: false).pop();
+
+          await Future.delayed(const Duration(milliseconds: 100));
+          if (mounted) {
+            showVoidExitConfirmation(context, false);
+          }
         },
-        onExitConfirm: () async {
-          // Close popup
-          if (Navigator.of(dialogCtx).canPop()) {
-            Navigator.of(dialogCtx).pop();
+
+        onNoReceipt: () async {
+          // Close dialog
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
+
+          // Do background work
+          doBackgroundWork();
+
+          // Navigate to home screen
+          navigateToHome();
+
+          // Show success message
+          // ScaffoldMessenger.of(context).showSnackBar(
+          //   const SnackBar(
+          //     content: Text("Order completed successfully"),
+          //     backgroundColor: Colors.green,
+          //     duration: Duration(seconds: 2),
+          //   ),
+          // );
+        },
+
+        onDone: (selectedOption, {String? email}) async {
+          print("onDone → $selectedOption, email=$email");
+
+          // ── EMAIL ────────────────────────────────────────────
+          if (selectedOption == TextConstants.email &&
+              email != null &&
+              email.isNotEmpty) {
+            // Close dialog
+            Navigator.of(dialogCtx, rootNavigator: false).pop();
+
+            if (orderId == null || orderId == 0) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(TextConstants.canNotSendEmail),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(milliseconds: 1500),
+                ),
+              );
+              // Still navigate to home
+              navigateToHome();
+              return;
+            }
+
+            // Send email
+            paymentBloc.sendOrderDetails(orderId!, email);
+
+            StreamSubscription? subscription;
+            subscription = paymentBloc.sendOrderDetailsStream.listen((response) {
+              subscription?.cancel();
+              print(">>> Email sent: ${response.message}");
+
+              if (response.status == Status.COMPLETED) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(response.data?.message ?? "Receipt sent to email"),
+                    backgroundColor: Colors.green,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(TextConstants.failedSendEmail),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            });
+
+            // Do background work
+            doBackgroundWork();
+
+            // Navigate to home screen
+            navigateToHome();
+            return;
           }
 
-          // Customer display
-          try {
-            await _checkAndClearActiveOrderBeforeThankYou();
+          // ── PRINT ─────────────────────────────────────────────
+          // Close dialog first
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
 
-          } catch (e) {
-            print(">>> Error updating customer display: $e");
-          }
-
-          // Refresh order panel
-          OrderHelper.isOrderPanelLoaded = false;
-          OrderHelper.notifyOrderPanelToRefresh();
-
-          // Navigate safely
-          if (context.mounted) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => POSHomeScreen(),
+          if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
+            // Show printing indicator
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Printing receipt..."),
+                duration: Duration(seconds: 1),
               ),
             );
+
+            // Print in background
+            Future(() async {
+              await _preparePrintTicket();
+              await _printTicket(manual: true);
+            });
           }
 
-          // Background sync
-          Future(() async {
-            try {
-              await _syncCurrentOfflineOrder();
-              print("✅ Background: Exit sync completed");
-            } catch (e) {
-              print("❌ Background: Exit sync failed: $e");
-            }
-          });
+          // Do background work
+          doBackgroundWork();
+
+          // Navigate to home screen
+          navigateToHome();
         },
       ),
+    ).then((_) {
+      _isShowingPaymentDialog = false;
+      print("Payment dialog closed → guard reset");
+    });
+  }
+
+////
+  void _navigateToHome() {
+    OrderHelper.isOrderPanelLoaded = false;
+    OrderHelper.notifyOrderPanelToRefresh();
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => POSHomeScreen()),
+      result: TextConstants.refresh,
     );
   }
 
+  void doBackgroundWork() {
+    Future(() async {
+      await _syncCurrentOfflineOrder();
+      // Update customer display, etc.
+    });
+  }
+
   // void showVoidExitConfirmation(BuildContext context, bool isPartial) {
-  //   print("showVoidExitConfirmation → isPartial: $isPartial, orderId: $orderId");
-  //
   //   if (_isVoiding) {
   //     print("Void already in progress → skipping");
   //     return;
@@ -12653,96 +13937,42 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //     barrierDismissible: false,
   //     useRootNavigator: false,
   //     builder: (dialogCtx) => PaymentDialog.voidConfirmation(
-  //
-  //       onVoidCancel: () async {
-  //         print("❌ VOID CANCELED BY USEeeeR");
-  //
-  //         bool updatedAny = false;
-  //
-  //         // --- 1. Mark all pending payments as completed locally ---
-  //         if (orderId != null && orderId! > 0) {
-  //           int retries = 3;
-  //           while (retries > 0) {
-  //             final payments = await LocalPaymentDBHelper.instance
-  //                 .getPaymentsByOrderId(orderId!);
-  //             final pendingPayments = payments
-  //                 .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
-  //                 .toList();
-  //
-  //             if (pendingPayments.isNotEmpty) {
-  //               for (final p in pendingPayments) {
-  //                 await LocalPaymentDBHelper.instance.updateStatus(
-  //                   p.id,
-  //                   PaymentDbStatus.completed,
-  //                 );
-  //               }
-  //               print("✅ Marked ${pendingPayments.length} payments as completed");
-  //               updatedAny = true;
-  //               break;
-  //             } else {
-  //               retries--;
-  //               if (retries > 0) {
-  //                 print("⏳ No pending payments found, retrying... ($retries left)");
-  //                 await Future.delayed(const Duration(milliseconds: 200));
-  //               }
-  //             }
-  //           }
-  //
-  //         }
-  //
-  //         // --- 2. Sync the updated order to the backend ---
-  //         if (updatedAny && mounted) {
-  //           try {
-  //             await _syncCurrentOfflineOrder(); // This sends the order and completed payments to Woo
-  //             print("✅ Order synced to backend after completing pending payments");
-  //           } catch (e) {
-  //             print("❌ Failed to sync order: $e");
-  //             ScaffoldMessenger.of(context).showSnackBar(
-  //               SnackBar(
-  //                 content: Text("Order completed locally but sync failed: $e"),
-  //                 backgroundColor: Colors.orange,
-  //               ),
-  //             );
-  //           }
-  //         }
-  //
-  //
-  //         // --- 3. Close the confirmation dialog (after all async work) ---
-  //         // Navigator.of(dialogCtx, rootNavigator: false).pop();
+  //       onVoidCancel: () {
+  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
   //         _isVoiding = false;
   //
-  //         // --- 4. Navigate to home screen only if payments were updated ---
-  //         if (updatedAny && mounted) {
-  //           OrderHelper.isOrderPanelLoaded = false;
-  //           OrderHelper.notifyOrderPanelToRefresh();
-  //           Navigator.pop(context);
+  //         // Go back to success dialog (important fix)
+  //         Future.delayed(const Duration(milliseconds: 150), () {
+  //           if (mounted) {
+  //             final box = StorageProvider.offlineOrders;
+  //             final key = (orderId ?? 0).toString();
+  //             box.get(key).then((raw) {
+  //               final cr = raw is Map ? raw["coupon_response"] : null;
+  //               final couponResponse = cr is Map
+  //                   ? Map<String, dynamic>.from(cr)
+  //                   : <String, dynamic>{};
   //
-  //           Navigator.pushReplacement(
-  //             context,
-  //             MaterialPageRoute(builder: (_) => POSHomeScreen()),
-  //             result: TextConstants.refresh,
-  //           );
-  //
-  //           ScaffoldMessenger.of(context).showSnackBar(
-  //             const SnackBar(
-  //               content: Text("Payments completed and order finalized"),
-  //               backgroundColor: Colors.green,
-  //               duration: Duration(seconds: 2),
-  //             ),
-  //           );
-  //         }
+  //               _showPaymentDialog(
+  //                 context,
+  //                 tenderAmount,
+  //                 changeAmount: changeAmount,
+  //                 showChange: changeAmount > 0,
+  //                 couponResponse: couponResponse,
+  //                 isVoidDisabled: true,
+  //               );
+  //             });
+  //           }
+  //         });
   //       },
   //
   //       onVoidConfirm: () async {
-  //         // (unchanged – handles actual void)
-  //         print("✅ VOID CONFIRMED");
   //         Navigator.of(dialogCtx, rootNavigator: false).pop();
+  //         _isVoiding = false;
   //
   //         if (_lastPayment == null) {
   //           ScaffoldMessenger.of(context).showSnackBar(
   //             const SnackBar(content: Text("No payment to void")),
   //           );
-  //           _isVoiding = false;
   //           return;
   //         }
   //
@@ -12760,59 +13990,91 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //           await _handleVoidPayment(context, isPartial: isPartial);
   //         }
   //
-  //         print("${isPartial ? 'Partial' : 'Full'} payment voided → staying on OrderSummaryScreen");
-  //
+  //         // Stay on summary screen after void (do NOT go to exit popup)
   //         if (mounted) {
   //           setState(() {});
   //         }
-  //
-  //         _isVoiding = false;
   //       },
   //     ),
-  //   );
+  //   ).then((_) {
+  //     _isVoiding = false;
+  //   });
   // }
 
-  // ============================================================
-// REPLACE your _showExitPaymentConfirmation method with this
-// KEY FIX: Navigate IMMEDIATELY, sync in background
-// ============================================================
+  void showVoidExitConfirmation(BuildContext context, bool isPartial) {
+    if (_isVoiding) {
+      print("Void already in progress → skipping");
+      return;
+    }
+    _isVoiding = true;
 
-  // void _showExitPaymentConfirmation(BuildContext context) {
-  //   showDialog(
-  //     context: context,
-  //     barrierDismissible: false,
-  //     useRootNavigator: false,
-  //     builder: (dialogCtx) => PaymentDialog(
-  //       status: PaymentStatus.exitConfirmation,
-  //       onExitCancel: () {
-  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
-  //       },
-  //       onExitConfirm: () {
-  //         // ✅ STEP 1: Close dialog IMMEDIATELY
-  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
-  //
-  //         // ✅ STEP 2: Navigate IMMEDIATELY — no await
-  //         OrderHelper.isOrderPanelLoaded = false;
-  //         OrderHelper.notifyOrderPanelToRefresh();
-  //         Navigator.pushReplacement(
-  //           context,
-  //           MaterialPageRoute(builder: (_) => POSHomeScreen()),
-  //           result: TextConstants.refresh,
-  //         );
-  //
-  //         // ✅ STEP 3: Sync in background AFTER navigation
-  //         Future(() async {
-  //           try {
-  //             await _syncCurrentOfflineOrder();
-  //             print("✅ Background: Exit sync completed");
-  //           } catch (e) {
-  //             print("❌ Background: Exit sync failed: $e");
-  //           }
-  //         });
-  //       },
-  //     ),
-  //   );
-  // }
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: false,
+      builder: (dialogCtx) => PaymentDialog.voidConfirmation(
+        onVoidCancel: () {
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
+          _isVoiding = false;
+
+          // Go back to success dialog
+          Future.delayed(const Duration(milliseconds: 150), () {
+            if (mounted) {
+              final box = StorageProvider.offlineOrders;
+              final key = (orderId ?? 0).toString();
+              box.get(key).then((raw) {
+                final cr = raw is Map ? raw["coupon_response"] : null;
+                final couponResponse = cr is Map
+                    ? Map<String, dynamic>.from(cr)
+                    : <String, dynamic>{};
+
+                _showPaymentDialog(
+                  context,
+                  tenderAmount,
+                  changeAmount: changeAmount,
+                  showChange: changeAmount > 0,
+                  couponResponse: couponResponse,
+                  isVoidDisabled: true,
+                );
+              });
+            }
+          });
+        },
+
+        onVoidConfirm: () async {
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
+          _isVoiding = false;
+
+          if (_lastPayment == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("No payment to void")),
+            );
+            return;
+          }
+
+          final method = _lastPayment!.method.toLowerCase();
+
+          if (method == TextConstants.card.toLowerCase() &&
+              _lastPayment!.sunmiTxnId != null &&
+              _lastPayment!.sunmiOrderId != null) {
+            await _openSunmiVoidScreen(
+              amount: _lastPayment!.amount,
+              orderId: _lastPayment!.sunmiOrderId!,
+              originTransactionId: _lastPayment!.sunmiTxnId!,
+            );
+          } else {
+            await _handleVoidPayment(context, isPartial: isPartial);
+          }
+
+          if (mounted) {
+            setState(() {});
+          }
+        },
+      ),
+    ).then((_) {
+      _isVoiding = false;
+    });
+  }
 
 
   void _showExitPaymentConfirmation(BuildContext context) {

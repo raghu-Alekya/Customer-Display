@@ -2097,72 +2097,139 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
 
       //PRODUCE (WEIGHED ITEMS) HANDLING
+      // if (hasProduceTag) {
+      //   if (_isWeightDialogOpen) {
+      //     print("🚫 Weight dialog already open, ignoring duplicate scan");
+      //     return;
+      //   }
+      //   print(
+      //       "🏷 Produce tag detected on product → Showing AutoWeightPriceDialog");
+      //
+      //   // Stop loader before showing dialog
+      //   _isLoading = false;
+      //   if (mounted) setState(() {});
+      //
+      //   _isWeightDialogOpen = true;
+      //   final result = await showDialog<Map<String, dynamic>>(
+      //     context: context,
+      //     barrierDismissible: false,
+      //     builder: (_) => AutoWeightPriceDialog(
+      //       productName: productName,
+      //       unitPrice: productPrice,
+      //     ),
+      //   ).whenComplete(() {
+      //     _isWeightDialogOpen = false;
+      //   });
+      //
+      //   if (result == null) {
+      //     print("Auto weight cancelled by user");
+      //     return;
+      //   }
+      //
+      //   final double finalPrice = result["finalPrice"] as double;
+      //   final double weight = result["weight"] as double;
+      //
+      //   print(
+      //       "Weight: ${weight}kg, Final Price: ₹${finalPrice.toStringAsFixed(2)}");
+      //
+      //   await orderHelper.addItemToOrder(
+      //     null, // or productId if you want to keep reference
+      //     productName,
+      //     image,
+      //     finalPrice,
+      //     1, // quantity = 1 (weight-based item)
+      //     productSku,
+      //     activeOrderId,
+      //     type: 'weighted',
+      //     weightQty: weight,
+      //     productId: productId,
+      //     variationId: -1,
+      //     salesPrice: finalPrice,
+      //     regularPrice: productPrice,
+      //     unitPrice: productPrice,
+      //     isEbtEligible: isEbtEligible,
+      //     // Optional: store weight in meta_data
+      //     // metaData: [
+      //     //   {"key": "weight",   "value": weight.toString()},
+      //     //   {"key": "unit",     "value": "kg"},
+      //     //   {"key": "_weighed", "value": "true"},
+      //     // ],
+      //     onItemAdded: () async {
+      //       print("Weighted produce item added successfully!");
+      //     },
+      //   );
+      //
+      //   await fetchOrderItems();
+      //   await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+      //
+      //   return; // critical: prevent normal quantity=1 addition below
+      // }
+
       if (hasProduceTag) {
-        if (_isWeightDialogOpen) {
-          print("🚫 Weight dialog already open, ignoring duplicate scan");
-          return;
-        }
-        print(
-            "🏷 Produce tag detected on product → Showing AutoWeightPriceDialog");
+        final weightProvider =
+        Provider.of<WeightProvider>(context, listen: false);
 
-        // Stop loader before showing dialog
-        _isLoading = false;
-        if (mounted) setState(() {});
+        // Read live weight from scale
+        double liveWeight = 0.0;
+        try {
+          final parts = weightProvider.weightText.trim().split(' ');
+          if (parts.isNotEmpty) {
+            liveWeight = double.tryParse(parts[0]) ?? 0.0;
+          }
+        } catch (_) {}
 
-        _isWeightDialogOpen = true;
-        final result = await showDialog<Map<String, dynamic>>(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => AutoWeightPriceDialog(
-            productName: productName,
-            unitPrice: productPrice,
-          ),
-        ).whenComplete(() {
-          _isWeightDialogOpen = false;
-        });
+        // Convert lb → kg if needed
+        final double weightKg =
+        liveWeight > 0 ? liveWeight * 0.453592 : 0.0;
 
-        if (result == null) {
-          print("Auto weight cancelled by user");
-          return;
-        }
+        // Fallback weight
+        final double weightToUse =
+        weightKg > 0.00001 ? weightKg : 0.0001;
 
-        final double finalPrice = result["finalPrice"] as double;
-        final double weight = result["weight"] as double;
+        final double finalPrice = productPrice * weightToUse;
 
         print(
-            "Weight: ${weight}kg, Final Price: ₹${finalPrice.toStringAsFixed(2)}");
+          "⚖️ Scale Weight: ${weightToUse.toStringAsFixed(3)}kg | "
+              "Price: ₹${finalPrice.toStringAsFixed(2)}",
+        );
+
+        if (weightKg <= 0.0001 && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Scale not detected — using 100g default'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
 
         await orderHelper.addItemToOrder(
-          null, // or productId if you want to keep reference
+          null,
           productName,
           image,
           finalPrice,
-          1, // quantity = 1 (weight-based item)
+          1,
           productSku,
           activeOrderId,
           type: 'weighted',
-          weightQty: weight,
+          weightQty: weightToUse,
           productId: productId,
           variationId: -1,
           salesPrice: finalPrice,
           regularPrice: productPrice,
           unitPrice: productPrice,
           isEbtEligible: isEbtEligible,
-          // Optional: store weight in meta_data
-          // metaData: [
-          //   {"key": "weight",   "value": weight.toString()},
-          //   {"key": "unit",     "value": "kg"},
-          //   {"key": "_weighed", "value": "true"},
-          // ],
           onItemAdded: () async {
-            print("Weighted produce item added successfully!");
+            print("✅ Weighted produce item added successfully!");
+
+            // Reset scale after successful add
+            weightProvider.updateWeight(0.0);
           },
         );
 
         await fetchOrderItems();
         await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
 
-        return; // critical: prevent normal quantity=1 addition below
+        return; // Prevent normal quantity=1 addition below
       }
 //
 

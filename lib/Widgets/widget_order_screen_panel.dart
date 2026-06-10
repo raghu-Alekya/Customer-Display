@@ -212,6 +212,45 @@ List<Map<String, dynamic>> panelMapsFromApiLineItems(List<LineItem> lines) {
   return out;
 }
 
+/// Reads Woo `merchant_discount` fee line total + total_tax (e.g. -0.97 + -0.09 = -1.06).
+double merchantDiscountFromFeeLines(dynamic feeLinesRaw) {
+  if (feeLinesRaw is! List || feeLinesRaw.isEmpty) {
+    return 0.0;
+  }
+
+  double total = 0.0;
+  for (final fee in feeLinesRaw) {
+    String? name;
+    String? lineTotalStr;
+    String? lineTaxStr;
+
+    if (fee is Map) {
+      name = fee['name']?.toString();
+      lineTotalStr = fee['total']?.toString();
+      lineTaxStr = fee['total_tax']?.toString();
+    } else {
+      try {
+        name = fee.name?.toString();
+        lineTotalStr = fee.total?.toString();
+        lineTaxStr = fee.totalTax?.toString();
+      } catch (_) {
+        continue;
+      }
+    }
+
+    final nameLower = (name ?? '').toLowerCase();
+    final isMerchantDiscount = nameLower == 'merchant_discount' ||
+        (nameLower.contains('merchant') && nameLower.contains('discount'));
+    if (!isMerchantDiscount) continue;
+
+    final lineTotal = double.tryParse(lineTotalStr ?? '0') ?? 0.0;
+    final lineTax = double.tryParse(lineTaxStr ?? '0') ?? 0.0;
+    total += lineTotal + lineTax;
+  }
+
+  return total;
+}
+
 /// Maps Total Orders API [OrderModel] into the same shape as SQLite `_order` so status,
 /// coupon lines, tax/totals, and coupon visibility match the list immediately (before DB sync).
 Map<String, dynamic> orderPanelOrderMapFromOrderModel(OrderModel o) {
@@ -238,9 +277,14 @@ Map<String, dynamic> orderPanelOrderMapFromOrderModel(OrderModel o) {
   final double discTotal = double.tryParse(o.discountTotal) ?? 0.0;
   final double taxTotal = double.tryParse(o.totalTax) ?? 0.0;
   final double orderTotal = double.tryParse(o.total) ?? 0.0;
-  final double merchantMeta = metaDouble('merchant_discount') ??
-      metaDouble('_merchant_discount') ??
-      0.0;
+  final double feeLineMerchantDiscount =
+      merchantDiscountFromFeeLines(o.feeLines).abs();
+  final double merchantMeta = feeLineMerchantDiscount > 0
+      ? feeLineMerchantDiscount
+      : (metaDouble('merchant_discount') ??
+          metaDouble('_merchant_discount') ??
+          0.0)
+          .abs();
 
   final bool couponsApplied = couponLines.isNotEmpty || discTotal > 0;
 
@@ -263,6 +307,16 @@ Map<String, dynamic> orderPanelOrderMapFromOrderModel(OrderModel o) {
     AppDBConst.orderCashbackFee: o.cashbackFee,
     'cashbackFee': o.cashbackFee,
     'cashback_fee': o.cashbackFee,
+    'fee_lines': o.feeLines
+            ?.map((f) => {
+                  'id': f.id,
+                  'name': f.name,
+                  'total': f.total,
+                  'total_tax': f.totalTax,
+                  'tax_status': f.taxStatus,
+                })
+            .toList() ??
+        [],
   };
 }
 
@@ -1956,6 +2010,17 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     if (order['offline'] != true && calculatedPerc > 0) {
       orderTax = orderTax * (1 - calculatedPerc / 100.0);
       orderTax = roundTaxHalfUp(orderTax);
+    }
+
+    // Prefer Woo fee_lines merchant_discount (total + total_tax) for synced orders.
+    final dynamic feeLinesRaw =
+        _wooOrder?.feeLines ?? order['fee_lines'] ?? order['feeLines'];
+    final double feeLineMerchantDiscount =
+        merchantDiscountFromFeeLines(feeLinesRaw);
+    if (feeLineMerchantDiscount.abs() > 0) {
+      merchantDiscount = feeLineMerchantDiscount < 0
+          ? feeLineMerchantDiscount
+          : -feeLineMerchantDiscount.abs();
     }
 
     // ----------- ONLINE TOTAL COMPUTATION -----------
