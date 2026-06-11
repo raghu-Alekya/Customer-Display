@@ -243,6 +243,19 @@ class OrderModel {
     return 0.0;
   }
 
+  // ADD after cashbackFee getter
+  double get merchantDiscountFromFeeLines {
+    if (feeLines == null || feeLines!.isEmpty) return 0.0;
+    for (final fee in feeLines!) {
+      final name = (fee.name ?? '').toLowerCase().replaceAll(' ', '_');
+      if (name.contains('merchant_discount') || name.contains('merchant discount')) {
+        final raw = double.tryParse(fee.total ?? '0') ?? 0.0;
+        return raw.abs(); // always positive; UI applies the minus sign
+      }
+    }
+    return 0.0;
+  }
+
   bool get hasMultipackDiscount => totalMultipackDiscount > 0;
   bool get hasAutoDiscount => totalCombinedAutoDiscount > 0;
   bool get hasComboDiscount => totalComboDiscount > 0;

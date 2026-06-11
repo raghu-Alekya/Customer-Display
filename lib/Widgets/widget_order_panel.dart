@@ -321,9 +321,79 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
   }
 
+  // Add this helper method in _RightOrderPanelState class
+// Add this helper method to properly round merchant discount
+  double _roundMerchantDiscount(double value) {
+    // Round to 2 decimal places using half-up rounding
+    return (value * 100).roundToDouble() / 100;
+  }
+
+// ============================================================
+// FIX: Merchant discount must NOT apply to payout/cashback items
+// ============================================================
+// Only two methods need changes. Everything else stays untouched.
+// Search for each method by name and replace ONLY the indicated block.
+// ============================================================
+
+
+// ─────────────────────────────────────────────────────────────
+// METHOD 1: _getPreciseMerchantDiscount
+// Replace the existing method body with this version.
+// The ONLY change is that `base` is now computed from
+// `grossTotal minus payout/cashback totals`, not raw grossTotal.
+// ─────────────────────────────────────────────────────────────
+
+  double _getPreciseMerchantDiscount(
+      Map<String, dynamic>? rawOfflineOrder,
+      double grossTotal,
+      double orderDiscount) {
+    if (rawOfflineOrder == null) return 0.0;
+
+    // ── NEW: exclude payout & cashback from the discount base ──
+    double payoutsTotal =
+    ((rawOfflineOrder['payouts'] as List?) ?? []).fold(0.0, (s, p) {
+      return s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0);
+    });
+    double cashbacksTotal =
+    ((rawOfflineOrder['cashbacks'] as List?) ?? []).fold(0.0, (s, c) {
+      return s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0);
+    });
+    // products-only subtotal — this is the base for merchant discount
+    final double productsBase = grossTotal - payoutsTotal - cashbacksTotal;
+    // ── END NEW ──
+
+    final type =
+        rawOfflineOrder['merchantDiscountType']?.toString() ?? 'fixed';
+    final perc = double.tryParse(
+        rawOfflineOrder['merchantDiscountPercentage']?.toString() ?? '0') ??
+        0.0;
+    final fixed = double.tryParse(
+        rawOfflineOrder['merchantDiscountFixed']?.toString() ?? '0') ??
+        0.0;
+
+    double result = 0.0;
+
+    if (type == 'percentage' && perc > 0) {
+      // Use productsBase instead of grossTotal so payouts/cashbacks are excluded
+      double base = productsBase; // ← CHANGED (was: grossTotal)
+      result = (base * perc) / 100.0;
+      result = _roundMerchantDiscount(result);
+    } else {
+      result = fixed;
+    }
+
+    return result < 0.000001 ? 0.0 : result;
+  }
+
+
+// ─────────────────────────────────────────────────────────────
+// METHOD 2: getCurrentMerchantDiscount
+// Replace ONLY the percentage-calculation block inside the method.
+// The ONLY change is that `base` excludes payouts & cashbacks.
+// ─────────────────────────────────────────────────────────────
+
   double getCurrentMerchantDiscount(Map<String, dynamic> order,
       {double? grossTotal, double? orderDiscount, double? orderTax}) {
-    // If any required key is missing, return 0 immediately
     if (!order.containsKey('merchantDiscountType') &&
         !order.containsKey('merchantDiscountFixed') &&
         !order.containsKey('merchantDiscountPercentage')) {
@@ -340,25 +410,36 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
     }
 
+    // ── NEW: exclude payout & cashback from the discount base ──
+    double payoutsTotal =
+    ((order['payouts'] as List?) ?? []).fold(0.0, (s, p) {
+      return s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0);
+    });
+    double cashbacksTotal =
+    ((order['cashbacks'] as List?) ?? []).fold(0.0, (s, c) {
+      return s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0);
+    });
+    final double productsBase = currentGross - payoutsTotal - cashbacksTotal;
+    // ── END NEW ──
+
     final type = order['merchantDiscountType']?.toString() ?? 'fixed';
     final perc = double.tryParse(
-            order['merchantDiscountPercentage']?.toString() ?? '0') ??
+        order['merchantDiscountPercentage']?.toString() ?? '0') ??
         0.0;
-    final fixed =
-        double.tryParse(order['merchantDiscountFixed']?.toString() ?? '0') ??
-            0.0;
+    final fixed = double.tryParse(
+        order['merchantDiscountFixed']?.toString() ?? '0') ??
+        0.0;
 
     double result = 0.0;
     if (type == 'percentage' && perc > 0) {
-      double discVal =
-          orderDiscount ?? (order['orderDiscount'] as num?)?.toDouble() ?? 0.0;
-      double base = currentGross - discVal;
+      // Use productsBase instead of currentGross so payouts/cashbacks are excluded
+      double base = productsBase; // ← CHANGED (was: currentGross)
       result = (base * perc) / 100.0;
+      result = _roundMerchantDiscount(result);
     } else {
       result = fixed;
     }
 
-    //  Ignore floating point noise
     return result < 0.000001 ? 0.0 : result;
   }
 
@@ -3654,11 +3735,29 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0));
     // final grossTotal = productTotal + payoutsTotal + cashbacksTotal;
 
+    // final double grossTotal = productTotal + payoutsTotal + cashbacksTotal;
+    // final double orderDiscount =
+    //     (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+    // final double merchantDiscountVal =
+    //     (offlineOrder['merchantDiscount'] as num?)?.toDouble() ?? 0.0;
+
     final double grossTotal = productTotal + payoutsTotal + cashbacksTotal;
-    final double orderDiscount =
-        (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
-    final double merchantDiscountVal =
-        (offlineOrder['merchantDiscount'] as num?)?.toDouble() ?? 0.0;
+    final double orderDiscount = (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+
+// ⭐ FIX: Recalculate merchant discount precisely
+    double merchantDiscountVal = 0.0;
+    final type = offlineOrder['merchantDiscountType']?.toString() ?? 'fixed';
+    final perc = double.tryParse(offlineOrder['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
+    final fixed = double.tryParse(offlineOrder['merchantDiscountFixed']?.toString() ?? '0') ?? 0.0;
+
+    if (type == 'percentage' && perc > 0) {
+      double base = grossTotal - orderDiscount;
+      merchantDiscountVal = (base * perc) / 100.0;
+    } else {
+      merchantDiscountVal = fixed;
+    }
+    merchantDiscountVal = merchantDiscountVal < 0.000001 ? 0.0 : merchantDiscountVal;
+
     final double cashbackFee =
         (offlineOrder['cashbackFee'] as num?)?.toDouble() ?? 0.0;
 
@@ -4292,15 +4391,230 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
 
     // Order-level variables
+    // double orderDiscount = 0.0;
+    // double merchantDiscount = 0.0;
+    // double cashbackFee = 0.0;
+    // String displayDate =
+    //     DateFormat(TextConstants.dateFormat).format(DateTime.now());
+    // String displayTime =
+    //     DateFormat(TextConstants.timeFormat).format(DateTime.now());
+    //
+    // // Read from offline order (Hive) – only for discounts and dates, NOT for items
+    // final activeId = orderHelper.activeOrderId;
+    // final idx = orderHelper.orders.indexWhere((o) {
+    //   final oid = o['order_id'] ?? o['id'] ?? o[AppDBConst.orderServerId];
+    //   if (oid == null || activeId == null) return false;
+    //   return oid == activeId || oid.toString() == activeId.toString();
+    // });
+    // final rawOfflineOrder = idx >= 0 ? orderHelper.orders[idx] : null;
+    //
+    // if (rawOfflineOrder != null) {
+    //   // Order discount
+    //   orderDiscount = (rawOfflineOrder['orderDiscount'] is num)
+    //       ? (rawOfflineOrder['orderDiscount'] as num).toDouble()
+    //       : 0.0;
+    //
+    //   // Merchant discount
+    //   if (rawOfflineOrder.containsKey('merchantDiscountType')) {
+    //     merchantDiscount = getCurrentMerchantDiscount(rawOfflineOrder);
+    //   } else {
+    //     merchantDiscount = (rawOfflineOrder['merchantDiscount'] is num)
+    //         ? (rawOfflineOrder['merchantDiscount'] as num).toDouble()
+    //         : 0.0;
+    //   }
+    //
+    //   // merchantDiscount = _getPreciseMerchantDiscount(rawOfflineOrder, grossTotal, orderDiscount);
+    //
+    //   // Cashback fee
+    //   cashbackFee = (rawOfflineOrder['cashbackFee'] is num)
+    //       ? (rawOfflineOrder['cashbackFee'] as num).toDouble()
+    //       : 0.0;
+    //
+    //   // Creation date
+    //   if (rawOfflineOrder['created_at'] != null) {
+    //     try {
+    //       final createdAt = DateTime.parse(rawOfflineOrder['created_at']);
+    //       displayDate = DateFormat(TextConstants.dateFormat).format(createdAt);
+    //       displayTime = DateFormat(TextConstants.timeFormat).format(createdAt);
+    //     } catch (e) {
+    //       if (kDebugMode) print("⚠️ Failed to parse offline order date: $e");
+    //     }
+    //   }
+    // }
+    //
+    // double grossTotal = 0.0;
+    // double orderTax = 0.0;
+    // int totalItems = 0;
+    //
+    // for (final item in orderItems) {
+    //   final itemType = (item['item_type'] ?? '').toString().toLowerCase();
+    //
+    //   //  FIX: Skip merchant discount line items — already handled via merchantDiscount from Hive
+    //   // Prevents double-subtraction: once via negative price in grossTotal, once via merchantDiscount in netTotal
+    //   if (itemType == 'discount') continue;
+    //
+    //   final qty = (item['items_count'] ?? 1) as int;
+    //   final price = ((item['item_price'] ?? 0) as num).toDouble();
+    //   final itemTotal = price * qty;
+    //   grossTotal += itemTotal;
+    //   totalItems += qty;
+    //
+    //   final bool isPayout = itemType.contains('payout');
+    //   final bool isCashback = itemType.contains('cashback');
+    //   final bool isCoupon = itemType.contains('coupon');
+    //
+    //   final double taxRate = double.tryParse(item['tax_rate']?.toString() ??
+    //           item['tax_Rate']?.toString() ??
+    //           '0') ??
+    //       0.0;
+    //   // final double taxRate = double.tryParse(
+    //   //     item['tax_rate']?.toString() ??
+    //   //         item['tax_Rate']?.toString() ??
+    //   //         '0') ??
+    //   //     0.0;
+    //   double itemTax =
+    //       taxRate > 0 ? roundTaxHalfUp(((price * taxRate) / 100) * qty) : 0.0;
+    //
+    //   if (!isPayout && !isCashback && !isCoupon) {
+    //     // First try the stored item_tax
+    //     itemTax = ((item['item_tax'] ?? 0) as num).toDouble();
+    //
+    //     // If item_tax is zero/missing, compute it
+    //     if (itemTax <= 0) {
+    //       final bool isEbt = item['is_ebt_eligible'] == true;
+    //       final int productId =
+    //           int.tryParse((item['product_id'] ?? 0).toString()) ?? 0;
+    //
+    //       final String taxClass = (item['tax_class'] ?? '').toString();
+    //
+    //       final double taxRate = double.tryParse(
+    //               (item['tax_rate'] ?? item['tax_Rate'] ?? '0').toString()) ??
+    //           0.0;
+    //
+    //       final String lineTaxStatus =
+    //           (item['tax_status'] ?? 'taxable').toString().toLowerCase();
+    //
+    //       const double defaultNonEbtTaxRate = 9.1;
+    //
+    //       if (isEbt) {
+    //         itemTax = 0.0;
+    //       } else if (itemType.contains('custom')) {
+    //         if (taxRate > 0) {
+    //           itemTax = roundTaxHalfUp(((price * taxRate) / 100) * qty);
+    //         }
+    //       } else if (productId > 0) {
+    //         final lineTaxRate =
+    //             double.tryParse((item['tax_rate'] ?? '0').toString()) ?? 0.0;
+    //
+    //         if (lineTaxStatus == 'taxable' && lineTaxRate > 0) {
+    //           itemTax = ((price * qty) * lineTaxRate) / 100;
+    //         } else {
+    //           itemTax = getProductTaxFromHive(productId, price, qty);
+    //
+    //           if (itemTax <= 0 && lineTaxStatus != 'none') {
+    //             itemTax = ((price * qty) * defaultNonEbtTaxRate) / 100;
+    //           }
+    //         }
+    //       }
+    //     }
+    //
+    //     orderTax += itemTax;
+    //   }
+    // }
+    //
+    // final String mdType =
+    //     rawOfflineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+    // final double mdPerc = double.tryParse(
+    //         rawOfflineOrder?['merchantDiscountPercentage']?.toString() ??
+    //             '0') ??
+    //     0.0;
+    //
+    // double calculatedPerc = 0.0;
+    // if (mdType == 'percentage' && mdPerc > 0) {
+    //   calculatedPerc = mdPerc;
+    // } else if (mdType == 'fixed' && merchantDiscount.abs() > 0) {
+    //   double base = grossTotal - orderDiscount;
+    //   if (base > 0) {
+    //     calculatedPerc = (merchantDiscount.abs() / base) * 100.0;
+    //   }
+    // }
+    //
+    // if (calculatedPerc > 0) {
+    //   orderTax = orderTax * (1 - calculatedPerc / 100.0);
+    //   orderTax = roundTaxHalfUp(orderTax);
+    // }
+    //
+    // final double netTotal = grossTotal - orderDiscount - merchantDiscount;
+    // final double netPayable = netTotal + orderTax + cashbackFee;
+
+    // Order-level variables
     double orderDiscount = 0.0;
     double merchantDiscount = 0.0;
     double cashbackFee = 0.0;
-    String displayDate =
-        DateFormat(TextConstants.dateFormat).format(DateTime.now());
-    String displayTime =
-        DateFormat(TextConstants.timeFormat).format(DateTime.now());
+    String displayDate = DateFormat(TextConstants.dateFormat).format(DateTime.now());
+    String displayTime = DateFormat(TextConstants.timeFormat).format(DateTime.now());
 
-    // Read from offline order (Hive) – only for discounts and dates, NOT for items
+// FIRST: Calculate grossTotal and totalItems from orderItems
+    double grossTotal = 0.0;
+    double orderTax = 0.0;
+    int totalItems = 0;
+
+    for (final item in orderItems) {
+      final itemType = (item['item_type'] ?? '').toString().toLowerCase();
+
+      // Skip merchant discount line items
+      if (itemType == 'discount') continue;
+
+      final qty = (item['items_count'] ?? 1) as int;
+      final price = ((item['item_price'] ?? 0) as num).toDouble();
+      final itemTotal = price * qty;
+      grossTotal += itemTotal;
+      totalItems += qty;
+
+      final bool isPayout = itemType.contains('payout');
+      final bool isCashback = itemType.contains('cashback');
+      final bool isCoupon = itemType.contains('coupon');
+
+      final double taxRate = double.tryParse(item['tax_rate']?.toString() ??
+          item['tax_Rate']?.toString() ??
+          '0') ??
+          0.0;
+      double itemTax = taxRate > 0 ? roundTaxHalfUp(((price * taxRate) / 100) * qty) : 0.0;
+
+      if (!isPayout && !isCashback && !isCoupon) {
+        itemTax = ((item['item_tax'] ?? 0) as num).toDouble();
+
+        if (itemTax <= 0) {
+          final bool isEbt = item['is_ebt_eligible'] == true;
+          final int productId = int.tryParse((item['product_id'] ?? 0).toString()) ?? 0;
+          final String taxClass = (item['tax_class'] ?? '').toString();
+          final double taxRate = double.tryParse((item['tax_rate'] ?? item['tax_Rate'] ?? '0').toString()) ?? 0.0;
+          final String lineTaxStatus = (item['tax_status'] ?? 'taxable').toString().toLowerCase();
+          const double defaultNonEbtTaxRate = 9.1;
+
+          if (isEbt) {
+            itemTax = 0.0;
+          } else if (itemType.contains('custom')) {
+            if (taxRate > 0) {
+              itemTax = roundTaxHalfUp(((price * taxRate) / 100) * qty);
+            }
+          } else if (productId > 0) {
+            final lineTaxRate = double.tryParse((item['tax_rate'] ?? '0').toString()) ?? 0.0;
+            if (lineTaxStatus == 'taxable' && lineTaxRate > 0) {
+              itemTax = ((price * qty) * lineTaxRate) / 100;
+            } else {
+              itemTax = getProductTaxFromHive(productId, price, qty);
+              if (itemTax <= 0 && lineTaxStatus != 'none') {
+                itemTax = ((price * qty) * defaultNonEbtTaxRate) / 100;
+              }
+            }
+          }
+        }
+        orderTax += itemTax;
+      }
+    }
+
+// SECOND: Read from offline order (Hive) for discounts
     final activeId = orderHelper.activeOrderId;
     final idx = orderHelper.orders.indexWhere((o) {
       final oid = o['order_id'] ?? o['id'] ?? o[AppDBConst.orderServerId];
@@ -4309,19 +4623,68 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     });
     final rawOfflineOrder = idx >= 0 ? orderHelper.orders[idx] : null;
 
+    // if (rawOfflineOrder != null) {
+    //   // Order discount
+    //   orderDiscount = (rawOfflineOrder['orderDiscount'] is num)
+    //       ? (rawOfflineOrder['orderDiscount'] as num).toDouble()
+    //       : 0.0;
+    //
+    //   // NOW we can use grossTotal (already calculated) to get precise merchant discount
+    //   merchantDiscount = _getPreciseMerchantDiscount(rawOfflineOrder, grossTotal, orderDiscount);
+    //
+    //   // Cashback fee
+    //   cashbackFee = (rawOfflineOrder['cashbackFee'] is num)
+    //       ? (rawOfflineOrder['cashbackFee'] as num).toDouble()
+    //       : 0.0;
+    //
+    //   // Creation date
+    //   if (rawOfflineOrder['created_at'] != null) {
+    //     try {
+    //       final createdAt = DateTime.parse(rawOfflineOrder['created_at']);
+    //       displayDate = DateFormat(TextConstants.dateFormat).format(createdAt);
+    //       displayTime = DateFormat(TextConstants.timeFormat).format(createdAt);
+    //     } catch (e) {
+    //       if (kDebugMode) print("⚠️ Failed to parse offline order date: $e");
+    //     }
+    //   }
+    // }
+
+    // Inside buildCurrentOrder method, find where merchantDiscount is set
+// Replace this section:
+
+// if (rawOfflineOrder != null) {
+//   // Order discount
+//   orderDiscount = (rawOfflineOrder['orderDiscount'] is num)
+//       ? (rawOfflineOrder['orderDiscount'] as num).toDouble()
+//       : 0.0;
+//
+//   // Merchant discount
+//   if (rawOfflineOrder.containsKey('merchantDiscountType')) {
+//     merchantDiscount = getCurrentMerchantDiscount(rawOfflineOrder);
+//   } else {
+//     merchantDiscount = (rawOfflineOrder['merchantDiscount'] is num)
+//         ? (rawOfflineOrder['merchantDiscount'] as num).toDouble()
+//         : 0.0;
+//   }
+// }
+
+// Replace with:
+
     if (rawOfflineOrder != null) {
       // Order discount
       orderDiscount = (rawOfflineOrder['orderDiscount'] is num)
           ? (rawOfflineOrder['orderDiscount'] as num).toDouble()
           : 0.0;
 
-      // Merchant discount
-      if (rawOfflineOrder.containsKey('merchantDiscountType')) {
-        merchantDiscount = getCurrentMerchantDiscount(rawOfflineOrder);
-      } else {
-        merchantDiscount = (rawOfflineOrder['merchantDiscount'] is num)
-            ? (rawOfflineOrder['merchantDiscount'] as num).toDouble()
-            : 0.0;
+      // Merchant discount - ALWAYS use the precise method with current grossTotal
+      merchantDiscount = _getPreciseMerchantDiscount(rawOfflineOrder, grossTotal, orderDiscount);
+
+      // Also ensure the rawOfflineOrder has the correct rounded value
+      final double roundedMerchantDiscount = (merchantDiscount * 100).roundToDouble() / 100;
+      if (roundedMerchantDiscount != merchantDiscount) {
+        merchantDiscount = roundedMerchantDiscount;
+        // Optionally update the stored value
+        // rawOfflineOrder['merchantDiscount'] = merchantDiscount;
       }
 
       // Cashback fee
@@ -4336,97 +4699,14 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           displayDate = DateFormat(TextConstants.dateFormat).format(createdAt);
           displayTime = DateFormat(TextConstants.timeFormat).format(createdAt);
         } catch (e) {
-          if (kDebugMode) print("⚠️ Failed to parse offline order date: $e");
+          if (kDebugMode) print(" Failed to parse offline order date: $e");
         }
       }
     }
 
-    double grossTotal = 0.0;
-    double orderTax = 0.0;
-    int totalItems = 0;
-
-    for (final item in orderItems) {
-      final itemType = (item['item_type'] ?? '').toString().toLowerCase();
-
-      //  FIX: Skip merchant discount line items — already handled via merchantDiscount from Hive
-      // Prevents double-subtraction: once via negative price in grossTotal, once via merchantDiscount in netTotal
-      if (itemType == 'discount') continue;
-
-      final qty = (item['items_count'] ?? 1) as int;
-      final price = ((item['item_price'] ?? 0) as num).toDouble();
-      final itemTotal = price * qty;
-      grossTotal += itemTotal;
-      totalItems += qty;
-
-      final bool isPayout = itemType.contains('payout');
-      final bool isCashback = itemType.contains('cashback');
-      final bool isCoupon = itemType.contains('coupon');
-
-      final double taxRate = double.tryParse(item['tax_rate']?.toString() ??
-              item['tax_Rate']?.toString() ??
-              '0') ??
-          0.0;
-      // final double taxRate = double.tryParse(
-      //     item['tax_rate']?.toString() ??
-      //         item['tax_Rate']?.toString() ??
-      //         '0') ??
-      //     0.0;
-      double itemTax =
-          taxRate > 0 ? roundTaxHalfUp(((price * taxRate) / 100) * qty) : 0.0;
-
-      if (!isPayout && !isCashback && !isCoupon) {
-        // First try the stored item_tax
-        itemTax = ((item['item_tax'] ?? 0) as num).toDouble();
-
-        // If item_tax is zero/missing, compute it
-        if (itemTax <= 0) {
-          final bool isEbt = item['is_ebt_eligible'] == true;
-          final int productId =
-              int.tryParse((item['product_id'] ?? 0).toString()) ?? 0;
-
-          final String taxClass = (item['tax_class'] ?? '').toString();
-
-          final double taxRate = double.tryParse(
-                  (item['tax_rate'] ?? item['tax_Rate'] ?? '0').toString()) ??
-              0.0;
-
-          final String lineTaxStatus =
-              (item['tax_status'] ?? 'taxable').toString().toLowerCase();
-
-          const double defaultNonEbtTaxRate = 9.1;
-
-          if (isEbt) {
-            itemTax = 0.0;
-          } else if (itemType.contains('custom')) {
-            if (taxRate > 0) {
-              itemTax = roundTaxHalfUp(((price * taxRate) / 100) * qty);
-            }
-          } else if (productId > 0) {
-            final lineTaxRate =
-                double.tryParse((item['tax_rate'] ?? '0').toString()) ?? 0.0;
-
-            if (lineTaxStatus == 'taxable' && lineTaxRate > 0) {
-              itemTax = ((price * qty) * lineTaxRate) / 100;
-            } else {
-              itemTax = getProductTaxFromHive(productId, price, qty);
-
-              if (itemTax <= 0 && lineTaxStatus != 'none') {
-                itemTax = ((price * qty) * defaultNonEbtTaxRate) / 100;
-              }
-            }
-          }
-        }
-
-        orderTax += itemTax;
-      }
-    }
-
-    final String mdType =
-        rawOfflineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
-    final double mdPerc = double.tryParse(
-            rawOfflineOrder?['merchantDiscountPercentage']?.toString() ??
-                '0') ??
-        0.0;
+// Calculate tax adjustment if merchant discount is percentage-based
+    final String mdType = rawOfflineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+    final double mdPerc = double.tryParse(rawOfflineOrder?['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
 
     double calculatedPerc = 0.0;
     if (mdType == 'percentage' && mdPerc > 0) {
@@ -4438,12 +4718,41 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
     }
 
+    // ── NEW: recalculate percentage-based merchant discount against live grossTotal ──
+    double effectiveMerchantDiscount = merchantDiscount;
+    {
+      final String _mdType =
+          rawOfflineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+      final double _mdPerc = double.tryParse(
+          rawOfflineOrder?['merchantDiscountPercentage']?.toString() ?? '0') ??
+          0.0;
+      if (_mdType == 'percentage' && _mdPerc > 0) {
+        final double _base = grossTotal - orderDiscount;
+        effectiveMerchantDiscount = _base > 0 ? (_base * _mdPerc) / 100.0 : 0.0;
+      }
+    }
+    // ── NEW: persist corrected merchant discount so display helpers read the right value ──
+    if (rawOfflineOrder != null &&
+        effectiveMerchantDiscount != merchantDiscount) {
+      final _offlineBox = StorageProvider.offlineOrders;
+      final _orderKey = orderHelper.activeOrderId.toString();
+      // Read-modify-write (non-blocking, best-effort)
+      _offlineBox.get(_orderKey).then((raw) async {
+        if (raw == null) return;
+        final updated = Map<String, dynamic>.from(raw);
+        updated['merchantDiscount'] = effectiveMerchantDiscount;
+        updated['net_total'] = grossTotal - orderDiscount - effectiveMerchantDiscount;
+        updated['net_payable'] = updated['net_total'] + orderTax + cashbackFee;
+        await _offlineBox.put(_orderKey, updated);
+      });
+    }
+
     if (calculatedPerc > 0) {
       orderTax = orderTax * (1 - calculatedPerc / 100.0);
       orderTax = roundTaxHalfUp(orderTax);
     }
 
-    final double netTotal = grossTotal - orderDiscount - merchantDiscount;
+    final double netTotal = grossTotal - orderDiscount - effectiveMerchantDiscount;
     final double netPayable = netTotal + orderTax + cashbackFee;
 
     // ============ RENDER FULL UI (SAME AS BEFORE, TOTALS NOW CORRECT) ============
@@ -4451,7 +4760,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       children: [
         Column(
           children: [
-            // Header with date/time
+            // Header with date/timeeeeeee
             Container(
               color: themeHelper.themeMode == ThemeMode.dark
                   ? ThemeNotifier.primaryBackground
@@ -6781,8 +7090,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                         orderItems: summaryItems,
                                         grossTotal: grossTotal,
                                         orderDiscount: orderDiscount,
-                                        merchantDiscount: merchantDiscount,
-                                        orderTax: totalTaxAfterDiscount,
+                                        // merchantDiscount: merchantDiscount,
+
+                                            merchantDiscount: recalculatedMerchantDiscount,
+
+                                            orderTax: totalTaxAfterDiscount,
                                         netPayable: updated['net_payable'] ??
                                             (grossAfterDiscount +
                                                 totalTaxAfterDiscount -

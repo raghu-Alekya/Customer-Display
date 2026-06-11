@@ -3358,11 +3358,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       finalTax = roundTaxHalfUp(finalTax);
     }
 
-    final double newNetTotal = grossTotal + discount + merchantDiscount;
-    final double newNetPayable = newNetTotal + finalTax + cashbackFee;
+    // final double newNetTotal = grossTotal + discount + merchantDiscount;
 
-    final bool totalsChanged = (finalTax - tax).abs() > 0.005 ||
-        (newNetPayable - computedNetPayable).abs() > 0.005;
+
+    // ✅ CORRECT: NetTotal should be Gross + Coupon/Order Discount ONLY
+    // Merchant Discount is shown separately after NetTotal
+    final double newNetTotal = grossTotal + discount;
+
+    final double newNetPayable = newNetTotal + finalTax + cashbackFee + merchantDiscount;
+
+    // final double newNetPayable = newNetTotal + finalTax + cashbackFee;
+
+    final bool totalsChanged = (finalTax - tax).abs() > 0.00005 ||
+        (newNetPayable - computedNetPayable).abs() > 0.00005;
     if (!totalsChanged) return;
 
     setState(() {
@@ -3421,6 +3429,146 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+  // void _recalculateGrossAndNetFromLineItemDiscounts() {
+  //   if (orderItems.isEmpty) return;
+  //
+  //   double toDouble(dynamic v) =>
+  //       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+  //
+  //   double recalculatedGrossTotal = 0.0;
+  //   double totalLineItemDiscount = 0.0;
+  //   double payoutCashbackTotal = 0.0;
+  //
+  //   for (final item in orderItems) {
+  //     final String itemType =
+  //     (item['item_type'] ?? '').toString().toLowerCase();
+  //     final String itemName =
+  //     (item['item_name'] ?? '').toString().toLowerCase();
+  //
+  //     final bool isPayout = itemType.contains('payout') ||
+  //         itemType.contains('cashback') ||
+  //         itemName == 'payout' ||
+  //         itemName == 'cashback' ||
+  //         itemName.contains('payout') ||
+  //         itemName.contains('cashback');
+  //
+  //     if (isPayout) {
+  //       final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+  //       final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+  //       payoutCashbackTotal += unitPrice * qty;
+  //       continue;
+  //     }
+  //
+  //     if (itemType.contains('discount') ||
+  //         itemType.contains('coupon') ||
+  //         itemType.contains('loyalty') ||
+  //         itemName.contains('merchant discount')) {
+  //       continue;
+  //     }
+  //
+  //     final double itemSumPrice = toDouble(item['item_sum_price']);
+  //     final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+  //     final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+  //     final double lineOriginalTotal = unitPrice * qty;
+  //
+  //     final double lineGross =
+  //     itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
+  //     recalculatedGrossTotal += lineGross;
+  //
+  //     // ... (keep all your existing discount extraction logic - auto, combo, etc.)
+  //     final String dtype =
+  //     (item['discount_type'] ?? '').toString().toLowerCase();
+  //
+  //     double autoDiscount = [
+  //       item['auto_discount'],
+  //       item['auto_discount_total'],
+  //       item['autoDiscount'],
+  //       item['autoDiscountTotal'],
+  //       item['display_auto_discount'],
+  //       item['_pos_auto_discount'],
+  //     ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
+  //
+  //     double comboDiscount = [
+  //       item['combo_discount_total'],
+  //       item['comboDiscountTotal'],
+  //       item['combo_discount'],
+  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+  //
+  //     double mixMatchDiscount = [
+  //       item['mixmatch_discount_total'],
+  //       item['mixMatchDiscountTotal'],
+  //       item['mixmatch_discount'],
+  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+  //
+  //     double multipackDiscount = [
+  //       item['multipack_discount_total'],
+  //       item['multipackDiscountTotal'],
+  //       item['multipack_discount'],
+  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+  //
+  //     if (dtype == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
+  //       mixMatchDiscount = autoDiscount;
+  //       autoDiscount = 0;
+  //     }
+  //     if (dtype == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
+  //       comboDiscount = autoDiscount;
+  //       autoDiscount = 0;
+  //     }
+  //     if (dtype == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
+  //       multipackDiscount = autoDiscount;
+  //       autoDiscount = 0;
+  //     }
+  //
+  //     final double itemDiscount =
+  //         autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
+  //     totalLineItemDiscount += itemDiscount;
+  //   }
+  //
+  //   if (totalLineItemDiscount <= 0 &&
+  //       payoutCashbackTotal == 0 &&
+  //       (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
+  //     return;
+  //   }
+  //
+  //   final double productGross = recalculatedGrossTotal != 0
+  //       ? recalculatedGrossTotal
+  //       : (widget.grossTotal > 0 ? widget.grossTotal : 0.0);
+  //
+  //   final double productGrossAfterDiscounts =
+  //       productGross - totalLineItemDiscount;
+  //
+  //   final double newGrossForDisplay =
+  //       productGrossAfterDiscounts + payoutCashbackTotal;
+  //
+  //   // ✅ FIXED: NetTotal = Gross after line discounts + Coupon/Order Discount
+  //   // (Merchant discount comes after)
+  //   //bala**
+  //   final double newNetTotal = newGrossForDisplay + discount;
+  //
+  //   final double newNetPayable =
+  //       newNetTotal + tax + cashbackFee + merchantDiscount;
+  //
+  //   if (kDebugMode) {
+  //     print('── LINE-ITEM DISCOUNT RECALCULATION ──');
+  //     print('   New Gross For Display : $newGrossForDisplay');
+  //     print('   NetTotal (pre-merchant) : $newNetTotal');
+  //     print('   Merchant Discount     : $merchantDiscount');
+  //     print('   New Net Payable       : $newNetPayable');
+  //   }
+  //
+  //   setState(() {
+  //     grossTotal = newGrossForDisplay;
+  //     NetTotal = newNetTotal;           // ← This will now show $59.97
+  //     computedNetPayable = newNetPayable;
+  //     orderTotal = newNetPayable;
+  //
+  //     if (tenderAmount <= 0) {
+  //       balanceAmount = newNetPayable;
+  //     }
+  //   });
+  // }
+
+
   void _recalculateGrossAndNetFromLineItemDiscounts() {
     if (orderItems.isEmpty) return;
 
@@ -3431,14 +3579,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     double totalLineItemDiscount = 0.0;
     double payoutCashbackTotal = 0.0;
 
-    for (final item in orderItems) {
-      final String itemType =
-          (item['item_type'] ?? '').toString().toLowerCase();
-      final String itemName =
-          (item['item_name'] ?? '').toString().toLowerCase();
+    // Store previous values to detect changes
+    final double previousGrossTotal = grossTotal;
+    final double previousMerchantDiscount = merchantDiscount;
+    final double previousComputedNetPayable = computedNetPayable;
 
-      // ── Payout / cashback detection — check BOTH item_type AND item_name
-      // because some items have empty item_type but name = "Payout" or "Cashback"
+    for (final item in orderItems) {
+      final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+      final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
+
       final bool isPayout = itemType.contains('payout') ||
           itemType.contains('cashback') ||
           itemName == 'payout' ||
@@ -3449,13 +3598,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (isPayout) {
         final double unitPrice = toDouble(item['item_price'] ?? item['price']);
         final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-        // Use item_price × qty — always the cashier-entered value.
-        // Payout: item_price is negative (e.g. -10), cashback: positive (+5).
         payoutCashbackTotal += unitPrice * qty;
-        continue; // ← CRITICAL: skip all further processing for this item
+        continue;
       }
 
-      // ── Skip non-product meta lines.
       if (itemType.contains('discount') ||
           itemType.contains('coupon') ||
           itemType.contains('loyalty') ||
@@ -3463,18 +3609,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         continue;
       }
 
-      // ── Real product line — only reach here for actual products.
       final double itemSumPrice = toDouble(item['item_sum_price']);
       final double unitPrice = toDouble(item['item_price'] ?? item['price']);
       final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
       final double lineOriginalTotal = unitPrice * qty;
 
-      final double lineGross =
-          itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
+      final double lineGross = itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
       recalculatedGrossTotal += lineGross;
 
-      final String dtype =
-          (item['discount_type'] ?? '').toString().toLowerCase();
+      final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
 
       double autoDiscount = [
         item['auto_discount'],
@@ -3521,50 +3664,29 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       totalLineItemDiscount += itemDiscount;
     }
 
-    // ── Guard: nothing changed, skip setState.
     if (totalLineItemDiscount <= 0 &&
         payoutCashbackTotal == 0 &&
         (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
       return;
     }
 
-    // ── Use widget.grossTotal as the product baseline when recalculatedGrossTotal
-    //    is 0 (pure payout order — no real product lines at all).
     final double productGross = recalculatedGrossTotal != 0
         ? recalculatedGrossTotal
         : (widget.grossTotal > 0 ? widget.grossTotal : 0.0);
 
-    // Product prices after item-level discounts.
-    final double productGrossAfterDiscounts =
-        productGross - totalLineItemDiscount;
+    final double productGrossAfterDiscounts = productGross - totalLineItemDiscount;
 
-    // Gross shown in UI = product gross after discounts + payout/cashback.
-    // Pure payout order: productGrossAfterDiscounts = 0, payoutCashbackTotal = -10 → -10 ✓
-    // Products + payout: 21.93 + (-10) = 11.93 ✓
-    final double newGrossForDisplay =
-        productGrossAfterDiscounts + payoutCashbackTotal;
+    final double newGrossForDisplay = productGrossAfterDiscounts + payoutCashbackTotal;
 
-    // NetTotal = grossForDisplay + coupon + merchant discount.
     final double newNetTotal = newGrossForDisplay + discount;
-
-    // Net payable — allow negative for refund/payout-only orders.
-    final double newNetPayable =
-        newNetTotal + tax + cashbackFee + merchantDiscount;
+    final double newNetPayable = newNetTotal + tax + cashbackFee + merchantDiscount;
 
     if (kDebugMode) {
       print('── LINE-ITEM DISCOUNT RECALCULATION ──');
-      print('   Product Gross (pre-discount)       : $productGross');
-      print('   Total Line Item Discounts          : $totalLineItemDiscount');
-      print(
-          '   Product Gross After Discounts      : $productGrossAfterDiscounts');
-      print('   Payout / Cashback Total            : $payoutCashbackTotal');
-      print('   Gross For Display                  : $newGrossForDisplay');
-      print('   Order Discount (coupon)            : $discount');
-      print('   Merchant Discount                  : $merchantDiscount');
-      print('   Tax                                : $tax');
-      print('   Cashback Fee                       : $cashbackFee');
-      print('   New Net Total                      : $newNetTotal');
-      print('   New Net Payable                    : $newNetPayable');
+      print('   New Gross For Display : $newGrossForDisplay');
+      print('   NetTotal (pre-merchant) : $newNetTotal');
+      print('   Merchant Discount     : $merchantDiscount');
+      print('   New Net Payable       : $newNetPayable');
     }
 
     setState(() {
@@ -3577,6 +3699,75 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         balanceAmount = newNetPayable;
       }
     });
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔥 CRITICAL FIX: Update customer display when merchant discount changes
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    final bool merchantDiscountChanged = (merchantDiscount - previousMerchantDiscount).abs() > 0.01;
+    final bool netPayableChanged = (computedNetPayable - previousComputedNetPayable).abs() > 0.01;
+
+    if (merchantDiscountChanged || netPayableChanged) {
+      // Update customer display with latest merchant discount values
+      _updateCustomerDisplayWithMerchantDiscount();
+    }
+  }
+
+  Future<void> _updateCustomerDisplayWithMerchantDiscount() async {
+    final int? orderIdToUse = widget.offlineOrderId ?? orderId;
+    if (orderIdToUse == null || orderIdToUse == 0) return;
+
+    if (kDebugMode) {
+      print('🔄 Updating customer display with merchant discount...');
+      print('   Gross Total: $grossTotal');
+      print('   Discount: $discount');
+      print('   Merchant Discount: $merchantDiscount');
+      print('   Net Payable: $computedNetPayable');
+    }
+
+    try {
+      // Build customer items for display
+      final customerItems = orderItems.map((item) {
+        // Skip discount/coupon line items for display
+        final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+        final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
+
+        if (itemType.contains('discount') ||
+            itemType.contains('coupon') ||
+            itemName.contains('merchant discount')) {
+          return null;
+        }
+
+        return {
+          "name": item["item_name"] ?? "",
+          "qty": item["items_count"] ?? 1,
+          "price": item["item_price"] ?? 0.0,
+          "image": item["item_image"] ?? "",
+        };
+      }).where((item) => item != null).toList().cast<Map<String, dynamic>>();
+
+      await CustomerDisplayService.showCustomerData(
+        orderId: orderIdToUse,
+        items: customerItems,
+        grossTotal: grossTotal,
+        discount: discount,
+        merchantDiscount: merchantDiscount,
+        netTotal: grossTotal - discount.abs(), // Net before merchant discount
+        tax: tax,
+        netPayable: computedNetPayable,
+        cashbackFee: cashbackFee,
+        redeemedAmount: redeemedValue,
+        loyaltyContact: mobileController.text.trim(),
+        summaryEnabled: true,
+      );
+
+      if (kDebugMode) {
+        print('✅ Customer display updated with merchant discount: $merchantDiscount');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print(' Failed to update customer display: $e');
+      }
+    }
   }
 
   @override
@@ -9961,6 +10152,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //     setState(() => isSummaryLoading = false);
   //   }
   // }
+
   Future<void> _removeAppliedCoupon() async {
     try {
       final box = StorageProvider.offlineOrders;
@@ -10020,7 +10212,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // ================= FINAL TOTAL RECALC =================
       setState(() {
-        NetTotal = grossTotal + discount + merchantDiscount;
+        NetTotal = grossTotal + discount ;   ////bala
 
         computedNetPayable = NetTotal + tax + cashbackFee;
 
@@ -10052,9 +10244,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // ================= SERVER SYNC FIRST =================
       try {
-        await OrderRepository().syncSingleOfflineOrder(
-          offlineOrder,
-        );
+        // await OrderRepository().syncSingleOfflineOrder(
+        //   offlineOrder,
+        // );
+        // ── Inject latest merchant discount into offlineOrder BEFORE sync ──
+        if (merchantDiscount != 0) {
+          offlineOrder['merchantDiscount'] = merchantDiscount.abs();
+          offlineOrder['merchantDiscountPercentage'] = merchantDiscountPercentage;
+        }
+
+        final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
       } catch (e) {
         print(
           "Sync after coupon removal failed: $e",
@@ -10338,6 +10537,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       setState(() => isSummaryLoading = true);
 
+      // Save original merchant discount values before sync
+      final double originalMerchantDiscount = merchantDiscount;
+      final double originalMerchantDiscountPercentage = merchantDiscountPercentage;
+      final String originalMerchantDiscountType = offlineOrder['merchantDiscountType']?.toString() ?? 'fixed';
+
       // ==================== SMART DUPLICATE CHECK ====================
       final dynamic cr = offlineOrder["coupon_response"];
       bool isAlreadyRedeemed = false;
@@ -10348,18 +10552,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         for (final dynamic item in coupons) {
           if (item is! Map) continue;
 
-          final Map<String, dynamic> couponMap =
-              Map<String, dynamic>.from(item);
+          final Map<String, dynamic> couponMap = Map<String, dynamic>.from(item);
           final String existingCode =
-              (couponMap["code"]?.toString() ?? "").trim().toLowerCase();
+          (couponMap["code"]?.toString() ?? "").trim().toLowerCase();
 
           if (existingCode == code) {
-            // 🔥 ONLY block with "already applied" if it is ALREADY REDEEMED
             if (_couponHiveEntryIsRedeem(couponMap)) {
               isAlreadyRedeemed = true;
               break;
             }
-            // If only issued → allow (for issuing or redeeming)
           }
         }
       }
@@ -10373,9 +10574,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         );
         return;
       }
-      // ============================================================
 
-      // Backup
+      // Backup original
       final dynamic originalCouponResponse = offlineOrder["coupon_response"];
 
       // Merge redeem coupon
@@ -10391,17 +10591,23 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       await box.put(orderKey, offlineOrder);
 
+      // ── Inject latest merchant discount into offlineOrder BEFORE sync ──
+      if (merchantDiscount != 0) {
+        offlineOrder['merchantDiscount'] = merchantDiscount.abs();
+        offlineOrder['merchantDiscountPercentage'] = merchantDiscountPercentage;
+      }
+
+      final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+
       // Sync to server
-      final result =
-          await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+      // final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
 
       if (result == null || result is! Map<String, dynamic>) {
         offlineOrder["coupon_response"] = originalCouponResponse;
         await box.put(orderKey, offlineOrder);
 
         String errorMsg = "Invalid coupon or unable to apply";
-        if (result is Map<String, dynamic> &&
-            result['code'] == 'invalid_coupon') {
+        if (result is Map<String, dynamic> && result['code'] == 'invalid_coupon') {
           errorMsg = result['message']?.toString() ?? errorMsg;
         }
 
@@ -10411,14 +10617,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return;
       }
 
-      // SUCCESS logic (unchanged)
+      // Extract values from response
       final double newDiscount =
           double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
       final double newTax =
-          double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
+          double.tryParse(result["tax"]?.toString() ?? "0") ?? widget.orderTax;
       final double newTotal =
           double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
 
+      // Update offline order
       offlineOrder["orderDiscount"] = newDiscount;
       offlineOrder["tax_discount"] = newTax;
       offlineOrder["grand_total"] = newTotal;
@@ -10429,8 +10636,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       if (result.containsKey("id")) {
         offlineOrder["wooOrderId"] = result["id"];
-        offlineOrder["wooStatus"] =
-            result["status"]?.toString().toLowerCase() ?? '';
+        offlineOrder["wooStatus"] = result["status"]?.toString().toLowerCase() ?? '';
         offlineOrder["synced"] = true;
         offlineOrder["sync_at"] = DateTime.now().toIso8601String();
       }
@@ -10438,31 +10644,83 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       _enrichRedeemCouponIdsFromWoo(offlineOrder, result, code);
       await box.put(orderKey, offlineOrder);
 
-      if (localOrderId != null) {
-        await CustomerDisplayHelper.updateCustomerDisplay(localOrderId,
-            summaryEnabled: true);
-      }
-
+      // ✅ UPDATE UI - Same logic as remove coupon
       setState(() {
         discount = (newDiscount != 0) ? -newDiscount.abs() : 0.0;
         tax = newTax;
-        NetTotal = grossTotal + discount + merchantDiscount;
+
+        // Recalculate NetTotal and computedNetPayable with same formula
+        NetTotal = grossTotal + discount;
         computedNetPayable = NetTotal + tax + cashbackFee;
         orderTotal = newTotal;
-        balanceAmount = newTotal;
+        balanceAmount = computedNetPayable - tenderAmount;
+        if (balanceAmount < 0) balanceAmount = 0.0;
+
         isCouponAppliedFromApi = true;
+
+        // ✅ CRITICAL FIX: Restore merchant discount values (they should NOT change with coupon)
+        merchantDiscount = originalMerchantDiscount;
+        merchantDiscountPercentage = originalMerchantDiscountPercentage;
       });
 
+      // ✅ Update offlineOrder with restored merchant discount values
+      offlineOrder["merchantDiscount"] = originalMerchantDiscount;
+      offlineOrder["merchantDiscountPercentage"] = originalMerchantDiscountPercentage;
+      offlineOrder["merchantDiscountType"] = originalMerchantDiscountType;
+      await box.put(orderKey, offlineOrder);
+
+      // ✅ Recalculate with discounts
       await _recalculateTaxOnDiscountedItems();
-      _recalculateGrossAndNetFromLineItemDiscounts();
+      if (!widget.itemPricesAlreadyAdjusted) {
+        _recalculateGrossAndNetFromLineItemDiscounts();
+      }
+
+      // ✅ Final recalculation
+      setState(() {
+        NetTotal = grossTotal + discount;
+        computedNetPayable = NetTotal + tax + cashbackFee;
+        orderTotal = computedNetPayable;
+        balanceAmount = computedNetPayable - tenderAmount;
+        if (balanceAmount < 0) balanceAmount = 0.0;
+      });
+
+      // ✅ Update customer display
+      if (localOrderId != null) {
+        final customerItems = orderItems.map((item) {
+          return {
+            "name": item["item_name"] ?? "",
+            "qty": item["items_count"] ?? 1,
+            "price": item["item_price"] ?? 0.0,
+            "image": item["item_image"] ?? "",
+          };
+        }).toList();
+
+        await CustomerDisplayService.showCustomerData(
+          orderId: localOrderId,
+          items: customerItems,
+          grossTotal: grossTotal,
+          discount: discount,
+          merchantDiscount: merchantDiscount,
+          netTotal: grossTotal - discount.abs(),
+          tax: tax,
+          netPayable: computedNetPayable,
+          cashbackFee: cashbackFee,
+          redeemedAmount: redeemedValue,
+          loyaltyContact: mobileController.text.trim(),
+          summaryEnabled: true,
+        );
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text("Coupon applied successfully"),
-            backgroundColor: Colors.green),
+          content: Text("Coupon applied successfully"),
+          backgroundColor: Colors.green,
+        ),
       );
+
     } catch (e) {
       print("❌ Apply coupon error: $e");
-      // Restore logic (unchanged)
+      // Restore logic
       try {
         final box = StorageProvider.offlineOrders;
         final String orderKey = widget.orderId?.toString() ??
@@ -10489,11 +10747,47 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text("Failed to apply coupon"),
-            backgroundColor: Colors.red),
+          content: Text("Failed to apply coupon: $e"),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       setState(() => isSummaryLoading = false);
+    }
+  }
+
+  Future<void> _recalculateMerchantDiscount() async {
+    // Get merchant discount type and percentage from offline order
+    final String mdType = offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+    final num mdPercentage = offlineOrder?['merchantDiscountPercentage'] as num? ?? merchantDiscountPercentage;
+
+    // Calculate current base (Gross + Coupon/Order Discount)
+    final double baseAmount = grossTotal + discount;
+
+    if (mdType == 'percentage' && mdPercentage > 0) {
+      // Recalculate merchant discount based on new base amount
+      final double newMerchantDiscount = -((baseAmount * mdPercentage) / 100.0);
+
+      if (kDebugMode) {
+        print('🔄 Recalculating merchant discount:');
+        print('   Base Amount (Gross + Coupon): $baseAmount');
+        print('   Percentage: $mdPercentage%');
+        print('   New Merchant Discount: $newMerchantDiscount');
+        print('   Old Merchant Discount: $merchantDiscount');
+      }
+
+      setState(() {
+        merchantDiscount = newMerchantDiscount;
+      });
+
+      // Update offline order
+      if (offlineOrder != null) {
+        offlineOrder!['merchantDiscount'] = merchantDiscount;
+        await StorageProvider.offlineOrders.put(
+            (orderId ?? 0).toString(),
+            offlineOrder!
+        );
+      }
     }
   }
 
@@ -11563,6 +11857,43 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
+  Future<void> _updateHiveWithLatestMerchantDiscount() async {
+    try {
+      final box = StorageProvider.offlineOrders;
+      final String orderKey = orderId?.toString() ??
+          widget.orderId?.toString() ??
+          widget.offlineOrderId?.toString() ??
+          "";
+
+      if (orderKey.isEmpty) return;
+
+      final raw = await box.get(orderKey);
+      if (raw is! Map<String, dynamic>) return;
+
+      final order = Map<String, dynamic>.from(raw);
+
+      // Update merchant discount values
+      order['merchantDiscount'] = merchantDiscount.abs();
+      order['merchantDiscountPercentage'] = merchantDiscountPercentage;
+
+      // Also update financial totals to ensure consistency
+      order['NetTotal'] = NetTotal;
+      order['computedNetPayable'] = computedNetPayable;
+      order['order_total'] = orderTotal;
+      order['balance_amount'] = balanceAmount;
+      order['remaining_balance'] = balanceAmount;
+
+      await box.put(orderKey, order);
+
+      if (kDebugMode) {
+        print('✅ Updated Hive with merchant discount: $merchantDiscount');
+        print('   Percentage: $merchantDiscountPercentage%');
+      }
+    } catch (e) {
+      print('❌ Failed to update Hive with merchant discount: $e');
+    }
+  }
+
   Future<void> _syncCurrentOfflineOrder() async {
     final String orderKey = widget.orderId?.toString() ??
         widget.offlineOrderId?.toString() ??
@@ -11582,6 +11913,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (raw is! Map<String, dynamic>) return;
 
       var order = Map<String, dynamic>.from(raw);
+
+      // ✅ CRITICAL: Update merchant discount values before sync
+      order['merchantDiscount'] = merchantDiscount.abs();
+      order['merchantDiscountPercentage'] = merchantDiscountPercentage;
+
+      // Also update the merchant discount type if available
+      if (offlineOrder?['merchantDiscountType'] != null) {
+        order['merchantDiscountType'] = offlineOrder!['merchantDiscountType'];
+      }
 
       // === CRITICAL: Handle coupon validation failures ===
       bool syncSuccess = false;
@@ -11744,6 +12084,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             }
           }
         }
+
+        // ✅ CRITICAL FIX: Update Hive with latest merchant discount values BEFORE sync
+        await _updateHiveWithLatestMerchantDiscount();
 
         // Sync to backend (your original unchanged _syncCurrentOfflineOrder)
         try {
@@ -12326,6 +12669,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           } catch (e) {
             print(">>> Error updating customer display: $e");
           }
+
+          // ✅ Update Hive with latest merchant discount before sync
+          await _updateHiveWithLatestMerchantDiscount();
 
           // Refresh order panel
           OrderHelper.isOrderPanelLoaded = false;
@@ -13119,10 +13465,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   ///it is used called by no receipt and print receipt on order payment completed - print button tap
   void changeStatusToCompletedAndExit(bool isReceipt,
       {String selectedOption = TextConstants.print}) {
-    /// Build #1.0.168: Fixed Issue - Change is showing as zero only
-    /// No need here to reset changeAmount,balanceAmount or tenderAmount
-    /// Every time comes to this screen we are already resetting initially in fetchOrderItems method
-
     if (kDebugMode) {
       print(
           "OrderSummaryScreen _showReceiptDialog Done call print receipt = $isReceipt");
@@ -13150,13 +13492,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     _isAmountEntered = false;
     _amountErrorText = null;
 
-    ///ToDO: Change the status of order to 'completed' here
-    // Build #1.0.49: Added Call Order Status Update API code
+    // ✅ Update Hive with latest merchant discount before final sync
+    _updateHiveWithLatestMerchantDiscount().then((_) {
+      // Background sync after updating Hive
+      Future(() async {
+        try {
+          await _syncCurrentOfflineOrder();
+          print("✅ Background: Final sync completed");
+        } catch (e) {
+          print("❌ Background: Final sync failed: $e");
+        }
+      });
+    });
 
-    /// Build #1.0.175: No need change status to completed API call
-    /// It was handling from backend
     Navigator.of(context).pop(); // Dismiss the receipt dialog
-    // Navigator.of(context).pop(TextConstants.refresh); // Dismiss back to the previous screen with a refresh signal
+
     if (kDebugMode) {
       print("changeStatusToCompletedAndExit -> 3:");
     }
@@ -13176,7 +13526,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           TextConstants.orderCompleted,
           style: const TextStyle(color: Colors.white),
         ),
-        backgroundColor: Colors.green, // Build #1.0.104: updated to green
+        backgroundColor: Colors.green,
         duration: const Duration(seconds: 1),
       ),
     );

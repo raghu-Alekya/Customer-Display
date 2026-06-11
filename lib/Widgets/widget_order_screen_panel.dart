@@ -163,7 +163,7 @@ Map<String, dynamic> orderPanelOrderMapFromOrderModel(OrderModel o) {
   final double orderTotal = double.tryParse(o.total) ?? 0.0;
   final double merchantMeta = metaDouble('merchant_discount') ??
       metaDouble('_merchant_discount') ??
-      0.0;
+      o.merchantDiscountFromFeeLines;
 
   final bool couponsApplied = couponLines.isNotEmpty || discTotal > 0;
 
@@ -1880,10 +1880,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     // ----------- ONLINE TOTAL COMPUTATION -----------
     // NET TOTAL (no tax)
     // Algebraic addition: grossTotal + orderDiscount + merchantDiscount
-    num netTotal = (grossTotal +
-        (orderDiscount != 0 ? orderDiscount : 0.0) +           // already negative usually
-        (merchantDiscount != 0 ? merchantDiscount : 0.0))      // already negative
-        .clamp(double.negativeInfinity, double.infinity);         // ← Removed 0.0 clamp
+      // num netTotal = (grossTotal +
+    //     //     (orderDiscount != 0 ? orderDiscount : 0.0) +           // already negative usually
+    //     //     (merchantDiscount != 0 ? merchantDiscount : 0.0))      // already negative
+    //     //     .clamp(double.negativeInfinity, double.infinity);       // ← Removed 0.0 clamp
+
+    num netTotal = (grossTotal + orderDiscount)
+        .clamp(double.negativeInfinity, double.infinity);
 
 // NET PAYABLE WITH TAX + CASHBACK
     double computedNetPayable = (grossTotal +
@@ -3152,7 +3155,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                               color: Colors.grey),
                                         ),
                                         Text(
-                                            "${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}",
+                                          //wooTax
+                                            "${TextConstants.currencySymbol}${wooTax.toStringAsFixed(2)}",
+
+                                            // "${TextConstants.currencySymbol}${orderTax.toStringAsFixed(2)}",
+
                                             style: TextStyle(
                                                 fontWeight: FontWeight.bold,
                                                 fontSize: 12,
