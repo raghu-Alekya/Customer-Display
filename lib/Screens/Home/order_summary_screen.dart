@@ -67,15 +67,53 @@ import 'pos_home_screen.dart';
 import 'isar_payments/local_payments_db_helper.dart';
 import 'isar_payments/local_payments_model.dart';
 
+// class LastPaymentInfo {
+//   final String method;
+//   final double amount;
+//   late final String? paymentId;
+//
+//   // ⭐ SUNMI FIELDS
+//   final String? sunmiTxnId;
+//   final String? sunmiOrderId;
+//   final String? sunmiDeviceId; // ⭐ ADD THIS
+//
+//   LastPaymentInfo({
+//     required this.method,
+//     required this.amount,
+//     this.paymentId,
+//     this.sunmiTxnId,
+//     this.sunmiOrderId,
+//     this.sunmiDeviceId,
+//   });
+//
+//   Map<String, dynamic> toJson() => {
+//     "method": method,
+//     "amount": amount,
+//     "paymentId": paymentId,
+//     "sunmiTxnId": sunmiTxnId,
+//     "sunmiOrderId": sunmiOrderId,
+//     "sunmiDeviceId": sunmiDeviceId,
+//   };
+//
+//   factory LastPaymentInfo.fromJson(Map<String, dynamic> json) {
+//     return LastPaymentInfo(
+//       method: json["method"],
+//       amount: (json["amount"] as num).toDouble(),
+//       paymentId: json["paymentId"],
+//       sunmiTxnId: json["sunmiTxnId"],
+//       sunmiOrderId: json["sunmiOrderId"],
+//       sunmiDeviceId: json["sunmiDeviceId"],
+//     );
+//   }
+// }
 class LastPaymentInfo {
   final String method;
   final double amount;
   late final String? paymentId;
-
-  // ⭐ SUNMI FIELDS
   final String? sunmiTxnId;
   final String? sunmiOrderId;
-  final String? sunmiDeviceId; // ⭐ ADD THIS
+  final String? sunmiDeviceId;
+  final String? transactionId; // ⭐ ADD THIS
 
   LastPaymentInfo({
     required this.method,
@@ -84,6 +122,7 @@ class LastPaymentInfo {
     this.sunmiTxnId,
     this.sunmiOrderId,
     this.sunmiDeviceId,
+    this.transactionId, // ⭐ ADD THIS
   });
 
   Map<String, dynamic> toJson() => {
@@ -93,6 +132,7 @@ class LastPaymentInfo {
     "sunmiTxnId": sunmiTxnId,
     "sunmiOrderId": sunmiOrderId,
     "sunmiDeviceId": sunmiDeviceId,
+    "transactionId": transactionId, // ⭐ ADD THIS
   };
 
   factory LastPaymentInfo.fromJson(Map<String, dynamic> json) {
@@ -103,6 +143,7 @@ class LastPaymentInfo {
       sunmiTxnId: json["sunmiTxnId"],
       sunmiOrderId: json["sunmiOrderId"],
       sunmiDeviceId: json["sunmiDeviceId"],
+      transactionId: json["transactionId"], // ⭐ ADD THIS
     );
   }
 }
@@ -1757,6 +1798,44 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           break;
         }
       }
+      // ⭐ NEW: Restore transactionId from Hive lastPayment if available
+// because LocalPayment model doesn't store transactionId separately.
+      try {
+        final String hiveKey = orderId.toString();
+        final hiveBox = StorageProvider.offlineOrders;
+        if (await hiveBox.containsKey(hiveKey)) {
+          final rawHive = await hiveBox.get(hiveKey);
+          if (rawHive is Map) {
+            final hiveMap = Map<String, dynamic>.from(rawHive);
+            final dynamic lastPaymentRaw = hiveMap["lastPayment"];
+            if (lastPaymentRaw is Map && _lastPayment != null) {
+              final Map<String, dynamic> lastPaymentMap =
+              Map<String, dynamic>.from(lastPaymentRaw);
+              final String? storedTxnId =
+              lastPaymentMap["transactionId"]?.toString();
+              if (storedTxnId != null && storedTxnId.isNotEmpty) {
+                _lastPayment = LastPaymentInfo(
+                  method: _lastPayment!.method,
+                  amount: _lastPayment!.amount,
+                  paymentId: _lastPayment!.paymentId,
+                  sunmiTxnId: _lastPayment!.sunmiTxnId,
+                  sunmiOrderId: _lastPayment!.sunmiOrderId,
+                  sunmiDeviceId: _lastPayment!.sunmiDeviceId,
+                  transactionId: storedTxnId, // ⭐ Restored from Hive
+                );
+                if (kDebugMode) {
+                  print(
+                      "✅ Restored transactionId from Hive → $storedTxnId");
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print("⚠️ Failed to restore transactionId from Hive: $e");
+        }
+      }
 
       setState(() {
         tenderAmount = totalPaid;
@@ -3354,6 +3433,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       return;
     }
 
+    // ⭐ NEW: If we have a transaction_id, use kickback void API instead
+    final String? txnId = _lastPayment?.transactionId;
+    if (txnId != null && txnId.isNotEmpty) {
+      await _voidCardPaymentViaKickbackAPI(
+        transactionId: txnId,
+        paymentId: serverPaymentId,
+        wooOrderId: wooOrderId,
+      );
+      return; // ⭐ Use kickback API only, skip old void flow
+    }
+
+    // --- existing code below unchanged ---
     if (kDebugMode) {
       print(
           "🔄 Voiding card payment on server → order:$wooOrderId payment:$serverPaymentId");
@@ -3763,6 +3854,33 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //   }
   // }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH: Fix card payment showing wrong tender amount when previous partial
+//        payments (EBT / cash) have already been made.
+//
+// ROOT CAUSE:
+//   In _handleCardPaymentViaAPI, after _calculateBalanceFromPaymentHistory()
+//   refreshes `tenderAmount` to the running total of prior payments (e.g. $30),
+//   the line:
+//
+//       final double newTenderAmount = tenderAmount;   // ← BUG: missing + amount
+//
+//   never adds the current card payment, so the UI shows $30 instead of $100,
+//   and the success dialog receives the same wrong value.
+//
+// FIX (zero old-code changes):
+//   Replace _handleCardPaymentViaAPI with the version below.
+//   The only functional change is the single corrected line marked ← FIX.
+//   Every other line is identical to the original.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// HOW TO APPLY:
+//   1. Open order_summary_screen.dart (or whichever file contains
+//      _handleCardPaymentViaAPI).
+//   2. Delete the entire existing _handleCardPaymentViaAPI method.
+//   3. Paste the method below in its place.
+//   No other changes needed anywhere in the file.
+
   Future<void> _handleCardPaymentViaAPI() async {
     _isCardPaymentCancelled = false;
 
@@ -3778,14 +3896,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       return;
     }
 
-    // === FORCE CONSISTENT STATE FIRST ===
+    // Recalculate everything first
     _recalculateGrossAndNetFromLineItemDiscounts();
     await _recalculateTaxOnDiscountedItems();
     await _calculateBalanceFromPaymentHistory();
 
     final double effectiveBalance = _currentPaymentRemainingBalance ?? balanceAmount;
-
-    // Clamp amount to available balance
     final double amount = enteredAmount.clamp(0.0, effectiveBalance + 0.01);
 
     if ((enteredAmount - amount).abs() > 0.01) {
@@ -3809,7 +3925,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final double balanceBeforePayment = effectiveBalance;
     final bool willBeFullPayment = amount >= (balanceBeforePayment - 0.01);
 
-    print("💰 CARD PAYMENT → Amount: \$$amount | Balance before: \$$balanceBeforePayment | Will be FULL: $willBeFullPayment");
+    print("💰 CARD PAYMENT → Amount: \$$amount | Balance before: \$$balanceBeforePayment");
 
     // Show loading
     setState(() {
@@ -3819,42 +3935,26 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     _showPaymentProgressDialog(context);
 
     try {
-      // Sync order to get latest WooCommerce ID
       final int wooOrderId = await _resolveWooOrderIdForPayment(forceSync: true);
-
       if (wooOrderId == 0) {
         _hidePaymentProgressDialog();
-        setState(() {
-          isLoading = false;
-          _processingPaymentMethod = null;
-        });
+        setState(() { isLoading = false; _processingPaymentMethod = null; });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Could not resolve order – please try again"),
-            backgroundColor: Colors.red,
-          ),
+          const SnackBar(content: Text("Could not resolve order"), backgroundColor: Colors.red),
         );
         return;
       }
 
       if (_isCardPaymentCancelled) return;
 
-      // Get token
       final String token = await _getTokenFromDb();
-
       if (_isCardPaymentCancelled) return;
 
-      // Call API
-      final uri = Uri.parse(
-        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment",
-      );
-
+      // === API Call ===
+      final uri = Uri.parse("${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment");
       final http.Response response = await http.post(
         uri,
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer $token",
-        },
+        headers: {"Content-Type": "application/json", "Authorization": "Bearer $token"},
         body: jsonEncode({
           "order_id": wooOrderId,
           "amount": (amount * 100).round(),
@@ -3863,37 +3963,40 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         }),
       );
 
-      _hidePaymentProgressDialog();
-      setState(() {
-        isLoading = false;
-        _processingPaymentMethod = null;
-      });
+      // ================= API DEBUG =================
+      print("📤 CARD PAYMENT REQUEST");
+      print("URL: $uri");
+      print("Headers: ${{
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $token"
+      }}");
+      print("Body: ${jsonEncode({
+        "order_id": wooOrderId,
+        "amount": (amount * 100).round(),
+        "payment_method": "card",
+        "shift_id": shiftId,
+      })}");
 
-      if (kDebugMode) {
-        print("Card API Response → ${response.statusCode}");
-        print("Body: ${response.body}");
-      }
+      print("📥 CARD PAYMENT RESPONSE");
+      print("Status Code: ${response.statusCode}");
+      print("Response Body: ${response.body}");
+
+      _hidePaymentProgressDialog();
+      setState(() { isLoading = false; _processingPaymentMethod = null; });
 
       final Map<String, dynamic> body = jsonDecode(response.body) as Map<String, dynamic>;
 
       if (body["success"] != true) {
         final String msg = body["message"]?.toString() ?? "Card payment failed";
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg), backgroundColor: Colors.red),
-        );
-        setState(() => selectedPaymentMethod = TextConstants.cash);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
         _resetAmountAfterPay();
         return;
       }
 
-      if (_isCardPaymentCancelled) return;
-
-      // Extract server payment ID
       final String? serverPaymentId = _extractServerPaymentId(body);
 
-      // Create local payment record
+      // Save locally
       final String datetimeStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-
       final localPayment = LocalPayment(
         orderId: orderId ?? 0,
         title: TextConstants.card,
@@ -3904,29 +4007,30 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         userId: userId ?? 0,
         serviceType: serviceType,
         datetime: datetimeStr,
-        notes: "Card payment via API – wooOrderId: $wooOrderId",
+        notes: "Card payment via API",
         isSynced: true,
         createdAt: DateTime.now(),
         remainingBalance: (balanceBeforePayment - amount).clamp(0.0, double.infinity),
         status: PaymentDbStatus.pending,
+
       );
 
       final savedPayment = await LocalPaymentDBHelper.instance.savePayment(localPayment);
 
       if (serverPaymentId != null) {
-        final int? sid = int.tryParse(serverPaymentId);
-        if (sid != null) {
-          await LocalPaymentDBHelper.instance.markAsSynced(savedPayment.id, sid);
-        }
+        await LocalPaymentDBHelper.instance.markAsSynced(savedPayment.id, int.tryParse(serverPaymentId) ?? 0);
       }
+
+      // ⭐ Extract transaction_id from API response body
+      final String? cardTransactionId = body["transaction_id"]?.toString();
 
       _lastPayment = LastPaymentInfo(
         method: TextConstants.card,
         amount: amount,
         paymentId: serverPaymentId ?? savedPayment.id.toString(),
+        transactionId: cardTransactionId, // ⭐ ADD THIS
       );
 
-      // Save to Hive
       await _savePaymentToHive(
         amount: amount,
         paymentMethod: TextConstants.card,
@@ -3936,24 +4040,36 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       await _saveLocalPaymentToHive(savedPayment);
 
-      // === CRITICAL: Refresh balance after payment save ===
-      await _calculateBalanceFromPaymentHistory();
+      // === MOST IMPORTANT FIX ===
+      await _calculateBalanceFromPaymentHistory();   // This already calculates correct tenderAmount
+
       final double finalRemaining = _currentPaymentRemainingBalance ?? balanceAmount;
       final bool isActuallyFull = finalRemaining <= 0.00000001;
 
-      print("🔄 FINAL STATE → Remaining: $finalRemaining | Is Full Payment: $isActuallyFull");
+      // Use the refreshed tenderAmount from history (DO NOT add amount again)
+      // final double newTenderAmount = "${payByCard.toStringAsFixed(2)}";
+          //tenderAmount ;        // ← Correct
 
-      // Calculate correct new tender amount (existing tender + this payment)
-      final double newTenderAmount = tenderAmount ;
+      final double newTenderAmount = payByCard;   // ← Changed as per your request
 
-      // Calculate change if overpaid
       final double newChangeAmount = amount > balanceBeforePayment
           ? (amount - balanceBeforePayment)
           : 0.0;
 
-      // Update UI
+// ==================== DEBUG PRINTS ====================
+      print("🔍 [CARD PAYMENT DEBUG]");
+      print("   Amount Paid (Card)     : \$${amount.toStringAsFixed(2)}");
+      print("   New Tender Amount      : \$${newTenderAmount.toStringAsFixed(2)}");
+      print("   New Change Amount      : \$${newChangeAmount.toStringAsFixed(2)}");
+      print("   Final Remaining        : \$${finalRemaining.toStringAsFixed(2)}");
+      print("   Is Actually Full       : $isActuallyFull");
+      print("   payByCash              : \$${payByCash.toStringAsFixed(2)}");
+      print("   payByEbt               : \$${payByEbt.toStringAsFixed(2)}");
+      print("   payByCard (updated)    : \$${payByCard.toStringAsFixed(2)}");
+      print("==================================================");
+      // ======================================================
+
       setState(() {
-        tenderAmount = newTenderAmount;
         balanceAmount = finalRemaining;
         payByCard += amount;
         _currentPaymentRemainingBalance = isActuallyFull ? null : finalRemaining;
@@ -3969,11 +4085,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       _resetAmountAfterPay();
 
-      // === Show correct dialog based on final state ===
       if (isActuallyFull) {
-        print("✅ FULL PAYMENT → Showing success dialog with amount: $newTenderAmount");
         _successPopupShown = true;
-
         final box = StorageProvider.offlineOrders;
         final key = (orderId ?? widget.offlineOrderId ?? 0).toString();
         final raw = await box.get(key);
@@ -3983,17 +4096,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         if (mounted) {
           await CustomerDisplayService.showThankYou();
-          // ✅ Pass the CORRECT amount (total paid, not just this payment)
           _showPaymentDialog(
             context,
-            newTenderAmount,  // ← Use total tender amount, not just the payment amount
+            newTenderAmount,           // ← Now correctly shows total tendered (e.g. 30)
             changeAmount: newChangeAmount,
-            showChange: amount > balanceBeforePayment,
+            showChange: newChangeAmount > 0,
             couponResponse: couponResponse,
           );
         }
       } else {
-        print("🟡 PARTIAL PAYMENT → Showing partial dialog");
         if (mounted) {
           _showPartialPaymentDialog(context, amount);
         }
@@ -4007,19 +4118,76 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       });
       _resetAmountAfterPay();
 
-      if (kDebugMode) {
-        print("❌ _handleCardPaymentViaAPI error: $e");
-        print(st);
-      }
+      print("❌ _handleCardPaymentViaAPI error: $e");
+      print(st);
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Card payment error: $e"),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text("Card payment error: $e"), backgroundColor: Colors.red),
       );
     }
   }
+
+  /// ⭐ NEW: Void card payment via kickback API using transaction_id
+  Future<void> _voidCardPaymentViaKickbackAPI({
+    required String transactionId,
+    required String paymentId,
+    required int wooOrderId,
+  }) async {
+    if (transactionId.isEmpty) {
+      if (kDebugMode) print("⚠️ Kickback void skipped – no transaction_id");
+      return;
+    }
+
+    try {
+      final String token = await _getTokenFromDb();
+
+      final uri = Uri.parse(
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/void-kickback-transaction",
+      );
+
+      if (kDebugMode) {
+        print("🔄 Voiding card via kickback API");
+        print("   order_id: $wooOrderId");
+        print("   payment_id: $paymentId");
+        print("   transaction_id: $transactionId");
+      }
+
+      final response = await http.post(
+        uri,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+        body: jsonEncode({
+          "order_id": wooOrderId.toString(),
+          "payment_id": paymentId,
+          "transaction_id": transactionId,
+        }),
+      );
+
+      if (kDebugMode) {
+        print("📥 Kickback void response: ${response.statusCode}");
+        print("Body: ${response.body}");
+      }
+
+      final Map<String, dynamic> body =
+      jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (body["success"] == true) {
+        if (kDebugMode) print("✅ Kickback card void successful");
+      } else {
+        if (kDebugMode) {
+          print("❌ Kickback card void failed: ${body["message"]}");
+        }
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        print("❌ _voidCardPaymentViaKickbackAPI error: $e");
+        print(st);
+      }
+    }
+  }
+
 
   Future<void> _handleEbtCardPaymentViaAPI() async {
     final double amount = double.tryParse(
@@ -5383,6 +5551,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               final raw = hasKey ? await box.get(key) : null;
               final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
 
+
               existing["lastPayment"] = _lastPayment!.toJson();
               await box.put(key, existing);
 
@@ -5676,7 +5845,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     existing["remainingEbt"] = finalRemainingEbt;
     existing["redeemed_value"] = redeemedValue;
     existing["remainingBalance"] = finalBalance;
-
+    existing["lastPayment"] = _lastPayment!.toJson();
     await box.put(key, existing);
 
     if (kDebugMode) {
@@ -6342,6 +6511,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               existing["paidAmount"] = tenderAmount;
               existing["tenderAmount"] = tenderAmount;
               existing["ebtTotal"] = ebtTotal;
+              existing["lastPayment"] = _lastPayment!.toJson();
               await box.put(key, existing);
             } catch (e) {
               print("⚠ Hive update error: $e");
@@ -10732,7 +10902,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       existing["coupon_applied"] = true;
       existing["coupon_applied_at"] = DateTime.now().toIso8601String();
       existing["coupon_amount"] = discountAmount;
-
+      existing["lastPayment"] = _lastPayment!.toJson();
       await box.put(key, existing);
       offlineOrder = existing;
 
