@@ -3778,6 +3778,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                             }
 
                             // Customer display update
+                            // Customer display update
                             try {
                               final customerDisplayItems = itemsForSummary.map((item) {
                                 final qty = (item[AppDBConst.itemCount] as num?)?.toInt() ?? 1;

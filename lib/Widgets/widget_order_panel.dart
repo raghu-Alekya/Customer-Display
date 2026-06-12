@@ -290,17 +290,19 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         OrderHelper.isOrderPanelLoaded = false;
-        await fetchOrdersData(); // sets _isSwitchingOrder = false when done
+        await fetchOrdersData();   // sets _isSwitchingOrder = false when done
       });
     };
     TopBar.modeChangedNotifier.addListener(_modeChangeListener!);
 
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await orderHelper.restoreActiveOrderId();
+      await orderHelper
+          .restoreActiveOrderId();
       await fetchOrdersData();
       if (mounted) {
         setState(() => _initialRestoreDone =
-            true); // Safe to derive from orderHelper in build
+        true); // Safe to derive from orderHelper in build
       }
     });
     _orderPanelRefreshListener = () {
@@ -311,6 +313,21 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     };
     OrderHelper.orderPanelRefreshNotifier
         .addListener(_orderPanelRefreshListener!);
+    // CUSTOMER DISPLAY CALLBACK
+    customerDisplayChannel.setMethodCallHandler((call) async {
+      if (call.method == "showNextActiveOrder") {
+        await fetchOrdersData();
+
+        if (orderHelper.activeOrderId != null) {
+          await CustomerDisplayHelper.updateCustomerDisplay(
+            orderHelper.activeOrderId!,
+            summaryEnabled: false,
+          );
+        } else {
+          await CustomerDisplayService.showWelcome();
+        }
+      }
+    });
   }
 
   @override
@@ -538,7 +555,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
     // Build #1.0.287: Take a snapshot of orders to avoid race conditions during async loop
     final List<Map<String, dynamic>> ordersSnapshot =
-        List<Map<String, dynamic>>.from(orderHelper.orders);
+    List<Map<String, dynamic>>.from(orderHelper.orders);
 
     for (final order in ordersSnapshot) {
       final int? orderId = _normalizeOrderId(
@@ -573,26 +590,26 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           .asMap()
           .entries
           .map((entry) {
-            final o = entry.value;
-            final normalizedId = _normalizeOrderId(
-              o[AppDBConst.orderServerId] ??
-                  o['order_id'] ??
-                  o[AppDBConst.orderId] ??
-                  o['id'],
-            );
-            if (normalizedId == null) {
-              return <String, Object>{
-                "title": "",
-                "subtitle": "Tab ${entry.key + 1}",
-                "orderId": 0,
-              };
-            }
-            return {
-              "title": "$normalizedId",
-              "subtitle": "Tab ${entry.key + 1}",
-              "orderId": normalizedId,
-            };
-          })
+        final o = entry.value;
+        final normalizedId = _normalizeOrderId(
+          o[AppDBConst.orderServerId] ??
+              o['order_id'] ??
+              o[AppDBConst.orderId] ??
+              o['id'],
+        );
+        if (normalizedId == null) {
+          return <String, Object>{
+            "title": "",
+            "subtitle": "Tab ${entry.key + 1}",
+            "orderId": 0,
+          };
+        }
+        return {
+          "title": "$normalizedId",
+          "subtitle": "Tab ${entry.key + 1}",
+          "orderId": normalizedId,
+        };
+      })
           .where((t) => (t["orderId"] as int) > 0)
           .toList();
 
@@ -644,6 +661,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           print("Showing new active order on display → $newActiveId");
           await CustomerDisplayHelper.updateCustomerDisplay(newActiveId);
         }
+
       } else {
         // ❌ NO orders left → FULL RESET
         await orderHelper.setActiveOrder(null);
