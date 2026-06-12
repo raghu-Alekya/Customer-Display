@@ -1261,6 +1261,13 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 
   void _recalculateGrossAndNetFromLineItemDiscounts() {
+    if (widget.itemPricesAlreadyAdjusted) {
+      if (kDebugMode) {
+        print('── TAX RECALC SKIPPED: itemPricesAlreadyAdjusted=true');
+      }
+      return;
+    }
+
     if (orderItems.isEmpty) return;
 
     double toDouble(dynamic v) =>
@@ -1448,6 +1455,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     });
 
   }
+
+
 
   static const MethodChannel customerDisplayChannel = MethodChannel(
     'com.alekta.pinakapos/sunmi_display',
@@ -4166,7 +4175,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       );
 
       if (kDebugMode) {
-        print("📥 Kickback void response: ${response.statusCode}");
+        print("Kickback void response: ${response.statusCode}");
         print("Body: ${response.body}");
       }
 
@@ -13812,7 +13821,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //     ),
   //   );
   // }
-  
+
   void _showPaymentDialog(
       BuildContext context,
       double amount, {
