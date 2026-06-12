@@ -9,7 +9,6 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:intl/intl.dart'; // Added for date formatting
 import 'package:pinaka_pos/Database/assets_db_helper.dart';
@@ -36,9 +35,7 @@ import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/api_response.dart';
 import '../../Helper/customerdisplayhelper.dart';
-import '../../Helper/url_helper.dart';
 import '../../Models/Payment/payment_model.dart';
-import '../../Models/Payment/void_payment_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
 import '../../Repositories/Orders/order_repository.dart';
 import '../../Repositories/Payment/payment_repository.dart';
@@ -67,53 +64,15 @@ import 'pos_home_screen.dart';
 import 'isar_payments/local_payments_db_helper.dart';
 import 'isar_payments/local_payments_model.dart';
 
-// class LastPaymentInfo {
-//   final String method;
-//   final double amount;
-//   late final String? paymentId;
-//
-//   // ⭐ SUNMI FIELDS
-//   final String? sunmiTxnId;
-//   final String? sunmiOrderId;
-//   final String? sunmiDeviceId; // ⭐ ADD THIS
-//
-//   LastPaymentInfo({
-//     required this.method,
-//     required this.amount,
-//     this.paymentId,
-//     this.sunmiTxnId,
-//     this.sunmiOrderId,
-//     this.sunmiDeviceId,
-//   });
-//
-//   Map<String, dynamic> toJson() => {
-//     "method": method,
-//     "amount": amount,
-//     "paymentId": paymentId,
-//     "sunmiTxnId": sunmiTxnId,
-//     "sunmiOrderId": sunmiOrderId,
-//     "sunmiDeviceId": sunmiDeviceId,
-//   };
-//
-//   factory LastPaymentInfo.fromJson(Map<String, dynamic> json) {
-//     return LastPaymentInfo(
-//       method: json["method"],
-//       amount: (json["amount"] as num).toDouble(),
-//       paymentId: json["paymentId"],
-//       sunmiTxnId: json["sunmiTxnId"],
-//       sunmiOrderId: json["sunmiOrderId"],
-//       sunmiDeviceId: json["sunmiDeviceId"],
-//     );
-//   }
-// }
 class LastPaymentInfo {
   final String method;
   final double amount;
   late final String? paymentId;
+
+  // ⭐ SUNMI FIELDS
   final String? sunmiTxnId;
   final String? sunmiOrderId;
-  final String? sunmiDeviceId;
-  final String? transactionId; // ⭐ ADD THIS
+  final String? sunmiDeviceId; // ⭐ ADD THIS
 
   LastPaymentInfo({
     required this.method,
@@ -122,18 +81,16 @@ class LastPaymentInfo {
     this.sunmiTxnId,
     this.sunmiOrderId,
     this.sunmiDeviceId,
-    this.transactionId, // ⭐ ADD THIS
   });
 
   Map<String, dynamic> toJson() => {
-    "method": method,
-    "amount": amount,
-    "paymentId": paymentId,
-    "sunmiTxnId": sunmiTxnId,
-    "sunmiOrderId": sunmiOrderId,
-    "sunmiDeviceId": sunmiDeviceId,
-    "transactionId": transactionId, // ⭐ ADD THIS
-  };
+        "method": method,
+        "amount": amount,
+        "paymentId": paymentId,
+        "sunmiTxnId": sunmiTxnId,
+        "sunmiOrderId": sunmiOrderId,
+        "sunmiDeviceId": sunmiDeviceId,
+      };
 
   factory LastPaymentInfo.fromJson(Map<String, dynamic> json) {
     return LastPaymentInfo(
@@ -143,7 +100,6 @@ class LastPaymentInfo {
       sunmiTxnId: json["sunmiTxnId"],
       sunmiOrderId: json["sunmiOrderId"],
       sunmiDeviceId: json["sunmiDeviceId"],
-      transactionId: json["transactionId"], // ⭐ ADD THIS
     );
   }
 }
@@ -172,9 +128,9 @@ bool _couponHiveEntryIsRedeem(Map<String, dynamic> c) {
 }
 
 Map<String, dynamic> _mergeRedeemIntoCouponResponse(
-    dynamic prevCouponResponse,
-    String redeemCode,
-    ) {
+  dynamic prevCouponResponse,
+  String redeemCode,
+) {
   Map<String, dynamic> base = {};
   if (prevCouponResponse is Map) {
     base = Map<String, dynamic>.from(prevCouponResponse);
@@ -190,11 +146,11 @@ Map<String, dynamic> _mergeRedeemIntoCouponResponse(
   }
   final trimmed = redeemCode.trim();
   final keptIssued =
-  prevCoupons.where((c) => !_couponHiveEntryIsRedeem(c)).toList();
+      prevCoupons.where((c) => !_couponHiveEntryIsRedeem(c)).toList();
   final otherRedeems = prevCoupons
       .where((c) =>
-  _couponHiveEntryIsRedeem(c) &&
-      c['code']?.toString().trim() != trimmed)
+          _couponHiveEntryIsRedeem(c) &&
+          c['code']?.toString().trim() != trimmed)
       .toList();
   base['coupons'] = [
     ...keptIssued,
@@ -205,10 +161,10 @@ Map<String, dynamic> _mergeRedeemIntoCouponResponse(
 }
 
 void _enrichRedeemCouponIdsFromWoo(
-    Map<String, dynamic> offlineOrder,
-    Map<String, dynamic> wooResult,
-    String appliedCode,
-    ) {
+  Map<String, dynamic> offlineOrder,
+  Map<String, dynamic> wooResult,
+  String appliedCode,
+) {
   final cr = offlineOrder['coupon_response'];
   if (cr is! Map) return;
   final map = Map<String, dynamic>.from(cr);
@@ -258,9 +214,9 @@ String _orderSummaryLineVariationName(Map<String, dynamic> item) {
 
 String _orderSummaryNormalizeSku(dynamic raw) {
   return (raw ?? '').toString().trim().toLowerCase().replaceAll(
-    RegExp(r'[^a-z0-9]'),
-    '',
-  );
+        RegExp(r'[^a-z0-9]'),
+        '',
+      );
 }
 
 bool _cachedProductMapIndicatesEbt(Map<String, dynamic> p) {
@@ -297,8 +253,8 @@ bool _cachedProductMapIndicatesEbt(Map<String, dynamic> p) {
 
 /// When SQLite/Hive mismatch left lines without badges, use TopBar merged product list (same as POS search).
 Future<void> _mergeOrderSummaryLineItemsFromProductCache(
-    List<Map<String, dynamic>> lineItems,
-    ) async {
+  List<Map<String, dynamic>> lineItems,
+) async {
   try {
     final all = await TopBar.mergedCachedProductsForSearch();
     final byId = <int, Map<String, dynamic>>{};
@@ -330,7 +286,7 @@ Future<void> _mergeOrderSummaryLineItemsFromProductCache(
           line[AppDBConst.itemProductId] ??
           line['item_product_id'];
       final int? pid =
-      pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
+          pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
       if (pid == null || pid <= 0) continue;
 
       final p = byId[pid];
@@ -357,8 +313,8 @@ Future<void> _mergeOrderSummaryLineItemsFromProductCache(
         if (!isChildVariation) continue;
 
         final vId = int.tryParse(
-          (p['id'] ?? p['variation_id'] ?? 0).toString(),
-        ) ??
+              (p['id'] ?? p['variation_id'] ?? 0).toString(),
+            ) ??
             0;
         if (vId <= 0) continue;
 
@@ -385,9 +341,9 @@ Future<void> _mergeOrderSummaryLineItemsFromProductCache(
 /// Pending orders often load line items from SQLite without EBT/variation flags
 /// while the same cart still exists in Hive `products`. Merge so badges match the order panel.
 void _mergeOrderSummaryLineItemsFromHive(
-    List<Map<String, dynamic>> lineItems,
-    Map<String, dynamic>? hiveOrder,
-    ) {
+  List<Map<String, dynamic>> lineItems,
+  Map<String, dynamic>? hiveOrder,
+) {
   if (hiveOrder == null) return;
   final rawProducts = hiveOrder['products'];
   if (rawProducts is! List || rawProducts.isEmpty) return;
@@ -400,7 +356,7 @@ void _mergeOrderSummaryLineItemsFromHive(
         line[AppDBConst.itemProductId] ??
         line['item_product_id'];
     final int? pid =
-    pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
+        pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
 
     Map<String, dynamic>? matched;
     for (final p in rawProducts) {
@@ -408,7 +364,7 @@ void _mergeOrderSummaryLineItemsFromHive(
       final m = Map<String, dynamic>.from(p);
       final pPidRaw = m['product_id'] ?? m['id'];
       final pPid =
-      pPidRaw is int ? pPidRaw : int.tryParse(pPidRaw?.toString() ?? '');
+          pPidRaw is int ? pPidRaw : int.tryParse(pPidRaw?.toString() ?? '');
       if (pid != null && pPid != null && pPid == pid) {
         matched = m;
         break;
@@ -510,6 +466,7 @@ class OrderSummaryScreen extends StatefulWidget {
   final double ebtAmount; //  NEW
   final double discountAmount;
   final bool itemPricesAlreadyAdjusted;
+  // bool isCustomerFieldDisabled = false;
 
   const OrderSummaryScreen({
     required this.formattedDate,
@@ -539,7 +496,7 @@ class NoScrollbarBehavior extends ScrollBehavior {
   @override
   Widget buildScrollbar(
       BuildContext context, Widget child, ScrollableDetails details) {
-    return child;
+    return child; // prevents scrollbar from showing
   }
 }
 
@@ -550,9 +507,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool _paymentDialogShown = false;
   bool get isOrderPending => orderStatus == 'pending';
   LastPaymentInfo? _lastPayment;
+  bool isCustomerFieldDisabled = false;
 
   final PaymentBloc paymentBloc =
-  PaymentBloc(PaymentRepository()); // Added PaymentBloc
+      PaymentBloc(PaymentRepository()); // Added PaymentBloc
   final ScrollController _scrollController = ScrollController();
   int? userId; // Build #1.0.29: To store user ID
   String? userDisplayName; // Build #1.0.29: To store user ID
@@ -591,6 +549,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   Map<String, dynamic> _order = {};
   bool couponPopupActive = false;
   bool _successPopupShown = false;
+  bool isAddButtonEnabled = true;
+  bool isButtonDisabled = false;
 
   final bool enableCardPayment = false;
   final bool enableWalletPayment = false;
@@ -603,10 +563,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   String? _activeSyncOrderKey;
   DateTime? _lastOrderSyncAt;
   String? _lastSyncedOrderKey;
-  bool isButtonDisabled = false;
-
-  bool _isCardPaymentCancelled = false;
-
 
   double ebtTotal = 0.0;
   double payByEbt = 0.0; // ADD THIS
@@ -632,992 +588,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     return _paymentModeFromMethod(lastMethod ?? selectedPaymentMethod);
   }
 
-  /// NEW helper — extracts all discount amounts from one line item,
-  double _extractTotalDiscountForItem(Map<String, dynamic> item) {
-    double n(dynamic v) =>
-        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
-
-    double posAuto = n(item['_pos_auto_discount']) +
-        n(item['auto_discount']) +
-        n(item['autoDiscount']) +
-        n(item['auto_discount_total']) +
-        n(item['display_auto_discount']);
-
-    double combo =
-        n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
-    double multipack =
-        n(item['multipack_discount_total']) + n(item['multipackDiscountTotal']);
-    double mixmatch = n(item['mixmatch_discount_total']);
-
-    // ADD: proportional share of order-level coupon discount
-    double couponShare = _proportionalCouponDiscountForItem(item);
-
-    final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
-
-    double lineDiscount;
-    if (dtype == 'auto' || dtype.isEmpty) {
-      lineDiscount = posAuto;
-    } else if (dtype == 'combo' || dtype == 'mixmatch') {
-      lineDiscount = combo > 0 ? combo : posAuto;
-    } else if (dtype == 'multipack') {
-      lineDiscount = multipack > 0 ? multipack : posAuto;
-    } else {
-      lineDiscount = posAuto + combo + multipack + mixmatch;
-    }
-
-    return lineDiscount + couponShare; // ✅ Include coupon share
-  }
-
-  double _proportionalCouponDiscountForItem(Map<String, dynamic> item) {
-    // Only distribute coupon discount across real product lines
-    final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
-    final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
-    if (itemType.contains('discount') ||
-        itemType.contains('coupon') ||
-        itemType.contains('payout') ||
-        itemType.contains('cashback') ||
-        itemName.contains('merchant discount')) return 0.0;
-
-    final double couponDisc = discount.abs(); // discount is already negative
-    if (couponDisc <= 0 || grossTotal <= 0) return 0.0;
-
-    // Distribute proportionally by line item's gross contribution
-    double unitPrice = (item['item_price'] ?? item['price'] ?? 0).toDouble();
-    int qty = (item['items_count'] ?? item['quantity'] ?? 1) is num
-        ? (item['items_count'] ?? item['quantity'] ?? 1).toInt()
-        : 1;
-    double lineGross = unitPrice * qty;
-
-    return (lineGross / grossTotal) * couponDisc;
-  }
-
-  // Future<void> _recalculateTaxOnDiscountedItems() async {
-  //   if (orderItems.isEmpty) return;
-  //
-  //   double toDouble(dynamic v) =>
-  //       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
-  //
-  //   double resolveTaxRate(Map<String, dynamic> item) {
-  //     for (final key in ['tax_rate', 'tax', 'tax_percent']) {
-  //       final raw = item[key];
-  //       if (raw != null) {
-  //         final r = toDouble(raw);
-  //         if (r > 0) return r / 100.0;
-  //       }
-  //     }
-  //     return 0.0;
-  //   }
-  //
-  //   // ─── Only use item-level auto/combo/multipack discounts here.
-  //   // Do NOT include coupon share — coupon is an order-level discount
-  //   // already captured in the `discount` state variable.
-  //   double lineItemOnlyDiscount(Map<String, dynamic> item) {
-  //     double n(dynamic v) =>
-  //         v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
-  //
-  //     double posAuto = n(item['_pos_auto_discount']) +
-  //         n(item['auto_discount']) +
-  //         n(item['autoDiscount']) +
-  //         n(item['auto_discount_total']) +
-  //         n(item['display_auto_discount']);
-  //
-  //     double combo =
-  //         n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
-  //     double multipack =
-  //         n(item['multipack_discount_total']) + n(item['multipackDiscountTotal']);
-  //     double mixmatch = n(item['mixmatch_discount_total']);
-  //
-  //     final String dtype =
-  //     (item['discount_type'] ?? '').toString().toLowerCase();
-  //
-  //     if (dtype == 'auto' || dtype.isEmpty) return posAuto;
-  //     if (dtype == 'combo' || dtype == 'mixmatch')
-  //       return combo > 0 ? combo : posAuto;
-  //     if (dtype == 'multipack') return multipack > 0 ? multipack : posAuto;
-  //     return posAuto + combo + multipack + mixmatch;
-  //   }
-  //
-  //   double totalTax = 0.0;
-  //   bool anyItemHasDiscountOrTaxRate = false;
-  //   double totalLineGross = 0.0;
-  //   double totalLineDiscount = 0.0;
-  //
-  //   for (final item in orderItems) {
-  //     final String itemType =
-  //     (item['item_type'] ?? '').toString().toLowerCase();
-  //     final String itemName =
-  //     (item['item_name'] ?? '').toString().toLowerCase();
-  //
-  //     if (itemType.contains('discount') ||
-  //         itemType.contains('coupon') ||
-  //         itemType.contains('payout') ||
-  //         itemType.contains('cashback') ||
-  //         itemType.contains('loyalty') ||
-  //         itemName.contains('merchant discount')) {
-  //       continue;
-  //     }
-  //
-  //     final double unitPrice = toDouble(item['item_price'] ?? item['price']);
-  //     final int qty =
-  //     (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-  //     final double lineTotal = unitPrice * qty;
-  //
-  //     // Use ONLY item-level discount (no coupon share)
-  //     final double itemDiscount = lineItemOnlyDiscount(item);
-  //     final double taxableBase =
-  //     (lineTotal - itemDiscount).clamp(0.0, double.infinity);
-  //
-  //     totalLineGross += lineTotal;
-  //     totalLineDiscount += itemDiscount;
-  //
-  //     if (itemDiscount > 0) anyItemHasDiscountOrTaxRate = true;
-  //
-  //     double itemTax = 0.0;
-  //     final double taxRate = resolveTaxRate(item);
-  //
-  //     if (taxRate > 0) {
-  //       anyItemHasDiscountOrTaxRate = true;
-  //       itemTax = taxableBase * taxRate;
-  //     } else {
-  //       final double rawTax =
-  //       toDouble(item['item_tax'] ?? item['tax_amount']);
-  //       if (rawTax > 0 && lineTotal > 0) {
-  //         anyItemHasDiscountOrTaxRate = true;
-  //         // Scale the original tax proportionally to the taxable base
-  //         itemTax = rawTax * (taxableBase / lineTotal);
-  //       }
-  //     }
-  //
-  //     totalTax += itemTax;
-  //   }
-  //
-  //   totalTax = double.parse(totalTax.toStringAsFixed(4));
-  //
-  //   final double serverTax = widget.orderTax;
-  //
-  //   // Net after ALL discounts (item-level + order-level coupon)
-  //   final double netAfterDiscount =
-  //       totalLineGross - totalLineDiscount + discount + merchantDiscount;
-  //
-  //   double finalTax;
-  //
-  //   if (!anyItemHasDiscountOrTaxRate) {
-  //     // No item-level data at all — use server tax scaled by coupon discount ratio
-  //     if (serverTax > 0 && discount < 0) {
-  //       // Coupon was applied: scale server tax by (net / gross) ratio
-  //       final double originalGross = widget.grossTotal;
-  //       if (originalGross > 0) {
-  //         final double taxableNet =
-  //         (originalGross + discount).clamp(0.0, double.infinity);
-  //         finalTax = serverTax * (taxableNet / originalGross);
-  //       } else {
-  //         finalTax = 0.0;
-  //       }
-  //     } else {
-  //       finalTax = serverTax > 0 ? serverTax : totalTax;
-  //     }
-  //     if (kDebugMode) {
-  //       print('── TAX: No item-level data. finalTax=$finalTax');
-  //     }
-  //   } else if (totalTax <= 0 && serverTax > 0) {
-  //     // Recalc returned 0 but server has a value — check if net > 0
-  //     if (netAfterDiscount > 0.005) {
-  //       finalTax = serverTax;
-  //     } else {
-  //       finalTax = 0.0;
-  //     }
-  //     if (kDebugMode) {
-  //       print('── TAX: Recalc=0, server=$serverTax, net=$netAfterDiscount → finalTax=$finalTax');
-  //     }
-  //   } else {
-  //     // ── KEY FIX: if a coupon discount is also applied on top of
-  //     // item discounts, scale the recalculated tax further by the
-  //     // coupon ratio so we don't over-report tax.
-  //     if (discount < 0 && totalLineGross > 0) {
-  //       final double postCouponBase =
-  //       (totalLineGross - totalLineDiscount + discount)
-  //           .clamp(0.0, double.infinity);
-  //       final double preCouponBase =
-  //       (totalLineGross - totalLineDiscount).clamp(0.01, double.infinity);
-  //       totalTax = totalTax * (postCouponBase / preCouponBase);
-  //       totalTax = double.parse(totalTax.toStringAsFixed(4));
-  //     }
-  //     finalTax = totalTax;
-  //     if (kDebugMode) {
-  //       print('── TAX: Using recalculated value: $finalTax');
-  //     }
-  //   }
-  //
-  //   if (kDebugMode) {
-  //     print('── TAX RECALCULATION COMPLETE ──');
-  //     print('   Gross Total        : $totalLineGross');
-  //     print('   Line Discounts     : $totalLineDiscount');
-  //     print('   Coupon/Order Disc  : $discount');
-  //     print('   Net After Discount : $netAfterDiscount');
-  //     print('   Server Tax         : $serverTax');
-  //     print('   Recalculated Tax   : $totalTax');
-  //     print('   Final Tax Used     : $finalTax');
-  //   }
-  //
-  //   final bool taxChanged = (finalTax - tax).abs() > 0.005;
-  //   if (!taxChanged) return;
-  //
-  //   final double newNetTotal = widget.grossTotal + discount + merchantDiscount;
-  //   final double newNetPayable = newNetTotal + finalTax + cashbackFee;
-  //
-  //   setState(() {
-  //     tax = finalTax;
-  //     NetTotal = newNetTotal;
-  //     computedNetPayable = newNetPayable;
-  //     orderTotal = newNetPayable;
-  //
-  //     if (tenderAmount <= 0) {
-  //       balanceAmount = newNetPayable;
-  //     }
-  //   });
-  // }
-  //////=================5/28/26
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-  // void _recalculateGrossAndNetFromLineItemDiscounts() {
-  //   if (orderItems.isEmpty) return;
-  //
-  //   final bool hasPayout = orderItems.any((item) {
-  //     final String t = (item['item_type'] ?? '').toString().toLowerCase();
-  //     final String n = (item['item_name'] ?? '').toString().toLowerCase();
-  //     return t.contains('payout') ||
-  //         t.contains('cashback') ||
-  //         n.contains('payout') ||
-  //         n.contains('cashback');
-  //   });
-  //
-  //   if (hasPayout) {
-  //     if (kDebugMode) {
-  //       print('── LINE-ITEM RECALC SKIPPED: order has payout/cashback lines');
-  //     }
-  //     return; // ← trust widget.grossTotal / widget.netPayable as-is
-  //   }
-  //
-  //   double toDouble(dynamic v) =>
-  //       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
-  //
-  //   double recalculatedGrossTotal = 0.0;
-  //   double totalLineItemDiscount = 0.0;
-  //
-  //   for (final item in orderItems) {
-  //     final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
-  //     final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
-  //
-  //     if (itemType.contains('discount') ||
-  //         itemType.contains('coupon') ||
-  //         itemType.contains('payout') ||
-  //         itemType.contains('cashback') ||
-  //         itemType.contains('loyalty') ||
-  //         itemName.contains('merchant discount')) {
-  //       continue;
-  //     }
-  //
-  //     final double itemSumPrice = toDouble(item['item_sum_price']);
-  //     final double unitPrice = toDouble(item['item_price'] ?? item['price']);
-  //     final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-  //     final double lineOriginalTotal = unitPrice * qty;
-  //
-  //     final double lineGross = itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
-  //     recalculatedGrossTotal += lineGross;
-  //
-  //     final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
-  //
-  //     double autoDiscount = [
-  //       item['auto_discount'],
-  //       item['auto_discount_total'],
-  //       item['autoDiscount'],
-  //       item['autoDiscountTotal'],
-  //       item['display_auto_discount'],
-  //       item['_pos_auto_discount'],
-  //     ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
-  //
-  //     double comboDiscount = [
-  //       item['combo_discount_total'],
-  //       item['comboDiscountTotal'],
-  //       item['combo_discount'],
-  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-  //
-  //     double mixMatchDiscount = [
-  //       item['mixmatch_discount_total'],
-  //       item['mixMatchDiscountTotal'],
-  //       item['mixmatch_discount'],
-  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-  //
-  //     double multipackDiscount = [
-  //       item['multipack_discount_total'],
-  //       item['multipackDiscountTotal'],
-  //       item['multipack_discount'],
-  //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-  //
-  //     if (dtype == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
-  //       mixMatchDiscount = autoDiscount;
-  //       autoDiscount = 0;
-  //     }
-  //     if (dtype == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
-  //       comboDiscount = autoDiscount;
-  //       autoDiscount = 0;
-  //     }
-  //     if (dtype == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
-  //       multipackDiscount = autoDiscount;
-  //       autoDiscount = 0;
-  //     }
-  //
-  //     final double itemDiscount =
-  //         autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
-  //     totalLineItemDiscount += itemDiscount;
-  //   }
-  //
-  //   if (totalLineItemDiscount <= 0 &&
-  //       (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
-  //     return;
-  //   }
-  //
-  //   final double newGrossTotal =
-  //   recalculatedGrossTotal > 0 ? recalculatedGrossTotal : grossTotal;
-  //
-  //   final double newNetTotal =
-  //       newGrossTotal - totalLineItemDiscount + discount + merchantDiscount;
-  //   final double newNetPayable = newNetTotal + tax + cashbackFee;
-  //
-  //   if (kDebugMode) {
-  //     print('── LINE-ITEM DISCOUNT RECALCULATION ──');
-  //     print('   Original Gross Total      : $grossTotal');
-  //     print('   Recalculated Gross Total  : $newGrossTotal');
-  //     print('   Total Line Item Discounts : $totalLineItemDiscount');
-  //     print('   Order Discount            : $discount');
-  //     print('   Merchant Discount         : $merchantDiscount');
-  //     print('   Tax                       : $tax');
-  //     print('   Cashback Fee              : $cashbackFee');
-  //     print('   New Net Total             : $newNetTotal');
-  //     print('   New Net Payable           : $newNetPayable');
-  //   }
-  //
-  //   setState(() {
-  //     grossTotal =
-  //         newGrossTotal - totalLineItemDiscount;
-  //         // newGrossTotal;
-  //     NetTotal = newNetTotal.clamp(0.0, double.infinity);
-  //     computedNetPayable = newNetPayable.clamp(0.0, double.infinity);
-  //     orderTotal = computedNetPayable;
-  //
-  //     if (tenderAmount <= 0) {
-  //       balanceAmount = computedNetPayable;
-  //     }
-  //   });
-  // }
-
-  //=============
-
-  Future<void> _recalculateTaxOnDiscountedItems() async {
-    if (orderItems.isEmpty) return;
-
-    double toDouble(dynamic v) =>
-        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
-
-    double resolveTaxRate(Map<String, dynamic> item) {
-      for (final key in ['tax_rate', 'tax', 'tax_percent']) {
-        final raw = item[key];
-        if (raw != null) {
-          final r = toDouble(raw);
-          if (r > 0) return r / 100.0;
-        }
-      }
-      return 0.0;
-    }
-
-    double lineItemOnlyDiscount(Map<String, dynamic> item) {
-      double n(dynamic v) =>
-          v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
-
-      double posAuto = n(item['_pos_auto_discount']) +
-          n(item['auto_discount']) +
-          n(item['autoDiscount']) +
-          n(item['auto_discount_total']) +
-          n(item['display_auto_discount']);
-
-      double combo =
-          n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
-      double multipack = n(item['multipack_discount_total']) +
-          n(item['multipackDiscountTotal']);
-      double mixmatch = n(item['mixmatch_discount_total']);
-
-      final String dtype =
-      (item['discount_type'] ?? '').toString().toLowerCase();
-
-      if (dtype == 'auto' || dtype.isEmpty) return posAuto;
-      if (dtype == 'combo' || dtype == 'mixmatch')
-        return combo > 0 ? combo : posAuto;
-      if (dtype == 'multipack') return multipack > 0 ? multipack : posAuto;
-      return posAuto + combo + multipack + mixmatch;
-    }
-
-    double totalTax = 0.0;
-    bool anyItemHasDiscountOrTaxRate = false;
-    double totalLineGross = 0.0;
-    double totalLineDiscount = 0.0;
-
-    for (final item in orderItems) {
-      final String itemType =
-      (item['item_type'] ?? '').toString().toLowerCase();
-      final String itemName =
-      (item['item_name'] ?? '').toString().toLowerCase();
-
-      if (itemType.contains('discount') ||
-          itemType.contains('coupon') ||
-          itemType.contains('payout') ||
-          itemType.contains('cashback') ||
-          itemType.contains('loyalty') ||
-          itemName.contains('merchant discount')) {
-        continue;
-      }
-
-      final double unitPrice = toDouble(item['item_price'] ?? item['price']);
-      final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-      final double lineTotal = unitPrice * qty;
-
-      final double itemDiscount = lineItemOnlyDiscount(item);
-      final double taxableBase =
-      (lineTotal - itemDiscount).clamp(0.0, double.infinity);
-
-      totalLineGross += lineTotal;
-      totalLineDiscount += itemDiscount;
-
-      if (itemDiscount > 0) anyItemHasDiscountOrTaxRate = true;
-
-      double itemTax = 0.0;
-      final double taxRate = resolveTaxRate(item);
-
-      if (taxRate > 0) {
-        anyItemHasDiscountOrTaxRate = true;
-        itemTax = taxableBase * taxRate;
-      } else {
-        final double rawTax = toDouble(item['item_tax'] ?? item['tax_amount']);
-        if (rawTax > 0 && lineTotal > 0) {
-          anyItemHasDiscountOrTaxRate = true;
-          itemTax = rawTax * (taxableBase / lineTotal);
-        }
-      }
-
-      totalTax += itemTax;
-    }
-
-    totalTax = double.parse(totalTax.toStringAsFixed(4));
-
-    final double serverTax = widget.orderTax;
-
-    final double netAfterDiscount =
-        totalLineGross - totalLineDiscount + discount + merchantDiscount;
-
-    double finalTax;
-
-    if (!anyItemHasDiscountOrTaxRate) {
-      // ✅ FIX: When coupon is applied (discount < 0), always scale the server tax
-      // regardless of isCouponAppliedFromApi flag, because we're in the apply flow
-      if (serverTax > 0 && discount < 0) {
-        final double originalGross = widget.grossTotal;
-        if (originalGross > 0) {
-          final double taxableNet =
-          (originalGross + discount).clamp(0.0, double.infinity);
-          finalTax = serverTax * (taxableNet / originalGross);
-        } else {
-          finalTax = 0.0;
-        }
-      } else {
-        finalTax = serverTax > 0 ? serverTax : totalTax;
-      }
-      if (kDebugMode) {
-        print('── TAX: No item-level data. finalTax=$finalTax, discount=$discount');
-      }
-    } else if (totalTax <= 0 && serverTax > 0) {
-      if (netAfterDiscount > 0.005) {
-        finalTax = serverTax;
-      } else {
-        finalTax = 0.0;
-      }
-      if (kDebugMode) {
-        print('── TAX: Recalc=0, server=$serverTax, net=$netAfterDiscount → finalTax=$finalTax');
-      }
-    } else {
-      // ── KEY FIX: if a coupon discount is also applied on top of
-      // item discounts, scale the recalculated tax further by the
-      // coupon ratio so we don't over-report tax.
-      if (discount < 0 && totalLineGross > 0) {
-        final double postCouponBase =
-        (totalLineGross - totalLineDiscount + discount)
-            .clamp(0.0, double.infinity);
-        final double preCouponBase =
-        (totalLineGross - totalLineDiscount).clamp(0.01, double.infinity);
-        totalTax = totalTax * (postCouponBase / preCouponBase);
-        totalTax = double.parse(totalTax.toStringAsFixed(4));
-      }
-      finalTax = totalTax;
-      if (kDebugMode) {
-        print('── TAX: Using recalculated value: $finalTax');
-      }
-    }
-
-    if (kDebugMode) {
-      print('── TAX RECALCULATION COMPLETE ──');
-      print('   Gross Total        : $totalLineGross');
-      print('   Line Discounts     : $totalLineDiscount');
-      print('   Coupon/Order Disc  : $discount');
-      print('   Net After Discount : $netAfterDiscount');
-      print('   Server Tax         : $serverTax');
-      print('   Recalculated Tax   : $totalTax');
-      print('   Final Tax Used     : $finalTax');
-    }
-
-    // Recalculate percentage merchant discount dynamically
-    final String mdType =
-        offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
-    if (mdType == 'percentage' && merchantDiscountPercentage > 0) {
-      double base = totalLineGross - totalLineDiscount + discount;
-      if (base > 0) {
-        merchantDiscount = -((base * merchantDiscountPercentage) / 100.0);
-      } else {
-        merchantDiscount = 0.0;
-      }
-    }
-
-    double calculatedPerc = 0.0;
-    if (mdType == 'percentage' && merchantDiscountPercentage > 0) {
-      calculatedPerc = merchantDiscountPercentage;
-    } else if (mdType == 'fixed' && merchantDiscount.abs() > 0) {
-      double base = totalLineGross - totalLineDiscount + discount;
-      if (base > 0) {
-        calculatedPerc = (merchantDiscount.abs() / base) * 100.0;
-      }
-    }
-
-    if (calculatedPerc > 0) {
-      finalTax = finalTax * (1 - calculatedPerc / 100.0);
-      finalTax = roundTaxHalfUp(finalTax);
-    }
-
-    final double newNetTotal = grossTotal + discount + merchantDiscount;
-    final double newNetPayable = newNetTotal + finalTax + cashbackFee;
-
-    final bool totalsChanged = (finalTax - tax).abs() > 0.005 ||
-        (newNetPayable - computedNetPayable).abs() > 0.005;
-    if (!totalsChanged) return;
-
-    setState(() {
-      tax = finalTax;
-      NetTotal = newNetTotal;
-      computedNetPayable = newNetPayable;
-      orderTotal = newNetPayable;
-
-      if (tenderAmount <= 0) {
-        balanceAmount = newNetPayable;
-      }
-    });
-
-    final String orderKey = widget.offlineOrderId?.toString() ??
-        widget.orderId?.toString() ??
-        orderId?.toString() ??
-        "";
-
-    if (orderKey.isNotEmpty) {
-      try {
-        final box = StorageProvider.offlineOrders;
-        final rawOrder = await box.get(orderKey);
-        if (rawOrder != null) {
-          final offlineOrder = Map<String, dynamic>.from(rawOrder);
-          offlineOrder["tax_discount"] = finalTax;
-          offlineOrder["order_tax"] = finalTax;
-          offlineOrder["grand_total"] = newNetPayable;
-          offlineOrder["net_payable"] = newNetPayable;
-          if (tenderAmount <= 0) {
-            offlineOrder["balanceAmount"] = newNetPayable;
-            offlineOrder["balance_amount"] = newNetPayable;
-            offlineOrder["remaining_balance"] = newNetPayable;
-          }
-          await box.put(orderKey, offlineOrder);
-          if (kDebugMode) {
-            print("💾 [CD/Summary] Updated Hive with recalculated tax: $finalTax, netPayable: $newNetPayable");
-          }
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print("❌ [CD/Summary] Failed to update Hive order tax: $e");
-        }
-      }
-    }
-
-    await Future.delayed(const Duration(milliseconds: 100));
-
-    if (widget.offlineOrderId != null) {
-      await CustomerDisplayHelper.updateCustomerDisplay(
-        widget.offlineOrderId!,
-        summaryEnabled: true,
-      );
-    }
-  }
-
-  void _recalculateGrossAndNetFromLineItemDiscounts() {
-    if (widget.itemPricesAlreadyAdjusted) {
-      if (kDebugMode) {
-        print('── TAX RECALC SKIPPED: itemPricesAlreadyAdjusted=true');
-      }
-      return;
-    }
-
-    if (orderItems.isEmpty) return;
-
-    double toDouble(dynamic v) =>
-        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
-
-    double recalculatedGrossTotal = 0.0;
-    double totalLineItemDiscount = 0.0;
-    double payoutCashbackTotal = 0.0;
-
-    for (final item in orderItems) {
-      final String itemType =
-      (item['item_type'] ?? '').toString().toLowerCase();
-      final String itemName =
-      (item['item_name'] ?? '').toString().toLowerCase();
-
-      // ── Payout / cashback detection — check BOTH item_type AND item_name
-      // because some items have empty item_type but name = "Payout" or "Cashback"
-      final bool isPayout = itemType.contains('payout') ||
-          itemType.contains('cashback') ||
-          itemName == 'payout' ||
-          itemName == 'cashback' ||
-          itemName.contains('payout') ||
-          itemName.contains('cashback');
-
-      if (isPayout) {
-        final double unitPrice = toDouble(item['item_price'] ?? item['price']);
-        final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-        // Use item_price × qty — always the cashier-entered value.
-        // Payout: item_price is negative (e.g. -10), cashback: positive (+5).
-        payoutCashbackTotal += unitPrice * qty;
-        continue; // ← CRITICAL: skip all further processing for this item
-      }
-
-      // ── Skip non-product meta lines.
-      if (itemType.contains('discount') ||
-          itemType.contains('coupon') ||
-          itemType.contains('loyalty') ||
-          itemName.contains('merchant discount')) {
-        continue;
-      }
-
-      // ── Real product line — only reach here for actual products.
-      final double itemSumPrice = toDouble(item['item_sum_price']);
-      final double unitPrice = toDouble(item['item_price'] ?? item['price']);
-      final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-      final double lineOriginalTotal = unitPrice * qty;
-
-      final double lineGross =
-      itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
-      recalculatedGrossTotal += lineGross;
-
-      final String dtype =
-      (item['discount_type'] ?? '').toString().toLowerCase();
-
-      double autoDiscount = [
-        item['auto_discount'],
-        item['auto_discount_total'],
-        item['autoDiscount'],
-        item['autoDiscountTotal'],
-        item['display_auto_discount'],
-        item['_pos_auto_discount'],
-      ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
-
-      double comboDiscount = [
-        item['combo_discount_total'],
-        item['comboDiscountTotal'],
-        item['combo_discount'],
-      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-
-      double mixMatchDiscount = [
-        item['mixmatch_discount_total'],
-        item['mixMatchDiscountTotal'],
-        item['mixmatch_discount'],
-      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-
-      double multipackDiscount = [
-        item['multipack_discount_total'],
-        item['multipackDiscountTotal'],
-        item['multipack_discount'],
-      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-
-      if (dtype == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
-        mixMatchDiscount = autoDiscount;
-        autoDiscount = 0;
-      }
-      if (dtype == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
-        comboDiscount = autoDiscount;
-        autoDiscount = 0;
-      }
-      if (dtype == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
-        multipackDiscount = autoDiscount;
-        autoDiscount = 0;
-      }
-
-      final double itemDiscount =
-          autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
-      totalLineItemDiscount += itemDiscount;
-    }
-
-    // ── Guard: nothing changed, skip setState.
-    if (totalLineItemDiscount <= 0 &&
-        payoutCashbackTotal == 0 &&
-        (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
-      return;
-    }
-
-    // ── Use widget.grossTotal as the product baseline when recalculatedGrossTotal
-    //    is 0 (pure payout order — no real product lines at all).
-    final double productGross = recalculatedGrossTotal != 0
-        ? recalculatedGrossTotal
-        : (widget.grossTotal > 0 ? widget.grossTotal : 0.0);
-
-    // Product prices after item-level discounts.
-    final double productGrossAfterDiscounts =
-        productGross - totalLineItemDiscount;
-
-    // Gross shown in UI = product gross after discounts + payout/cashback.
-    // Pure payout order: productGrossAfterDiscounts = 0, payoutCashbackTotal = -10 → -10 ✓
-    // Products + payout: 21.93 + (-10) = 11.93 ✓
-    final double newGrossForDisplay =
-        productGrossAfterDiscounts + payoutCashbackTotal;
-
-    // Recalculate percentage merchant discount dynamically
-    final String mdType =
-        offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
-    if (mdType == 'percentage' && merchantDiscountPercentage > 0) {
-      double base = newGrossForDisplay + discount;
-      if (base > 0) {
-        merchantDiscount = -((base * merchantDiscountPercentage) / 100.0);
-      } else {
-        merchantDiscount = 0.0;
-      }
-    }
-
-    // NetTotal = grossForDisplay + coupon.
-    final double newNetTotal = newGrossForDisplay + discount;
-
-    // Net payable — allow negative for refund/payout-only orders.
-    final double newNetPayable =
-        newNetTotal + tax + cashbackFee + merchantDiscount;
-
-    if (kDebugMode) {
-      print('── LINE-ITEM DISCOUNT RECALCULATION ──');
-      print('   Product Gross (pre-discount)       : $productGross');
-      print('   Total Line Item Discounts          : $totalLineItemDiscount');
-      print(
-          '   Product Gross After Discounts      : $productGrossAfterDiscounts');
-      print('   Payout / Cashback Total            : $payoutCashbackTotal');
-      print('   Gross For Display                  : $newGrossForDisplay');
-      print('   Order Discount (coupon)            : $discount');
-      print('   Merchant Discount                  : $merchantDiscount');
-      print('   Tax                                : $tax');
-      print('   Cashback Fee                       : $cashbackFee');
-      print('   New Net Total                      : $newNetTotal');
-      print('   New Net Payable                    : $newNetPayable');
-    }
-
-    setState(() {
-      grossTotal = newGrossForDisplay;
-      NetTotal = newNetTotal;
-      computedNetPayable = newNetPayable;
-      orderTotal = newNetPayable;
-
-      if (tenderAmount <= 0) {
-        balanceAmount = newNetPayable;
-      }
-    });
-    // ✅ NEW: Persist the UI merchant discount amount so syncSingleOfflineOrder uses it exactly.
-    Future.microtask(() async {
-      try {
-        final String orderKey = widget.offlineOrderId?.toString() ??
-            widget.orderId?.toString() ??
-            orderId?.toString() ??
-            "";
-        if (orderKey.isNotEmpty) {
-          final box = StorageProvider.offlineOrders;
-          final raw = await box.get(orderKey);
-          if (raw != null) {
-            final updated = Map<String, dynamic>.from(raw);
-            updated['uiMerchantDiscountAmount'] = merchantDiscount.abs();
-            await box.put(orderKey, updated);
-          }
-        }
-      } catch (_) {}
-    });
-
-  }
-
-
-
-  static const MethodChannel customerDisplayChannel = MethodChannel(
-    'com.alekta.pinakapos/sunmi_display',
-  );
-
-  // static const MethodChannel customerDisplayChannel =
-  // MethodChannel(
-  //   'com.example.flutter_customer_display/sunmi_display',
-  // );
-
-  Future<void> _handleCustomerAddFromDisplay(String contact) async {
-    try {
-      final offlineBox = StorageProvider.offlineOrders;
-      final localKey = widget.offlineOrderId?.toString();
-
-      if (localKey == null) {
-        throw Exception("Offline order not found");
-      }
-
-      final existing = await offlineBox.get(localKey);
-
-      if (existing == null) {
-        throw Exception("Order data missing");
-      }
-
-      final offlineOrder = Map<String, dynamic>.from(existing);
-
-      final syncResponse = await orderBloc.syncSingleOfflineOrder(offlineOrder);
-
-      if (syncResponse == null) {
-        throw Exception("Sync failed");
-      }
-
-      final int syncedOrderId = syncResponse["id"] ?? 0;
-
-      final rawResponse = await orderBloc.addLoyaltyPoints(
-        orderId: syncedOrderId,
-        contact: contact,
-      );
-
-      final result = jsonDecode(rawResponse);
-
-      if (result["success"] != true) {
-        throw Exception(result["message"]);
-      }
-
-      final data = result["data"] ?? {};
-
-      final pts = int.tryParse(
-        data["available_points"]?.toString() ?? "0",
-      ) ??
-          0;
-
-      // final redeemedAmount =
-      //     (data["value_redeemed"] as num?)?.toDouble() ?? 0.0;
-
-      print("SENDING TO CUSTOMER DISPLAY");
-      print("points=$pts");
-      // print("redeemedAmount=$redeemedAmount");
-
-      // UPDATE CUSTOMER DISPLAY
-      await customerDisplayChannel.invokeMethod(
-        "customerDisplayResult",
-        {
-          "success": true,
-          "points": pts,
-          // "redeemedAmount": redeemedAmount,
-        },
-      );
-
-      setState(() {
-        availablePoints = pts;
-
-        // keep redeemed value
-        // redeemedValue = redeemedAmount;
-
-        mobileController.text = contact;
-      });
-    } catch (e) {
-      print("ERROR: $e");
-    }
-  }
-
-  void _showRedeemPointsSnackBar(BuildContext context) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          "Loyalty applied, please remove and try again",
-        ),
-        duration: Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  Future<void> showRedeemSummary(double redeemedAmount) async {
-    if (redeemedAmount <= 0) {
-      print("❌ Redeem: Invalid amount $redeemedAmount");
-      return;
-    }
-
-    print(
-        "🔄 Redeem Requested: $redeemedAmount | Current computedNetPayable: $computedNetPayable | Tendered: $tenderAmount");
-
-    final double availableBalance =
-    (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
-    final double actualRedeem = redeemedAmount.clamp(0.0, availableBalance);
-
-    setState(() {
-      redeemedValue = actualRedeem;
-      isRedeemAppliedFromApi = true;
-
-      // 🔥 CORE CALCULATION - Apply redeem
-      NetTotal = grossTotal + discount + merchantDiscount - actualRedeem;
-      computedNetPayable = NetTotal + tax + cashbackFee;
-      orderTotal = computedNetPayable;
-
-      balanceAmount =
-          (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
-
-      // Reduce EBT if needed
-      if (ebtTotal > 0) {
-        ebtTotal = (ebtTotal - (redeemedAmount - actualRedeem))
-            .clamp(0.0, double.infinity);
-      }
-    });
-
-    // Persist to Hive
-    try {
-      final box = StorageProvider.offlineOrders;
-      final key = (orderId ?? widget.offlineOrderId ?? 0).toString();
-
-      if (await box.containsKey(key)) {
-        final order = Map<String, dynamic>.from(await box.get(key));
-        order['redeemed_value'] = actualRedeem;
-        order['net_payable'] = computedNetPayable;
-        order['balance_amount'] = balanceAmount;
-        order['NetTotal'] = NetTotal; // extra safety
-        order['computedNetPayable'] = computedNetPayable;
-        await box.put(key, order);
-        print("💾 Redeem successfully saved to Hive → $actualRedeem");
-      }
-    } catch (e) {
-      print("⚠️ Failed to save redeem to Hive: $e");
-    }
-
-    print("✅ REDEEM APPLIED SUCCESSFULLY!");
-    print("   Redeemed     : -${actualRedeem.toStringAsFixed(2)}");
-    print("   New NetTotal : ${NetTotal.toStringAsFixed(2)}");
-    print("   New Payable  : ${computedNetPayable.toStringAsFixed(2)}");
-    print("   New Balance  : ${balanceAmount.toStringAsFixed(2)}");
-
-    // Force refresh UI
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  static const bool offline_PAYMENT_SUCCESS = true; //
+  static const bool offline_PAYMENT_SUCCESS = true; // ← toggle this
 
   bool _dialogGuard = false;
   bool _successDialogAlreadyShown = false;
@@ -1632,7 +603,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isLoading = false; // Add this to track loading state
   bool isSummaryLoading = false;
   String?
-  _processingPaymentMethod; // Track which payment method is currently processing
+      _processingPaymentMethod; // Track which payment method is currently processing
   // final TextEditingController _paymentController = TextEditingController();
   var _printerSettings = PrinterSettings();
   List<int> bytes = [];
@@ -1646,7 +617,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   Map<String, dynamic>? offlineOrder;
 
   double?
-  _currentPaymentRemainingBalance; // Track remaining balance from current payment
+      _currentPaymentRemainingBalance; // Track remaining balance from current payment
   Map<String, dynamic>? _lastPaymentDetails; // Store details of last payment
 
   double discountValue = 0.0;
@@ -1672,8 +643,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
   bool _isProcessing = false; // Add this flag
 
-  // Add this method to calculate actual balance from payment history
-
   Future<void> _calculateBalanceFromPaymentHistory() async {
     try {
       if (orderId == null || orderId == 0) {
@@ -1686,20 +655,25 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       }
 
       final payments =
-      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
+          await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
       final box = StorageProvider.offlineOrders;
       final key = orderId.toString();
       final rawStored = await box.get(key);
       final stored =
-      Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
+          Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
       final double originalEbt =
           (stored["originalEbt"] as num?)?.toDouble() ?? ebtTotal;
+      redeemedValue = (stored["redeemed_value"] as num?)?.toDouble() ?? 0.0;
+      final double effectivePayable =
+          (computedNetPayable - redeemedValue).clamp(0.0, double.infinity);
 
       if (payments.isEmpty) {
         final double remainingEbt =
             (stored["remainingEbt"] as num?)?.toDouble() ?? originalEbt;
+        stored["redeemed_value"] = redeemedValue; // ensure saved
+
         setState(() {
-          balanceAmount = computedNetPayable;
+          balanceAmount = effectivePayable;
           _currentPaymentRemainingBalance = null;
           _lastPaymentDetails = null;
           payByEbt = 0.0;
@@ -1711,13 +685,18 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       payments.sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
       double totalPaid = 0.0;
-      double runningBalance = computedNetPayable;
+      // double runningBalance = computedNetPayable;
       LocalPayment? lastPayment;
-      double previousBalance = computedNetPayable;
+
+      // double effectivePayable =
+      // (computedNetPayable - redeemedValue).clamp(0.0, double.infinity);
+
+      double runningBalance = effectivePayable;
+      double previousBalance = effectivePayable;
 
       print("\n📊 PAYMENT HISTORY PROGRESSION FOR ORDER #$orderId:");
       print("=" * 60);
-      print("Starting Balance: \$${computedNetPayable.toStringAsFixed(2)}");
+      print("Starting Balance: \$${effectivePayable.toStringAsFixed(2)}");
       print("-" * 60);
 
       // Track balance progression
@@ -1741,35 +720,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         previousBalance = balanceBeforePayment; // Store for next iteration
       }
 
-      // for (var i = 0; i < payments.length; i++) {
-      //   final payment = payments[i];
-      //   final paymentAmount = payment.amount;
-      //   final isVoid = paymentAmount < 0; // or payment.status == 'void'
-      //
-      //   double balanceBeforePayment = runningBalance;
-      //
-      //   if (isVoid) {
-      //     runningBalance -= paymentAmount; // subtract negative = add back
-      //   } else {
-      //     runningBalance -= paymentAmount;
-      //     totalPaid += paymentAmount; // only count actual paid towards totalPaid
-      //   }
-      //
-      //   if (runningBalance < 0) runningBalance = 0.0;
-      //
-      //   lastPayment = payment;
-      //
-      //   print("Payment ${i + 1}: ${payment.paymentMethod} - \$${paymentAmount.toStringAsFixed(2)}"
-      //       "${isVoid ? ' (VOID)' : ''}");
-      //   print("  Balance Before: \$${balanceBeforePayment.toStringAsFixed(2)}");
-      //   print("  Balance After: \$${runningBalance.toStringAsFixed(2)}");
-      //   print("  " + "-" * 40);
-      //
-      //   previousBalance = balanceBeforePayment;
-      // }
+      
+      double actualRemaining = effectivePayable - totalPaid;
 
-      double actualRemaining = computedNetPayable - totalPaid;
-      if (actualRemaining < 0) actualRemaining = 0.0;
+      if (actualRemaining < 0) {
+        actualRemaining = 0.0;
+      }
 
       print("\n📈 FINAL SUMMARY:");
       print("Total Paid: \$${totalPaid.toStringAsFixed(2)}");
@@ -1792,60 +748,6 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         };
       }
 
-      // Keep void target on the latest positive payment (skip void rows).
-      _lastPayment = null;
-      for (final p in payments.reversed) {
-        if (p.amount > 0 && p.status != PaymentDbStatus.voided) {
-          _lastPayment = LastPaymentInfo(
-            method: p.paymentMethod,
-            amount: p.amount,
-            paymentId: (p.serverPaymentId ?? p.id).toString(),
-            sunmiTxnId: p.sunmiTxnId,
-            sunmiOrderId: p.sunmiOrderId,
-            sunmiDeviceId: p.sunmiDeviceId,
-          );
-          break;
-        }
-      }
-      // ⭐ NEW: Restore transactionId from Hive lastPayment if available
-// because LocalPayment model doesn't store transactionId separately.
-      try {
-        final String hiveKey = orderId.toString();
-        final hiveBox = StorageProvider.offlineOrders;
-        if (await hiveBox.containsKey(hiveKey)) {
-          final rawHive = await hiveBox.get(hiveKey);
-          if (rawHive is Map) {
-            final hiveMap = Map<String, dynamic>.from(rawHive);
-            final dynamic lastPaymentRaw = hiveMap["lastPayment"];
-            if (lastPaymentRaw is Map && _lastPayment != null) {
-              final Map<String, dynamic> lastPaymentMap =
-              Map<String, dynamic>.from(lastPaymentRaw);
-              final String? storedTxnId =
-              lastPaymentMap["transactionId"]?.toString();
-              if (storedTxnId != null && storedTxnId.isNotEmpty) {
-                _lastPayment = LastPaymentInfo(
-                  method: _lastPayment!.method,
-                  amount: _lastPayment!.amount,
-                  paymentId: _lastPayment!.paymentId,
-                  sunmiTxnId: _lastPayment!.sunmiTxnId,
-                  sunmiOrderId: _lastPayment!.sunmiOrderId,
-                  sunmiDeviceId: _lastPayment!.sunmiDeviceId,
-                  transactionId: storedTxnId, // ⭐ Restored from Hive
-                );
-                if (kDebugMode) {
-                  print(
-                      "✅ Restored transactionId from Hive → $storedTxnId");
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print("⚠️ Failed to restore transactionId from Hive: $e");
-        }
-      }
-
       setState(() {
         tenderAmount = totalPaid;
         balanceAmount = actualRemaining;
@@ -1859,46 +761,43 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         // Payment method totals
         payByCash = payments
             .where((p) =>
-        p.paymentMethod.toLowerCase() ==
-            TextConstants.cash.toLowerCase())
+                p.paymentMethod.toLowerCase() ==
+                TextConstants.cash.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
 
         payByCard = payments
             .where((p) =>
-        p.paymentMethod.toLowerCase() ==
-            TextConstants.card.toLowerCase())
+                p.paymentMethod.toLowerCase() ==
+                TextConstants.card.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
 
         payByEbt = payments
             .where((p) =>
-        p.paymentMethod.toLowerCase() ==
-            TextConstants.ebtText.toLowerCase())
+                p.paymentMethod.toLowerCase() ==
+                TextConstants.ebtText.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
 
         payByOther = payments
             .where((p) =>
-        p.paymentMethod.toLowerCase() !=
-            TextConstants.cash.toLowerCase() &&
-            p.paymentMethod.toLowerCase() !=
-                TextConstants.card.toLowerCase() &&
-            p.paymentMethod.toLowerCase() !=
-                TextConstants.ebtText.toLowerCase())
+                p.paymentMethod.toLowerCase() !=
+                    TextConstants.cash.toLowerCase() &&
+                p.paymentMethod.toLowerCase() !=
+                    TextConstants.card.toLowerCase() &&
+                p.paymentMethod.toLowerCase() !=
+                    TextConstants.ebtText.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
 
         // Match API-path logic: non-EBT overflow should reduce remaining EBT.
         final double nonEbtOrderValue =
-        (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
+            (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
         final double nonEbtPaid = payByCash + payByOther;
         final double overflowToEbt =
-        nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
+            nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
         final double remainingEbt =
-        (originalEbt - payByEbt).clamp(0.0, double.infinity);
+            (originalEbt - payByEbt).clamp(0.0, double.infinity);
         ebtTotal = (remainingEbt - overflowToEbt).clamp(0.0, double.infinity);
 
         isPaymentStarted = totalPaid > 0;
-        if (actualRemaining > 0) {
-          _successPopupShown = false;
-        }
       });
 
       stored["originalEbt"] = originalEbt;
@@ -1921,7 +820,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     if (orderId == null || orderId == 0) return;
 
     final payments =
-    await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
+        await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
 
     if (payments.isEmpty) {
       print("📊 No payment history found for Order #$orderId");
@@ -2181,7 +1080,7 @@ Previous Remaining: \$${remaining.toStringAsFixed(2)}
             _successPopupShown = true;
             final boxData = await box.get(key);
             final cr =
-            boxData is Map ? (boxData as Map)["coupon_response"] : null;
+                boxData is Map ? (boxData as Map)["coupon_response"] : null;
             final couponResponse = cr is Map
                 ? Map<String, dynamic>.from(cr as Map)
                 : <String, dynamic>{};
@@ -2422,7 +1321,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     final String datetime =
-    DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+        DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
     final localPayment = LocalPayment(
       orderId: orderId ?? 0,
@@ -2445,7 +1344,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     try {
       // Save to Isar
       final savedPayment =
-      await LocalPaymentDBHelper.instance.savePayment(localPayment);
+          await LocalPaymentDBHelper.instance.savePayment(localPayment);
 
       if (kDebugMode) {
         print("\n PAYMENT SAVED TO ISAR SUCCESSFULLY!");
@@ -2526,7 +1425,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         // Order items
         'order_items':
-        orderItems.map((item) => Map<String, dynamic>.from(item)).toList(),
+            orderItems.map((item) => Map<String, dynamic>.from(item)).toList(),
 
         // Financial details
         'gross_total': grossTotal,
@@ -2603,7 +1502,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final rawUpdated = await box.get(key);
       final updatedOrder =
-      Map<String, dynamic>.from(rawUpdated is Map ? rawUpdated : {});
+          Map<String, dynamic>.from(rawUpdated is Map ? rawUpdated : {});
 
       //  Extract updated values
       final double updatedPaid =
@@ -2713,7 +1612,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final rawExisting = await box.get(key);
       final existing =
-      Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+          Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
       final payments = existing['payments'] as List<dynamic>? ?? [];
 
       return payments.map((p) => Map<String, dynamic>.from(p)).toList();
@@ -2886,7 +1785,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       print("Auto-filling current payment remaining balance: $amountToUse");
       _rawAmount = (amountToUse * 100).round();
       amountController.text =
-      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+          '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
 
       setState(() {
         _isAmountEntered = true;
@@ -2928,49 +1827,63 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 // Show success popup
   Future<void> _showPaymentSuccessPopup(
       double amount, LocalPayment payment) async {
-    // CRITICAL: Always refresh balance from full history first
-    await _calculateBalanceFromPaymentHistory();
-    await _printPaymentHistorySummary(); // for debugging
+    final bool isPaymentComplete = balanceAmount <= 0;
 
-    final bool isPaymentComplete = balanceAmount <= 0.01; // tolerance for floating point
-
-    print("🔍 _showPaymentSuccessPopup → balanceAmount=$balanceAmount | isComplete=$isPaymentComplete | currentRemaining=$_currentPaymentRemainingBalance");
-
-    if (isPaymentComplete && !_successPopupShown) {
-      _successPopupShown = true;
+    //  Clear the payment-specific balance display when order is fully paid
+    if (isPaymentComplete) {
       setState(() {
         _currentPaymentRemainingBalance = null;
         _lastPaymentDetails = null;
       });
+    }
 
-      print("✅ FULL PAYMENT COMPLETE → Showing Success Dialog");
+    if (kDebugMode) {
+      print("\n PAYMENT STATUS");
+      print("   Balance: \$${balanceAmount.toStringAsFixed(2)}");
+      print("   Complete: $isPaymentComplete");
+      print("   Current Payment Remaining: $_currentPaymentRemainingBalance");
+      print("   Popup Shown: $_successPopupShown\n");
+    }
 
+    if (isPaymentComplete && !_successPopupShown) {
+      _successPopupShown = true;
+      // ✅ ADD THIS LINE (CRITICAL FIX)
+      // await CustomerDisplayService.showThankYou();
+      // ✅ STEP 2: CLEAR ACTIVE ORDER (CRITICAL)
+      await orderHelper.setActiveOrder(null);
+
+      // ✅ STEP 3: RESET DISPLAY (FINAL STATE)
+      await CustomerDisplayService.resetDisplay();
+
+      print("✅ Payment complete → display reset");
+      // ✅ SHOW SUCCESS SNACKBAR
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Order successfully completed"),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
       final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
-      final boxData = await box.get(key);
-      final cr = boxData is Map ? boxData["coupon_response"] : null;
+      final boxDataKey = await box.get(key);
+      final cr =
+          boxDataKey is Map ? (boxDataKey as Map)["coupon_response"] : null;
       final couponResponse = cr is Map
-          ? Map<String, dynamic>.from(cr)
+          ? Map<String, dynamic>.from(cr as Map)
           : <String, dynamic>{};
 
       _showPaymentDialog(
         context,
         tenderAmount,
         changeAmount: changeAmount,
-        showChange: changeAmount > 0,
+        showChange: changeAmount != null && changeAmount! > 0,
         couponResponse: couponResponse,
       );
-    }
-    else if (balanceAmount > 0.01) {
-      print("🟡 Partial payment detected → Showing Partial Dialog");
+    } else if (balanceAmount > 0) {
+      //  AUTO-FILL BEFORE SHOWING PARTIAL DIALOG
+      // _autoFillRemainingBalance();
       _showPartialPaymentDialog(context, amount);
-    } else {
-      // Edge case: balance very close to zero
-      print("⚠️ Balance near zero → Treating as complete");
-      _successPopupShown = true;
-      setState(() => _currentPaymentRemainingBalance = null);
-      // Show success dialog anyway
-      _showPaymentDialog(context, tenderAmount, showChange: false);
     }
   }
 
@@ -3016,7 +1929,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     StreamSubscription? subscription;
     subscription = paymentBloc.createPaymentStream.listen(
-          (paymentResponse) async {
+      (paymentResponse) async {
         if (paymentResponse.status == Status.COMPLETED &&
             paymentResponse.data != null) {
           final serverPaymentId = paymentResponse.data!.paymentId;
@@ -3097,7 +2010,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   Future<void> retrySyncUnsyncedPayments() async {
     final unsyncedPayments =
-    await LocalPaymentDBHelper.instance.getUnsyncedPayments();
+        await LocalPaymentDBHelper.instance.getUnsyncedPayments();
 
     if (unsyncedPayments.isEmpty) {
       if (kDebugMode) {
@@ -3133,17 +2046,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   void _selectPaymentMethod(
-      String method, {
-        bool autoFillAmount = false,
-        double? maxAllowedAmount,
-      }) {
+    String method, {
+    bool autoFillAmount = false,
+    double? maxAllowedAmount,
+  }) {
     setState(() {
       selectedPaymentMethod = method;
 
       if (autoFillAmount && maxAllowedAmount != null) {
         _rawAmount = (maxAllowedAmount * 100).toInt();
         amountController.text =
-        '${TextConstants.currencySymbol}${maxAllowedAmount.toStringAsFixed(2)}';
+            '${TextConstants.currencySymbol}${maxAllowedAmount.toStringAsFixed(2)}';
         _isAmountEntered = true;
         _amountErrorText = null;
       }
@@ -3168,129 +2081,28 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       _rawAmount = (allowedAmount * 100).round();
 
       amountController.text =
-      '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
+          '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
 
       _amountErrorText = null;
       _isAmountEntered = _rawAmount > 0;
     });
   }
 
-  // void _handlePay() {
-  //   final cleanAmount = amountController.text
-  //       .replaceAll(TextConstants.currencySymbol, '')
-  //       .trim();
-  //
-  //   final double amount = double.tryParse(cleanAmount) ?? 0.0;
-  //
-  //   if (amount <= 0 && computedNetPayable > 0) {
-  //     setState(() {
-  //       _amountErrorText = TextConstants.amountValidation;
-  //     });
-  //     return;
-  //   }
-  //
-  //   _amountErrorText = null;
-  //
-  //   // EBT validation
-  //   if (selectedPaymentMethod == TextConstants.ebtText) {
-  //     if (ebtTotal <= 0) {
-  //       setState(() {
-  //         _amountErrorText = "No EBT balance available";
-  //       });
-  //       return;
-  //     }
-  //
-  //     if (amount > ebtTotal) {
-  //       setState(() {
-  //         _amountErrorText =
-  //         "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
-  //       });
-  //       return;
-  //     }
-  //   }
-  //
-  //   // CARD → Sunmi
-  //   if (selectedPaymentMethod == TextConstants.card) {
-  //     _showPaymentProgressDialog(context);
-  //     _openSunmiSaleScreen(
-  //       amount: amount,
-  //       orderId: (widget.orderId ?? widget.offlineOrderId).toString(),
-  //     );
-  //     _resetAmountAfterPay();
-  //     return;
-  //   }
-  //
-  //   // ✅ FIX: Use current payment remaining if available, otherwise use main balance
-  //   final double currentRemainingBalance = _currentPaymentRemainingBalance ?? balanceAmount;
-  //
-  //   print("🔍 PAYMENT CALCULATION:");
-  //   print("💰 Amount entered: \$${amount.toStringAsFixed(2)}");
-  //   print("💵 Tendered so far: \$${tenderAmount.toStringAsFixed(2)}");
-  //   print("📊 Main balance: \$${balanceAmount.toStringAsFixed(2)}");
-  //   print("🎯 Current payment remaining: \$${(_currentPaymentRemainingBalance ?? 0).toStringAsFixed(2)}");
-  //   print("📈 Using for calculation: \$${currentRemainingBalance.toStringAsFixed(2)}");
-  //
-  //   final bool willCompletePayment = amount >= currentRemainingBalance;
-  //   final double changeAmount = willCompletePayment ? (amount - currentRemainingBalance) : 0.0;
-  //
-  //   print("🎯 Will complete payment? $willCompletePayment");
-  //   print("💵 Change if complete: \$${changeAmount.toStringAsFixed(2)}");
-  //
-  //   if (willCompletePayment) {
-  //     _successPopupShown = true;
-  //
-  //     // Coupon data for popup
-  //     final box = StorageProvider.offlineOrders;
-  //     final key = (orderId ?? 0).toString();
-  //     final couponResponse = (box.get(key)?["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
-  //
-  //     print("✅ Showing FULL payment popup");
-  //     _showPaymentDialog(
-  //       context,
-  //       tenderAmount + amount,
-  //       changeAmount: changeAmount,
-  //       showChange: changeAmount > 0,
-  //       couponResponse: couponResponse,
-  //     );
-  //   } else {
-  //     print("🟡 Showing PARTIAL payment popup");
-  //     _showPartialPaymentDialog(context, amount);
-  //   }
-  //
-  //   // Call API in background (no loading)
-  //   _callCreatePaymentAPI(skipPopup: true);
-  //   _resetAmountAfterPay();
-  // }
-
-  // ─────────────────────────────────────────────────────────────────────────────
-// PATCH: Replace _handlePay() with this version.
-//
-// Root cause: after a partial payment _successPopupShown is already true,
-// so when the customer pays the remaining balance the guard inside
-// _callCreatePaymentAPI blocks the full-success dialog.
-//
-// Fix (zero old-code changes): reset _successPopupShown to false right before
-// _callCreatePaymentAPI whenever the entered amount will fully settle the order.
-// ─────────────────────────────────────────────────────────────────────────────
-
   void _handlePay() {
-    // Defensive reset: balance already 0 but user somehow entered an amount.
     if (balanceAmount <= 0 &&
         (double.tryParse(amountController.text
-            .replaceAll(TextConstants.currencySymbol, '')
-            .trim()) ??
-            0) >
+                    .replaceAll(TextConstants.currencySymbol, '')
+                    .trim()) ??
+                0) >
             0) {
       print(
-          "⚠️ DEFENSIVE RESET: balance=0 but amount entered > 0 → forcing reset");
+          "⚠️ DEFENSIVE RESET: balance=0 but amount entered > 0 → forcing reset after possible void");
       setState(() {
         _successPopupShown = false;
         _currentPaymentRemainingBalance = null;
-        _lastPaymentDetails = null;
         isPaymentStarted = false;
       });
       _calculateBalanceFromPaymentHistory();
-      return;
     }
 
     final cleanAmount = amountController.text
@@ -3298,9 +2110,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         .trim();
 
     final double amount = double.tryParse(cleanAmount) ?? 0.0;
+    final int enteredCents = (amount * 100).round();
+    final int ebtCents = (ebtTotal * 100).round();
 
     // Basic validation
-    if (amount <= 0 && computedNetPayable > 0) {
+    if (enteredCents <= 0 && computedNetPayable > 0) {
       setState(() {
         _amountErrorText = TextConstants.amountValidation;
       });
@@ -3310,1242 +2124,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     // EBT validation
     if (selectedPaymentMethod == TextConstants.ebtText) {
-      if (ebtTotal <= 0) {
+      if (ebtCents <= 0) {
         setState(() {
           _amountErrorText = "No EBT balance available";
         });
         return;
       }
-      if (amount > ebtTotal) {
+      if (enteredCents > ebtCents) {
         setState(() {
           _amountErrorText =
-          "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
+              "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
         });
         return;
       }
     }
 
-    // ── Determine whether this payment will complete the order ──────────────
-    final double currentRemaining =
-        _currentPaymentRemainingBalance ?? balanceAmount;
-
-    final bool willCompletePayment =
-        amount >= (currentRemaining - 0.01); // floating-point tolerance
-
-    print("💰 _handlePay → Amount: \$$amount | "
-        "Current Remaining: \$$currentRemaining | "
-        "Will Complete: $willCompletePayment");
-
-    // ── KEY FIX ─────────────────────────────────────────────────────────────
-    // If this payment will fully settle the order, reset _successPopupShown so
-    // _callCreatePaymentAPI is allowed to show the full-payment success dialog.
-    // This is the ONLY change vs the original method.
-    if (willCompletePayment && _successPopupShown) {
-      _successPopupShown = false;
-      print("🔄 _handlePay: reset _successPopupShown → full-payment dialog allowed");
-    }
-    // ────────────────────────────────────────────────────────────────────────
-
-    // Save payment (local + sync)
-    _callCreatePaymentAPI();
-
-    // Reset input field immediately
+    
+    // ✅ All payment methods (Cash, Card, Wallet, EBT) now call the local storage API
+    _callCreatePaymentAPI(); // uses validated amount
     _resetAmountAfterPay();
-
-    // If this payment completes the order → clear partial state
-    if (willCompletePayment) {
-      setState(() {
-        _currentPaymentRemainingBalance = null;
-        _lastPaymentDetails = null;
-      });
-    }
-
-    // Force refresh balance calculation
-    Future.microtask(() {
-      _calculateBalanceFromPaymentHistory();
-    });
-  }
-
-  /// Card payment: sync order → call create-payment API → show partial/full popup.
-  /// Called only when selectedPaymentMethod == TextConstants.card.
-  /// Does NOT touch any existing methods.
-  ///
-
-  String? _extractServerPaymentId(Map<String, dynamic> body) {
-    final dynamic raw = body['payment_id'] ??
-        (body['data'] is Map ? body['data']['payment_id'] : null) ??
-        (body['data'] is Map ? body['data']['id'] : null);
-    if (raw == null) return null;
-    final s = raw.toString().trim();
-    return s.isEmpty ? null : s;
-  }
-
-  /// Sync offline order to Woo and return the WooCommerce order id (e.g. 40809).
-  Future<int> _resolveWooOrderIdForPayment({bool forceSync = true}) async {
-    final box = StorageProvider.offlineOrders;
-    final String orderKey = widget.offlineOrderId?.toString() ??
-        widget.orderId?.toString() ??
-        orderId?.toString() ??
-        "";
-
-    if (orderKey.isEmpty) {
-      return widget.orderId ?? orderId ?? 0;
-    }
-
-    final raw = await box.get(orderKey);
-    if (raw is! Map) {
-      return widget.orderId ?? orderId ?? 0;
-    }
-
-    var offlineMap = Map<String, dynamic>.from(raw);
-    final int localId = orderId ?? int.tryParse(orderKey) ?? 0;
-    if (localId > 0) {
-      offlineMap['id'] ??= localId;
-      offlineMap['order_id'] ??= localId;
-    }
-
-    int wooOrderId =
-        int.tryParse(offlineMap['wooOrderId']?.toString() ?? '') ?? 0;
-
-    if (forceSync || wooOrderId == 0) {
-      if (kDebugMode) {
-        print(
-            "🔄 Resolving Woo order id → key:$orderKey localId:$localId cached:$wooOrderId");
-      }
-      final syncResult =
-      await OrderRepository().syncSingleOfflineOrder(offlineMap);
-      if (syncResult is Map) {
-        wooOrderId = (syncResult!['id'] as num?)?.toInt() ?? wooOrderId;
-        offlineMap['wooOrderId'] = wooOrderId;
-        offlineMap['synced'] = true;
-        offlineMap['sync_at'] = DateTime.now().toIso8601String();
-        await box.put(orderKey, offlineMap);
-        if (kDebugMode) print("✅ Woo order synced → id: $wooOrderId");
-      }
-    }
-
-    if (wooOrderId == 0) {
-      wooOrderId = widget.orderId ?? orderId ?? 0;
-    }
-    return wooOrderId;
-  }
-
-  Future<void> _voidServerPaymentIfCard({required String? serverPaymentId}) async {
-    if (serverPaymentId == null || serverPaymentId.isEmpty) {
-      if (kDebugMode) print("⚠️ Card void skipped – no server payment_id");
-      return;
-    }
-
-    final int wooOrderId = await _resolveWooOrderIdForPayment(forceSync: false);
-    if (wooOrderId <= 0) {
-      if (kDebugMode) print("⚠️ Card void skipped – wooOrderId missing");
-      return;
-    }
-
-    // ⭐ NEW: If we have a transaction_id, use kickback void API instead
-    final String? txnId = _lastPayment?.transactionId;
-    if (txnId != null && txnId.isNotEmpty) {
-      await _voidCardPaymentViaKickbackAPI(
-        transactionId: txnId,
-        paymentId: serverPaymentId,
-        wooOrderId: wooOrderId,
-      );
-      return; // ⭐ Use kickback API only, skip old void flow
-    }
-
-    // --- existing code below unchanged ---
-    if (kDebugMode) {
-      print(
-          "🔄 Voiding card payment on server → order:$wooOrderId payment:$serverPaymentId");
-    }
-
-    final completer = Completer<void>();
-    late StreamSubscription sub;
-    sub = paymentBloc.voidPaymentStream.listen((response) {
-      if (response.status == Status.COMPLETED ||
-          response.status == Status.ERROR) {
-        if (kDebugMode) {
-          print(
-              "Card void API → ${response.status} ${response.message ?? response.data?.message}");
-        }
-        if (!completer.isCompleted) completer.complete();
-        sub.cancel();
-      }
-    });
-
-    paymentBloc.voidPayment(VoidPaymentRequestModel(
-      orderId: wooOrderId,
-      paymentId: serverPaymentId,
-    ));
-
-    await completer.future.timeout(
-      const Duration(seconds: 15),
-      onTimeout: () {
-        if (kDebugMode) print("⚠️ Card void API timed out");
-        sub.cancel();
-      },
-    );
-  }
-
-  Future<String> _getTokenFromDb() async {
-    final db = await DBHelper.instance.database;
-    final result = await db.query(
-      AppDBConst.userTable,
-      where:
-      '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
-      orderBy: '${AppDBConst.userId} DESC',
-      limit: 1,
-    );
-
-    if (result.isEmpty) {
-      throw Exception('No active user token found');
-    }
-
-    final token = result.first[AppDBConst.userToken] as String;
-    if (kDebugMode) print('Token from DB: $token');
-    return token;
-  }
-
-  // Future<double> _refreshBalanceAndCheckCompletion() async {
-  //   // Force a complete refresh of payment history
-  //   await _calculateBalanceFromPaymentHistory();
-  //   await _printPaymentHistorySummary();
-  //
-  //   // Small delay to ensure state is updated
-  //   await Future.delayed(const Duration(milliseconds: 100));
-  //
-  //   // Recalculate final balance
-  //   final totalPaid = payByCash + payByCard + payByEbt + payByOther;
-  //   final remaining = (computedNetPayable - totalPaid).clamp(0.0, double.infinity);
-  //
-  //   print("🔄 Balance refresh - Total Paid: \$${totalPaid.toStringAsFixed(2)}, Remaining: \$${remaining.toStringAsFixed(2)}");
-  //
-  //   if (remaining <= 0.01) {
-  //     // This is a FULL payment
-  //     setState(() {
-  //       balanceAmount = 0.0;
-  //       _currentPaymentRemainingBalance = null;
-  //       _lastPaymentDetails = null;
-  //     });
-  //   } else if (remaining > 0.01 && remaining < computedNetPayable) {
-  //     // This is a PARTIAL payment
-  //     setState(() {
-  //       balanceAmount = remaining;
-  //       _currentPaymentRemainingBalance = remaining;
-  //     });
-  //   }
-  //
-  //   return remaining;
-  // }
-
-
-  Future<double> _refreshBalanceAndCheckCompletion() async {
-    // Force a complete refresh of payment history
-    await _calculateBalanceFromPaymentHistory();
-    await _printPaymentHistorySummary();
-
-    // Small delay to ensure state is updated
-    await Future.delayed(const Duration(milliseconds: 100));
-
-    // Recalculate final balance
-    final totalPaid = payByCash + payByCard + payByEbt + payByOther;
-    final remaining = (computedNetPayable - totalPaid).clamp(0.0, double.infinity);
-
-    print("🔄 Balance refresh - Total Paid: \$${totalPaid.toStringAsFixed(2)}, Remaining: \$${remaining.toStringAsFixed(2)}");
-
-    if (remaining <= 0.01) {
-      // This is a FULL payment
-      setState(() {
-        balanceAmount = 0.0;
-        _currentPaymentRemainingBalance = null;
-        _lastPaymentDetails = null;
-      });
-    } else if (remaining > 0.01 && remaining < computedNetPayable) {
-      // This is a PARTIAL payment
-      setState(() {
-        balanceAmount = remaining;
-        _currentPaymentRemainingBalance = remaining;
-      });
-    }
-
-    return remaining;
-  }
-
-  // Future<void> _handleCardPaymentViaAPI() async {
-  //   _isCardPaymentCancelled = false;
-  //
-  //   final double amount = double.tryParse(
-  //     amountController.text
-  //         .replaceAll(TextConstants.currencySymbol, '')
-  //         .trim(),
-  //   ) ??
-  //       0.0;
-  //
-  //   if (amount <= 0) {
-  //     setState(() => _amountErrorText = TextConstants.amountValidation);
-  //     return;
-  //   }
-  //
-  //   // ✅ FIX: Prevent paying more than balance amount
-  //
-  //   final double effectiveBalance = _currentPaymentRemainingBalance ?? balanceAmount;
-  //   final double tolerance = 0.0000000001;
-  //   if (amount > effectiveBalance + tolerance) {
-  //     setState(() => _amountErrorText =
-  //     "Amount cannot exceed balance amount (${TextConstants.currencySymbol}${effectiveBalance.toStringAsFixed(2)})");
-  //
-  //     _rawAmount = (effectiveBalance * 100).round();
-  //     amountController.text = '${TextConstants.currencySymbol}${effectiveBalance.toStringAsFixed(2)}';
-  //     _isAmountEntered = true;
-  //
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(
-  //         content: Text("Amount adjusted to balance amount (${TextConstants.currencySymbol}${effectiveBalance.toStringAsFixed(2)})"),
-  //         backgroundColor: Colors.orange,
-  //         duration: const Duration(seconds: 2),
-  //       ),
-  //     );
-  //     return;
-  //   }
-  //
-  //   _amountErrorText = null;
-  //
-  //   // Store the CURRENT balance BEFORE payment starts (this is key for detecting full vs partial)
-  //   final double balanceBeforePayment = effectiveBalance;
-  //   final bool willBeFullPayment = amount >= (balanceBeforePayment - 0.01);
-  //
-  //   print("💰 CARD PAYMENT - Amount: \$$amount | Balance before: \$$balanceBeforePayment | Will be full: $willBeFullPayment");
-  //
-  //   // ── 1. Show loading ──────────────────────────────────────
-  //   setState(() {
-  //     isLoading = true;
-  //     _processingPaymentMethod = TextConstants.card;
-  //   });
-  //   _showPaymentProgressDialog(context);
-  //
-  //   try {
-  //     // ── 2. Sync offline order → get WooCommerce order id ──
-  //     final String orderKey = widget.offlineOrderId?.toString() ??
-  //         widget.orderId?.toString() ??
-  //         orderId?.toString() ??
-  //         "";
-  //     final box = StorageProvider.offlineOrders;
-  //
-  //     final int wooOrderId = await _resolveWooOrderIdForPayment(forceSync: true);
-  //
-  //     if (wooOrderId == 0) {
-  //       _hidePaymentProgressDialog();
-  //       setState(() {
-  //         isLoading = false;
-  //         _processingPaymentMethod = null;
-  //       });
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         const SnackBar(
-  //           content: Text("Could not resolve order – please try again"),
-  //           backgroundColor: Colors.red,
-  //         ),
-  //       );
-  //       return;
-  //     }
-  //
-  //     if (_isCardPaymentCancelled) {
-  //       if (kDebugMode) print("Card payment cancelled before API call");
-  //       return;
-  //     }
-  //
-  //     // ── 3. Build auth header ──────────────────────────────
-  //     final String token = await _getTokenFromDb();
-  //
-  //     if (_isCardPaymentCancelled) {
-  //       if (kDebugMode) print("Card payment cancelled after token fetch");
-  //       return;
-  //     }
-  //
-  //     // ── 4. Call create-payment API ────────────────────────
-  //     final uri = Uri.parse(
-  //       "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment",
-  //     );
-  //
-  //     final http.Response response = await http.post(
-  //       uri,
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //         "Authorization": "Bearer $token",
-  //       },
-  //       body: jsonEncode({
-  //         "order_id": wooOrderId,
-  //         "amount": (amount * 100).round(),
-  //         "payment_method": "card",
-  //         "shift_id": shiftId,
-  //       }),
-  //     );
-  //
-  //     _hidePaymentProgressDialog();
-  //     setState(() {
-  //       isLoading = false;
-  //       _processingPaymentMethod = null;
-  //     });
-  //
-  //     if (kDebugMode) {
-  //       print("Card payment API → ${response.statusCode}");
-  //       print("Body: ${response.body}");
-  //     }
-  //
-  //     final Map<String, dynamic> body = jsonDecode(response.body) as Map<String, dynamic>;
-  //
-  //     // ── 5. Handle response ────────────────────────────────
-  //     if (body["success"] != true) {
-  //       final String msg = body["message"]?.toString() ?? "Card payment failed";
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         SnackBar(content: Text(msg), backgroundColor: Colors.red),
-  //       );
-  //       setState(() {
-  //         selectedPaymentMethod = TextConstants.cash;
-  //       });
-  //       _resetAmountAfterPay();
-  //       return;
-  //     }
-  //
-  //     if (_isCardPaymentCancelled) {
-  //       if (kDebugMode) print("Card payment cancelled after API response");
-  //       return;
-  //     }
-  //
-  //     // ── 6. success: true → update local state & save ──────
-  //     final String? serverPaymentId = _extractServerPaymentId(body);
-  //     final double currentBalance = balanceAmount;
-  //     final double newTender = tenderAmount + amount;
-  //     double newBalance = (currentBalance - amount).clamp(0.0, double.infinity);
-  //     double newChange = 0.0;
-  //     if (amount > currentBalance) {
-  //       newChange = amount - currentBalance;
-  //       newBalance = 0.0;
-  //     }
-  //
-  //     // ⭐ CRITICAL FIX: Determine isFullPayment based on balance before payment, not after
-  //     final bool isFullPayment = newBalance <= 0.01;
-  //
-  //     print("🎯 Payment determination - isFullPayment: $isFullPayment, newBalance: $newBalance, amount: $amount, balanceBefore: $currentBalance");
-  //
-  //     // Save as a local payment record
-  //     final String datetimeStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-  //
-  //     final localPayment = LocalPayment(
-  //       orderId: orderId ?? 0,
-  //       title: TextConstants.card,
-  //       amount: amount,
-  //       paymentMethod: TextConstants.card,
-  //       shiftId: shiftId,
-  //       vendorId: vendorId,
-  //       userId: userId ?? 0,
-  //       serviceType: serviceType,
-  //       datetime: datetimeStr,
-  //       notes: "card via API – wooOrderId: $wooOrderId",
-  //       isSynced: true,
-  //       createdAt: DateTime.now(),
-  //       remainingBalance: newBalance,
-  //       status: isFullPayment ? PaymentDbStatus.completed : PaymentDbStatus.pending,
-  //     );
-  //
-  //     final saved = await LocalPaymentDBHelper.instance.savePayment(localPayment);
-  //
-  //     if (serverPaymentId != null) {
-  //       final int? sid = int.tryParse(serverPaymentId);
-  //       if (sid != null) {
-  //         await LocalPaymentDBHelper.instance.markAsSynced(saved.id, sid);
-  //       }
-  //     }
-  //
-  //     _lastPayment = LastPaymentInfo(
-  //       method: TextConstants.card,
-  //       amount: amount,
-  //       paymentId: serverPaymentId ?? saved.id.toString(),
-  //       sunmiTxnId: null,
-  //       sunmiOrderId: null,
-  //     );
-  //
-  //     await _savePaymentToHive(
-  //       amount: amount,
-  //       paymentMethod: TextConstants.card,
-  //       transactionId: "card_api_${saved.id}",
-  //       localPayment: saved,
-  //     );
-  //     await _saveLocalPaymentToHive(saved);
-  //
-  //     // ⭐ CRITICAL: Force refresh balance calculation to ensure consistency
-  //     await _calculateBalanceFromPaymentHistory();
-  //
-  //     // ⭐ CRITICAL: Force refresh balance calculation to ensure consistency
-  //     final double refreshedRemaining = await _refreshBalanceAndCheckCompletion();
-  //     final bool isActuallyFull = refreshedRemaining <= 0.00001;
-  //
-  //     print("🔄 After refresh - isActuallyFull: $isActuallyFull, refreshedRemaining: $refreshedRemaining");
-  //
-  //     setState(() {
-  //       isPaymentStarted = true;
-  //       paidAmount = amount;
-  //       paymentId = saved.id.toString();
-  //       tenderAmount = newTender;
-  //       balanceAmount = newBalance;
-  //       changeAmount = newChange;
-  //       payByCard += amount;
-  //       _currentPaymentRemainingBalance = isActuallyFull ? null : refreshedRemaining;
-  //       _lastPaymentDetails = {
-  //         "amount": amount,
-  //         "method": TextConstants.card,
-  //         "remainingBalance": refreshedRemaining,
-  //         "previousBalance": currentBalance,
-  //         "datetime": DateTime.now().toIso8601String(),
-  //         "paymentNumber": (_lastPaymentDetails?["paymentNumber"] ?? 0) + 1,
-  //       };
-  //     });
-  //
-  //     _resetAmountAfterPay();
-  //
-  //     // ── 7. Show popup based on ACTUAL payment completion ──
-  //     // ⭐ CRITICAL FIX: Use refreshed balance to determine popup type
-  //     if (isActuallyFull) {
-  //       // ✅ FULL PAYMENT - Show success dialog
-  //       print("✅ FULL PAYMENT DETECTED - Showing success dialog");
-  //
-  //       _successPopupShown = true;
-  //       await CustomerDisplayService.showThankYou();
-  //       await orderHelper.setActiveOrder(null);
-  //       await CustomerDisplayService.resetDisplay();
-  //
-  //       final boxData = await box.get(orderKey);
-  //       final cr = boxData is Map ? boxData["coupon_response"] : null;
-  //       final couponResponse = cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
-  //
-  //       if (mounted) {
-  //         setState(() {
-  //           _currentPaymentRemainingBalance = null;
-  //           _lastPaymentDetails = null;
-  //         });
-  //       }
-  //
-  //       await Future.delayed(const Duration(milliseconds: 100));
-  //
-  //       if (mounted) {
-  //         _showPaymentDialog(
-  //           context,
-  //           newTender,
-  //           changeAmount: newChange,
-  //           showChange: newChange > 0,
-  //           couponResponse: couponResponse,
-  //         );
-  //       }
-  //     } else if (!isActuallyFull && amount > 0) {
-  //       // 🟡 PARTIAL PAYMENT - Show partial dialog
-  //       print("🟡 PARTIAL PAYMENT DETECTED - Showing partial dialog, remaining: $refreshedRemaining");
-  //       if (mounted) {
-  //         _showPartialPaymentDialog(context, amount);
-  //       }
-  //     }
-  //   } catch (e, st) {
-  //     _hidePaymentProgressDialog();
-  //     setState(() {
-  //       isLoading = false;
-  //       _processingPaymentMethod = null;
-  //       selectedPaymentMethod = TextConstants.cash;
-  //     });
-  //     _resetAmountAfterPay();
-  //     if (kDebugMode) {
-  //       print("_handleCardPaymentViaAPI error: $e");
-  //       print(st);
-  //     }
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(
-  //         content: Text("Card payment error: $e"),
-  //         backgroundColor: Colors.red,
-  //       ),
-  //     );
-  //   }
-  // }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PATCH: Fix card payment showing wrong tender amount when previous partial
-//        payments (EBT / cash) have already been made.
-//
-// ROOT CAUSE:
-//   In _handleCardPaymentViaAPI, after _calculateBalanceFromPaymentHistory()
-//   refreshes `tenderAmount` to the running total of prior payments (e.g. $30),
-//   the line:
-//
-//       final double newTenderAmount = tenderAmount;   // ← BUG: missing + amount
-//
-//   never adds the current card payment, so the UI shows $30 instead of $100,
-//   and the success dialog receives the same wrong value.
-//
-// FIX (zero old-code changes):
-//   Replace _handleCardPaymentViaAPI with the version below.
-//   The only functional change is the single corrected line marked ← FIX.
-//   Every other line is identical to the original.
-// ─────────────────────────────────────────────────────────────────────────────
-
-// HOW TO APPLY:
-//   1. Open order_summary_screen.dart (or whichever file contains
-//      _handleCardPaymentViaAPI).
-//   2. Delete the entire existing _handleCardPaymentViaAPI method.
-//   3. Paste the method below in its place.
-//   No other changes needed anywhere in the file.
-
-  Future<void> _handleCardPaymentViaAPI() async {
-    _isCardPaymentCancelled = false;
-
-    // Parse entered amount
-    final double enteredAmount = double.tryParse(
-      amountController.text
-          .replaceAll(TextConstants.currencySymbol, '')
-          .trim(),
-    ) ?? 0.0;
-
-    if (enteredAmount <= 0) {
-      setState(() => _amountErrorText = TextConstants.amountValidation);
-      return;
-    }
-
-    // Recalculate everything first
-    _recalculateGrossAndNetFromLineItemDiscounts();
-    await _recalculateTaxOnDiscountedItems();
-    await _calculateBalanceFromPaymentHistory();
-
-    final double effectiveBalance = _currentPaymentRemainingBalance ?? balanceAmount;
-    final double amount = enteredAmount.clamp(0.0, effectiveBalance + 0.01);
-
-    if ((enteredAmount - amount).abs() > 0.01) {
-      setState(() {
-        _rawAmount = (amount * 100).round();
-        amountController.text = '${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}';
-        _isAmountEntered = true;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Amount adjusted to available balance (\$${amount.toStringAsFixed(2)})"),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-
-    _amountErrorText = null;
-
-    final double balanceBeforePayment = effectiveBalance;
-    final bool willBeFullPayment = amount >= (balanceBeforePayment - 0.01);
-
-    print("💰 CARD PAYMENT → Amount: \$$amount | Balance before: \$$balanceBeforePayment");
-
-    // Show loading
-    setState(() {
-      isLoading = true;
-      _processingPaymentMethod = TextConstants.card;
-    });
-    _showPaymentProgressDialog(context);
-
-    try {
-      final int wooOrderId = await _resolveWooOrderIdForPayment(forceSync: true);
-      if (wooOrderId == 0) {
-        _hidePaymentProgressDialog();
-        setState(() { isLoading = false; _processingPaymentMethod = null; });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Could not resolve order"), backgroundColor: Colors.red),
-        );
-        return;
-      }
-
-      if (_isCardPaymentCancelled) return;
-
-      final String token = await _getTokenFromDb();
-      if (_isCardPaymentCancelled) return;
-
-      // === API Call ===
-      final uri = Uri.parse("${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment");
-      final http.Response response = await http.post(
-        uri,
-        headers: {"Content-Type": "application/json", "Authorization": "Bearer $token"},
-        body: jsonEncode({
-          "order_id": wooOrderId,
-          "amount": (amount * 100).round(),
-          "payment_method": "card",
-          "shift_id": shiftId,
-        }),
-      );
-
-      // ================= API DEBUG =================
-      print("📤 CARD PAYMENT REQUEST");
-      print("URL: $uri");
-      print("Headers: ${{
-        "Content-Type": "application/json",
-        "Authorization": "Bearer $token"
-      }}");
-      print("Body: ${jsonEncode({
-        "order_id": wooOrderId,
-        "amount": (amount * 100).round(),
-        "payment_method": "card",
-        "shift_id": shiftId,
-      })}");
-
-      print("📥 CARD PAYMENT RESPONSE");
-      print("Status Code: ${response.statusCode}");
-      print("Response Body: ${response.body}");
-
-      _hidePaymentProgressDialog();
-      setState(() { isLoading = false; _processingPaymentMethod = null; });
-
-      final Map<String, dynamic> body = jsonDecode(response.body) as Map<String, dynamic>;
-
-      if (body["success"] != true) {
-        final String msg = body["message"]?.toString() ?? "Card payment failed";
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
-        _resetAmountAfterPay();
-        return;
-      }
-
-      final String? serverPaymentId = _extractServerPaymentId(body);
-
-      // Save locally
-      final String datetimeStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-      final localPayment = LocalPayment(
-        orderId: orderId ?? 0,
-        title: TextConstants.card,
-        amount: amount,
-        paymentMethod: TextConstants.card,
-        shiftId: shiftId,
-        vendorId: vendorId,
-        userId: userId ?? 0,
-        serviceType: serviceType,
-        datetime: datetimeStr,
-        notes: "Card payment via API",
-        isSynced: true,
-        createdAt: DateTime.now(),
-        remainingBalance: (balanceBeforePayment - amount).clamp(0.0, double.infinity),
-        status: PaymentDbStatus.pending,
-
-      );
-
-      final savedPayment = await LocalPaymentDBHelper.instance.savePayment(localPayment);
-
-      if (serverPaymentId != null) {
-        await LocalPaymentDBHelper.instance.markAsSynced(savedPayment.id, int.tryParse(serverPaymentId) ?? 0);
-      }
-
-      // ⭐ Extract transaction_id from API response body
-      final String? cardTransactionId = body["transaction_id"]?.toString();
-
-      _lastPayment = LastPaymentInfo(
-        method: TextConstants.card,
-        amount: amount,
-        paymentId: serverPaymentId ?? savedPayment.id.toString(),
-        transactionId: cardTransactionId, // ⭐ ADD THIS
-      );
-
-      await _savePaymentToHive(
-        amount: amount,
-        paymentMethod: TextConstants.card,
-        transactionId: "card_api_${savedPayment.id}",
-        localPayment: savedPayment,
-      );
-
-      await _saveLocalPaymentToHive(savedPayment);
-
-      // === MOST IMPORTANT FIX ===
-      await _calculateBalanceFromPaymentHistory();   // This already calculates correct tenderAmount
-
-      final double finalRemaining = _currentPaymentRemainingBalance ?? balanceAmount;
-      final bool isActuallyFull = finalRemaining <= 0.00000001;
-
-      // Use the refreshed tenderAmount from history (DO NOT add amount again)
-      // final double newTenderAmount = "${payByCard.toStringAsFixed(2)}";
-          //tenderAmount ;        // ← Correct
-
-      final double newTenderAmount = payByCard;   // ← Changed as per your request
-
-      final double newChangeAmount = amount > balanceBeforePayment
-          ? (amount - balanceBeforePayment)
-          : 0.0;
-
-// ==================== DEBUG PRINTS ====================
-      print("🔍 [CARD PAYMENT DEBUG]");
-      print("   Amount Paid (Card)     : \$${amount.toStringAsFixed(2)}");
-      print("   New Tender Amount      : \$${newTenderAmount.toStringAsFixed(2)}");
-      print("   New Change Amount      : \$${newChangeAmount.toStringAsFixed(2)}");
-      print("   Final Remaining        : \$${finalRemaining.toStringAsFixed(2)}");
-      print("   Is Actually Full       : $isActuallyFull");
-      print("   payByCash              : \$${payByCash.toStringAsFixed(2)}");
-      print("   payByEbt               : \$${payByEbt.toStringAsFixed(2)}");
-      print("   payByCard (updated)    : \$${payByCard.toStringAsFixed(2)}");
-      print("==================================================");
-      // ======================================================
-
-      setState(() {
-        balanceAmount = finalRemaining;
-        payByCard += amount;
-        _currentPaymentRemainingBalance = isActuallyFull ? null : finalRemaining;
-        _lastPaymentDetails = {
-          'amount': amount,
-          'method': TextConstants.card,
-          'remainingBalance': finalRemaining,
-          'previousBalance': balanceBeforePayment,
-          'datetime': DateTime.now().toIso8601String(),
-          'paymentNumber': (_lastPaymentDetails?['paymentNumber'] ?? 0) + 1,
-        };
-      });
-
-      _resetAmountAfterPay();
-
-      if (isActuallyFull) {
-        _successPopupShown = true;
-        final box = StorageProvider.offlineOrders;
-        final key = (orderId ?? widget.offlineOrderId ?? 0).toString();
-        final raw = await box.get(key);
-        final couponResponse = (raw is Map && raw["coupon_response"] is Map)
-            ? Map<String, dynamic>.from(raw["coupon_response"])
-            : <String, dynamic>{};
-
-        if (mounted) {
-          await CustomerDisplayService.showThankYou();
-          _showPaymentDialog(
-            context,
-            newTenderAmount,           // ← Now correctly shows total tendered (e.g. 30)
-            changeAmount: newChangeAmount,
-            showChange: newChangeAmount > 0,
-            couponResponse: couponResponse,
-          );
-        }
-      } else {
-        if (mounted) {
-          _showPartialPaymentDialog(context, amount);
-        }
-      }
-    } catch (e, st) {
-      _hidePaymentProgressDialog();
-      setState(() {
-        isLoading = false;
-        _processingPaymentMethod = null;
-        selectedPaymentMethod = TextConstants.cash;
-      });
-      _resetAmountAfterPay();
-
-      print("❌ _handleCardPaymentViaAPI error: $e");
-      print(st);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Card payment error: $e"), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  /// ⭐ NEW: Void card payment via kickback API using transaction_id
-  Future<void> _voidCardPaymentViaKickbackAPI({
-    required String transactionId,
-    required String paymentId,
-    required int wooOrderId,
-  }) async {
-    if (transactionId.isEmpty) {
-      if (kDebugMode) print("⚠️ Kickback void skipped – no transaction_id");
-      return;
-    }
-
-    try {
-      final String token = await _getTokenFromDb();
-
-      final uri = Uri.parse(
-        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/void-kickback-transaction",
-      );
-
-      if (kDebugMode) {
-        print("🔄 Voiding card via kickback API");
-        print("   order_id: $wooOrderId");
-        print("   payment_id: $paymentId");
-        print("   transaction_id: $transactionId");
-      }
-
-      final response = await http.post(
-        uri,
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer $token",
-        },
-        body: jsonEncode({
-          "order_id": wooOrderId.toString(),
-          "payment_id": paymentId,
-          "transaction_id": transactionId,
-        }),
-      );
-
-      if (kDebugMode) {
-        print("Kickback void response: ${response.statusCode}");
-        print("Body: ${response.body}");
-      }
-
-      final Map<String, dynamic> body =
-      jsonDecode(response.body) as Map<String, dynamic>;
-
-      if (body["success"] == true) {
-        if (kDebugMode) print("✅ Kickback card void successful");
-      } else {
-        if (kDebugMode) {
-          print("❌ Kickback card void failed: ${body["message"]}");
-        }
-      }
-    } catch (e, st) {
-      if (kDebugMode) {
-        print("❌ _voidCardPaymentViaKickbackAPI error: $e");
-        print(st);
-      }
-    }
-  }
-
-
-  Future<void> _handleEbtCardPaymentViaAPI() async {
-    final double amount = double.tryParse(
-      amountController.text
-          .replaceAll(TextConstants.currencySymbol, '')
-          .trim(),
-    ) ??
-        0.0;
-
-    if (amount <= 0) {
-      setState(() => _amountErrorText = TextConstants.amountValidation);
-      return;
-    }
-
-    // EBT-specific validation
-    final int enteredCents = (amount * 100).round();
-    final int ebtCents = (ebtTotal * 100).round();
-
-    if (ebtCents <= 0) {
-      setState(() => _amountErrorText = "No EBT balance available");
-      return;
-    }
-    if (enteredCents > ebtCents) {
-      setState(() => _amountErrorText =
-      "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})");
-      return;
-    }
-
-    _amountErrorText = null;
-
-    // ── 1. Show loading ──────────────────────────────────────
-    setState(() {
-      isLoading = true;
-      _processingPaymentMethod = TextConstants.ebtText;
-    });
-    _showPaymentProgressDialog(context);
-
-    try {
-      // ── 2. Sync offline order → get WooCommerce order id ──
-      final box = StorageProvider.offlineOrders;
-      final String orderKey = widget.offlineOrderId?.toString() ??
-          widget.orderId?.toString() ??
-          orderId?.toString() ??
-          "";
-
-      int wooOrderId = 0;
-
-      if (orderKey.isNotEmpty) {
-        final raw = await box.get(orderKey);
-        if (raw is Map) {
-          final offlineMap = Map<String, dynamic>.from(raw);
-
-          final cached = offlineMap["wooOrderId"];
-          wooOrderId = (cached is int)
-              ? cached
-              : int.tryParse(cached?.toString() ?? "") ?? 0;
-
-          if (wooOrderId == 0) {
-            final syncResult =
-            await OrderRepository().syncSingleOfflineOrder(offlineMap);
-            if (syncResult is Map) {
-              wooOrderId = (syncResult?["id"] as num?)?.toInt() ?? 0;
-              offlineMap["wooOrderId"] = wooOrderId;
-              await box.put(orderKey, offlineMap);
-            }
-          }
-        }
-      }
-
-      if (wooOrderId == 0) {
-        wooOrderId = widget.orderId ?? orderId ?? 0;
-      }
-
-      if (wooOrderId == 0) {
-        _hidePaymentProgressDialog();
-        setState(() {
-          isLoading = false;
-          _processingPaymentMethod = null;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Could not resolve order – please try again"),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      // ── 3. Build auth header ──────────────────────────────
-      final String token = await _getTokenFromDb();
-
-      // ── 4. Call create-payment API ────────────────────────
-      final uri = Uri.parse(
-        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment",
-      );
-
-      final http.Response response = await http.post(
-        uri,
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer $token",
-        },
-        body: jsonEncode({
-          "order_id": wooOrderId,
-          "amount": (amount * 100).round(),
-          "payment_method": "ebt",
-          "shift_id": shiftId,
-        }),
-      );
-
-      _hidePaymentProgressDialog();
-      setState(() {
-        isLoading = false;
-        _processingPaymentMethod = null;
-      });
-
-      if (kDebugMode) {
-        print("EBT payment API → ${response.statusCode}");
-        print("Body: ${response.body}");
-      }
-
-      final Map<String, dynamic> body =
-      jsonDecode(response.body) as Map<String, dynamic>;
-
-      // ── 5. Handle response ────────────────────────────────
-      if (body["success"] != true) {
-        final String msg =
-            body["message"]?.toString() ?? "EBT payment failed";
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg), backgroundColor: Colors.red),
-        );
-        return;
-      }
-
-      // ── 6. success: true → update local state & save ──────
-      final double currentBalance = balanceAmount;
-      final double newTender = tenderAmount + amount;
-      double newBalance = (currentBalance - amount).clamp(0.0, double.infinity);
-      double newChange = 0.0;
-      if (amount > currentBalance) {
-        newChange = amount - currentBalance;
-        newBalance = 0.0;
-      }
-
-      final bool isFullPayment = newBalance <= 0;
-
-      final String datetimeStr =
-      DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-
-      final localPayment = LocalPayment(
-        orderId: orderId ?? 0,
-        title: TextConstants.ebtText,
-        amount: amount,
-        paymentMethod: TextConstants.ebtText,
-        shiftId: shiftId,
-        vendorId: vendorId,
-        userId: userId ?? 0,
-        serviceType: serviceType,
-        datetime: datetimeStr,
-        notes: "ebt via API – wooOrderId: $wooOrderId",
-        isSynced: true,
-        createdAt: DateTime.now(),
-        remainingBalance: newBalance,
-        status: isFullPayment
-            ? PaymentDbStatus.completed
-            : PaymentDbStatus.pending,
-      );
-
-      final saved =
-      await LocalPaymentDBHelper.instance.savePayment(localPayment);
-
-      _lastPayment = LastPaymentInfo(
-        method: TextConstants.ebtText,
-        amount: amount,
-        paymentId: saved.id.toString(),
-        sunmiTxnId: null,
-        sunmiOrderId: null,
-      );
-
-      await _savePaymentToHive(
-        amount: amount,
-        paymentMethod: TextConstants.ebtText,
-        transactionId: "ebt_api_${saved.id}",
-        localPayment: saved,
-      );
-      await _saveLocalPaymentToHive(saved);
-
-      setState(() {
-        isPaymentStarted = true;
-        paidAmount = amount;
-        paymentId = saved.id.toString();
-        tenderAmount = newTender;
-        balanceAmount = newBalance;
-        changeAmount = newChange;
-        payByEbt += amount;
-        // Reduce remaining EBT balance
-        ebtTotal = (ebtTotal - amount).clamp(0.0, double.infinity);
-        _currentPaymentRemainingBalance =
-        isFullPayment ? null : newBalance;
-        _lastPaymentDetails = {
-          "amount": amount,
-          "method": TextConstants.ebtText,
-          "remainingBalance": newBalance,
-          "previousBalance": currentBalance,
-          "datetime": DateTime.now().toIso8601String(),
-          "paymentNumber":
-          (_lastPaymentDetails?["paymentNumber"] ?? 0) + 1,
-        };
-      });
-
-      _resetAmountAfterPay();
-
-      // ── 7. Show popup ─────────────────────────────────────
-
-      if (isFullPayment) {
-        _successPopupShown = false; // reset so full dialog always shows
-        // _successPopupShown = true;
-        await CustomerDisplayService.showThankYou();
-        await orderHelper.setActiveOrder(null);
-        await CustomerDisplayService.resetDisplay();
-
-        final boxData = await box.get(orderKey);
-        final cr = boxData is Map ? boxData["coupon_response"] : null;
-        final couponResponse = cr is Map
-            ? Map<String, dynamic>.from(cr)
-            : <String, dynamic>{};
-
-        _showPaymentDialog(
-          context,
-          newTender,
-          changeAmount: newChange,
-          showChange: newChange > 0,
-          couponResponse: couponResponse,
-        );
-      } else if (!isFullPayment && amount > 0) {
-        _showPartialPaymentDialog(context, amount);
-      }
-    } catch (e, st) {
-      _hidePaymentProgressDialog();
-      setState(() {
-        isLoading = false;
-        _processingPaymentMethod = null;
-      });
-      if (kDebugMode) {
-        print("_handleEbtCardPaymentViaAPI error: $e");
-        print(st);
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("EBT payment error: $e"),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  // void _handlePay() {
-  //   if (balanceAmount <= 0 &&
-  //       (double.tryParse(amountController.text
-  //           .replaceAll(TextConstants.currencySymbol, '')
-  //           .trim()) ?? 0) > 0) {
-  //     print(" DEFENSIVE RESET...");
-  //     setState(() {
-  //       _successPopupShown = false;
-  //       _currentPaymentRemainingBalance = null;
-  //       isPaymentStarted = false;
-  //     });
-  //     _calculateBalanceFromPaymentHistory();
-  //   }
-  //
-  //   final cleanAmount = amountController.text
-  //       .replaceAll(TextConstants.currencySymbol, '')
-  //       .trim();
-  //
-  //   final double amount = double.tryParse(cleanAmount) ?? 0.0;
-  //   final int enteredCents = (amount * 100).round();
-  //   final int ebtCents = (ebtTotal * 100).round();
-  //
-  //   // Basic validation
-  //   if (enteredCents <= 0 && computedNetPayable > 0) {
-  //     setState(() => _amountErrorText = TextConstants.amountValidation);
-  //     return;
-  //   }
-  //   _amountErrorText = null;
-  //
-  //   // EBT validation
-  //   if (selectedPaymentMethod == TextConstants.ebtText) {
-  //     if (ebtCents <= 0) {
-  //       setState(() => _amountErrorText = "No EBT balance available");
-  //       return;
-  //     }
-  //     if (enteredCents > ebtCents) {
-  //       setState(() => _amountErrorText =
-  //       "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})");
-  //       return;
-  //     }
-  //   }
-  //
-  //   // ==================== CARD PAYMENT - PAYROC ====================
-  //   if (selectedPaymentMethod == TextConstants.card) {
-  //     print(" CARD selected → Opening Payroc Payment Page");
-  //
-  //     // Optional: Pass amount & order ID via query params
-  //     final String payrocUrl =
-  //         "https://payments.uat.payroc.com/merchant/paymentpage"
-  //         "?amount=${amount.toStringAsFixed(2)}"
-  //         "&orderId=${(widget.orderId ?? widget.offlineOrderId ?? orderId ?? 0)}"
-  //         "&currency=USD";   // adjust currency if needed
-  //
-  //     _launchPayrocUrl(payrocUrl);
-  //     _resetAmountAfterPay();
-  //     return;
-  //   }
-  //
-  //   // ==================== All other methods (Cash, EBT, etc.) ====================
-  //   _callCreatePaymentAPI();
-  //   _resetAmountAfterPay();
-  // }
-
-  /////// Fabove code is card payments
-
-  Future<void> _launchPayrocUrl(String url) async {
-    final Uri uri = Uri.parse(url);
-
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication, // Opens in browser / external app
-      );
-
-      // Optional: Show message
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Redirecting to secure payment page..."),
-            backgroundColor: Colors.blue,
-          ),
-        );
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Could not open payment page"),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 
 //  ADD THIS METHOD (you might already have it, but here it is for reference)
@@ -4585,7 +2182,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // Get existing order
       final rawExisting = await box.get(key);
       final existing =
-      Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+          Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
 
       // Get existing payments array or create new one
       List<dynamic> payments = existing['payments'] ?? [];
@@ -4768,7 +2365,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         Text(
                           'Time: ${DateFormat('HH:mm:ss').format(time)}',
                           style:
-                          TextStyle(fontSize: 12, color: Colors.grey[600]),
+                              TextStyle(fontSize: 12, color: Colors.grey[600]),
                         ),
                     ],
                   ),
@@ -4807,7 +2404,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final rawExisting = await box.get(key);
       final existing =
-      Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+          Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
       final payments = existing['payments'] as List<dynamic>? ?? [];
 
       return payments.map((p) => Map<String, dynamic>.from(p)).toList();
@@ -4857,11 +2454,616 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     await _mergeOrderSummaryLineItemsFromProductCache(orderItems);
   }
 
+  static const MethodChannel customerDisplayChannel = MethodChannel(
+    'com.example.flutter_customer_display/sunmi_display',
+  );
+
+  Future<void> _handleCustomerAddFromDisplay(String contact) async {
+    try {
+      final offlineBox = StorageProvider.offlineOrders;
+      final localKey = widget.offlineOrderId?.toString();
+
+      if (localKey == null) {
+        throw Exception("Offline order not found");
+      }
+
+      final existing = await offlineBox.get(localKey);
+
+      if (existing == null) {
+        throw Exception("Order data missing");
+      }
+
+      final offlineOrder = Map<String, dynamic>.from(existing);
+
+      final syncResponse = await orderBloc.syncSingleOfflineOrder(offlineOrder);
+
+      if (syncResponse == null) {
+        throw Exception("Sync failed");
+      }
+
+      final int syncedOrderId = syncResponse["id"] ?? 0;
+
+      final rawResponse = await orderBloc.addLoyaltyPoints(
+        orderId: syncedOrderId,
+        contact: contact,
+      );
+
+      final result = jsonDecode(rawResponse);
+
+      if (result["success"] != true) {
+        throw Exception(result["message"]);
+      }
+
+      final data = result["data"] ?? {};
+
+      final pts = int.tryParse(
+            data["available_points"]?.toString() ?? "0",
+          ) ??
+          0;
+
+      // final redeemedAmount =
+      //     (data["value_redeemed"] as num?)?.toDouble() ?? 0.0;
+
+      print("SENDING TO CUSTOMER DISPLAY");
+      print("points=$pts");
+      // print("redeemedAmount=$redeemedAmount");
+
+      // UPDATE CUSTOMER DISPLAY
+      await customerDisplayChannel.invokeMethod(
+        "customerDisplayResult",
+        {
+          "success": true,
+          "points": pts,
+          // "redeemedAmount": redeemedAmount,
+        },
+      );
+
+      setState(() {
+        availablePoints = pts;
+
+        // keep redeemed value
+        // redeemedValue = redeemedAmount;
+
+        mobileController.text = contact;
+      });
+    } catch (e) {
+      print("ERROR: $e");
+    }
+  }
+
+  Future<void> _applyRedeemFromCustomerDisplay() async {
+    setState(() {
+      isRedeemAppliedFromApi = true;
+
+      // keep net payable unchanged
+      // balanceAmount =
+      //     (computedNetPayable - redeemedValue) - tenderAmount;
+    });
+
+    
+  }
+
+   // /// bala tax code
+
+  double _proportionalCouponDiscountForItem(Map<String, dynamic> item) {
+    // Only distribute coupon discount across real product lines
+    final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+    final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
+    if (itemType.contains('discount') ||
+        itemType.contains('coupon') ||
+        itemType.contains('payout') ||
+        itemType.contains('cashback') ||
+        itemName.contains('merchant discount')) return 0.0;
+
+    final double couponDisc = discount.abs(); // discount is already negative
+    if (couponDisc <= 0 || grossTotal <= 0) return 0.0;
+
+    // Distribute proportionally by line item's gross contribution
+    double unitPrice = (item['item_price'] ?? item['price'] ?? 0).toDouble();
+    int qty = (item['items_count'] ?? item['quantity'] ?? 1) is num
+        ? (item['items_count'] ?? item['quantity'] ?? 1).toInt()
+        : 1;
+    double lineGross = unitPrice * qty;
+
+    return (lineGross / grossTotal) * couponDisc;
+  }
+
+  double _extractTotalDiscountForItem(Map<String, dynamic> item) {
+    double n(dynamic v) =>
+        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+
+    double posAuto = n(item['_pos_auto_discount']) +
+        n(item['auto_discount']) +
+        n(item['autoDiscount']) +
+        n(item['auto_discount_total']) +
+        n(item['display_auto_discount']);
+
+    double combo =
+        n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
+    double multipack =
+        n(item['multipack_discount_total']) + n(item['multipackDiscountTotal']);
+    double mixmatch = n(item['mixmatch_discount_total']);
+
+    // ADD: proportional share of order-level coupon discount
+    double couponShare = _proportionalCouponDiscountForItem(item);
+
+    final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
+
+    double lineDiscount;
+    if (dtype == 'auto' || dtype.isEmpty) {
+      lineDiscount = posAuto;
+    } else if (dtype == 'combo' || dtype == 'mixmatch') {
+      lineDiscount = combo > 0 ? combo : posAuto;
+    } else if (dtype == 'multipack') {
+      lineDiscount = multipack > 0 ? multipack : posAuto;
+    } else {
+      lineDiscount = posAuto + combo + multipack + mixmatch;
+    }
+
+    return lineDiscount + couponShare; // ✅ Include coupon share
+  }
+
+  Future<void> _recalculateTaxOnDiscountedItems() async {
+    if (orderItems.isEmpty) return;
+
+    double toDouble(dynamic v) =>
+        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+
+    double resolveTaxRate(Map<String, dynamic> item) {
+      for (final key in ['tax_rate', 'tax', 'tax_percent']) {
+        final raw = item[key];
+        if (raw != null) {
+          final r = toDouble(raw);
+          if (r > 0) return r / 100.0;
+        }
+      }
+      return 0.0;
+    }
+
+    double lineItemOnlyDiscount(Map<String, dynamic> item) {
+      double n(dynamic v) =>
+          v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+
+      double posAuto = n(item['_pos_auto_discount']) +
+          n(item['auto_discount']) +
+          n(item['autoDiscount']) +
+          n(item['auto_discount_total']) +
+          n(item['display_auto_discount']);
+
+      double combo =
+          n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
+      double multipack = n(item['multipack_discount_total']) +
+          n(item['multipackDiscountTotal']);
+      double mixmatch = n(item['mixmatch_discount_total']);
+
+      final String dtype =
+          (item['discount_type'] ?? '').toString().toLowerCase();
+
+      if (dtype == 'auto' || dtype.isEmpty) return posAuto;
+      if (dtype == 'combo' || dtype == 'mixmatch')
+        return combo > 0 ? combo : posAuto;
+      if (dtype == 'multipack') return multipack > 0 ? multipack : posAuto;
+      return posAuto + combo + multipack + mixmatch;
+    }
+
+    double totalTax = 0.0;
+    bool anyItemHasDiscountOrTaxRate = false;
+    double totalLineGross = 0.0;
+    double totalLineDiscount = 0.0;
+
+    for (final item in orderItems) {
+      final String itemType =
+          (item['item_type'] ?? '').toString().toLowerCase();
+      final String itemName =
+          (item['item_name'] ?? '').toString().toLowerCase();
+
+      if (itemType.contains('discount') ||
+          itemType.contains('coupon') ||
+          itemType.contains('payout') ||
+          itemType.contains('cashback') ||
+          itemType.contains('loyalty') ||
+          itemName.contains('merchant discount')) {
+        continue;
+      }
+
+      final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+      final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+      final double lineTotal = unitPrice * qty;
+
+      final double itemDiscount = lineItemOnlyDiscount(item);
+      final double taxableBase =
+          (lineTotal - itemDiscount).clamp(0.0, double.infinity);
+
+      totalLineGross += lineTotal;
+      totalLineDiscount += itemDiscount;
+
+      if (itemDiscount > 0) anyItemHasDiscountOrTaxRate = true;
+
+      double itemTax = 0.0;
+      final double taxRate = resolveTaxRate(item);
+
+      if (taxRate > 0) {
+        anyItemHasDiscountOrTaxRate = true;
+        itemTax = taxableBase * taxRate;
+      } else {
+        final double rawTax = toDouble(item['item_tax'] ?? item['tax_amount']);
+        if (rawTax > 0 && lineTotal > 0) {
+          anyItemHasDiscountOrTaxRate = true;
+          itemTax = rawTax * (taxableBase / lineTotal);
+        }
+      }
+
+      totalTax += itemTax;
+    }
+
+    totalTax = double.parse(totalTax.toStringAsFixed(4));
+    //Raghu--**
+
+    // Recalculate percentage merchant discount dynamically based on Gross Total (coupon has no impact)
+    final String mdType =
+        offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+    if (mdType == 'percentage' && merchantDiscountPercentage > 0) {
+      double base = totalLineGross - totalLineDiscount;
+      if (base > 0) {
+        merchantDiscount = -((base * merchantDiscountPercentage) / 100.0);
+      } else {
+        merchantDiscount = 0.0;
+      }
+    }
+
+    final double serverTax = widget.orderTax;
+
+    final double netAfterDiscount =
+        totalLineGross - totalLineDiscount + discount + merchantDiscount;
+
+    double finalTax;
+
+    if (!anyItemHasDiscountOrTaxRate) {
+        //Raghu--**
+      // ── Scale tax by coupon/merchant discount ratio when coupon was applied in THIS session or merchant discount is active.
+      if (serverTax > 0 && (discount < 0 || merchantDiscount < 0)) {
+        final double originalGross = widget.grossTotal > 0 ? widget.grossTotal : (totalLineGross - totalLineDiscount);
+        if (originalGross > 0) {
+          final double baseForTaxScaling = isCouponAppliedFromApi
+              ? originalGross
+              : (originalGross + discount).clamp(0.01, double.infinity);
+          final double taxableNet =
+              (originalGross + discount + merchantDiscount).clamp(0.0, double.infinity);
+          finalTax = serverTax * (taxableNet / baseForTaxScaling);
+          finalTax = roundTaxHalfUp(finalTax);
+        } else {
+          finalTax = 0.0;
+        }
+      } else {
+        finalTax = serverTax > 0 ? serverTax : totalTax;
+      }
+      if (kDebugMode) {
+        print('── TAX: No item-level data. finalTax=$finalTax');
+      }
+    } else if (totalTax <= 0 && serverTax > 0) {
+      if (netAfterDiscount > 0.005) {
+        finalTax = serverTax;
+      } else {
+        finalTax = 0.0;
+      }
+      if (kDebugMode) {
+        print(
+            '── TAX: Recalc=0, server=$serverTax, net=$netAfterDiscount → finalTax=$finalTax');
+      }
+    } else {
+        //Raghu--**
+      final double originalBase = totalLineGross - totalLineDiscount;
+      if (originalBase > 0) {
+        final double finalBase =
+            (originalBase + discount + merchantDiscount).clamp(0.0, double.infinity);
+        totalTax = totalTax * (finalBase / originalBase);
+        totalTax = double.parse(totalTax.toStringAsFixed(4));
+      }
+      finalTax = totalTax;
+      finalTax = roundTaxHalfUp(finalTax);
+      if (kDebugMode) {
+        print('── TAX: Using recalculated value: $finalTax');
+      }
+    }
+
+    if (kDebugMode) {
+      print('── TAX RECALCULATION COMPLETE ──');
+      print('   Gross Total        : $totalLineGross');
+      print('   Line Discounts     : $totalLineDiscount');
+      print('   Coupon/Order Disc  : $discount');
+      print('   Net After Discount : $netAfterDiscount');
+      print('   Server Tax         : $serverTax');
+      print('   Recalculated Tax   : $totalTax');
+      print('   Final Tax Used     : $finalTax');
+    }
+      //Raghu--**
+    // ✅ NetTotal should be Gross + Coupon/Order Discount + Merchant Discount
+    //Raghu--**
+    final double newNetTotal = grossTotal + discount + merchantDiscount;
+
+    final double newNetPayable = newNetTotal + finalTax + cashbackFee;
+
+    
+    final bool totalsChanged = (finalTax - tax).abs() > 0.00005 ||
+        (newNetPayable - computedNetPayable).abs() > 0.00005;
+    if (!totalsChanged) return;
+
+    setState(() {
+      tax = finalTax;
+      NetTotal = newNetTotal;
+      computedNetPayable = newNetPayable;
+      orderTotal = newNetPayable;
+
+      if (tenderAmount <= 0) {
+        balanceAmount = newNetPayable;
+      }
+    });
+
+    final String orderKey = widget.offlineOrderId?.toString() ??
+        widget.orderId?.toString() ??
+        orderId?.toString() ??
+        "";
+
+    if (orderKey.isNotEmpty) {
+      try {
+        final box = StorageProvider.offlineOrders;
+        final rawOrder = await box.get(orderKey);
+        if (rawOrder != null) {
+          final offlineOrder = Map<String, dynamic>.from(rawOrder);
+          offlineOrder["tax_discount"] = finalTax;
+          offlineOrder["order_tax"] = finalTax;
+          offlineOrder["grand_total"] = newNetPayable;
+          offlineOrder["net_payable"] = newNetPayable;
+          if (tenderAmount <= 0) {
+            offlineOrder["balanceAmount"] = newNetPayable;
+            offlineOrder["balance_amount"] = newNetPayable;
+            offlineOrder["remaining_balance"] = newNetPayable;
+          }
+          // Save merchant discount and NetTotal to Hive as well
+          offlineOrder["merchantDiscount"] = merchantDiscount.abs();
+          offlineOrder["merchant_discount"] = merchantDiscount.abs();
+          offlineOrder["merchantDiscountPercentage"] = merchantDiscountPercentage;
+          offlineOrder["NetTotal"] = newNetTotal;
+          offlineOrder["net_total"] = newNetTotal;
+
+          await box.put(orderKey, offlineOrder);
+          if (kDebugMode) {
+            print(
+                "💾 [CD/Summary] Updated Hive with recalculated tax: $finalTax, netPayable: $newNetPayable");
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print("❌ [CD/Summary] Failed to update Hive order tax: $e");
+        }
+      }
+    }
+
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    if (widget.offlineOrderId != null) {
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        widget.offlineOrderId!,
+        summaryEnabled: true,
+      );
+    }
+  }
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+  Future<void> _recalculateGrossAndNetFromLineItemDiscounts() async {
+    if (orderItems.isEmpty) return;
+
+    double toDouble(dynamic v) =>
+        v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+
+    double recalculatedGrossTotal = 0.0;
+    double totalLineItemDiscount = 0.0;
+    double payoutCashbackTotal = 0.0;
+
+    // Store previous values to detect changes
+    final double previousGrossTotal = grossTotal;
+    final double previousMerchantDiscount = merchantDiscount;
+    final double previousComputedNetPayable = computedNetPayable;
+
+    for (final item in orderItems) {
+      final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+      final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
+
+      final bool isPayout = itemType.contains('payout') ||
+          itemType.contains('cashback') ||
+          itemName == 'payout' ||
+          itemName == 'cashback' ||
+          itemName.contains('payout') ||
+          itemName.contains('cashback');
+
+      if (isPayout) {
+        final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+        final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+        payoutCashbackTotal += unitPrice * qty;
+        continue;
+      }
+
+      if (itemType.contains('discount') ||
+          itemType.contains('coupon') ||
+          itemType.contains('loyalty') ||
+          itemName.contains('merchant discount')) {
+        continue;
+      }
+
+      final double itemSumPrice = toDouble(item['item_sum_price']);
+      final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+      final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+      final double lineOriginalTotal = unitPrice * qty;
+
+      final double lineGross = itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
+      recalculatedGrossTotal += lineGross;
+
+      final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
+
+      double autoDiscount = [
+        item['auto_discount'],
+        item['auto_discount_total'],
+        item['autoDiscount'],
+        item['autoDiscountTotal'],
+        item['display_auto_discount'],
+        item['_pos_auto_discount'],
+      ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
+
+      double comboDiscount = [
+        item['combo_discount_total'],
+        item['comboDiscountTotal'],
+        item['combo_discount'],
+      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+
+      double mixMatchDiscount = [
+        item['mixmatch_discount_total'],
+        item['mixMatchDiscountTotal'],
+        item['mixmatch_discount'],
+      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+
+      double multipackDiscount = [
+        item['multipack_discount_total'],
+        item['multipackDiscountTotal'],
+        item['multipack_discount'],
+      ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
+
+      if (dtype == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
+        mixMatchDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+      if (dtype == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
+        comboDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+      if (dtype == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
+        multipackDiscount = autoDiscount;
+        autoDiscount = 0;
+      }
+
+      final double itemDiscount =
+          autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
+      totalLineItemDiscount += itemDiscount;
+    }
+
+    if (totalLineItemDiscount <= 0 &&
+        payoutCashbackTotal == 0 &&
+        (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
+      return;
+    }
+
+    final double productGross = recalculatedGrossTotal != 0
+        ? recalculatedGrossTotal
+        : (widget.grossTotal > 0 ? widget.grossTotal : 0.0);
+
+    final double productGrossAfterDiscounts = productGross - totalLineItemDiscount;
+
+    final double newGrossForDisplay = productGrossAfterDiscounts + payoutCashbackTotal;
+
+    final double newNetTotal = newGrossForDisplay + discount + merchantDiscount;
+    final double newNetPayable = newNetTotal + tax + cashbackFee;
+
+    if (kDebugMode) {
+      print('── LINE-ITEM DISCOUNT RECALCULATION ──');
+      print('   New Gross For Display : $newGrossForDisplay');
+      print('   NetTotal (pre-merchant) : $newNetTotal');
+      print('   Merchant Discount     : $merchantDiscount');
+      print('   New Net Payable       : $newNetPayable');
+    }
+
+    setState(() {
+      grossTotal = newGrossForDisplay;
+      NetTotal = newNetTotal;
+      computedNetPayable = newNetPayable;
+      orderTotal = newNetPayable;
+
+      if (tenderAmount <= 0) {
+        balanceAmount = newNetPayable;
+      }
+    });
+
+    final String orderKey = widget.offlineOrderId?.toString() ??
+        widget.orderId?.toString() ??
+        orderId?.toString() ??
+        "";
+
+    if (orderKey.isNotEmpty) {
+      try {
+        final box = StorageProvider.offlineOrders;
+        final rawOrder = await box.get(orderKey);
+        if (rawOrder != null) {
+          final offlineOrder = Map<String, dynamic>.from(rawOrder);
+          offlineOrder["gross_total"] = newGrossForDisplay;
+          offlineOrder["NetTotal"] = newNetTotal;
+          offlineOrder["net_total"] = newNetTotal;
+          offlineOrder["net_payable"] = newNetPayable;
+          offlineOrder["grand_total"] = newNetPayable;
+          if (tenderAmount <= 0) {
+            offlineOrder["balanceAmount"] = newNetPayable;
+            offlineOrder["balance_amount"] = newNetPayable;
+            offlineOrder["remaining_balance"] = newNetPayable;
+          }
+          offlineOrder["merchantDiscount"] = merchantDiscount.abs();
+          offlineOrder["merchant_discount"] = merchantDiscount.abs();
+          offlineOrder["merchantDiscountPercentage"] = merchantDiscountPercentage;
+
+          await box.put(orderKey, offlineOrder);
+          if (kDebugMode) {
+            print(
+                "💾 [CD/Summary] Updated Hive with recalculated gross: $newGrossForDisplay, netTotal: $newNetTotal, netPayable: $newNetPayable");
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print("❌ [CD/Summary] Failed to update Hive order gross/net: $e");
+        }
+      }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔥 CRITICAL FIX: Update customer display when merchant discount changes
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    final bool merchantDiscountChanged = (merchantDiscount - previousMerchantDiscount).abs() > 0.01;
+    final bool netPayableChanged = (computedNetPayable - previousComputedNetPayable).abs() > 0.01;
+
+    if (merchantDiscountChanged || netPayableChanged) {
+      // Update customer display with latest merchant discount values
+      await _updateCustomerDisplayWithMerchantDiscount();
+      if (widget.offlineOrderId != null) {
+        await CustomerDisplayHelper.updateCustomerDisplay(
+          widget.offlineOrderId!,
+          summaryEnabled: true,
+        );
+      }
+    }
+  }
+
+  Future<void> _updateCustomerDisplayWithMerchantDiscount() async {
+    final int? orderIdToUse = widget.offlineOrderId ?? orderId;
+    if (orderIdToUse == null || orderIdToUse == 0) return;
+
+    if (kDebugMode) {
+      print('🔄 Updating customer display via helper...');
+    }
+
+    try {
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        orderIdToUse,
+        summaryEnabled: true,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('Failed to update customer display via helper: $e');
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+
     const MethodChannel _customerDisplayChannel = MethodChannel(
-      'com.alekta.pinakapos/sunmi_display', //com.alekta.pinakapos
+      'com.example.flutter_customer_display/sunmi_display',
     );
 
     _customerDisplayChannel.setMethodCallHandler((call) async {
@@ -4950,34 +3152,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       print("=================================");
     });
 
+    // remaining initState code...
+
     ScannerGuard.isCouponPopupOpen = true;
 
     orderItems =
         widget.orderItems.map((e) => Map<String, dynamic>.from(e)).toList();
-
-    // grossTotal = widget.grossTotal;
-    // discount = (widget.orderDiscount != 0) ? -(widget.orderDiscount.abs()) : 0.0;
-    // merchantDiscount = (widget.merchantDiscount != 0) ? -(widget.merchantDiscount.abs()) : 0.0;
-    // tax = widget.orderTax;
-    // orderId = widget.orderId;
-    // ebtTotal = widget.ebtAmount;
-    //
-    // _displayDate = widget.formattedDate;
-    // _displayTime = widget.formattedTime;
-    // cashbackFee = widget.cashbackFee;
-    // discountValue = widget.discountAmount;
-    //
-    // // Initial totals calculation
-    // NetTotal = grossTotal + discount + merchantDiscount;
-    // computedNetPayable = NetTotal + tax + cashbackFee;
-    // orderTotal = computedNetPayable;
-    // merchantDiscount = widget.merchantDiscount < 0 ? widget.merchantDiscount : -widget.merchantDiscount.abs();
-
     grossTotal = widget.grossTotal;
-    discount = widget.orderDiscount;
+    discount =
+        (widget.orderDiscount != 0) ? -(widget.orderDiscount.abs()) : 0.0;
     merchantDiscount =
-    (widget.merchantDiscount != 0) ? -(widget.merchantDiscount.abs()) : 0.0;
-    tax = widget.orderTax;
+        (widget.merchantDiscount != 0) ? -(widget.merchantDiscount.abs()) : 0.0;
+    // tax = getAdjustedSummaryTax();
     orderId = widget.orderId;
     ebtTotal = widget.ebtAmount;
 
@@ -4988,64 +3174,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     cashbackFee = widget.cashbackFee;
     discountValue = widget.discountAmount;
 
-// ── FIX: Recompute grossTotal from item_sum_price values.
-// OrderScreenPanel sets item_sum_price to PRE-DISCOUNT total for items with
-// auto/combo/multipack discounts (so _recalculateGrossAndNetFromLineItemDiscounts
-// can subtract them). But widget.grossTotal is POST-discount. This mismatch
-// causes double-subtraction (e.g. $2.99 - $2.00 = $0.99 instead of $2.99).
-// Solution: sync grossTotal with what the items actually carry.
-    double _recomputedGross = 0.0;
-    bool _hasDiscountedItems = false;
-    for (final item in orderItems) {
-      final String _iType = (item['item_type'] ?? '').toString().toLowerCase();
-      final String _iName = (item['item_name'] ?? '').toString().toLowerCase();
-      if (_iType.contains('discount') ||
-          _iType.contains('coupon') ||
-          _iType.contains('payout') ||
-          _iType.contains('cashback') ||
-          _iType.contains('loyalty') ||
-          _iName.contains('merchant discount')) {
-        continue;
-      }
-      final double _sumPrice =
-          (item['item_sum_price'] as num?)?.toDouble() ?? 0.0;
-      _recomputedGross += _sumPrice;
-      // Check if any item has discount keys set (meaning prices were bumped up)
-      final double _autoD = (item['auto_discount_total'] as num?)?.toDouble() ??
-          (item['autoDiscountTotal'] as num?)?.toDouble() ??
-          0.0;
-      final double _comboD =
-          (item['combo_discount_total'] as num?)?.toDouble() ??
-              (item['comboDiscountTotal'] as num?)?.toDouble() ??
-              0.0;
-      final double _multiD =
-          (item['multipack_discount_total'] as num?)?.toDouble() ??
-              (item['multipackDiscountTotal'] as num?)?.toDouble() ??
-              0.0;
-      if (_autoD > 0 || _comboD > 0 || _multiD > 0) _hasDiscountedItems = true;
-    }
-// Only override grossTotal when OrderScreenPanel bumped item_sum_price to pre-discount
-// (detectable when recomputed > widget.grossTotal and discounted items exist)
-//     if (_hasDiscountedItems && _recomputedGross > grossTotal + 0.005) {
-//       grossTotal = _recomputedGross;
-//     }
-
-// Initial totals calculation
-    NetTotal = grossTotal + discount + merchantDiscount;
-    computedNetPayable = NetTotal + tax + cashbackFee;
-    orderTotal = computedNetPayable;
-    merchantDiscount = widget.merchantDiscount < 0
-        ? widget.merchantDiscount
-        : -widget.merchantDiscount.abs();
     Future.delayed(Duration.zero, () async {
       final box = StorageProvider.offlineOrders;
       final key = (orderId ?? 0).toString();
-
       if (await box.containsKey(key)) {
         final rawExisting = await box.get(key);
         final existing =
-        Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
-
+            Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
         if (widget.ebtAmount > 0 &&
             existing["originalEbt"] != widget.ebtAmount) {
           existing["originalEbt"] = widget.ebtAmount;
@@ -5057,15 +3192,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final offlineBox = StorageProvider.offlineOrders;
       final orderIdKey = (orderId ?? 0).toString();
-
       if (await offlineBox.containsKey(orderIdKey)) {
         final raw = await offlineBox.get(orderIdKey);
         offlineOrder = raw is Map ? Map<String, dynamic>.from(raw) : null;
         if (offlineOrder != null &&
             offlineOrder!['merchantDiscountPercentage'] != null) {
           merchantDiscountPercentage = double.tryParse(
-              offlineOrder!['merchantDiscountPercentage']?.toString() ??
-                  '0') ??
+                  offlineOrder!['merchantDiscountPercentage']?.toString() ??
+                      '0') ??
               0.0;
         }
 
@@ -5082,7 +3216,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Map<String, dynamic>.from(offlineOrder!["lastPayment"]),
             );
           }
-
           if (balanceAmount > 0) {
             _currentPaymentRemainingBalance = balanceAmount;
             _lastPaymentDetails = {
@@ -5105,23 +3238,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         _currentPaymentRemainingBalance = null;
         _lastPaymentDetails = null;
       }
-      _printSummaryDebug("AFTER RECALCULATIONS");
 
       await _enrichOrderItemsFromHiveProducts();
       await _recalculateTaxOnDiscountedItems();
       if (!widget.itemPricesAlreadyAdjusted) {
-        _recalculateGrossAndNetFromLineItemDiscounts();
+        await _recalculateGrossAndNetFromLineItemDiscounts();
       }
 
       if (mounted) setState(() {});
 
       await _calculateBalanceFromPaymentHistory();
       await _printPaymentHistorySummary();
-      _printSummaryDebug("FINAL STATE AFTER HISTORY");
-
       if (_currentPaymentRemainingBalance != null) {
         print("\n ACTIVE PAYMENT SESSION DETECTED");
-
         print(
             "Remaining Balance: \$${_currentPaymentRemainingBalance!.toStringAsFixed(2)}");
       } else {
@@ -5129,31 +3258,27 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         print(
             "Starting fresh from balance: \$${balanceAmount.toStringAsFixed(2)}");
       }
-
-      // Add this helper method in _OrderSummaryScreenState
-
       await retrySyncUnsyncedPayments();
-
-      // 🔥 IMPORTANT: Recalculate tax after discounts
-      // await _recalculateTaxOnDiscountedItems();
+      await _recalculateTaxOnDiscountedItems();
+      if (!widget.itemPricesAlreadyAdjusted) {
+        await _recalculateGrossAndNetFromLineItemDiscounts();
+      }
     });
 
-    // Second delayed block - keep existing logic
     Future.delayed(Duration.zero, () async {
       if (kDebugMode) {
         print("\n ORDER SUMMARY INITIALIZED");
         print("Order ID: $orderId");
       }
 
+      // Calculate balance from payment history first
       await _calculateBalanceFromPaymentHistory();
-      await _printPaymentHistorySummary();
-      await retrySyncUnsyncedPayments();
 
-      // Extra safety call
+      // Print payment history summary
+      await _printPaymentHistorySummary();
+
+      await retrySyncUnsyncedPayments();
       await _recalculateTaxOnDiscountedItems();
-      if (!widget.itemPricesAlreadyAdjusted) {
-        _recalculateGrossAndNetFromLineItemDiscounts();
-      }
     });
 
     Future.delayed(Duration.zero, () async {
@@ -5183,8 +3308,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (!(await box.containsKey(key))) {
         await _createOfflineOrderEntry(key);
       } else {
+        // Load existing data
         final data = await _loadOfflineOrderData();
         if (data != null) {
+          // Restore state from Hive
           setState(() {
             tenderAmount = (data['tender_amount'] as num?)?.toDouble() ?? 0.0;
             balanceAmount = (data['remaining_balance'] as num?)?.toDouble() ??
@@ -5205,13 +3332,30 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final bool isNegativeOrder = widget.grossTotal < 0;
 
     print("🏷 q = $discountValue");
+
     print(" EBT Total in Summary Screen = $ebtTotal");
+
+    // Compute totals
+    NetTotal = grossTotal + discount + merchantDiscount;
+    computedNetPayable = NetTotal + tax + cashbackFee;
+
+    orderTotal = computedNetPayable;
+
     print(" Computed Net Payable (Order Total) = $orderTotal");
+    // Payment restoration is done in Future.delayed above (async storage)
+
+    // Show restored payment state
+    print("💵 Current Payment Breakdown:");
+    print("   → payByCash = $payByCash");
+    print("   → payByOther = $payByOther");
+    print("   → tenderAmount = $tenderAmount");
+    print("   → balanceAmount = $balanceAmount");
 
     // Redeem listener
     mobileController.addListener(() {
       setState(() {
         isMobileValid = RegExp(r'^[0-9]{10}$').hasMatch(mobileController.text);
+
         if (!isMobileValid) {
           isRedeemActive = false;
         }
@@ -5229,38 +3373,27 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         "\nCashback Fee: $cashbackFee"
         "\nNet Payable: ${widget.netPayable}");
 
+    for (var item in orderItems) {
+      print(jsonEncode(item));
+    }
+
+    print("💵 INITIAL PAYMENT STATE:");
+    print("   payByCash = $payByCash");
+    print("   payByOther = $payByOther");
+    print("   tenderAmount = $tenderAmount");
+    print("   balanceAmount = $balanceAmount");
+    print("   orderTotal = $orderTotal");
+
     if (!isNegativeOrder) {
-      _fetchPaymentsByOrderId();
+      _fetchPaymentsByOrderId(); // sale only
     } else {
+      //  payout → no API, no loading
       setState(() {
         isLoading = false;
         isSummaryLoading = false;
-        balanceAmount = widget.netPayable;
+        balanceAmount = widget.netPayable; // negative
       });
     }
-  }
-
-  void _printSummaryDebug(String context) {
-    print("\n" + "📊" * 60);
-    print("📊 ORDER SUMMARY DEBUG — $context");
-    print("📊" * 60);
-    print("Gross Total          : \$${grossTotal.toStringAsFixed(2)}");
-    print("Order Discount       : \$${discount.toStringAsFixed(2)}");
-    print("Merchant Discount    : \$${merchantDiscount.toStringAsFixed(2)}");
-    print("Tax                  : \$${tax.toStringAsFixed(2)}");
-    print("Cashback Fee         : \$${cashbackFee.toStringAsFixed(2)}");
-    print("Net Total            : \$${NetTotal.toStringAsFixed(2)}");
-    print("Computed Net Payable : \$${computedNetPayable.toStringAsFixed(2)}");
-    print("Order Total          : \$${orderTotal.toStringAsFixed(2)}");
-    print("Balance Amount       : \$${balanceAmount.toStringAsFixed(2)}");
-    print("Tender Amount        : \$${tenderAmount.toStringAsFixed(2)}");
-    print("Change Amount        : \$${changeAmount.toStringAsFixed(2)}");
-    print("EBT Total            : \$${ebtTotal.toStringAsFixed(2)}");
-    print("Pay by Cash          : \$${payByCash.toStringAsFixed(2)}");
-    print("Pay by Card          : \$${payByCard.toStringAsFixed(2)}");
-    print("Pay by EBT           : \$${payByEbt.toStringAsFixed(2)}");
-    print("Pay by Other         : \$${payByOther.toStringAsFixed(2)}");
-    print("📊" * 60 + "\n");
   }
 
   @override
@@ -5288,7 +3421,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   static const MethodChannel _paymentChannel =
-  MethodChannel("sunmi_payment_channel");
+      MethodChannel("sunmi_payment_channel");
 
   Future<void> _openSunmiVoidScreen({
     required double amount,
@@ -5390,7 +3523,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       selectedPaymentMethod = TextConstants.card;
 
       final String datetime =
-      DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+          DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
       final localPayment = LocalPayment(
         orderId: widget.orderId ?? 0,
@@ -5413,14 +3546,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         isSynced: false,
         createdAt: DateTime.now(),
         remainingBalance:
-        (balanceAmount - paidAmount).clamp(0.0, double.infinity),
+            (balanceAmount - paidAmount).clamp(0.0, double.infinity),
         status:
-        PaymentDbStatus.pending, // Will be marked completed later if needed
+            PaymentDbStatus.pending, // Will be marked completed later if needed
       );
 
       // 1. Save to Isar
       final savedPayment =
-      await LocalPaymentDBHelper.instance.savePayment(localPayment);
+          await LocalPaymentDBHelper.instance.savePayment(localPayment);
 
       // 2. Save to Hive (this is what powers your session history)
       await _savePaymentToHive(
@@ -5471,11 +3604,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Future<void> _createPaymentFromSunmi(
-      double amount,
-      Map<String, dynamic> sunmi,
-      ) async {
+    double amount,
+    Map<String, dynamic> sunmi,
+  ) async {
     final String datetime =
-    DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+        DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
     final paymentRequest = PaymentRequestModel(
       title: "Card",
@@ -5507,93 +3640,92 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     StreamSubscription? subscription;
     subscription =
         paymentBloc.createPaymentStream.listen((paymentResponse) async {
-          print("");
-          print(" ================= SUNMI PAYMENT FULL RESPONSE =================");
+      print("");
+      print(" ================= SUNMI PAYMENT FULL RESPONSE =================");
 
-          print("STATUS → ${paymentResponse.status}");
-          print("RAW RESPONSE OBJECT → $paymentResponse");
+      print("STATUS → ${paymentResponse.status}");
+      print("RAW RESPONSE OBJECT → $paymentResponse");
 
-          //  ERROR
-          if (paymentResponse.status == Status.ERROR) {
-            print(" ERROR MESSAGE → ${paymentResponse.message}");
-            print(" ERROR DATA → ${paymentResponse.data}");
-            print(
-                "===============================================================");
-            subscription?.cancel();
-            return;
-          }
+      //  ERROR
+      if (paymentResponse.status == Status.ERROR) {
+        print(" ERROR MESSAGE → ${paymentResponse.message}");
+        print(" ERROR DATA → ${paymentResponse.data}");
+        print(
+            "===============================================================");
+        subscription?.cancel();
+        return;
+      }
 
-          //  SUCCESS
-          if (paymentResponse.status == Status.COMPLETED &&
-              paymentResponse.data != null) {
-            final data = paymentResponse.data!;
+      //  SUCCESS
+      if (paymentResponse.status == Status.COMPLETED &&
+          paymentResponse.data != null) {
+        final data = paymentResponse.data!;
 
-            print(" MESSAGE → ${data.message}");
-            print(" PAYMENT ID → ${data.paymentId}");
-            print(" ORDER ID → ${data.orderId}");
-            print("ORDER STATUS → ${data.orderStatus}");
+        print(" MESSAGE → ${data.message}");
+        print(" PAYMENT ID → ${data.paymentId}");
+        print(" ORDER ID → ${data.orderId}");
+        print("ORDER STATUS → ${data.orderStatus}");
 
-            // =====================================================
-            //  STORE LAST PAYMENT INFO (FOR VOID)
-            //=====================
-            _lastPayment = LastPaymentInfo(
-              method: TextConstants.card,
-              amount: amount,
-              paymentId: data.paymentId?.toString(),
+        // =====================================================
+        //  STORE LAST PAYMENT INFO (FOR VOID)
+        //=====================
+        _lastPayment = LastPaymentInfo(
+          method: TextConstants.card,
+          amount: amount,
+          paymentId: data.paymentId?.toString(),
 
-              sunmiTxnId: sunmi["transactionId"]?.toString(),
-              sunmiOrderId: sunmi["orderId"]?.toString(),
-              sunmiDeviceId: sunmi["deviceID"]?.toString(), //  FIX
-            );
+          sunmiTxnId: sunmi["transactionId"]?.toString(),
+          sunmiOrderId: sunmi["orderId"]?.toString(),
+          sunmiDeviceId: sunmi["deviceID"]?.toString(), //  FIX
+        );
 
 // Keep for API void usage
-            paymentId = data.paymentId?.toString();
+        paymentId = data.paymentId?.toString();
 
-            // =====================================================
-            //  SAVE TO HIVE (SURVIVES APP RESTART)
-            // =====================================================
-            try {
-              final box = StorageProvider.offlineOrders;
-              final key = (orderId ?? 0).toString();
+        // =====================================================
+        //  SAVE TO HIVE (SURVIVES APP RESTART)
+        // =====================================================
+        try {
+          final box = StorageProvider.offlineOrders;
+          final key = (orderId ?? 0).toString();
 
-              final hasKey = await box.containsKey(key);
-              final raw = hasKey ? await box.get(key) : null;
-              final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
+          final hasKey = await box.containsKey(key);
+          final raw = hasKey ? await box.get(key) : null;
+          final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
 
+          existing["lastPayment"] = _lastPayment!.toJson();
+          await box.put(key, existing);
 
-              existing["lastPayment"] = _lastPayment!.toJson();
-              await box.put(key, existing);
+          print("💾 LAST PAYMENT SAVED TO HIVE");
+          print("   → method = ${_lastPayment!.method}");
+          print("   → amount = ${_lastPayment!.amount}");
+          print("   → sunmiTxn = ${_lastPayment!.sunmiTxnId}");
+          print("   → paymentId = ${_lastPayment!.paymentId}");
+        } catch (e) {
+          print(" Failed saving last payment to Hive: $e");
+        }
 
-              print("💾 LAST PAYMENT SAVED TO HIVE");
-              print("   → method = ${_lastPayment!.method}");
-              print("   → amount = ${_lastPayment!.amount}");
-              print("   → sunmiTxn = ${_lastPayment!.sunmiTxnId}");
-              print("   → paymentId = ${_lastPayment!.paymentId}");
-            } catch (e) {
-              print(" Failed saving last payment to Hive: $e");
-            }
+        // 🔹 FULL DATA DUMP
+        try {
+          print("📦 FULL DATA JSON ↓↓↓");
+          print(jsonEncode(data.toJson()));
+        } catch (e) {
+          print("⚠ toJson() not available");
+          print(data);
+        }
+      }
 
-            // 🔹 FULL DATA DUMP
-            try {
-              print("📦 FULL DATA JSON ↓↓↓");
-              print(jsonEncode(data.toJson()));
-            } catch (e) {
-              print("⚠ toJson() not available");
-              print(data);
-            }
-          }
-
-          print("===============================================================");
-          subscription?.cancel();
-        });
+      print("===============================================================");
+      subscription?.cancel();
+    });
   }
 
   Future<void> updateOfflineOrderRedeem(
-      String orderId,
-      double redeemedValue,
-      int redeemedPoints,
-      int updatedAvailablePoints,
-      ) async {
+    String orderId,
+    double redeemedValue,
+    int redeemedPoints,
+    int updatedAvailablePoints,
+  ) async {
     final box = StorageProvider.offlineOrders;
     final existing = await box.get(orderId);
 
@@ -5691,7 +3823,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (await box.containsKey(key)) {
         final rawStored = await box.get(key);
         final stored =
-        Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
+            Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
         redeemedValue = (stored["redeemed_value"] as num?)?.toDouble() ?? 0.0;
       }
     } catch (_) {
@@ -5705,7 +3837,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (await box.containsKey(key)) {
         final rawStored = await box.get(key);
         final stored =
-        Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
+            Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
         if (stored["remainingEbt"] != null) {
           ebtTotal = (stored["remainingEbt"] as num).toDouble();
         } else if (stored["originalEbt"] != null) {
@@ -5721,18 +3853,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     _paymentListSubscription?.cancel();
     _paymentListSubscription =
         paymentBloc.paymentsListStream.listen((response) async {
-          if (response.status == Status.COMPLETED) {
-            final data = response.data ?? [];
-            if (data.isNotEmpty) {
-              await _processPaymentList(data);
-            } else {
-              // API returned empty - use LocalPayment as source of truth
-              // (fixes balance showing net payable when payments exist locally but not yet synced)
-              await _calculateBalanceFromPaymentHistory();
-            }
-          }
-          if (mounted) setState(() => isSummaryLoading = false);
-        });
+      if (response.status == Status.COMPLETED) {
+        final data = response.data ?? [];
+        if (data.isNotEmpty) {
+          await _processPaymentList(data);
+        } else {
+          // API returned empty - use LocalPayment as source of truth
+          // (fixes balance showing net payable when payments exist locally but not yet synced)
+          await _calculateBalanceFromPaymentHistory();
+        }
+      }
+      if (mounted) setState(() => isSummaryLoading = false);
+    });
   }
 
   Future<void> _processPaymentList(List<PaymentListModel> payments) async {
@@ -5787,13 +3919,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     //  REMAINING EBT AFTER EBT PAYMENTS
     // ===================================================
     final double remainingEbt =
-    originalEbt - ebtPaid < 0 ? 0.0 : originalEbt - ebtPaid;
+        originalEbt - ebtPaid < 0 ? 0.0 : originalEbt - ebtPaid;
 
     // ===================================================
     //  NON-EBT PORTION
     // ===================================================
     final double nonEbtOrderValue =
-    basePayable - originalEbt < 0 ? 0.0 : basePayable - originalEbt;
+        basePayable - originalEbt < 0 ? 0.0 : basePayable - originalEbt;
 
     final double nonEbtPaid = cashTotal + otherTotal;
 
@@ -5801,10 +3933,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     //  CASH / CARD OVERFLOW REDUCES EBT
     // ===================================================
     final double overflowToEbt =
-    nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
+        nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
 
     final double finalRemainingEbt =
-    remainingEbt - overflowToEbt < 0 ? 0.0 : remainingEbt - overflowToEbt;
+        remainingEbt - overflowToEbt < 0 ? 0.0 : remainingEbt - overflowToEbt;
 
     // ===================================================
     //  APPLY REDEEM (DISCOUNT ONLY)
@@ -5854,7 +3986,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     existing["remainingEbt"] = finalRemainingEbt;
     existing["redeemed_value"] = redeemedValue;
     existing["remainingBalance"] = finalBalance;
-    existing["lastPayment"] = _lastPayment!.toJson();
+
     await box.put(key, existing);
 
     if (kDebugMode) {
@@ -5905,329 +4037,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     });
   }
 
-//   void _callCreatePaymentAPI() {
-//     if (kDebugMode) {
-//       print("###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount");
-//     }
-//
-//     // ------------------------------------------------------
-//     //  RULE 0: Ensure user selected a payment method
-//     // ------------------------------------------------------
-//     if (selectedPaymentMethod == null || selectedPaymentMethod!.isEmpty) {
-//       print("❌ ERROR: No payment method selected");
-//       return;
-//     }
-//
-//     final bool isCard = selectedPaymentMethod == TextConstants.card;
-//
-//     // ------------------------------------------------------
-//     // ⭐ RULE 1: If method is NOT card, amount is required
-//     // ------------------------------------------------------
-//     if (!isCard && balanceAmount > 0 && amountController.text.isEmpty) {
-//       print("❌ ERROR: Amount required for Cash / Wallet / EBT");
-//       return;
-//     }
-//
-//     // Clean amount
-//     String cleanAmount = amountController.text
-//         .replaceAll(TextConstants.currencySymbol, '')
-//         .trim();
-//
-//     double amount = double.tryParse(cleanAmount) ?? 0.0;
-//
-//     // ------------------------------------------------------
-//     // ⭐ RULE 2: CARD amount handled by Sunmi, ignore validation
-//     // ------------------------------------------------------
-//     if (isCard) {
-//       print("💳 CARD PAYMENT → Skipping amount validation, Sunmi handles it.");
-//       amount = amount > 0 ? amount : 0.0;
-//     } else {
-//       // ------------------------------------------------------
-//       // ⭐ RULE 3: No negative amount
-//       // ------------------------------------------------------
-//       if (amount < 0) {
-//         print("❌ ERROR: Negative amount");
-//         return;
-//       }
-//
-//       // ------------------------------------------------------
-//       // ⭐ RULE 4: Amount cannot be zero IF balance > 0
-//       // ------------------------------------------------------
-//       if (amount == 0 && computedNetPayable > 0) {
-//         setState(() => _amountErrorText = TextConstants.amountValidation);
-//         return;
-//       }
-//     }
-//
-//     _amountErrorText = null;
-//     double remainingBalance = balanceAmount;
-//
-//     setState(() {
-//       _processingPaymentMethod = selectedPaymentMethod;
-//       isLoading = true;
-//     });
-//     _showPaymentProgressDialog(context);
-//
-//     final String datetime =
-//     DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-//
-//     // ⭐ Important fix: Dynamic paymentMethod
-//     final paymentRequest = PaymentRequestModel(
-//       title: selectedPaymentMethod!,
-//       orderId: orderId ?? 0,
-//       amount: amount,
-//       paymentMethod: selectedPaymentMethod!, // <-- correct method passed
-//       shiftId: shiftId,
-//       vendorId: vendorId,
-//       userId: userId ?? 0,
-//       serviceType: serviceType,
-//       datetime: datetime,
-//       notes: '',
-//     );
-//
-//     if (kDebugMode) print("Creating payment with request: $paymentRequest");
-//
-//     paymentBloc.createPayment(paymentRequest);
-//
-//     StreamSubscription? subscription;
-//     subscription = paymentBloc.createPaymentStream.listen(
-//           (paymentResponse) async {
-//
-//
-//         if (kDebugMode) {
-//           print("Payment stream response: $paymentResponse");
-//         }
-//
-//         if (paymentResponse.status == Status.ERROR) {
-//           _hidePaymentProgressDialog();
-//
-//           setState(() {
-//             _processingPaymentMethod = null;
-//             isLoading = false;
-//           });
-//           subscription?.cancel();
-//           return;
-//         }
-//
-//         if (paymentResponse.status == Status.COMPLETED &&
-//             paymentResponse.data != null &&
-//             paymentResponse.data!.message == "Payment Created Successfully") {
-//           setState(() {
-//             isPaymentStarted = true;
-//             _processingPaymentMethod = null;
-//             isLoading = false;
-//           });
-//
-//           final paymentData = paymentResponse.data!;
-//           paidAmount = amount;
-//           paymentId = paymentData.paymentId.toString();
-//           orderStatus =
-//               paymentData.orderStatus ?? TextConstants.processing;
-//
-//           try {
-//             final box = StorageProvider.offlineOrders;
-//             final key = (orderId ?? 0).toString();
-//
-//             final existing = box.containsKey(key)
-//                 ? Map<String, dynamic>.from(box.get(key))
-//                 : <String, dynamic>{};
-//
-//             existing["coupon_response"] = {
-//               "available_coupons": paymentData.availableCoupons,
-//               "coupons": paymentData.coupons
-//                   ?.map((c) => c.toJson())
-//                   .toList(),
-//             };
-//
-//             await box.put(key, existing);
-//
-//             if (kDebugMode) {
-//               print("🎁 FULL COUPON RESPONSE SAVED");
-//               print(existing["coupon_response"]);
-//             }
-//           } catch (e) {
-//             print("⚠ Coupon save failed: $e");
-//           }
-//
-//           // ------------------------------------------
-//           // OFFLINE DELETE (unchanged)
-//           // ------------------------------------------
-//           if (widget.isOfflineSynced && widget.offlineOrderId != null) {
-//             try {
-//               final offlineId = widget.offlineOrderId!;
-//               final box = StorageProvider.offlineOrders;
-//
-//               if (await box.containsKey(offlineId.toString())) {
-//                 await box.delete(offlineId.toString());
-//               }
-//
-//               await orderHelper.deleteOrder(offlineId);
-//             } catch (e) {
-//               print("⚠ Failed deleting offline order: $e");
-//             }
-//           }
-//
-//           // =====================================================
-// // ⭐ STORE LAST PAYMENT INFO (FOR VOID)
-// // =====================================================
-//           _lastPayment = LastPaymentInfo(
-//             method: selectedPaymentMethod!,
-//             amount: amount,
-//             paymentId: paymentId,
-//             sunmiTxnId: null, // ❗ only card has this
-//           );
-//
-// // Save to Hive
-//           try {
-//             final box = StorageProvider.offlineOrders;
-//             final key = (orderId ?? 0).toString();
-//
-//             final existing = box.containsKey(key)
-//                 ? Map<String, dynamic>.from(box.get(key))
-//                 : <String, dynamic>{};
-//
-//             existing["lastPayment"] = _lastPayment!.toJson();
-//             await box.put(key, existing);
-//
-//             if (kDebugMode) {
-//               print("💾 LAST PAYMENT SAVED (NON-CARD)");
-//               print("   → method = ${_lastPayment!.method}");
-//               print("   → amount = ${_lastPayment!.amount}");
-//               print("   → paymentId = ${_lastPayment!.paymentId}");
-//             }
-//           } catch (e) {
-//             print("⚠ Failed saving last payment to Hive: $e");
-//           }
-//
-//
-//           // ------------------------------------------
-//           // BALANCE CALCULATION (unchanged)
-//           // ------------------------------------------
-//           final bool isExactPayment = (amount == remainingBalance);
-//           final bool isOverPayment = (amount > remainingBalance);
-//           final bool isPartialPayment = (amount < remainingBalance);
-//
-//           tenderAmount += amount;
-//
-//           if (isOverPayment) {
-//             changeAmount = amount - remainingBalance;
-//             balanceAmount = 0.0;
-//           } else if (isExactPayment) {
-//             changeAmount = 0.0;
-//             balanceAmount = 0.0;
-//           } else if (isPartialPayment) {
-//             balanceAmount = remainingBalance - amount;
-//             changeAmount = 0.0;
-//           }
-//
-//           balanceAmount =
-//               double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
-//           if (changeAmount != null && changeAmount! > 0) {
-//             final repo = PaymentRepository();
-//             await repo.updatePaymentMeta(
-//               paymentId: int.parse(paymentId!),
-//               key: "_payment_remaining_change",
-//               value: changeAmount!.toStringAsFixed(2),
-//             );
-//           }
-//
-//           _order["balanceAmount"] = balanceAmount;
-//           _order["paidAmount"] = tenderAmount;
-//           _order["tenderAmount"] = tenderAmount;
-//
-//           // ------------------------------------------------------
-//           // ⭐ SAVE BALANCE + TENDER AMOUNT TO ORDER + HIVE
-//           // ------------------------------------------------------
-//           try {
-//             final offlineBox = StorageProvider.offlineOrders;
-//             final key = (orderId ?? 0).toString();
-//
-//             if (offlineBox.containsKey(key)) {
-//               final updated = Map<String, dynamic>.from(offlineBox.get(key));
-//
-//               updated["balanceAmount"] = balanceAmount;
-//               updated["paidAmount"] = tenderAmount;
-//               updated["tenderAmount"] = tenderAmount;
-//
-//               // ⭐ Add this line to store EBT
-//               updated["ebtTotal"] = ebtTotal;
-//
-//               offlineBox.put(key, updated);
-//
-//               print("✔ Hive updated → balance=$balanceAmount paid=$tenderAmount ebt=$ebtTotal");
-//             } else {
-//               // If order not in Hive yet, create it
-//               offlineBox.put(key, {
-//                 "balanceAmount": balanceAmount,
-//                 "paidAmount": tenderAmount,
-//                 "tenderAmount": tenderAmount,
-//                 "payByCash": payByCash,
-//                 "payByOther": payByOther,
-//                 "ebtTotal": ebtTotal,   // ⭐ Add here too
-//               });
-//               print("✔ Hive created → balance=$balanceAmount paid=$tenderAmount ebt=$ebtTotal");
-//             }
-//           } catch (e) {
-//             print("⚠ Hive update error: $e");
-//           }
-//           amountController.clear();
-//
-//           if (mounted) setState(() {});
-//
-//           // ------------------------------------------
-//           // SHOW POPUPS (unchanged)
-//           // ------------------------------------------
-//           // if (isPartialPayment && balanceAmount > 0) {
-//           //   _showPartialPaymentDialog(context, amount);
-//           // } else {
-//           //   _fetchPaymentsByOrderId();
-//           //   // _showPaymentDialog(
-//           //   //   context,
-//           //   //   amount,
-//           //   //   changeAmount: changeAmount,
-//           //   //   showChange: changeAmount > 0,
-//           //   // );
-//           // }
-//
-//           // ------------------------------------------------------
-// // ⭐ FINAL POPUP CONTROL (CREATE PAYMENT METHOD ONLY)
-// // ------------------------------------------------------
-//
-//           _fetchPaymentsByOrderId(); // keep for UI refresh
-//
-//           final bool isPaymentComplete = balanceAmount <= 0;
-//
-//           if (isPaymentComplete && !_successPopupShown) {
-//             _successPopupShown = true;
-//             _hidePaymentProgressDialog();
-//
-//             final box = StorageProvider.offlineOrders;
-//             final key = (orderId ?? 0).toString();
-//
-//             final couponResponse =
-//                 (box.get(key)?["coupon_response"] as Map?)
-//                     ?.cast<String, dynamic>() ??
-//                     {};
-//
-//             _showPaymentDialog(
-//               context,
-//               tenderAmount,
-//               changeAmount: changeAmount,
-//               showChange: changeAmount != null && changeAmount! > 0,
-//               couponResponse: couponResponse,
-//             );
-//           } else if (balanceAmount > 0) {
-//             _hidePaymentProgressDialog();
-//             _showPartialPaymentDialog(context, amount);
-//           }
-//
-//
-//           subscription?.cancel();
-//         }
-//       },
-//     );
-//   }
-
   Future<void> _callCreatePaymentAPI({bool skipPopup = false}) async {
     if (kDebugMode) {
       print(
@@ -6244,10 +4053,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (kDebugMode) print("⚡ FAKE PAYMENT SUCCESS MODE ACTIVE ⚡");
 
       double amount = double.tryParse(
-        amountController.text
-            .replaceAll(TextConstants.currencySymbol, '')
-            .trim(),
-      ) ??
+            amountController.text
+                .replaceAll(TextConstants.currencySymbol, '')
+                .trim(),
+          ) ??
           0.0;
 
       final double currentBalance = balanceAmount;
@@ -6310,7 +4119,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         final d = await box.get(key);
         final cr = d is Map ? d["coupon_response"] : null;
         final couponResponse =
-        cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+            cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
 
         // Update Hive order status
         // final box = StorageProvider.offlineOrders;
@@ -6364,7 +4173,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       try {
         final saved =
-        await LocalPaymentDBHelper.instance.savePayment(localPayment);
+            await LocalPaymentDBHelper.instance.savePayment(localPayment);
         _lastPayment?.paymentId = "local_${saved.id}";
         _updateHivePaymentData(localPayment);
 
@@ -6396,10 +4205,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     double amount = double.tryParse(
-      amountController.text
-          .replaceAll(TextConstants.currencySymbol, '')
-          .trim(),
-    ) ??
+          amountController.text
+              .replaceAll(TextConstants.currencySymbol, '')
+              .trim(),
+        ) ??
         0.0;
 
     if (!isCard) {
@@ -6443,132 +4252,131 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     StreamSubscription? subscription;
     subscription =
         paymentBloc.createPaymentStream.listen((paymentResponse) async {
-          if (kDebugMode) print("Payment stream response: $paymentResponse");
+      if (kDebugMode) print("Payment stream response: $paymentResponse");
 
-          if (paymentResponse.status == Status.ERROR) {
-            if (!skipPopup)
-              _hidePaymentProgressDialog();
-            else if (Navigator.canPop(context)) Navigator.pop(context);
+      if (paymentResponse.status == Status.ERROR) {
+        if (!skipPopup)
+          _hidePaymentProgressDialog();
+        else if (Navigator.canPop(context)) Navigator.pop(context);
 
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text("Payment failed: ${paymentResponse.message}"),
-                backgroundColor: Colors.red,
-              ),
-            );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Payment failed: ${paymentResponse.message}"),
+            backgroundColor: Colors.red,
+          ),
+        );
 
-            setState(() {
-              _processingPaymentMethod = null;
-              isLoading = false;
-              _successPopupShown = false;
-            });
+        setState(() {
+          _processingPaymentMethod = null;
+          isLoading = false;
+          _successPopupShown = false;
+        });
 
-            subscription?.cancel();
-            return;
-          }
+        subscription?.cancel();
+        return;
+      }
 
-          if (paymentResponse.status == Status.COMPLETED &&
-              paymentResponse.data != null &&
-              paymentResponse.data!.message == "Payment Created Successfully") {
-            if (!skipPopup) _hidePaymentProgressDialog();
+      if (paymentResponse.status == Status.COMPLETED &&
+          paymentResponse.data != null &&
+          paymentResponse.data!.message == "Payment Created Successfully") {
+        if (!skipPopup) _hidePaymentProgressDialog();
 
-            final paymentData = paymentResponse.data!;
-            paidAmount = amount;
-            paymentId = paymentData.paymentId.toString();
+        final paymentData = paymentResponse.data!;
+        paidAmount = amount;
+        paymentId = paymentData.paymentId.toString();
 
-            final bool isFullPayment = amount >= remainingBalance;
-            final bool isPartialPayment = !isFullPayment && amount > 0;
+        final bool isFullPayment = amount >= remainingBalance;
+        final bool isPartialPayment = !isFullPayment && amount > 0;
 
-            // Update balances
-            tenderAmount += amount;
-            final String paidMethod = selectedPaymentMethod!.toLowerCase().trim();
-            if (paidMethod == TextConstants.cash.toLowerCase()) {
-              payByCash += amount;
-            } else if (paidMethod == TextConstants.card.toLowerCase()) {
-              payByCard += amount;
-            } else if (paidMethod == TextConstants.ebtText.toLowerCase()) {
-              payByEbt += amount;
-              ebtTotal = (ebtTotal - amount).clamp(0.0, double.infinity);
-            } else {
-              payByOther += amount;
-            }
-            if (isFullPayment) {
-              balanceAmount = 0.0;
-              changeAmount = amount - remainingBalance;
-            } else {
-              balanceAmount = remainingBalance - amount;
-              changeAmount = 0.0;
-            }
-            balanceAmount = double.parse(balanceAmount.toStringAsFixed(2));
+        // Update balances
+        tenderAmount += amount;
+        final String paidMethod = selectedPaymentMethod!.toLowerCase().trim();
+        if (paidMethod == TextConstants.cash.toLowerCase()) {
+          payByCash += amount;
+        } else if (paidMethod == TextConstants.card.toLowerCase()) {
+          payByCard += amount;
+        } else if (paidMethod == TextConstants.ebtText.toLowerCase()) {
+          payByEbt += amount;
+          ebtTotal = (ebtTotal - amount).clamp(0.0, double.infinity);
+        } else {
+          payByOther += amount;
+        }
+        if (isFullPayment) {
+          balanceAmount = 0.0;
+          changeAmount = amount - remainingBalance;
+        } else {
+          balanceAmount = remainingBalance - amount;
+          changeAmount = 0.0;
+        }
+        balanceAmount = double.parse(balanceAmount.toStringAsFixed(2));
 
-            // ─── Save last payment info ───
-            _lastPayment = LastPaymentInfo(
-              method: selectedPaymentMethod!,
-              amount: amount,
-              paymentId: paymentId,
-              sunmiTxnId: null,
-            );
+        // ─── Save last payment info ───
+        _lastPayment = LastPaymentInfo(
+          method: selectedPaymentMethod!,
+          amount: amount,
+          paymentId: paymentId,
+          sunmiTxnId: null,
+        );
 
-            try {
-              final box = StorageProvider.offlineOrders;
-              final key = (orderId ?? 0).toString();
-              final hasKey = await box.containsKey(key);
-              final raw = hasKey ? await box.get(key) : null;
-              final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
-              existing["lastPayment"] = _lastPayment!.toJson();
-              existing["balanceAmount"] = balanceAmount;
-              existing["paidAmount"] = tenderAmount;
-              existing["tenderAmount"] = tenderAmount;
-              existing["ebtTotal"] = ebtTotal;
-              existing["lastPayment"] = _lastPayment!.toJson();
-              await box.put(key, existing);
-            } catch (e) {
-              print("⚠ Hive update error: $e");
-            }
+        try {
+          final box = StorageProvider.offlineOrders;
+          final key = (orderId ?? 0).toString();
+          final hasKey = await box.containsKey(key);
+          final raw = hasKey ? await box.get(key) : null;
+          final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
+          existing["lastPayment"] = _lastPayment!.toJson();
+          existing["balanceAmount"] = balanceAmount;
+          existing["paidAmount"] = tenderAmount;
+          existing["tenderAmount"] = tenderAmount;
+          existing["ebtTotal"] = ebtTotal;
+          await box.put(key, existing);
+        } catch (e) {
+          print("⚠ Hive update error: $e");
+        }
 
-            if (mounted)
-              setState(() {
-                _processingPaymentMethod = null;
-                isLoading = false;
-                _currentPaymentRemainingBalance =
+        if (mounted)
+          setState(() {
+            _processingPaymentMethod = null;
+            isLoading = false;
+            _currentPaymentRemainingBalance =
                 isPartialPayment ? balanceAmount : null;
-                _lastPaymentDetails = {
-                  'amount': amount,
-                  'method': selectedPaymentMethod!,
-                  'remainingBalance': balanceAmount,
-                  'previousBalance': remainingBalance,
-                  'datetime': DateTime.now().toIso8601String(),
-                };
-              });
+            _lastPaymentDetails = {
+              'amount': amount,
+              'method': selectedPaymentMethod!,
+              'remainingBalance': balanceAmount,
+              'previousBalance': remainingBalance,
+              'datetime': DateTime.now().toIso8601String(),
+            };
+          });
 
-            // ─── Full: success receipt dialog | Partial: "next payment" dialog ───
-            // Progress overlay was already closed above for both paths (!skipPopup).
-            if (isFullPayment && !_successPopupShown) {
-              _successPopupShown = true;
+        // ─── Full: success receipt dialog | Partial: "next payment" dialog ───
+        // Progress overlay was already closed above for both paths (!skipPopup).
+        if (isFullPayment && !_successPopupShown) {
+          _successPopupShown = true;
 
-              final box = StorageProvider.offlineOrders;
-              final key = (orderId ?? 0).toString();
-              final rawBox = await box.get(key);
-              final cr = rawBox is Map ? rawBox["coupon_response"] : null;
-              final couponResponse =
+          final box = StorageProvider.offlineOrders;
+          final key = (orderId ?? 0).toString();
+          final rawBox = await box.get(key);
+          final cr = rawBox is Map ? rawBox["coupon_response"] : null;
+          final couponResponse =
               cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
 
-              _showPaymentDialog(
-                context,
-                amount,
-                changeAmount: changeAmount,
-                showChange: changeAmount > 0,
-                couponResponse: couponResponse,
-              );
-            } else if (isPartialPayment && amount > 0) {
-              await _showPartialPaymentDialog(context, amount);
-            }
+          _showPaymentDialog(
+            context,
+            amount,
+            changeAmount: changeAmount,
+            showChange: changeAmount > 0,
+            couponResponse: couponResponse,
+          );
+        } else if (isPartialPayment && amount > 0) {
+          await _showPartialPaymentDialog(context, amount);
+        }
 
-            amountController.clear();
-            _fetchPaymentsByOrderId();
-            subscription?.cancel();
-          }
-        });
+        amountController.clear();
+        _fetchPaymentsByOrderId();
+        subscription?.cancel();
+      }
+    });
   }
 
   void _hidePaymentProgressDialog() {
@@ -6631,42 +4439,42 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               horizontal: 30, vertical: 8),
                           decoration: themeHelper.themeMode == ThemeMode.dark
                               ? ShapeDecoration(
-                            color: const Color(
-                                0xFF1F1D2B), // dark background
-                            shape: RoundedRectangleBorder(
-                              // side: BorderSide(
-                              //   width: 0,
-                              //   color: Colors.black.withOpacity(0.20),
-                              // ),
-                              borderRadius: BorderRadius.only(
-                                bottomLeft: Radius.circular(
-                                    ResponsiveLayout.getRadius(10)),
-                                bottomRight: Radius.circular(
-                                    ResponsiveLayout.getRadius(10)),
-                              ),
-                            ),
-                          )
+                                  color: const Color(
+                                      0xFF1F1D2B), // dark background
+                                  shape: RoundedRectangleBorder(
+                                    // side: BorderSide(
+                                    //   width: 0,
+                                    //   color: Colors.black.withOpacity(0.20),
+                                    // ),
+                                    borderRadius: BorderRadius.only(
+                                      bottomLeft: Radius.circular(
+                                          ResponsiveLayout.getRadius(10)),
+                                      bottomRight: Radius.circular(
+                                          ResponsiveLayout.getRadius(10)),
+                                    ),
+                                  ),
+                                )
                               : BoxDecoration(
-                            color: Colors.white, // light background
-                            borderRadius: BorderRadius.only(
-                              bottomLeft: Radius.circular(
-                                  ResponsiveLayout.getRadius(10)),
-                              bottomRight: Radius.circular(
-                                  ResponsiveLayout.getRadius(10)),
-                            ),
-                          ),
+                                  color: Colors.white, // light background
+                                  borderRadius: BorderRadius.only(
+                                    bottomLeft: Radius.circular(
+                                        ResponsiveLayout.getRadius(10)),
+                                    bottomRight: Radius.circular(
+                                        ResponsiveLayout.getRadius(10)),
+                                  ),
+                                ),
                           child: Container(
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
                               color: themeHelper.themeMode == ThemeMode.dark
                                   ? const Color(
-                                  0xFF303136) // dark mode background
+                                      0xFF303136) // dark mode background
                                   : Colors.white, // light mode background
                               border: Border.all(
                                 color: themeHelper.themeMode == ThemeMode.dark
                                     ? Color(
-                                    0xFF303136) // optional darker border for dark mode
+                                        0xFF303136) // optional darker border for dark mode
                                     : const Color(0xFFEDF2F9),
                                 width: 2,
                               ),
@@ -6675,7 +4483,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                 BoxShadow(
                                   color: themeHelper.themeMode == ThemeMode.dark
                                       ? Colors.black.withOpacity(
-                                      0.3) // subtle shadow in dark mode
+                                          0.3) // subtle shadow in dark mode
                                       : Colors.white,
                                   blurRadius: 8,
                                   offset: const Offset(2, 4),
@@ -6703,12 +4511,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   borderColor: const Color(0xFF9CCD7B),
                                   iconColor: Color(0xFF9CCD7B),
                                   isLoading: _processingPaymentMethod ==
-                                      TextConstants.cash &&
+                                          TextConstants.cash &&
                                       isLoading,
                                   isDisabled:
-                                  _processingPaymentMethod != null &&
-                                      _processingPaymentMethod !=
-                                          TextConstants.cash,
+                                      _processingPaymentMethod != null &&
+                                          _processingPaymentMethod !=
+                                              TextConstants.cash,
                                   onTap: () async {
                                     _selectPaymentMethod(TextConstants.cash);
                                     // await CustomerService
@@ -6745,20 +4553,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                   isLoading: false,
                                   isDisabled: false,
-                                  // onTap: () async {
-                                  //   _selectPaymentMethod(
-                                  //     TextConstants.card,
-                                  //     //autoFillAmount: true,
-                                  //     maxAllowedAmount: balanceAmount,
-                                  //   );
-                                  //   _handlePay();
-                                  // },
                                   onTap: () async {
                                     _selectPaymentMethod(
                                       TextConstants.card,
+                                      //autoFillAmount: true,
                                       maxAllowedAmount: balanceAmount,
                                     );
-                                    await _handleCardPaymentViaAPI();
+                                    _handlePay();
                                   },
                                 ),
                                 _buildPaymentModeButton(
@@ -6808,129 +4609,79 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   borderColor: const Color(0xFF84A2CB),
                                   iconColor: Colors.white,
                                   isLoading: _processingPaymentMethod ==
-                                      TextConstants.ebtText &&
+                                          TextConstants.ebtText &&
                                       isLoading,
                                   isDisabled:
-                                  _processingPaymentMethod != null &&
-                                      _processingPaymentMethod !=
-                                          TextConstants.ebtText,
-                                  // onTap: () {
-                                  //   // 1️⃣ Check if there is any EBT left
-                                  //   if (ebtTotal <= 0) {
-                                  //     setState(() => _amountErrorText =
-                                  //     "No EBT balance available");
-                                  //     return;
-                                  //   }
-                                  //
-                                  //   // 2️⃣ Determine the maximum allowed amount
-                                  //   final allowedAmount =
-                                  //   balanceAmount.clamp(0.0, ebtTotal);
-                                  //
-                                  //   if (allowedAmount <= 0) {
-                                  //     setState(() => _amountErrorText =
-                                  //     "Cannot pay with EBT, balance is zero");
-                                  //     return;
-                                  //   }
-                                  //
-                                  //   // 3️⃣ Respect user-entered partial amount when present.
-                                  //   final enteredAmount = double.tryParse(
-                                  //     amountController.text
-                                  //         .replaceAll(
-                                  //         TextConstants.currencySymbol,
-                                  //         '')
-                                  //         .trim(),
-                                  //   ) ??
-                                  //       0.0;
-                                  //
-                                  //   final amountToUse = enteredAmount > 0
-                                  //       ? enteredAmount.clamp(
-                                  //       0.0, allowedAmount)
-                                  //       : allowedAmount;
-                                  //
-                                  //   if (amountToUse <= 0) {
-                                  //     setState(() => _amountErrorText =
-                                  //         TextConstants.amountValidation);
-                                  //     return;
-                                  //   }
-                                  //
-                                  //   // 4️⃣ Select EBT only (manual amount entry by user)
-                                  //   _selectPaymentMethod(
-                                  //     TextConstants.ebtText,
-                                  //   );
-                                  //
-                                  //   // If user already entered amount, submit like Cash flow.
-                                  //   if (enteredAmount > 0) {
-                                  //     final normalizedAmount = amountToUse;
-                                  //     setState(() {
-                                  //       _rawAmount =
-                                  //           (normalizedAmount * 100).round();
-                                  //       amountController.text =
-                                  //       '${TextConstants.currencySymbol}${normalizedAmount.toStringAsFixed(2)}';
-                                  //       _isAmountEntered = true;
-                                  //       _amountErrorText = null;
-                                  //     });
-                                  //     _handlePay();
-                                  //     return;
-                                  //   }
-                                  //
-                                  //   // Otherwise keep EBT amount user-driven.
-                                  //   setState(() {
-                                  //     _rawAmount = 0;
-                                  //     amountController.text =
-                                  //     '${TextConstants.currencySymbol}0.00';
-                                  //     _isAmountEntered = false;
-                                  //     _amountErrorText = null;
-                                  //   });
-                                  // },
-                                  ////////////////////EBT update
-
-                                  onTap: () async {
-                                    //  Check if there is any EBT left
+                                      _processingPaymentMethod != null &&
+                                          _processingPaymentMethod !=
+                                              TextConstants.ebtText,
+                                  onTap: () {
+                                    // 1️⃣ Check if there is any EBT left
                                     if (ebtTotal <= 0) {
-                                      setState(() => _amountErrorText = "No EBT balance available");
+                                      setState(() => _amountErrorText =
+                                          "No EBT balance available");
                                       return;
                                     }
 
-                                    //  Determine the maximum allowed amount
-                                    final allowedAmount = balanceAmount.clamp(0.0, ebtTotal);
+                                    // 2️⃣ Determine the maximum allowed amount
+                                    final allowedAmount =
+                                        balanceAmount.clamp(0.0, ebtTotal);
 
                                     if (allowedAmount <= 0) {
-                                      setState(() =>
-                                      _amountErrorText = "Cannot pay with EBT, balance is zero");
+                                      setState(() => _amountErrorText =
+                                          "Cannot pay with EBT, balance is zero");
                                       return;
                                     }
 
-                                    //  Respect user-entered partial amount when present.
+                                    // 3️⃣ Respect user-entered partial amount when present.
                                     final enteredAmount = double.tryParse(
-                                      amountController.text
-                                          .replaceAll(TextConstants.currencySymbol, '')
-                                          .trim(),
-                                    ) ??
+                                          amountController.text
+                                              .replaceAll(
+                                                  TextConstants.currencySymbol,
+                                                  '')
+                                              .trim(),
+                                        ) ??
                                         0.0;
 
                                     final amountToUse = enteredAmount > 0
-                                        ? enteredAmount.clamp(0.0, allowedAmount)
+                                        ? enteredAmount.clamp(
+                                            0.0, allowedAmount)
                                         : allowedAmount;
 
                                     if (amountToUse <= 0) {
-                                      setState(
-                                              () => _amountErrorText = TextConstants.amountValidation);
+                                      setState(() => _amountErrorText =
+                                          TextConstants.amountValidation);
                                       return;
                                     }
 
-                                    //  Select EBT and fill amount
-                                    _selectPaymentMethod(TextConstants.ebtText);
+                                    // 4️⃣ Select EBT only (manual amount entry by user)
+                                    _selectPaymentMethod(
+                                      TextConstants.ebtText,
+                                    );
 
+                                    // If user already entered amount, submit like Cash flow.
+                                    if (enteredAmount > 0) {
+                                      final normalizedAmount = amountToUse;
+                                      setState(() {
+                                        _rawAmount =
+                                            (normalizedAmount * 100).round();
+                                        amountController.text =
+                                            '${TextConstants.currencySymbol}${normalizedAmount.toStringAsFixed(2)}';
+                                        _isAmountEntered = true;
+                                        _amountErrorText = null;
+                                      });
+                                      _handlePay();
+                                      return;
+                                    }
+
+                                    // Otherwise keep EBT amount user-driven.
                                     setState(() {
-                                      _rawAmount = (amountToUse * 100).round();
+                                      _rawAmount = 0;
                                       amountController.text =
-                                      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
-                                      _isAmountEntered = true;
+                                          '${TextConstants.currencySymbol}0.00';
+                                      _isAmountEntered = false;
                                       _amountErrorText = null;
                                     });
-
-                                    //  Call EBT API (same as card API flow)
-                                    await _handleEbtCardPaymentViaAPI();
                                   },
                                 ),
                               ],
@@ -6951,9 +4702,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   void _showPaymentProgressDialog(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // THEME COLORS (same pattern as coupon popup)
     final Color dialogBg = isDark ? const Color(0xFF252837) : Colors.white;
     final Color textPrimary = isDark ? Colors.white : const Color(0xFF1F2937);
-    final Color textSecondary = isDark ? Colors.white70 : const Color(0xFF6B7280);
+    final Color textSecondary =
+        isDark ? Colors.white70 : const Color(0xFF6B7280);
 
     showDialog(
       context: context,
@@ -7017,53 +4771,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           color: textSecondary,
                         ),
                       ),
-                    const SizedBox(height: 24),
-                    // ── NEW: Cancel button ──────────────────────
-                    SizedBox(
-                      width: double.infinity,
-                      height: 42,
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red, width: 1.5),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        // onPressed: () {
-                        //   // Close the progress dialog only — stay on the page
-                        //   if (Navigator.canPop(context)) {
-                        //     Navigator.of(context, rootNavigator: false).pop();
-                        //   }
-                        //   // Reset loading state so buttons become active again
-                        //   if (mounted) {
-                        //     setState(() {
-                        //       isLoading = false;
-                        //       _processingPaymentMethod = null;
-                        //     });
-                        //   }
-                        // },
-                        onPressed: () {
-                          _isCardPaymentCancelled = true; // ← SET FLAG
-                          if (Navigator.canPop(context)) {
-                            Navigator.of(context, rootNavigator: false).pop();
-                          }
-                          if (mounted) {
-                            setState(() {
-                              isLoading = false;
-                              _processingPaymentMethod = null;
-                            });
-                          }
-                        },
-                        child: const Text(
-                          "Cancel Payment",
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -7073,7 +4780,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       },
     );
   }
-
 
   Widget _buildHeader() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -7111,7 +4817,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
                   borderRadius:
-                  BorderRadius.circular(ResponsiveLayout.getRadius(15)),
+                      BorderRadius.circular(ResponsiveLayout.getRadius(15)),
                 ),
                 child: Row(
                   children: [
@@ -7174,7 +4880,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     );
   }
 
-  void _showCouponAppliedSnackBar(BuildContext context) {
+  void _showCouponAppliedSnackBar(
+    BuildContext context,
+  ) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -7182,11 +4890,29 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           content: Text(
             "Coupon already applied. Remove coupon to go back.",
           ),
-          duration: Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
+
+          //  RED COLOR
           backgroundColor: Colors.red,
+
+          duration: Duration(seconds: 3),
+
+          behavior: SnackBarBehavior.floating,
         ),
       );
+  }
+//******************************************************************************** */
+  void _showRedeemPointsSnackBar(BuildContext context) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          "Loyalty applied, please remove and try again",
+        ),
+        duration: Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Widget _buildNavigationBar() {
@@ -7199,15 +4925,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final order = orderHelper.activeOrderId != null
         ? orderHelper.orders.firstWhere(
-          (o) => o[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-      orElse: () => {},
-    )
+            (o) => o[AppDBConst.orderServerId] == orderHelper.activeOrderId,
+            orElse: () => {},
+          )
         : {};
 
     if (order.isNotEmpty && order[AppDBConst.orderDate] != null) {
       try {
         final DateTime createdDateTime =
-        DateTime.parse(order[AppDBConst.orderDate].toString());
+            DateTime.parse(order[AppDBConst.orderDate].toString());
         _displayDate =
             DateFormat(TextConstants.dateFormat).format(createdDateTime);
         _displayTime =
@@ -7243,157 +4969,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         children: [
           ////**88 */ Back button
 
-          // InkWell(
-          //   borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
-          //   onTap: () async {
-          //     final box = StorageProvider.offlineOrders;
-          //
-          //     final String orderKey = orderId?.toString() ??
-          //         widget.offlineOrderId?.toString() ??
-          //         "";
-          //
-          //     final rawOrder = await box.get(orderKey);
-          //
-          //     final latestOrder = Map<String, dynamic>.from(
-          //       rawOrder is Map ? rawOrder : {},
-          //     );
-          //
-          //     print("LATEST ORDER -> $latestOrder");
-          //
-          //     final bool couponExists = latestOrder["coupon_applied"] == true;
-          //
-          //     print("coupon_applied: ${latestOrder["coupon_applied"]}");
-          //     print("couponExists: $couponExists");
-          //
-          //     // Get payments (defensive fallback across possible local/server IDs)
-          //     // so back-flow still detects a void even when one ID path is empty.
-          //     final Set<int> candidateIds = {
-          //       if (orderId != null && orderId! > 0) orderId!,
-          //       if (widget.orderId != null && widget.orderId! > 0) widget.orderId!,
-          //       if (widget.offlineOrderId != null && widget.offlineOrderId! > 0)
-          //         widget.offlineOrderId!,
-          //     };
-          //
-          //     final List<LocalPayment> payments = [];
-          //     final Set<int> seenPaymentIds = {};
-          //     for (final id in candidateIds) {
-          //       final rows =
-          //       await LocalPaymentDBHelper.instance.getPaymentsByOrderId(id);
-          //       for (final p in rows) {
-          //         if (seenPaymentIds.add(p.id)) {
-          //           payments.add(p);
-          //         }
-          //       }
-          //     }
-          //
-          //     final bool hasAnyPaymentBeenMade = payments.isNotEmpty;
-          //
-          //     double netAmount = payments.fold(0.0, (sum, p) => sum + p.amount);
-          //
-          //     final bool hasNetPayment = netAmount.abs() > 0.01;
-          //
-          //     // After a full void, net can be ~0 but unsynced void lines must still sync;
-          //     // user should still get the exit confirmation.
-          //     final bool hasUnsyncedPayments =
-          //     payments.any((p) => !p.isSynced);
-          //
-          //     final bool hasDiscount = discount > 0;
-          //
-          //     // Remaining balance
-          //     final double effectiveRemaining =
-          //     (_currentPaymentRemainingBalance != null &&
-          //         _currentPaymentRemainingBalance! > 0)
-          //         ? _currentPaymentRemainingBalance!
-          //         : balanceAmount;
-          //
-          //     // Always update customer display
-          //     if (orderId != null) {
-          //       await CustomerDisplayHelper.updateCustomerDisplay(
-          //         orderId!,
-          //         summaryEnabled: false,
-          //       );
-          //     }
-          //
-          //     // ✅ CASE 1: Payment already started (partial payment) or pending sync (e.g. void)
-          //     if (hasNetPayment || hasUnsyncedPayments) {
-          //       if (kDebugMode) {
-          //         print("Back button → showing exit confirmation");
-          //         print(
-          //             "Remaining balance: \$${effectiveRemaining.toStringAsFixed(2)}");
-          //       }
-          //
-          //       _showExitPaymentConfirmation(context);
-          //       return;
-          //     }
-          //
-          //     // ✅ CASE 2: Coupon applied but no payment yet
-          //     // CASE 2: Coupon applied
-          //     if (couponExists) {
-          //       // ⭐ ISSUE COUPON → show exit confirmation popup
-          //       if (isCouponActive) {
-          //         print("🎟 Issue coupon → showing exit confirmation");
-          //         _showExitPaymentConfirmation(context);
-          //         return;
-          //       }
-          //
-          //       // ⭐ GENERATED COUPON → show snackbar
-          //       print("🚨 Generated coupon exists → showing snackbar");
-          //       _showCouponAppliedSnackBar(context);
-          //       return;
-          //     }
-          //     if (couponExists || isCouponAppliedFromApi) {
-          //       print("🚨 Coupon already applied → showing snackbar");
-          //       _showCouponAppliedSnackBar(context);
-          //       return;
-          //     }
-          //     // ✅ CASE 3: Discount applied
-          //     if (hasDiscount) {
-          //       _showExitPaymentConfirmation(context);
-          //       return;
-          //     }
-          //
-          //     // ✅ CASE 4: No payment and no coupon
-          //     if (kDebugMode) {
-          //       print("Back button → direct exit");
-          //     }
-          //
-          //     Navigator.of(context).pop();
-          //   },
-          //   child: Container(
-          //     // height: 40,
-          //     margin: EdgeInsets.only(left: 15.0, top: 10.0),
-          //     width: MediaQuery.of(context).size.width * 0.075,
-          //     height: MediaQuery.of(context).size.height * 0.05,
-          //     decoration: BoxDecoration(
-          //       color: Color(0xFF3B4259),
-          //       borderRadius: BorderRadius.circular(6.0),
-          //       border: Border.all(color: Color(0xFF3B4259)),
-          //     ),
-          //     child: Row(
-          //       crossAxisAlignment: CrossAxisAlignment.center,
-          //       children: [
-          //         const SizedBox(width: 10),
-          //         Container(
-          //           alignment: Alignment.center,
-          //           child: Icon(
-          //             Icons.arrow_back,
-          //             size: 20,
-          //             weight: 10,
-          //             color: Colors.white,
-          //           ),
-          //         ),
-          //         const SizedBox(width: 10),
-          //         Text(
-          //           TextConstants.back,
-          //           style: TextStyle(
-          //             fontSize: ResponsiveLayout.getFontSize(15),
-          //             color: Colors.white,
-          //           ),
-          //         ),
-          //       ],
-          //     ),
-          //   ),
-          // ),
           InkWell(
             borderRadius: BorderRadius.circular(ResponsiveLayout.getRadius(8)),
             onTap: () async {
@@ -7462,17 +5037,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
               // Remaining balance
               final double effectiveRemaining =
-              (_currentPaymentRemainingBalance != null &&
-                  _currentPaymentRemainingBalance! > 0)
-                  ? _currentPaymentRemainingBalance!
-                  : balanceAmount;
+                  (_currentPaymentRemainingBalance != null &&
+                          _currentPaymentRemainingBalance! > 0)
+                      ? _currentPaymentRemainingBalance!
+                      : balanceAmount;
 
 // Always update customer display
               if (orderId != null) {
                 await CustomerDisplayHelper.updateCustomerDisplay(
                   orderId!,
                   summaryEnabled: false,
-                  // redeemedAmount: actualRedeem,   // ← Important
                 );
               }
 
@@ -7556,6 +5130,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               ),
             ),
           ),
+
           const SizedBox(width: 70),
 
           const SizedBox(width: 160),
@@ -7586,9 +5161,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           'Customer :',
                           style: TextStyle(
                             color:
-                            Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white70
-                                : const Color(0xFF115ACD),
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white70
+                                    : const Color(0xFF115ACD),
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
@@ -7600,14 +5175,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                             padding: const EdgeInsets.symmetric(horizontal: 15),
                             decoration: BoxDecoration(
                               color: Theme.of(context).brightness ==
-                                  Brightness.dark
+                                      Brightness.dark
                                   ? const Color(0xFF2C2C2E)
                                   : Colors.white,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                 width: 1,
                                 color: Theme.of(context).brightness ==
-                                    Brightness.dark
+                                        Brightness.dark
                                     ? Colors.grey.shade700
                                     : Colors.black.withOpacity(0.20),
                               ),
@@ -7617,34 +5192,34 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               builder: (context, innerSetState) {
                                 print(
                                     "BUILD -> isCustomerFieldDisabled=$isCustomerFieldDisabled, "
-                                        "showCustomerInput=$showCustomerInput"
-                                );
+                                    "showCustomerInput=$showCustomerInput");
                                 return TextField(
                                   controller: mobileController,
                                   enabled: true,
                                   readOnly: showCustomerInput,
-                                  enableInteractiveSelection: !showCustomerInput,
+                                  enableInteractiveSelection:
+                                      !showCustomerInput,
                                   keyboardType: TextInputType.number,
                                   inputFormatters: [
                                     TextInputFormatter.withFunction(
-                                            (oldValue, newValue) {
-                                          final text = newValue.text;
+                                        (oldValue, newValue) {
+                                      final text = newValue.text;
 
-                                          // If input is only digits → Mobile number
-                                          if (RegExp(r'^\d*$').hasMatch(text)) {
-                                            if (text.length > 10) {
-                                              return oldValue; // block extra digits
-                                            }
-                                          }
-                                          // Otherwise → Email
-                                          else {
-                                            if (text.length > 50) {
-                                              return oldValue; // block extra characters
-                                            }
-                                          }
+                                      // If input is only digits → Mobile number
+                                      if (RegExp(r'^\d*$').hasMatch(text)) {
+                                        if (text.length > 10) {
+                                          return oldValue; // block extra digits
+                                        }
+                                      }
+                                      // Otherwise → Email
+                                      else {
+                                        if (text.length > 50) {
+                                          return oldValue; // block extra characters
+                                        }
+                                      }
 
-                                          return newValue;
-                                        }),
+                                      return newValue;
+                                    }),
                                   ],
                                   onChanged: (value) {
                                     setState(() {
@@ -7665,7 +5240,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     fontSize: 16,
                                     fontWeight: FontWeight.w500,
                                     color: Theme.of(context).brightness ==
-                                        Brightness.dark
+                                            Brightness.dark
                                         ? Colors.white
                                         : const Color(0xFF313131),
                                   ),
@@ -7686,263 +5261,222 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   onTap: isButtonDisabled
                       ? null
                       : () async {
-                    // ---------- CANCEL ----------
-                    if (showCustomerInput) {
-                      // Only allow cancel if not disabled
-                      if (isPaymentDone || redeemedValue > 0) return;
+                          // ---------- CANCEL ----------
+                          if (showCustomerInput) {
+                            // Only allow cancel if not disabled
+                            if (isPaymentDone || redeemedValue > 0) return;
 
-                      setState(() {
-                        mobileController.clear();
-                        showCustomerInput = false;
-                        isPhoneValid = false;
-                        isEmailValid = false;
-                        isRedeemActive = false;
-                        // Enable field again
-                        isCustomerFieldDisabled = false;
-                      });
+                            setState(() {
+                              mobileController.clear();
+                              showCustomerInput = false;
+                              isPhoneValid = false;
+                              isEmailValid = false;
+                              isRedeemActive = false;
+                              // Enable field again
+                              isCustomerFieldDisabled = false;
+                            });
 
-                      final offlineBox = StorageProvider.offlineOrders;
-                      final localKey = widget.offlineOrderId?.toString();
+                            final offlineBox = StorageProvider.offlineOrders;
+                            final localKey = widget.offlineOrderId?.toString();
 
-                      if (localKey != null) {
-                        final existing = await offlineBox.get(localKey);
-                        if (existing != null) {
-                          final d = Map<String, dynamic>.from(
-                              existing is Map ? existing : {});
-                          d["loyaltyContact"] = "";
-                          await offlineBox.put(localKey, d);
-                        }
-                      }
+                            if (localKey != null) {
+                              final existing = await offlineBox.get(localKey);
+                              if (existing != null) {
+                                final d = Map<String, dynamic>.from(
+                                    existing is Map ? existing : {});
+                                d["loyaltyContact"] = "";
+                                await offlineBox.put(localKey, d);
+                              }
+                            }
 
-                      final localOrderId = widget.offlineOrderId;
-                      if (localOrderId != null) {
-                        final customerItems = orderItems.map((item) {
+                            final localOrderId = widget.offlineOrderId;
+                            if (localOrderId != null) {
+                              await CustomerDisplayHelper.updateCustomerDisplay(
+                                localOrderId,
+                                summaryEnabled: true,
+                              );
+                            }
+                            return;
+                          }
 
-                          return {
-                            "name": item["item_name"] ?? "",
-                            "qty": item["items_count"] ?? 1,
-                            "price": item["item_price"] ?? 0.0,
-                            "image": item["item_image"] ?? "",
-                          };
+                          // ---------- ADD ----------
+                          // ---------- ADD ----------
+                          if (!(isPhoneValid || isEmailValid)) return;
 
-                        }).toList();
+                          // ✅ Close keyboard immediately
+                          FocusManager.instance.primaryFocus?.unfocus();
 
-                        await CustomerDisplayService.showCustomerData(
+                          setState(() => isAddLoading = true);
 
-                          orderId: localOrderId ?? 0,
+                          final contact = mobileController.text.trim();
 
-                          items: customerItems,
+                          try {
+                            // ======================================
+                            // 1️⃣ LOAD OFFLINE ORDER FROM HIVE
+                            // ======================================
+                            final offlineBox = StorageProvider.offlineOrders;
 
-                          grossTotal: grossTotal,
+                            final localKey = widget.offlineOrderId?.toString();
 
-                          discount: discount,
+                            if (localKey == null) {
+                              throw Exception("Offline order not found");
+                            }
 
-                          merchantDiscount: merchantDiscount,
+                            final existing = await offlineBox.get(localKey);
 
-                          // ✅ FIX NET TOTAL
-                          netTotal:
-                          grossTotal -
-                              discount.abs(),
+                            if (existing == null) {
+                              throw Exception("Order data missing");
+                            }
 
-                          tax: tax,
+                            final offlineOrder =
+                                Map<String, dynamic>.from(existing);
 
-                          netPayable: computedNetPayable,
+                            print("🟡 OFFLINE ORDER LOADED");
 
-                          cashbackFee: cashbackFee,
+                            // ======================================
+                            // 2️⃣ SYNC ORDER WITH BACKEND
+                            // ======================================
+                            final syncResponse =
+                                await orderBloc.syncSingleOfflineOrder(
+                              offlineOrder,
+                            );
 
-                          redeemedAmount:
-                          redeemedValue.toDouble(),
+                            print("✅ SYNC RESPONSE points: $syncResponse");
 
-                          loyaltyContact: "",
+                            if (syncResponse == null) {
+                              throw Exception("Sync failed");
+                            }
 
-                          summaryEnabled: true,
-                        );
-                      }
-                      return;
-                    }
+                            // ======================================
+                            // 3️⃣ GET WOO ORDER ID
+                            // ======================================
+                            final int syncedOrderId = syncResponse["id"] ?? 0;
 
-                    // ---------- ADD ----------
-                    // ---------- ADD ----------
-                    if (!(isPhoneValid || isEmailValid)) return;
+                            if (syncedOrderId == 0) {
+                              throw Exception("Backend order id missing");
+                            }
 
-                    // ✅ Close keyboard immediately
-                    FocusManager.instance.primaryFocus?.unfocus();
+                            print("🟢 WOO ORDER ID lo: $syncedOrderId");
 
-                    setState(() => isAddLoading = true);
+                            // ======================================
+                            // 4️⃣ CALL CREATE CUSTOMER API
+                            // ======================================
+                            final rawResponse =
+                                await orderBloc.addLoyaltyPoints(
+                              orderId: syncedOrderId,
+                              contact: contact,
+                            );
 
-                    final contact = mobileController.text.trim();
+                            print("🌐 CUSTOMER RESPONSE: $rawResponse");
 
-                    try {
+                            final result = jsonDecode(rawResponse);
 
-                      // ======================================
-                      // 1️⃣ LOAD OFFLINE ORDER FROM HIVE
-                      // ======================================
-                      final offlineBox = StorageProvider.offlineOrders;
+                            print("✅ FULL CUSTOMER RESULT: $result");
 
-                      final localKey = widget.offlineOrderId?.toString();
+                            if (result == null) {
+                              throw Exception("Empty customer response");
+                            }
 
-                      if (localKey == null) {
-                        throw Exception("Offline order not found");
-                      }
+                            if (result["success"] == false) {
+                              throw Exception(
+                                result["message"] ?? "Customer API failed",
+                              );
+                            }
 
-                      final existing = await offlineBox.get(localKey);
+                            final data = result["data"] ?? {};
 
-                      if (existing == null) {
-                        throw Exception("Order data missing");
-                      }
+                            final pts = int.tryParse(
+                                  data["available_points"]?.toString() ?? "0",
+                                ) ??
+                                0;
+                            // ======================================
+                            // 5️⃣ UPDATE UI
+                            // ======================================
+                            setState(() {
+                              loyaltyData = data;
+                              availablePoints = pts;
+                              isRedeemActive = true;
+                              showCustomerInput = true;
 
-                      final offlineOrder =
-                      Map<String, dynamic>.from(existing);
+                              // Disable field after successful add
+                              isCustomerFieldDisabled = true;
+                            });
 
-                      print("🟡 OFFLINE ORDER LOADED");
+                            print(
+                                "AFTER ADD -> isCustomerFieldDisabled = $isCustomerFieldDisabled");
+                            // ======================================
+                            // 6️⃣ SAVE CONTACT LOCALLY
+                            // ======================================
+                            offlineOrder["loyaltyContact"] = contact;
 
-                      // ======================================
-                      // 2️⃣ SYNC ORDER WITH BACKEND
-                      // ======================================
-                      final syncResponse =
-                      await orderBloc.syncSingleOfflineOrder(
-                        offlineOrder,
-                      );
+                            await offlineBox.put(localKey, offlineOrder);
 
-                      print("✅ SYNC RESPONSE points: $syncResponse");
-
-                      if (syncResponse == null) {
-                        throw Exception("Sync failed");
-                      }
-
-                      // ======================================
-                      // 3️⃣ GET WOO ORDER ID
-                      // ======================================
-                      final int syncedOrderId =
-                          syncResponse["id"] ?? 0;
-
-                      if (syncedOrderId == 0) {
-                        throw Exception("Backend order id missing");
-                      }
-
-                      print("🟢 WOO ORDER ID lo: $syncedOrderId");
-
-                      // ======================================
-                      // 4️⃣ CALL CREATE CUSTOMER API
-                      // ======================================
-                      final rawResponse =
-                      await orderBloc.addLoyaltyPoints(
-                        orderId: syncedOrderId,
-                        contact: contact,
-                      );
-
-                      print("🌐 CUSTOMER RESPONSE: $rawResponse");
-
-                      final result = jsonDecode(rawResponse);
-
-                      print("✅ FULL CUSTOMER RESULT: $result");
-
-                      if (result == null) {
-                        throw Exception("Empty customer response");
-                      }
-
-                      if (result["success"] == false) {
-                        throw Exception(
-                          result["message"] ?? "Customer API failed",
-                        );
-                      }
-
-                      final data = result["data"] ?? {};
-
-                      final pts = int.tryParse(
-                        data["available_points"]?.toString() ?? "0",
-                      ) ?? 0;
-                      // ======================================
-                      // 5️⃣ UPDATE UI
-                      // ======================================
-                      setState(() {
-                        loyaltyData = data;
-                        availablePoints = pts;
-                        isRedeemActive = true;
-                        showCustomerInput = true;
-
-                        // Disable field after successful add
-                        isCustomerFieldDisabled = true;
-                      });
-
-                      print(
-                          "AFTER ADD -> isCustomerFieldDisabled = $isCustomerFieldDisabled"
-                      );
-                      // ======================================
-                      // 6️⃣ SAVE CONTACT LOCALLY
-                      // ======================================
-                      offlineOrder["loyaltyContact"] = contact;
-
-                      await offlineBox.put(localKey, offlineOrder);
-
-                      // ======================================
-                      // 7️⃣ UPDATE CUSTOMER DISPLAY
-                      // ======================================
-                      // ======================================
+                            // ======================================
+                            // 7️⃣ UPDATE CUSTOMER DISPLAY
+                            // ======================================
+                            // ======================================
 // 7️⃣ DO NOT REFRESH CUSTOMER DISPLAY
 // ======================================
-                      try {
-                        await const MethodChannel(
-                          'com.alekta.pinakapos/sunmi_display',
-                        ).invokeMethod(
-                          'showCustomerData',
-                          {
-                            'orderId': int.tryParse(localKey) ?? 0,
-                            'items': List<Map<String, dynamic>>.from(
-                              offlineOrder['products'] ?? [],
-                            ),
-                            'grossTotal': grossTotal,
-                            'discount': discount,
-                            'merchantDiscount': merchantDiscount,
-                            'netTotal': NetTotal,
-                            'tax': tax,
-                            'netPayable': computedNetPayable,
-                            'orderDate': offlineOrder['order_date'] ?? '',
-                            'orderTime': offlineOrder['order_time'] ?? '',
-                            'cashbackFee':
-                            (offlineOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
-                            'loyaltyContact': contact,
-                            'availablePoints': pts,
-                            'summaryEnabled': true,
-                          },
-                        );
-                      } on PlatformException catch (e) {
-                        if (e.code != 'NO_DISPLAY') {
-                          rethrow;
-                        }
-                      }
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Customer Added Successfully!"),
-                            backgroundColor: Colors.green,
-                            duration: Duration(seconds: 1),
-                          ),
-                        );
-                      }
+                            try {
+                              await const MethodChannel(
+                                'com.example.flutter_customer_display/sunmi_display',
+                              ).invokeMethod(
+                                'showCustomerData',
+                                {
+                                  'orderId': int.tryParse(localKey) ?? 0,
+                                  'items': List<Map<String, dynamic>>.from(
+                                    offlineOrder['products'] ?? [],
+                                  ),
+                                  'grossTotal': grossTotal,
+                                  'discount': discount,
+                                  'merchantDiscount': merchantDiscount,
+                                  'netTotal': NetTotal,
+                                  'tax': tax,
+                                  'netPayable': computedNetPayable,
+                                  'orderDate': offlineOrder['order_date'] ?? '',
+                                  'orderTime': offlineOrder['order_time'] ?? '',
+                                  'cashbackFee':
+                                      (offlineOrder['cashback_fee'] as num?)
+                                              ?.toDouble() ??
+                                          0.0,
+                                  'loyaltyContact': contact,
+                                  'availablePoints': pts,
+                                  'summaryEnabled': true,
+                                },
+                              );
+                            } on PlatformException catch (e) {
+                              if (e.code != 'NO_DISPLAY') {
+                                rethrow;
+                              }
+                            }
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Customer Added Successfully!"),
+                                  backgroundColor: Colors.green,
+                                  duration: Duration(seconds: 1),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            print("❌ ERROR: $e");
 
-                    } catch (e) {
-
-                      print("❌ ERROR: $e");
-
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              "Failed: ${e.toString()}",
-                            ),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-
-                    } finally {
-
-                      if (mounted) {
-                        setState(() => isAddLoading = false);
-                      }
-                    }
-                  },
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    "Failed: ${e.toString()}",
+                                  ),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          } finally {
+                            if (mounted) {
+                              setState(() => isAddLoading = false);
+                            }
+                          }
+                        },
                   child: Container(
                     height: 44,
                     width: 126,
@@ -7951,29 +5485,29 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       color: isButtonDisabled
                           ? Colors.grey.shade400 // 🔒 Disabled / Pending
                           : showCustomerInput
-                          ? Colors.red // ❌ Cancel
-                          : const Color(0xFF3B4259), // ➕ Add
+                              ? Colors.red // ❌ Cancel
+                              : const Color(0xFF3B4259), // ➕ Add
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: isAddLoading
                         ? const SizedBox(
-                      height: 16,
-                      width: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
                         : Text(
-                      showCustomerInput ? '× Cancel' : '+ Add',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                            showCustomerInput ? '× Cancel' : '+ Add',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
-                ),
+                )
               ],
             ),
           ),
@@ -7993,7 +5527,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
                   borderRadius:
-                  BorderRadius.circular(ResponsiveLayout.getRadius(15)),
+                      BorderRadius.circular(ResponsiveLayout.getRadius(15)),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(
@@ -8037,7 +5571,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         Text(
                           userRole ?? TextConstants.unknown,
                           style:
-                          const TextStyle(color: Colors.grey, fontSize: 12),
+                              const TextStyle(color: Colors.grey, fontSize: 12),
                         ),
                       ],
                     ),
@@ -8150,42 +5684,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                             ),
                           ),
 
-                          // ─── Only show when there is a current partial/offline remaining balance ───
-                          // if (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0) ...[
-                          //
-                          //
-                          //   const SizedBox(width: 16),
-                          //   Container(
-                          //     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          //     decoration: BoxDecoration(
-                          //       color: Colors.orange.withOpacity(0.18),
-                          //       borderRadius: BorderRadius.circular(6),
-                          //       border: Border.all(color: Colors.orange[700]!, width: 1.3),
-                          //     ),
-                          //     child: Row(
-                          //       mainAxisSize: MainAxisSize.min,
-                          //       children: [
-                          //         Icon(
-                          //           Icons.cloud_off_rounded,
-                          //           size: 16,
-                          //           color: Colors.orange[800],
-                          //         ),
-                          //         const SizedBox(width: 6),
-                          //
-                          //
-                          //       Text(
-                          //           "Offline balance: ${TextConstants.currencySymbol}${_currentPaymentRemainingBalance!.toStringAsFixed(2)}",
-                          //           style: TextStyle(
-                          //             color: Colors.orange[900],
-                          //             fontWeight: FontWeight.w600,
-                          //             fontSize: 13.5,
-                          //           ),
-                          //         ),
-                          //
-                          //       ],
-                          //     ),
-                          //   ),
-                          // ],
+                         
+                      
                         ],
                       ),
                     ],
@@ -8318,7 +5818,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 child: Container(
                     decoration: BoxDecoration(
                       borderRadius:
-                      BorderRadius.circular(ResponsiveLayout.getRadius(10)),
+                          BorderRadius.circular(ResponsiveLayout.getRadius(10)),
                       color: themeHelper.themeMode == ThemeMode.dark
                           ? ThemeNotifier.secondaryBackground
                           : Colors.white,
@@ -8339,7 +5839,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Container(
                 decoration: BoxDecoration(
                   borderRadius:
-                  BorderRadius.circular(ResponsiveLayout.getRadius(6)),
+                      BorderRadius.circular(ResponsiveLayout.getRadius(6)),
                   color: themeHelper.themeMode == ThemeMode.dark
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
@@ -8350,230 +5850,224 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   curve: Curves.easeInOut,
                   child: _showFullSummary
                       ? Container(
-                    height: ResponsiveLayout.getHeight(205),
-                    margin: EdgeInsets.only(
-                      top: ResponsiveLayout.getPadding(0),
-                      right: ResponsiveLayout.getPadding(1),
-                      left: ResponsiveLayout.getPadding(1),
-                      bottom: ResponsiveLayout.getPadding(3),
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.only(
-                          topRight: Radius.circular(8),
-                          topLeft: Radius.circular(8)),
-                      color: themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.orderPanelSummary
-                          : Colors.white,
-                      boxShadow: [
-                        // Shadow at the top
-                        BoxShadow(
-                          color: themeHelper.themeMode == ThemeMode.dark
-                              ? Color(0xFFF0F0F0).withOpacity(
-                              0.15) // dark mode top shadow
-                              : Colors.black.withOpacity(
-                              0.15), // light mode top shadow
-                          // color: Colors.black.withOpacity(0.15),
-                          offset: Offset(
-                              0, -4), // 0 horizontal, -4 vertical (up)
-                          blurRadius: 6,
-                          spreadRadius: -0.5,
-                        ),
-                      ],
-                    ),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: ResponsiveLayout.getPadding(8),
-                    ),
-                    child: isSummaryLoading
-                        ? Center(child: CircularProgressIndicator())
-                        : ScrollConfiguration(
-                      behavior: NoScrollbarBehavior()
-                          .copyWith(overscroll: false),
-                      // thumbVisibility: true,
-                      // radius: Radius.circular(10),
-                      child: SingleChildScrollView(
-                        physics: BouncingScrollPhysics(),
-                        child: Column(
-                          children: [
-                            _buildOrderCalculation(
-                              TextConstants.grossTotal,
-                              grossTotal < 0
-                                  ? '-${TextConstants.currencySymbol}${grossTotal.abs().toStringAsFixed(2)}'
-                                  : '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
-                              isTotal: true,
-                            ),
-
-                            _buildOrderCalculation(
-                                TextConstants.discountText,
-                                '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}',
-                                isDiscount: true),
-
-                            ShaderMask(
-                              shaderCallback: (Rect bounds) {
-                                return LinearGradient(
-                                  begin: Alignment.centerLeft,
-                                  end: Alignment.centerRight,
-                                  colors: themeHelper.themeMode ==
-                                      ThemeMode.dark
-                                      ? [
-                                    Colors.white
-                                        .withOpacity(0.1),
-                                    Colors.white
-                                        .withOpacity(0.7),
-                                    Colors.white
-                                        .withOpacity(0.1),
-                                  ]
-                                      : [
-                                    Colors.black
-                                        .withOpacity(0.1),
-                                    Colors.black
-                                        .withOpacity(0.7),
-                                    Colors.black
-                                        .withOpacity(0.1),
-                                  ],
-                                  stops: const [0.0, 0.5, 1.0],
-                                ).createShader(bounds);
-                              },
-                              blendMode: BlendMode.srcIn,
-                              child: DottedLine(
-                                dashLength: 6,
-                                dashGapLength: 4,
-                                lineThickness: 1,
-                                direction: Axis.horizontal,
-                                dashColor: themeHelper.themeMode ==
-                                    ThemeMode.dark
-                                    ? Colors.white
-                                    : Colors
-                                    .black, // ✅ ensures gradient works correctly
+                          height: ResponsiveLayout.getHeight(205),
+                          margin: EdgeInsets.only(
+                            top: ResponsiveLayout.getPadding(0),
+                            right: ResponsiveLayout.getPadding(1),
+                            left: ResponsiveLayout.getPadding(1),
+                            bottom: ResponsiveLayout.getPadding(3),
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.only(
+                                topRight: Radius.circular(8),
+                                topLeft: Radius.circular(8)),
+                            color: themeHelper.themeMode == ThemeMode.dark
+                                ? ThemeNotifier.orderPanelSummary
+                                : Colors.white,
+                            boxShadow: [
+                              // Shadow at the top
+                              BoxShadow(
+                                color: themeHelper.themeMode == ThemeMode.dark
+                                    ? Color(0xFFF0F0F0).withOpacity(
+                                        0.15) // dark mode top shadow
+                                    : Colors.black.withOpacity(
+                                        0.15), // light mode top shadow
+                                // color: Colors.black.withOpacity(0.15),
+                                offset: Offset(
+                                    0, -4), // 0 horizontal, -4 vertical (up)
+                                blurRadius: 6,
+                                spreadRadius: -0.5,
                               ),
-                            ),
-                            _buildOrderCalculation(
-                              TextConstants.NetTotal,
-                              NetTotal < 0
-                                  ? '-${TextConstants.currencySymbol}${NetTotal.abs().toStringAsFixed(2)}'
-                                  : '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
-                            ),
+                            ],
+                          ),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: ResponsiveLayout.getPadding(8),
+                          ),
+                          child: isSummaryLoading
+                              ? Center(child: CircularProgressIndicator())
+                              : ScrollConfiguration(
+                                  behavior: NoScrollbarBehavior()
+                                      .copyWith(overscroll: false),
+                                  // thumbVisibility: true,
+                                  // radius: Radius.circular(10),
+                                  child: SingleChildScrollView(
+                                    physics: BouncingScrollPhysics(),
+                                    child: Column(
+                                      children: [
+                                        _buildOrderCalculation(
+                                          TextConstants.grossTotal,
+                                          grossTotal < 0
+                                              ? '-${TextConstants.currencySymbol}${grossTotal.abs().toStringAsFixed(2)}'
+                                              : '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
+                                          isTotal: true,
+                                        ),
+                                        //Raghu--**
+                                        if (merchantDiscount < 0)
+                                          _buildOrderCalculation(
+                                            merchantDiscountPercentage > 0
+                                                ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
+                                                : TextConstants
+                                                    .merchantDiscount,
+                                            '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
+                                          ),
+                                        _buildOrderCalculation(
+                                            TextConstants.discountText,
+                                            '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}',
+                                            isDiscount: true),
 
-                            // _buildOrderCalculation(
-                            //     TextConstants.taxText,
-                            //     '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
-                            // if (merchantDiscount < 0)
-                            //   _buildOrderCalculation(
-                            //     TextConstants.merchantDiscount,
-                            //     '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
-                            //   ),
-                            //Raghu--**
-                            if (merchantDiscount < 0)
-                              _buildOrderCalculation(
-                                merchantDiscountPercentage > 0
-                                    ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
-                                    : TextConstants.merchantDiscount,
-                                '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
-                              ),
+                                        ShaderMask(
+                                          shaderCallback: (Rect bounds) {
+                                            return LinearGradient(
+                                              begin: Alignment.centerLeft,
+                                              end: Alignment.centerRight,
+                                              colors: themeHelper.themeMode ==
+                                                      ThemeMode.dark
+                                                  ? [
+                                                      Colors.white
+                                                          .withOpacity(0.1),
+                                                      Colors.white
+                                                          .withOpacity(0.7),
+                                                      Colors.white
+                                                          .withOpacity(0.1),
+                                                    ]
+                                                  : [
+                                                      Colors.black
+                                                          .withOpacity(0.1),
+                                                      Colors.black
+                                                          .withOpacity(0.7),
+                                                      Colors.black
+                                                          .withOpacity(0.1),
+                                                    ],
+                                              stops: const [0.0, 0.5, 1.0],
+                                            ).createShader(bounds);
+                                          },
+                                          blendMode: BlendMode.srcIn,
+                                          child: DottedLine(
+                                            dashLength: 6,
+                                            dashGapLength: 4,
+                                            lineThickness: 1,
+                                            direction: Axis.horizontal,
+                                            dashColor: themeHelper.themeMode ==
+                                                    ThemeMode.dark
+                                                ? Colors.white
+                                                : Colors
+                                                    .black, // ✅ ensures gradient works correctly
+                                          ),
+                                        ),
+                                        //Raghu--***
+                                                                            
+                                        _buildOrderCalculation(
+                                          TextConstants.NetTotal,
+                                            NetTotal < 0
+                                              ? '-${TextConstants.currencySymbol}${NetTotal.abs().toStringAsFixed(2)}'
+                                              : '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
+                                        ),
+                                        
+                                        _buildOrderCalculation(
+                                          TextConstants.taxText,
+                                          '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}',
+                                        ),
+                                        //Raghu--*
 
-                            _buildOrderCalculation(
-                              TextConstants.taxText,
-                              '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}',
-                            ),
+                                        if (cashbackFee > 0)
+                                          _buildOrderCalculation(
+                                            TextConstants.cashbackFee,
+                                            '${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}',
+                                          ),
 
-                            if (cashbackFee > 0)
-                              _buildOrderCalculation(
-                                TextConstants.cashbackFee,
-                                '${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}',
-                              ),
+                                        /// Service Charges
+                                        _buildOrderCalculation(
+                                            TextConstants.servicecharges,
+                                            '${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}'),
 
-                            /// Service Charges
-                            _buildOrderCalculation(
-                                TextConstants.servicecharges,
-                                '${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}'),
+                                        if (redeemedValue > 0)
+                                          _buildOrderCalculation(
+                                            "Redeemed Amount",
+                                            '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
+                                          ),
 
-                            if (redeemedValue > 0)
-                              _buildOrderCalculation(
-                                "Redeemed Amount",
-                                '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
-                              ),
+                                        ShaderMask(
+                                          shaderCallback: (Rect bounds) {
+                                            return LinearGradient(
+                                              begin: Alignment.centerLeft,
+                                              end: Alignment.centerRight,
+                                              colors: themeHelper.themeMode ==
+                                                      ThemeMode.dark
+                                                  ? [
+                                                      Colors.white
+                                                          .withOpacity(0.1),
+                                                      Colors.white
+                                                          .withOpacity(0.7),
+                                                      Colors.white
+                                                          .withOpacity(0.1),
+                                                    ]
+                                                  : [
+                                                      Colors.black
+                                                          .withOpacity(0.1),
+                                                      Colors.black
+                                                          .withOpacity(0.7),
+                                                      Colors.black
+                                                          .withOpacity(0.1),
+                                                    ],
+                                              stops: const [0.0, 0.5, 1.0],
+                                            ).createShader(bounds);
+                                          },
+                                          blendMode: BlendMode.srcIn,
+                                          child: DottedLine(
+                                            dashLength: 6,
+                                            dashGapLength: 4,
+                                            lineThickness: 1,
+                                            direction: Axis.horizontal,
+                                            dashColor: themeHelper.themeMode ==
+                                                    ThemeMode.dark
+                                                ? Colors.white
+                                                : Colors
+                                                    .black, // ✅ ensures gradient works correctly
+                                          ),
+                                        ),
 
-                            ShaderMask(
-                              shaderCallback: (Rect bounds) {
-                                return LinearGradient(
-                                  begin: Alignment.centerLeft,
-                                  end: Alignment.centerRight,
-                                  colors: themeHelper.themeMode ==
-                                      ThemeMode.dark
-                                      ? [
-                                    Colors.white
-                                        .withOpacity(0.1),
-                                    Colors.white
-                                        .withOpacity(0.7),
-                                    Colors.white
-                                        .withOpacity(0.1),
-                                  ]
-                                      : [
-                                    Colors.black
-                                        .withOpacity(0.1),
-                                    Colors.black
-                                        .withOpacity(0.7),
-                                    Colors.black
-                                        .withOpacity(0.1),
-                                  ],
-                                  stops: const [0.0, 0.5, 1.0],
-                                ).createShader(bounds);
-                              },
-                              blendMode: BlendMode.srcIn,
-                              child: DottedLine(
-                                dashLength: 6,
-                                dashGapLength: 4,
-                                lineThickness: 1,
-                                direction: Axis.horizontal,
-                                dashColor: themeHelper.themeMode ==
-                                    ThemeMode.dark
-                                    ? Colors.white
-                                    : Colors
-                                    .black, // ✅ ensures gradient works correctly
-                              ),
-                            ),
+                                        _buildOrderCalculation(
+                                          TextConstants.netPayable,
+                                          computedNetPayable < 0
+                                              ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}'
+                                              : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                                          isTotal: true,
+                                        ),
 
-                            _buildOrderCalculation(
-                              TextConstants.netPayable,
-                              computedNetPayable < 0
-                                  ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}'
-                                  : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
-                              isTotal: true,
-                            ),
+                                        // if (redeemedValue > 0)
+                                        //   _buildOrderCalculation(
+                                        //     "Redeemed Amount",
+                                        //     '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
+                                        //   ),
+                                        _buildOrderCalculation(
+                                          "Pay by Card",
+                                          '${TextConstants.currencySymbol}${payByCard.toStringAsFixed(2)}',
+                                        ),
 
-                            // if (redeemedValue > 0)
-                            //   _buildOrderCalculation(
-                            //     "Redeemed Amount",
-                            //     '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
-                            //   ),
-                            _buildOrderCalculation(
-                              "Pay by Card",
-                              '${TextConstants.currencySymbol}${payByCard.toStringAsFixed(2)}',
-                            ),
+                                        _buildOrderCalculation(
+                                            TextConstants.payByCash,
+                                            '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
+                                        _buildOrderCalculation(
+                                          "Pay by EBT",
+                                          '${TextConstants.currencySymbol}${payByEbt.toStringAsFixed(2)}',
+                                        ),
 
-                            _buildOrderCalculation(
-                                TextConstants.payByCash,
-                                '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
-                            _buildOrderCalculation(
-                              "Pay by EBT",
-                              '${TextConstants.currencySymbol}${payByEbt.toStringAsFixed(2)}',
-                            ),
+                                        _buildOrderCalculation(
+                                            TextConstants.payByOther,
+                                            '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
 
-                            _buildOrderCalculation(
-                                TextConstants.payByOther,
-                                '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
+                                        _buildOrderCalculation(
+                                            TextConstants.tenderAmount,
+                                            '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'),
 
-                            _buildOrderCalculation(
-                                TextConstants.tenderAmount,
-                                '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'),
-
-                            _buildOrderCalculation(
-                                TextConstants.change,
-                                '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
-                          ],
-                        ),
-                      ),
-                    ),
-                  )
+                                        _buildOrderCalculation(
+                                            TextConstants.change,
+                                            '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                        )
                       : SizedBox.shrink(),
                 ),
               ),
@@ -8592,9 +6086,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.only(
                       bottomRight:
-                      Radius.circular(ResponsiveLayout.getRadius(6)),
+                          Radius.circular(ResponsiveLayout.getRadius(6)),
                       bottomLeft:
-                      Radius.circular(ResponsiveLayout.getRadius(6)),
+                          Radius.circular(ResponsiveLayout.getRadius(6)),
                       topLeft: _showFullSummary
                           ? Radius.zero
                           : Radius.circular(ResponsiveLayout.getRadius(6)),
@@ -8629,16 +6123,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       Text(
                         "${TextConstants.totalItemsText}: $totalItems",
                         style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.bold),
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       Row(
                         children: [
                           Text(
                             _showFullSummary
                                 ? '${TextConstants.netPayable} : '
-                                '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}'
+                                    '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}'
                                 : '${TextConstants.netPayable} '
-                                '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}',
+                                    '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
@@ -8671,13 +6167,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   final OrderHelper orderHelper =
-  OrderHelper(); // Helper instance to manage orders
+      OrderHelper(); // Helper instance to manage orders
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
     if (orderHelper.activeOrderId != null) {
       var orderData =
-      await orderHelper.getOrderById(orderHelper.activeOrderId!);
+          await orderHelper.getOrderById(orderHelper.activeOrderId!);
       List<Map<String, dynamic>> items = await orderHelper
           .getOrderItems(orderData.first[AppDBConst.orderServerId]);
 
@@ -8692,7 +6188,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             final raw = await box.get(key);
             if (raw is Map) {
               dbMerchantDiscountPerc = double.tryParse(
-                  raw['merchantDiscountPercentage']?.toString() ?? '0') ??
+                      raw['merchantDiscountPercentage']?.toString() ?? '0') ??
                   0.0;
             }
           }
@@ -8701,15 +6197,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         setState(() {
           orderId = orderData.first[AppDBConst.orderServerId] as int? ?? 0;
           orderDateTime =
-          "${orderData.first[AppDBConst.orderDate]} ${orderData.first[AppDBConst.orderTime]}";
+              "${orderData.first[AppDBConst.orderDate]} ${orderData.first[AppDBConst.orderTime]}";
           discount =
               (orderData.first[AppDBConst.orderDiscount] as num?)?.toDouble() ??
                   0.0; // Fetch discount
           final dbMerchantDiscount =
               (orderData.first[AppDBConst.merchantDiscount] as num?)
-                  ?.toDouble() ??
+                      ?.toDouble() ??
                   0.0;
-
           // Keep merchant discount algebraic (negative) for summary display/total logic.
           merchantDiscount = dbMerchantDiscount != 0
               ? -(dbMerchantDiscount.abs())
@@ -8721,7 +6216,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               (orderData.first[AppDBConst.orderTotal] as num?)?.toDouble() ??
                   0.0; // Build #1.0.80
           cashbackFee = (orderData.first[AppDBConst.orderCashbackFee] as num?)
-              ?.toDouble() ??
+                  ?.toDouble() ??
               0.0;
           orderStatus = (orderData.first[AppDBConst.orderStatus] as String?) ??
               TextConstants.processing; // Build  #1.0.177
@@ -8783,7 +6278,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final String itemType =
         orderItem['item_type']?.toString().toLowerCase() ?? '';
     final String itemNameLower =
-    (orderItem['item_name']?.toString() ?? '').toLowerCase();
+        (orderItem['item_name']?.toString() ?? '').toLowerCase();
 
     // Hide merchant discount line-items from the list (keep it in totals section).
     if (itemType.contains('discount') ||
@@ -8837,24 +6332,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     double autoDiscount = _num(orderItem['auto_discount']) != 0
         ? _num(orderItem['auto_discount'])
         : _num(orderItem['auto_discount_total']) != 0
-        ? _num(orderItem['auto_discount_total'])
-        : _num(orderItem['autoDiscount']) != 0
-        ? _num(orderItem['autoDiscount'])
-        : _num(orderItem['autoDiscountTotal']) != 0
-        ? _num(orderItem['autoDiscountTotal'])
-        : _num(orderItem['display_auto_discount']);
-
-    // double comboDiscount = _num(orderItem['combo_discount_total']) +
-    //     _num(orderItem['comboDiscountTotal']) +
-    //     _num(orderItem['combo_discount']);
-    //
-    // double mixMatchDiscount = _num(orderItem['mixmatch_discount_total']) +
-    //     _num(orderItem['mixMatchDiscountTotal']) +
-    //     _num(orderItem['mixmatch_discount']);
-    //
-    // double multipackDiscount = _num(orderItem['multipack_discount_total']) +
-    //     _num(orderItem['multipackDiscountTotal']) +
-    //     _num(orderItem['multipack_discount']);
+            ? _num(orderItem['auto_discount_total'])
+            : _num(orderItem['autoDiscount']) != 0
+                ? _num(orderItem['autoDiscount'])
+                : _num(orderItem['autoDiscountTotal']) != 0
+                    ? _num(orderItem['autoDiscountTotal'])
+                    : _num(orderItem['display_auto_discount']);
 
     double comboDiscount = [
       orderItem['combo_discount_total'],
@@ -8908,11 +6391,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     print(
       "SUMMARY ITEM -> ${orderItem['item_name']} "
-          "TYPE:$discountType "
-          "AUTO:$autoDiscount "
-          "COMBO:$comboDiscount "
-          "MIX:$mixMatchDiscount "
-          "MULTIPACK:$multipackDiscount",
+      "TYPE:$discountType "
+      "AUTO:$autoDiscount "
+      "COMBO:$comboDiscount "
+      "MIX:$mixMatchDiscount "
+      "MULTIPACK:$multipackDiscount",
     );
     return Column(
       children: [
@@ -8983,7 +6466,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                 Container(
                                   height: 14,
                                   padding:
-                                  const EdgeInsets.symmetric(horizontal: 6),
+                                      const EdgeInsets.symmetric(horizontal: 6),
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(
                                     color: Colors.green,
@@ -9057,8 +6540,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                             color: isCoupon || isPayout
                                 ? Colors.red
                                 : themeHelper.themeMode == ThemeMode.dark
-                                ? ThemeNotifier.textDark
-                                : ThemeNotifier.textLight,
+                                    ? ThemeNotifier.textDark
+                                    : ThemeNotifier.textLight,
                           ),
                         ),
                       ),
@@ -9067,18 +6550,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       SizedBox(
                         height: 12,
                         child: ((hasAutoDiscount ||
-                            isComboDiscount ||
-                            isMultipackDiscount) &&
-                            !isPayoutOrCoupon)
+                                    isComboDiscount ||
+                                    isMultipackDiscount) &&
+                                !isPayoutOrCoupon)
                             ? Text(
-                          "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
-                          style: const TextStyle(
-                            fontSize: 12,
-                            height: 1.0,
-                            color: Colors.grey,
-                            decoration: TextDecoration.lineThrough,
-                          ),
-                        )
+                                "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  height: 1.0,
+                                  color: Colors.grey,
+                                  decoration: TextDecoration.lineThrough,
+                                ),
+                              )
                             : const SizedBox.shrink(),
                       ),
 
@@ -9107,7 +6590,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   /// 🔹 Reusable badge widget
   Widget _discountBadge(String text, Color color, {double? amount}) {
     final double? displayAmount =
-    (amount != null && amount > 0) ? amount : null;
+        (amount != null && amount > 0) ? amount : null;
     return Text(
       displayAmount == null
           ? text
@@ -9129,25 +6612,26 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final themeHelper = Provider.of<ThemeNotifier>(context);
     if (label == TextConstants.tenderAmount) {
       amount =
-      '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}';
+          '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}';
     } else if (label == TextConstants.change) {
       amount =
-      '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}';
+          '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}';
     } else if (label == TextConstants.total) {
       amount =
-      '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
+          '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
     } else if (label == TextConstants.payByCash) {
       amount = '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}';
     } else if (label == TextConstants.payByOther) {
       amount =
-      '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
+          '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
     } else if (label == TextConstants.discountText) {
       amount =
-      '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}'; // Display discount from DB
+          '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}'; // Display discount from DB
     } else if (label == TextConstants.netPayable) {
       amount =
-      '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}';
+          '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}';
     }
+
     // Determine colors and icons based on label
     Color labelColor = themeHelper.themeMode == ThemeMode.dark
         ? ThemeNotifier.textDark
@@ -9157,17 +6641,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         : (isTotal ? Colors.black87 : Colors.grey[800]!);
     Widget? leadingIcon;
 
+    //Raghu--**
+    // ---------------- Merchant Discount----------------
     if (isTotal) {
       amountColor = themeHelper.themeMode == ThemeMode.dark
           ? ThemeNotifier.textDark
           : Colors.black87;
     } else if (label == TextConstants.discountText || isDiscount) {
-      labelColor = Colors.green[600]!;
+      labelColor = const Color.fromARGB(255, 53, 195, 60)!;
       amountColor = Colors.green[600]!;
     } else if (label.startsWith(TextConstants.merchantDiscount)) {
       labelColor = Colors.blue[600]!;
       amountColor = Colors.blue[600]!;
     }
+    //Raghu--*
+
     // ---------------- CASHBACK ( #55CBCD ) ----------------
     else if (label == TextConstants.cashbackFee ||
         label.toLowerCase().contains("cashback")) {
@@ -9261,9 +6749,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   onTap: isPaymentStarted
                       ? null
                       : () async {
-                    setState(() => redeemedValue = 0);
-                    await _removeRedeemedAmount();
-                  },
+                          await _removeRedeemedAmount();
+                        },
                   child: Padding(
                     padding: const EdgeInsets.only(left: 5),
                     child: Icon(
@@ -9290,6 +6777,69 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         ],
       ),
     );
+  }
+
+  Future<void> showRedeemSummary(double redeemedAmount) async {
+    if (redeemedAmount <= 0) {
+      print("❌ Redeem: Invalid amount $redeemedAmount");
+      return;
+    }
+
+    print(
+        "🔄 Redeem Requested: $redeemedAmount | Current computedNetPayable: $computedNetPayable | Tendered: $tenderAmount");
+
+    final double availableBalance =
+        (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
+    final double actualRedeem = redeemedAmount.clamp(0.0, availableBalance);
+
+    setState(() {
+      redeemedValue = actualRedeem;
+      isRedeemAppliedFromApi = true;
+
+      // 🔥 CORE CALCULATION - Apply redeem
+      NetTotal = grossTotal + discount + merchantDiscount - actualRedeem;
+      computedNetPayable = NetTotal + tax + cashbackFee;
+      orderTotal = computedNetPayable;
+
+      balanceAmount =
+          (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
+
+      // Reduce EBT if needed
+      if (ebtTotal > 0) {
+        ebtTotal = (ebtTotal - (redeemedAmount - actualRedeem))
+            .clamp(0.0, double.infinity);
+      }
+    });
+
+    // Persist to Hive
+    try {
+      final box = StorageProvider.offlineOrders;
+      final key = (orderId ?? widget.offlineOrderId ?? 0).toString();
+
+      if (await box.containsKey(key)) {
+        final order = Map<String, dynamic>.from(await box.get(key));
+        order['redeemed_value'] = actualRedeem;
+        order['net_payable'] = computedNetPayable;
+        order['balance_amount'] = balanceAmount;
+        order['NetTotal'] = NetTotal; // extra safety
+        order['computedNetPayable'] = computedNetPayable;
+        await box.put(key, order);
+        print("💾 Redeem successfully saved to Hive → $actualRedeem");
+      }
+    } catch (e) {
+      print("⚠️ Failed to save redeem to Hive: $e");
+    }
+
+    print("✅ REDEEM APPLIED SUCCESSFULLY!");
+    print("   Redeemed     : -${actualRedeem.toStringAsFixed(2)}");
+    print("   New NetTotal : ${NetTotal.toStringAsFixed(2)}");
+    print("   New Payable  : ${computedNetPayable.toStringAsFixed(2)}");
+    print("   New Balance  : ${balanceAmount.toStringAsFixed(2)}");
+
+    // Force refresh UI
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _removeRedeemedAmount() async {
@@ -9330,8 +6880,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
 // 🔥 GET WOO ORDER ID
     final int order = int.tryParse(
-      offlineOrder["wooOrderId"]?.toString() ?? "0",
-    ) ??
+          offlineOrder["wooOrderId"]?.toString() ?? "0",
+        ) ??
         0;
 
     if (order == 0) {
@@ -9370,12 +6920,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // API VALUES
       // =====================================
       final double updatedOrderTotal = double.tryParse(
-        data["order_total"]?.toString() ?? "0",
-      ) ??
+            data["order_total"]?.toString() ?? "0",
+          ) ??
           widget.netPayable;
       final int updatedPoints = int.tryParse(
-        data["available_points"]?.toString() ?? "0",
-      ) ??
+            data["available_points"]?.toString() ?? "0",
+          ) ??
           availablePoints;
 
 // UPDATE UI
@@ -9440,7 +6990,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     } finally {
       if (mounted) {
         setState(
-              () => isSummaryLoading = false,
+          () => isSummaryLoading = false,
         );
       }
     }
@@ -9510,7 +7060,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final themeHelper = Provider.of<ThemeNotifier>(context);
     bool hasEbtItem =
-    orderItems.any((item) => _orderSummaryLineEbtEligible(item));
+        orderItems.any((item) => _orderSummaryLineEbtEligible(item));
     final bool hasOnlyCashbackOrPayoutItems = orderItems.isNotEmpty &&
         orderItems.every((item) {
           final type = (item['item_type'] ?? item['type'] ?? '')
@@ -9547,7 +7097,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment:
-          CrossAxisAlignment.start, // Changed to start for better alignment
+              CrossAxisAlignment.start, // Changed to start for better alignment
           children: [
             Expanded(
               flex: 3,
@@ -9555,7 +7105,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 // Remove SingleChildScrollView to avoid height issues
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment:
-                MainAxisAlignment.start, // Changed from spaceEvenly
+                    MainAxisAlignment.start, // Changed from spaceEvenly
                 children: [
                   SizedBox(height: ResponsiveLayout.getHeight(6)),
 
@@ -9583,35 +7133,35 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   ),
                                   decoration: BoxDecoration(
                                     color:
-                                    themeHelper.themeMode == ThemeMode.dark
-                                        ? Color(0xFF1F1D2B)
-                                        : Colors.white,
+                                        themeHelper.themeMode == ThemeMode.dark
+                                            ? Color(0xFF1F1D2B)
+                                            : Colors.white,
                                     borderRadius: BorderRadius.circular(
                                         ResponsiveLayout.getRadius(8)),
                                   ),
                                   child: Column(
                                     crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Column(
                                         crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Container(
                                             height:
-                                            ResponsiveLayout.getHeight(60),
+                                                ResponsiveLayout.getHeight(60),
                                             padding: EdgeInsets.symmetric(
                                               horizontal:
-                                              ResponsiveLayout.getPadding(
-                                                  16),
+                                                  ResponsiveLayout.getPadding(
+                                                      16),
                                             ),
                                             decoration: BoxDecoration(
                                               color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
+                                                      ThemeMode.dark
                                                   ? const Color(0xFF40424F)
                                                   : const Color(0xFFF9FBFF),
                                               borderRadius:
-                                              BorderRadius.circular(10),
+                                                  BorderRadius.circular(10),
                                               boxShadow: const [
                                                 BoxShadow(
                                                   color: Color(0x22000000),
@@ -9630,11 +7180,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                         .getFontSize(18),
                                                     fontWeight: FontWeight.w600,
                                                     color:
-                                                    themeHelper.themeMode ==
-                                                        ThemeMode.dark
-                                                        ? Colors.white
-                                                        : const Color(
-                                                        0xFF0D47A1),
+                                                        themeHelper.themeMode ==
+                                                                ThemeMode.dark
+                                                            ? Colors.white
+                                                            : const Color(
+                                                                0xFF0D47A1),
                                                   ),
                                                 ),
 
@@ -9646,95 +7196,95 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                     height: ResponsiveLayout
                                                         .getHeight(44),
                                                     padding:
-                                                    EdgeInsets.symmetric(
+                                                        EdgeInsets.symmetric(
                                                       horizontal:
-                                                      ResponsiveLayout
-                                                          .getPadding(12),
+                                                          ResponsiveLayout
+                                                              .getPadding(12),
                                                     ),
                                                     decoration: BoxDecoration(
                                                       color: themeHelper
-                                                          .themeMode ==
-                                                          ThemeMode.dark
+                                                                  .themeMode ==
+                                                              ThemeMode.dark
                                                           ? const Color(
-                                                          0xFF1F1D2B)
+                                                              0xFF1F1D2B)
                                                           : Colors.white,
                                                       borderRadius:
-                                                      BorderRadius.circular(
-                                                          8),
+                                                          BorderRadius.circular(
+                                                              8),
                                                       border: Border.all(
                                                         color: _amountErrorText !=
-                                                            null
+                                                                null
                                                             ? Colors.red
                                                             : themeHelper
-                                                            .themeMode ==
-                                                            ThemeMode
-                                                                .dark
-                                                            ? Colors.white24
-                                                            : const Color(
-                                                            0xFFB6C6E3),
+                                                                        .themeMode ==
+                                                                    ThemeMode
+                                                                        .dark
+                                                                ? Colors.white24
+                                                                : const Color(
+                                                                    0xFFB6C6E3),
                                                         width:
-                                                        _amountErrorText !=
-                                                            null
-                                                            ? 1.5
-                                                            : 1.0,
+                                                            _amountErrorText !=
+                                                                    null
+                                                                ? 1.5
+                                                                : 1.0,
                                                       ),
                                                       boxShadow: [
                                                         if (themeHelper
-                                                            .themeMode !=
+                                                                .themeMode !=
                                                             ThemeMode.dark)
                                                           BoxShadow(
                                                             color: Colors.black
                                                                 .withOpacity(
-                                                                0.05),
+                                                                    0.05),
                                                             blurRadius: 4,
                                                             offset:
-                                                            const Offset(
-                                                                0, 2),
+                                                                const Offset(
+                                                                    0, 2),
                                                           ),
                                                       ],
                                                     ),
                                                     alignment:
-                                                    Alignment.centerRight,
+                                                        Alignment.centerRight,
                                                     child: TextField(
                                                       controller:
-                                                      amountController,
+                                                          amountController,
                                                       keyboardType:
-                                                      const TextInputType
-                                                          .numberWithOptions(
-                                                          decimal: true),
+                                                          const TextInputType
+                                                              .numberWithOptions(
+                                                              decimal: true),
                                                       textInputAction:
-                                                      TextInputAction.done,
+                                                          TextInputAction.done,
                                                       enabled: true,
                                                       readOnly: true,
                                                       textAlign:
-                                                      TextAlign.right,
+                                                          TextAlign.right,
                                                       autofocus: false,
                                                       cursorColor: themeHelper
-                                                          .themeMode ==
-                                                          ThemeMode.dark
+                                                                  .themeMode ==
+                                                              ThemeMode.dark
                                                           ? Colors.white
                                                           : const Color(
-                                                          0xFF1F1D2B),
+                                                              0xFF1F1D2B),
                                                       decoration:
-                                                      InputDecoration(
+                                                          InputDecoration(
                                                         border:
-                                                        InputBorder.none,
+                                                            InputBorder.none,
                                                         isDense: true,
                                                         contentPadding:
-                                                        EdgeInsets.zero,
+                                                            EdgeInsets.zero,
                                                         hintText:
-                                                        '${TextConstants.currencySymbol}0.00',
+                                                            '${TextConstants.currencySymbol}0.00',
                                                         hintStyle: TextStyle(
                                                           color: themeHelper
-                                                              .themeMode ==
-                                                              ThemeMode.dark
+                                                                      .themeMode ==
+                                                                  ThemeMode.dark
                                                               ? Colors.white38
                                                               : Colors
-                                                              .grey[400],
+                                                                  .grey[400],
                                                           fontSize:
-                                                          ResponsiveLayout
-                                                              .getFontSize(
-                                                              22),
+                                                              ResponsiveLayout
+                                                                  .getFontSize(
+                                                                      22),
                                                         ),
 
                                                         // errorText: _amountErrorText,
@@ -9745,34 +7295,34 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       ),
                                                       style: TextStyle(
                                                         fontSize:
-                                                        ResponsiveLayout
-                                                            .getFontSize(
-                                                            22),
+                                                            ResponsiveLayout
+                                                                .getFontSize(
+                                                                    22),
                                                         fontWeight:
-                                                        FontWeight.bold,
+                                                            FontWeight.bold,
                                                         color: themeHelper
-                                                            .themeMode ==
-                                                            ThemeMode.dark
+                                                                    .themeMode ==
+                                                                ThemeMode.dark
                                                             ? const Color(
-                                                            0xFFFFFFFF)
+                                                                0xFFFFFFFF)
                                                             : const Color(
-                                                            0xFF1F1D2B),
+                                                                0xFF1F1D2B),
                                                       ),
                                                       inputFormatters: [
                                                         FilteringTextInputFormatter
                                                             .allow(RegExp(
-                                                            r'^\d*\.?\d{0,2}')),
+                                                                r'^\d*\.?\d{0,2}')),
                                                       ],
                                                       onTap: () {
                                                         // Select all text when tapped (makes overwriting easy)
                                                         amountController
-                                                            .selection =
+                                                                .selection =
                                                             TextSelection(
-                                                              baseOffset: 0,
-                                                              extentOffset:
+                                                          baseOffset: 0,
+                                                          extentOffset:
                                                               amountController
                                                                   .text.length,
-                                                            );
+                                                        );
                                                       },
                                                       // ────────────────────────────────────────────────
                                                       // IMPORTANT: Detect real user typing
@@ -9780,25 +7330,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       onChanged: (value) {
                                                         // Mark that user is actively typing → prevent auto-fill later
                                                         _userManuallyEnteredAmount =
-                                                        true;
+                                                            true;
 
                                                         // Optional: clean up pasted currency symbol
                                                         String clean = value
                                                             .replaceAll(
-                                                            TextConstants
-                                                                .currencySymbol,
-                                                            '')
+                                                                TextConstants
+                                                                    .currencySymbol,
+                                                                '')
                                                             .trim();
                                                         if (clean != value) {
                                                           amountController
-                                                              .value =
+                                                                  .value =
                                                               TextEditingValue(
-                                                                text: clean,
-                                                                selection: TextSelection
-                                                                    .collapsed(
+                                                            text: clean,
+                                                            selection: TextSelection
+                                                                .collapsed(
                                                                     offset: clean
                                                                         .length),
-                                                              );
+                                                          );
                                                         }
                                                       },
                                                     ),
@@ -9828,11 +7378,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                       SizedBox(
                                           height:
-                                          ResponsiveLayout.getHeight(8)),
+                                              ResponsiveLayout.getHeight(8)),
 
                                       SizedBox(
                                           height:
-                                          ResponsiveLayout.getHeight(12)),
+                                              ResponsiveLayout.getHeight(12)),
 
 // NUM PAD - FIXED LOGIC
                                       Expanded(
@@ -9888,31 +7438,31 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                             Expanded(
                                               child: PaymentNumPad(
                                                 numPadType:
-                                                CustomTypeNumPad.payment,
+                                                    CustomTypeNumPad.payment,
                                                 isDarkTheme:
-                                                themeHelper.themeMode ==
-                                                    ThemeMode.dark,
+                                                    themeHelper.themeMode ==
+                                                        ThemeMode.dark,
                                                 getPaidAmount: () =>
-                                                amountController.text,
+                                                    amountController.text,
                                                 balanceAmount:
-                                                selectedPaymentMethod ==
-                                                    TextConstants
-                                                        .ebtText
-                                                    ? min(
-                                                  ebtTotal,
-                                                  _currentPaymentRemainingBalance ??
-                                                      balanceAmount,
-                                                )
-                                                    : (_currentPaymentRemainingBalance ??
-                                                    balanceAmount),
+                                                    selectedPaymentMethod ==
+                                                            TextConstants
+                                                                .ebtText
+                                                        ? min(
+                                                            ebtTotal,
+                                                            _currentPaymentRemainingBalance ??
+                                                                balanceAmount,
+                                                          )
+                                                        : (_currentPaymentRemainingBalance ??
+                                                            balanceAmount),
                                                 onDigitPressed: (value) {
                                                   _userManuallyEnteredAmount =
-                                                  true; // User touched → block future auto-fill
+                                                      true; // User touched → block future auto-fill
 
                                                   int digit = value == '00'
                                                       ? 0
                                                       : int.tryParse(value) ??
-                                                      0;
+                                                          0;
 
                                                   int newAmount = value == '00'
                                                       ? _rawAmount * 100
@@ -9926,8 +7476,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   if (selectedPaymentMethod ==
                                                       TextConstants.ebtText) {
                                                     maxAmount = (min(ebtTotal,
-                                                        effectiveBalance) *
-                                                        100)
+                                                                effectiveBalance) *
+                                                            100)
                                                         .toInt();
                                                   } else if (selectedPaymentMethod ==
                                                       TextConstants.card) {
@@ -9945,7 +7495,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   double displayValue =
                                                       _rawAmount / 100.0;
                                                   amountController.text =
-                                                  '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+                                                      '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
                                                   setState(() {
                                                     _isAmountEntered =
@@ -9954,11 +7504,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                 },
                                                 onClearPressed: () {
                                                   _userManuallyEnteredAmount =
-                                                  true;
+                                                      true;
 
                                                   _rawAmount = 0;
                                                   amountController.text =
-                                                  '${TextConstants.currencySymbol}0.00';
+                                                      '${TextConstants.currencySymbol}0.00';
                                                   _amountErrorText = null;
 
                                                   setState(() {
@@ -9967,13 +7517,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                 },
                                                 onDeletePressed: () {
                                                   _userManuallyEnteredAmount =
-                                                  true;
+                                                      true;
 
                                                   _rawAmount = _rawAmount ~/ 10;
                                                   double displayValue =
                                                       _rawAmount / 100.0;
                                                   amountController.text =
-                                                  '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+                                                      '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
                                                   setState(() {
                                                     _isAmountEntered =
@@ -9983,7 +7533,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                 onQuickAmountSelected:
                                                     (double selectedAmount) {
                                                   _userManuallyEnteredAmount =
-                                                  true;
+                                                      true;
 
                                                   double amountToUse =
                                                       selectedAmount;
@@ -10000,7 +7550,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       (amountToUse * 100)
                                                           .round();
                                                   amountController.text =
-                                                  '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+                                                      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
 
                                                   setState(() {
                                                     _amountErrorText = null;
@@ -10013,16 +7563,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                 },
                                                 onPayPressed: () async {
                                                   String cleanAmount =
-                                                  amountController.text
-                                                      .replaceAll(
-                                                      TextConstants
-                                                          .currencySymbol,
-                                                      '')
-                                                      .trim();
+                                                      amountController.text
+                                                          .replaceAll(
+                                                              TextConstants
+                                                                  .currencySymbol,
+                                                              '')
+                                                          .trim();
 
                                                   double amount =
                                                       double.tryParse(
-                                                          cleanAmount) ??
+                                                              cleanAmount) ??
                                                           0.0;
 
                                                   double effectiveBalance =
@@ -10035,10 +7585,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   double previousBalance =
                                                       effectiveBalance;
                                                   double newBalance =
-                                                  (effectiveBalance -
-                                                      amount)
-                                                      .clamp(0,
-                                                      double.infinity);
+                                                      (effectiveBalance -
+                                                              amount)
+                                                          .clamp(0,
+                                                              double.infinity);
                                                   double newTenderAmount =
                                                       tenderAmount + amount;
                                                   double newChange = 0.0;
@@ -10064,17 +7614,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                         TextConstants.ebtText) {
                                                       payByEbt += amount;
                                                       ebtTotal = (ebtTotal -
-                                                          amount)
+                                                              amount)
                                                           .clamp(0,
-                                                          double.infinity);
+                                                              double.infinity);
                                                     }
 
                                                     isPaymentStarted = true;
 
                                                     int newPaymentNumber =
                                                         (_lastPaymentDetails?[
-                                                        'paymentNumber'] ??
-                                                            0) +
+                                                                    'paymentNumber'] ??
+                                                                0) +
                                                             1;
 
                                                     if (newBalance > 0) {
@@ -10083,24 +7633,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       _lastPaymentDetails = {
                                                         'amount': amount,
                                                         'method':
-                                                        selectedPaymentMethod,
+                                                            selectedPaymentMethod,
                                                         'remainingBalance':
-                                                        newBalance,
+                                                            newBalance,
                                                         'previousBalance':
-                                                        previousBalance,
+                                                            previousBalance,
                                                         'datetime': DateTime
-                                                            .now()
+                                                                .now()
                                                             .toIso8601String(),
                                                         'paymentNumber':
-                                                        newPaymentNumber,
+                                                            newPaymentNumber,
                                                         'totalPaid':
-                                                        newTenderAmount,
+                                                            newTenderAmount,
                                                       };
                                                     } else {
                                                       _currentPaymentRemainingBalance =
-                                                      null;
+                                                          null;
                                                       _lastPaymentDetails =
-                                                      null;
+                                                          null;
                                                     }
                                                   });
 
@@ -10109,7 +7659,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   // ────────────────────────────────────────────────
                                                   _rawAmount = 0;
                                                   amountController.text =
-                                                  '${TextConstants.currencySymbol}0.00';
+                                                      '${TextConstants.currencySymbol}0.00';
                                                   _isAmountEntered = false;
 
                                                   // DO NOT call _autoFillRemainingBalance() here anymore!
@@ -10126,16 +7676,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                     final key = (orderId ?? 0)
                                                         .toString();
                                                     final boxData =
-                                                    await box.get(key);
+                                                        await box.get(key);
                                                     final cr = boxData is Map
                                                         ? (boxData as Map)[
-                                                    "coupon_response"]
+                                                            "coupon_response"]
                                                         : null;
                                                     final couponResponse = cr
-                                                    is Map
+                                                            is Map
                                                         ? Map<String,
-                                                        dynamic>.from(
-                                                        cr as Map)
+                                                                dynamic>.from(
+                                                            cr as Map)
                                                         : <String, dynamic>{};
 
                                                     _showPaymentDialog(
@@ -10144,7 +7694,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       changeAmount: newChange,
                                                       showChange: newChange > 0,
                                                       couponResponse:
-                                                      couponResponse,
+                                                          couponResponse,
                                                     );
                                                   }
 
@@ -10234,30 +7784,30 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     ),
                                     decoration: BoxDecoration(
                                       color: themeHelper.themeMode ==
-                                          ThemeMode.dark
+                                              ThemeMode.dark
                                           ? const Color(
-                                          0xFF091B34) // dark background
+                                              0xFF091B34) // dark background
                                           : const Color(
-                                          0xFFF4FCF7), // light mode background
+                                              0xFFF4FCF7), // light mode background
                                       borderRadius: BorderRadius.circular(6),
                                       border: Border(
                                         top: BorderSide(
                                           color: themeHelper.themeMode ==
-                                              ThemeMode.dark
+                                                  ThemeMode.dark
                                               ? const Color(0xFF091B34)
                                               : const Color(0xFF3EAE4C),
                                           width: 1,
                                         ),
                                         right: BorderSide(
                                           color: themeHelper.themeMode ==
-                                              ThemeMode.dark
+                                                  ThemeMode.dark
                                               ? const Color(0xFF091B34)
                                               : const Color(0xFF3EAE4C),
                                           width: 1,
                                         ),
                                         bottom: BorderSide(
                                           color: themeHelper.themeMode ==
-                                              ThemeMode.dark
+                                                  ThemeMode.dark
                                               ? const Color(0xFF091B34)
                                               : const Color(0xFF3EAE4C),
                                           width: 1,
@@ -10268,12 +7818,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     ),
                                     child: _buildAmountDisplay(
                                       TextConstants.netPayable,
-                                      computedNetPayable < 0
-                                          ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}'
-                                          : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                                      '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}',
                                       leftBarColor: const Color(0xFF3EAE4C),
                                       amountColor: themeHelper.themeMode ==
-                                          ThemeMode.dark
+                                              ThemeMode.dark
                                           ? Colors.white
                                           : Colors.black,
                                     ),
@@ -10290,7 +7838,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       children: [
                                         SizedBox(
                                             height:
-                                            ResponsiveLayout.getHeight(10)),
+                                                ResponsiveLayout.getHeight(10)),
                                         Container(
                                           padding: const EdgeInsets.only(
                                             top: 6,
@@ -10299,29 +7847,29 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                           ),
                                           decoration: BoxDecoration(
                                             color: themeHelper.themeMode ==
-                                                ThemeMode.dark
+                                                    ThemeMode.dark
                                                 ? const Color(0xFF091B34)
                                                 : const Color(0xFFE6F3FF),
                                             borderRadius:
-                                            BorderRadius.circular(6),
+                                                BorderRadius.circular(6),
                                             border: Border(
                                               top: BorderSide(
                                                 color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
+                                                        ThemeMode.dark
                                                     ? const Color(0xFF091B34)
                                                     : const Color(0xFF3B7DDD),
                                                 width: 1,
                                               ),
                                               right: BorderSide(
                                                 color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
+                                                        ThemeMode.dark
                                                     ? const Color(0xFF091B34)
                                                     : const Color(0xFF3B7DDD),
                                                 width: 1,
                                               ),
                                               bottom: BorderSide(
                                                 color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
+                                                        ThemeMode.dark
                                                     ? const Color(0xFF091B34)
                                                     : const Color(0xFF3B7DDD),
                                                 width: 1,
@@ -10335,18 +7883,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                             '${TextConstants.currencySymbol}${_currentPaymentRemainingBalance!.toStringAsFixed(2)}',
                                             leftBarColor:
-                                            const Color(0xFF3B7DDD),
+                                                const Color(0xFF3B7DDD),
                                             amountColor:
-                                            themeHelper.themeMode ==
-                                                ThemeMode.dark
-                                                ? Colors.white
-                                                : Colors.black,
+                                                themeHelper.themeMode ==
+                                                        ThemeMode.dark
+                                                    ? Colors.white
+                                                    : Colors.black,
                                             isPaymentBalance: true,
                                           ),
                                         ),
                                       ],
                                     )
-                                  // Otherwise show the main balance
+// Otherwise show the main balance
                                   else
                                     Container(
                                       padding: const EdgeInsets.only(
@@ -10356,28 +7904,28 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       ),
                                       decoration: BoxDecoration(
                                         color: themeHelper.themeMode ==
-                                            ThemeMode.dark
+                                                ThemeMode.dark
                                             ? const Color(0xFF091B34)
                                             : const Color(0xFFFCF4F4),
                                         borderRadius: BorderRadius.circular(6),
                                         border: Border(
                                           top: BorderSide(
                                             color: themeHelper.themeMode ==
-                                                ThemeMode.dark
+                                                    ThemeMode.dark
                                                 ? const Color(0xFF091B34)
                                                 : const Color(0xFFE85C43),
                                             width: 1,
                                           ),
                                           right: BorderSide(
                                             color: themeHelper.themeMode ==
-                                                ThemeMode.dark
+                                                    ThemeMode.dark
                                                 ? const Color(0xFF091B34)
                                                 : const Color(0xFFE85C43),
                                             width: 1,
                                           ),
                                           bottom: BorderSide(
                                             color: themeHelper.themeMode ==
-                                                ThemeMode.dark
+                                                    ThemeMode.dark
                                                 ? const Color(0xFF091B34)
                                                 : const Color(0xFFE85C43),
                                             width: 1,
@@ -10392,7 +7940,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                             : '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
                                         leftBarColor: const Color(0xFFE85C43),
                                         amountColor: themeHelper.themeMode ==
-                                            ThemeMode.dark
+                                                ThemeMode.dark
                                             ? Colors.white
                                             : Colors.black,
                                       ),
@@ -10410,28 +7958,28 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     ),
                                     decoration: BoxDecoration(
                                       color: themeHelper.themeMode ==
-                                          ThemeMode.dark
+                                              ThemeMode.dark
                                           ? const Color(0xFF091B34)
                                           : const Color(0xFFF4F7FC),
                                       borderRadius: BorderRadius.circular(6),
                                       border: Border(
                                         top: BorderSide(
                                           color: themeHelper.themeMode ==
-                                              ThemeMode.dark
+                                                  ThemeMode.dark
                                               ? const Color(0xFF091B34)
                                               : const Color(0xFF3B7DDD),
                                           width: 1,
                                         ),
                                         right: BorderSide(
                                           color: themeHelper.themeMode ==
-                                              ThemeMode.dark
+                                                  ThemeMode.dark
                                               ? const Color(0xFF091B34)
                                               : const Color(0xFF3B7DDD),
                                           width: 1,
                                         ),
                                         bottom: BorderSide(
                                           color: themeHelper.themeMode ==
-                                              ThemeMode.dark
+                                                  ThemeMode.dark
                                               ? const Color(0xFF091B34)
                                               : const Color(0xFF3B7DDD),
                                           width: 1,
@@ -10446,7 +7994,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                           : '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
                                       leftBarColor: const Color(0xFF3B7DDD),
                                       amountColor: themeHelper.themeMode ==
-                                          ThemeMode.dark
+                                              ThemeMode.dark
                                           ? Colors.white
                                           : Colors.black,
                                     ),
@@ -10517,7 +8065,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                     child: Container(
                       width: double.infinity,
                       padding:
-                      EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                       decoration: BoxDecoration(
                         color: themeHelper.themeMode == ThemeMode.dark
                             ? const Color(0xFF303136)
@@ -10656,7 +8204,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   print("🟦 Processing API response...");
 
                                   final redeemApi =
-                                  jsonDecode(result["apiResponse"]);
+                                      jsonDecode(result["apiResponse"]);
                                   print("📦 API Raw Response: $redeemApi");
 
                                   if (redeemApi == null) {
@@ -10675,21 +8223,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                   // Extract values
                                   final double newRedeemValue = double.tryParse(
-                                      data["redeem_amount"].toString()) ??
+                                          data["redeem_amount"].toString()) ??
                                       0.0;
 
                                   final int usedPoints = int.tryParse(
-                                      data["redeem_points"].toString()) ??
+                                          data["redeem_points"].toString()) ??
                                       0;
 
                                   final int newAvailablePoints = int.tryParse(
-                                      data["available_points"]
-                                          .toString()) ??
+                                          data["available_points"]
+                                              .toString()) ??
                                       availablePoints;
 
                                   final double newBalanceAmount =
                                       double.tryParse(
-                                          data["order_total"].toString()) ??
+                                              data["order_total"].toString()) ??
                                           computedNetPayable;
 
                                   print("🔢 Extracted API Values:");
@@ -10762,18 +8310,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               _buildRedeemCouponButton(
                                 TextConstants.Issuecoupon,
                                 "assets/coupon.png",
-
-                                // 🔥 Disable when coupon already applied
                                 isActive:
-                                !(offlineOrder?["coupon_applied"] == true ||
-                                    isCouponActive),
-
+                                    !(offlineOrder?["coupon_applied"] == true ||
+                                        isCouponActive ||
+                                        computedNetPayable < 0),
                                 onTap: () async {
                                   if (offlineOrder == null) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
                                           content:
-                                          Text("No offline order found")),
+                                              Text("No offline order found")),
                                     );
                                     return;
                                   }
@@ -10902,7 +8448,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
 
       final keptRedeems =
-      prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
+          prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
 
       final mergedResponse = Map<String, dynamic>.from(response);
       mergedResponse["coupons"] = [...issueCoupons, ...keptRedeems];
@@ -10911,7 +8457,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       existing["coupon_applied"] = true;
       existing["coupon_applied_at"] = DateTime.now().toIso8601String();
       existing["coupon_amount"] = discountAmount;
-      existing["lastPayment"] = _lastPayment!.toJson();
+
       await box.put(key, existing);
       offlineOrder = existing;
 
@@ -11108,9 +8654,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return Dialog(
           backgroundColor: dialogBg,
           insetPadding:
-          const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: Stack(
@@ -11190,8 +8736,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               const SizedBox(height: 14),
 
                               // _couponRow("Discount Amount",
-                              //     "₹${coupon["amount"]}", textPrimary),
-
+                              //     "${coupon["amount"]}", textPrimary),
                               _couponRow(
                                 "Discount Amount",
                                 "\$${coupon["amount"]}",
@@ -11226,7 +8771,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor:
-                            Colors.red.shade400, // soft light red
+                                Colors.red.shade400, // soft light red
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
@@ -11297,11 +8842,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Widget _buildCouponButton(
-      String title,
-      String iconPath, {
-        required VoidCallback onTap,
-        bool isActive = true,
-      }) {
+    String title,
+    String iconPath, {
+    required VoidCallback onTap,
+    bool isActive = true,
+  }) {
     return InkWell(
       onTap: isActive ? onTap : null,
       child: Container(
@@ -11361,11 +8906,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Widget _buildRedeemCouponButton(
-      String title,
-      String iconPath, {
-        required VoidCallback onTap,
-        bool isActive = true,
-      }) {
+    String title,
+    String iconPath, {
+    required VoidCallback onTap,
+    bool isActive = true,
+  }) {
     return InkWell(
       onTap: isActive ? onTap : null,
       child: Container(
@@ -11441,7 +8986,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //
   //   try {
   //     // 🔥 Remove coupon from Woo
-  //     await orderBloc.removeCoupon(
+  //     await orderBloc.removeCooupon(
   //       orderId: widget.orderId!,
   //       couponCode: "",
   //     );
@@ -11499,104 +9044,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //   }
   // }
 
-  double getAdjustedSummaryTax() {
-    double totalSubtotal = 0.0;
-    double totalDiscount = 0.0;
-
-    double _num(dynamic value) {
-      if (value is num) return value.toDouble();
-      return double.tryParse(value?.toString() ?? '') ?? 0.0;
-    }
-
-    print("========== TAX ADJUST START ==========");
-
-    for (var item in orderItems) {
-      final String itemName = item['item_name']?.toString() ?? 'Unknown';
-
-      // ✅ SKIP EBT PRODUCTS
-      final bool isEbt = item['is_ebt'] == true ||
-          item['ebt'] == true ||
-          item['isEBT'] == true ||
-          item['is_ebt_eligible'] == true;
-
-      if (isEbt) {
-        print("🚫 EBT ITEM SKIPPED: $itemName");
-        continue;
-      }
-
-      final double price = _num(item['item_price']);
-      final double qty = _num(item['items_count']);
-
-      final double itemSubtotal = price * qty;
-
-      final String discountType =
-          item['discount_type']?.toString().toLowerCase() ?? '';
-
-      double autoDiscount = _num(item['auto_discount']) +
-          _num(item['auto_discount_total']) +
-          _num(item['autoDiscount']) +
-          _num(item['autoDiscountTotal']) +
-          _num(item['display_auto_discount']);
-
-      double comboDiscount = _num(item['combo_discount_total']) +
-          _num(item['comboDiscountTotal']) +
-          _num(item['combo_discount']);
-
-      double mixMatchDiscount = _num(item['mixmatch_discount_total']) +
-          _num(item['mixMatchDiscountTotal']) +
-          _num(item['mixmatch_discount']);
-
-      double multipackDiscount = _num(item['multipack_discount_total']) +
-          _num(item['multipackDiscountTotal']) +
-          _num(item['multipack_discount']);
-
-      if (discountType == 'mixmatch' &&
-          autoDiscount > 0 &&
-          mixMatchDiscount == 0) {
-        mixMatchDiscount = autoDiscount;
-        autoDiscount = 0;
-      }
-
-      if (discountType == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
-        comboDiscount = autoDiscount;
-        autoDiscount = 0;
-      }
-
-      if (discountType == 'multipack' &&
-          autoDiscount > 0 &&
-          multipackDiscount == 0) {
-        multipackDiscount = autoDiscount;
-        autoDiscount = 0;
-      }
-
-      final double itemDiscount =
-          autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
-
-      totalSubtotal += itemSubtotal;
-      totalDiscount += itemDiscount;
-
-      print("🛒 ITEM: $itemName");
-      print("Subtotal: $itemSubtotal");
-      print("Discount: $itemDiscount");
-    }
-
-    final double taxableAmount = totalSubtotal - totalDiscount;
-
-    final double rawTax = taxableAmount * 0.091;
-
-    final double roundedTax = double.parse(rawTax.toStringAsFixed(2));
-
-    print("Total Subtotal = $totalSubtotal");
-    print("Total Discount = $totalDiscount");
-    print("Taxable Amount = $taxableAmount");
-    print("Raw Tax = $rawTax");
-    print("Final Tax = $roundedTax");
-
-    print("========== TAX ADJUST END ==========");
-
-    return roundedTax;
-  }
-
   Future<void> _removeAppliedCoupon() async {
     try {
       final box = StorageProvider.offlineOrders;
@@ -11651,12 +9098,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       await _recalculateTaxOnDiscountedItems();
 
       if (!widget.itemPricesAlreadyAdjusted) {
-        _recalculateGrossAndNetFromLineItemDiscounts();
+        await _recalculateGrossAndNetFromLineItemDiscounts();
       }
-
+      //Raghu--**
       // ================= FINAL TOTAL RECALC =================
       setState(() {
-        NetTotal = grossTotal + discount + merchantDiscount;
+        NetTotal = grossTotal + discount + merchantDiscount; //Raghu
 
         computedNetPayable = NetTotal + tax + cashbackFee;
 
@@ -11688,24 +9135,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // ================= SERVER SYNC FIRST =================
       try {
-        await OrderRepository().syncSingleOfflineOrder(
-          offlineOrder,
-        );
+        // await OrderRepository().syncSingleOfflineOrder(
+        //   offlineOrder,
+        // );
+        // ── Inject latest merchant discount into offlineOrder BEFORE sync ──
+        if (merchantDiscount != 0) {
+          offlineOrder['merchantDiscount'] = merchantDiscount.abs();
+          offlineOrder['merchantDiscountPercentage'] = merchantDiscountPercentage;
+        }
+
+        final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
       } catch (e) {
         print(
           "Sync after coupon removal failed: $e",
         );
       }
-
-      // ================= BUILD CUSTOMER ITEMS =================
-      final customerItems = orderItems.map((item) {
-        return {
-          "name": item["item_name"] ?? "",
-          "qty": item["items_count"] ?? 1,
-          "price": item["item_price"] ?? 0.0,
-          "image": item["item_image"] ?? "",
-        };
-      }).toList();
 
       // ================= IMPORTANT DELAY =================
       await Future.delayed(
@@ -11715,32 +9159,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       );
 
       // ================= FINAL CUSTOMER DISPLAY REFRESH =================
-      await CustomerDisplayService.showCustomerData(
-        orderId: safeOrderId,
-
-        items: customerItems,
-
-        grossTotal: grossTotal,
-
-        discount: discount,
-
-        merchantDiscount: merchantDiscount,
-
-        netTotal: grossTotal - discount.abs(),
-
-        tax: tax,
-
-        netPayable: computedNetPayable,
-
-        cashbackFee: cashbackFee,
-
-        redeemedAmount: redeemedValue.toDouble(),
-
-        loyaltyContact: mobileController.text.trim(),
-
-        // VERY IMPORTANT
-        summaryEnabled: true,
-      );
+      if (safeOrderId > 0) {
+        await CustomerDisplayHelper.updateCustomerDisplay(
+          safeOrderId,
+          summaryEnabled: true,
+        );
+      }
 
       // ================= SUCCESS =================
       if (mounted) {
@@ -11785,7 +9209,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // THEME COLORS
     final Color dialogBg = isDark ? const Color(0xFF252837) : Colors.white;
     final Color borderColor =
-    isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade300;
+        isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade300;
     final Color textPrimary = isDark ? Colors.white : Colors.black87;
     final Color textSecondary = isDark ? Colors.white70 : Colors.black54;
     final Color hintColor = isDark ? Colors.white38 : Colors.grey;
@@ -11797,7 +9221,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       barrierColor: Colors.black.withOpacity(0.10),
       builder: (context) {
         return Stack(children: [
-          ///  WHITE BACKGROUND when keyboard opens
+          /// 🔹 WHITE BACKGROUND when keyboard opens
           if (MediaQuery.of(context).viewInsets.bottom > 0)
             Positioned.fill(
               child: Container(
@@ -11810,143 +9234,143 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           /// 🔹 YOUR EXISTING DIALOG
           Center(
               child: WillPopScope(
-                onWillPop: () async {
-                  ScannerGuard.isCouponPopupOpen = false;
-                  return true;
-                },
-                child: BarcodeKeyboardListener(
-                  bufferDuration: const Duration(milliseconds: 600),
-                  onBarcodeScanned: (barcode) {
-                    final code = barcode.trim();
-                    print("🎯 Coupon QR/Barcode scanned → $code");
+            onWillPop: () async {
+              ScannerGuard.isCouponPopupOpen = false;
+              return true;
+            },
+            child: BarcodeKeyboardListener(
+              bufferDuration: const Duration(milliseconds: 600),
+              onBarcodeScanned: (barcode) {
+                final code = barcode.trim();
+                print("🎯 Coupon QR/Barcode scanned → $code");
 
-                    _couponCtrl.text = code; // ✅ Correct prefill
-                  },
-                  child: Dialog(
-                    backgroundColor: dialogBg,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.all(26),
-                      width: MediaQuery.of(context).size.width * 0.30,
-                      decoration: BoxDecoration(
-                        color: dialogBg,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          if (!isDark)
-                            BoxShadow(
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                              color: Colors.black.withOpacity(0.15),
-                            ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Center(
-                            child: Text(
-                              "Apply Coupon",
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: redPrimary,
-                              ),
-                            ),
+                _couponCtrl.text = code; // ✅ Correct prefill
+              },
+              child: Dialog(
+                backgroundColor: dialogBg,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Container(
+                  padding: const EdgeInsets.all(26),
+                  width: MediaQuery.of(context).size.width * 0.30,
+                  decoration: BoxDecoration(
+                    color: dialogBg,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      if (!isDark)
+                        BoxShadow(
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                          color: Colors.black.withOpacity(0.15),
+                        ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Text(
+                          "Apply Coupon",
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: redPrimary,
                           ),
-                          const SizedBox(height: 20),
-                          TextField(
-                            controller: _couponCtrl,
-                            keyboardType: TextInputType.number,
-                            style: TextStyle(color: textPrimary),
-                            decoration: InputDecoration(
-                              labelText: "Enter Coupon Code",
-                              labelStyle: TextStyle(color: textSecondary),
-                              hintStyle: TextStyle(color: hintColor),
-                              filled: true,
-                              fillColor:
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      TextField(
+                        controller: _couponCtrl,
+                        keyboardType: TextInputType.number,
+                        style: TextStyle(color: textPrimary),
+                        decoration: InputDecoration(
+                          labelText: "Enter Coupon Code",
+                          labelStyle: TextStyle(color: textSecondary),
+                          hintStyle: TextStyle(color: hintColor),
+                          filled: true,
+                          fillColor:
                               isDark ? const Color(0xFF2C2C2C) : Colors.white,
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(color: redPrimary, width: 1),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderSide:
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: redPrimary, width: 1),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide:
                                 BorderSide(color: borderColor, width: 1.0),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 25),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              foregroundColor: redPrimary,
+                              side: BorderSide(color: redPrimary, width: 1),
+                              shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 10,
                               ),
                             ),
+                            onPressed: () {
+                              ScannerGuard.isCouponPopupOpen =
+                                  false; // CLOSE FLAG
+                              Navigator.pop(context);
+                            },
+                            child: const Text(
+                              "Cancel",
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
                           ),
-                          const SizedBox(height: 25),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              TextButton(
-                                style: TextButton.styleFrom(
-                                  foregroundColor: redPrimary,
-                                  side: BorderSide(color: redPrimary, width: 1),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 18,
-                                    vertical: 10,
-                                  ),
-                                ),
-                                onPressed: () {
-                                  ScannerGuard.isCouponPopupOpen =
-                                  false; // CLOSE FLAG
-                                  Navigator.pop(context);
-                                },
-                                child: const Text(
-                                  "Cancel",
-                                  style: TextStyle(fontWeight: FontWeight.w600),
-                                ),
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: redPrimary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
                               ),
-                              const SizedBox(width: 12),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: redPrimary,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                    vertical: 12,
-                                  ),
-                                ),
-                                onPressed: () async {
-                                  final code = _couponCtrl.text.trim();
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 12,
+                              ),
+                            ),
+                            onPressed: () async {
+                              final code = _couponCtrl.text.trim();
 
-                                  if (code.isEmpty) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content:
+                              if (code.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content:
                                         const Text("Please enter coupon code"),
-                                        backgroundColor: Colors.redAccent,
-                                      ),
-                                    );
-                                    return;
-                                  }
+                                    backgroundColor: Colors.redAccent,
+                                  ),
+                                );
+                                return;
+                              }
 
-                                  ScannerGuard.isCouponPopupOpen =
+                              ScannerGuard.isCouponPopupOpen =
                                   false; // CLOSE FLAG
-                                  Navigator.pop(context);
-                                  await _applyCoupon(code);
-                                },
-                                child: const Text("Apply"),
-                              ),
-                            ],
-                          )
+                              Navigator.pop(context);
+                              await _applyCoupon(code);
+                            },
+                            child: const Text("Apply"),
+                          ),
                         ],
-                      ),
-                    ),
+                      )
+                    ],
                   ),
                 ),
-              ))
+              ),
+            ),
+          ))
         ]);
       },
     ).then((_) {
@@ -11974,6 +9398,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       setState(() => isSummaryLoading = true);
 
+      // Save original merchant discount values before sync
+      final double originalMerchantDiscount = merchantDiscount;
+      final double originalMerchantDiscountPercentage = merchantDiscountPercentage;
+      final String originalMerchantDiscountType = offlineOrder['merchantDiscountType']?.toString() ?? 'fixed';
+
       // ==================== SMART DUPLICATE CHECK ====================
       final dynamic cr = offlineOrder["coupon_response"];
       bool isAlreadyRedeemed = false;
@@ -11984,18 +9413,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         for (final dynamic item in coupons) {
           if (item is! Map) continue;
 
-          final Map<String, dynamic> couponMap =
-          Map<String, dynamic>.from(item);
+          final Map<String, dynamic> couponMap = Map<String, dynamic>.from(item);
           final String existingCode =
           (couponMap["code"]?.toString() ?? "").trim().toLowerCase();
 
           if (existingCode == code) {
-            // 🔥 ONLY block with "already applied" if it is ALREADY REDEEMED
             if (_couponHiveEntryIsRedeem(couponMap)) {
               isAlreadyRedeemed = true;
               break;
             }
-            // If only issued → allow (for issuing or redeeming)
           }
         }
       }
@@ -12009,9 +9435,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         );
         return;
       }
-      // ============================================================
 
-      // Backup
+      // Backup original
       final dynamic originalCouponResponse = offlineOrder["coupon_response"];
 
       // Merge redeem coupon
@@ -12027,17 +9452,23 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       await box.put(orderKey, offlineOrder);
 
+      // ── Inject latest merchant discount into offlineOrder BEFORE sync ──
+      if (merchantDiscount != 0) {
+        offlineOrder['merchantDiscount'] = merchantDiscount.abs();
+        offlineOrder['merchantDiscountPercentage'] = merchantDiscountPercentage;
+      }
+
+      final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+
       // Sync to server
-      final result =
-      await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+      // final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
 
       if (result == null || result is! Map<String, dynamic>) {
         offlineOrder["coupon_response"] = originalCouponResponse;
         await box.put(orderKey, offlineOrder);
 
         String errorMsg = "Invalid coupon or unable to apply";
-        if (result is Map<String, dynamic> &&
-            result['code'] == 'invalid_coupon') {
+        if (result is Map<String, dynamic> && result['code'] == 'invalid_coupon') {
           errorMsg = result['message']?.toString() ?? errorMsg;
         }
 
@@ -12047,14 +9478,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return;
       }
 
-      // SUCCESS logic (unchanged)
+      // Extract values from response
       final double newDiscount =
           double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
       final double newTax =
-          double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
+          double.tryParse(result["tax"]?.toString() ?? "0") ?? widget.orderTax;
       final double newTotal =
           double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
 
+      // Update offline order
       offlineOrder["orderDiscount"] = newDiscount;
       offlineOrder["tax_discount"] = newTax;
       offlineOrder["grand_total"] = newTotal;
@@ -12065,8 +9497,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       if (result.containsKey("id")) {
         offlineOrder["wooOrderId"] = result["id"];
-        offlineOrder["wooStatus"] =
-            result["status"]?.toString().toLowerCase() ?? '';
+        offlineOrder["wooStatus"] = result["status"]?.toString().toLowerCase() ?? '';
         offlineOrder["synced"] = true;
         offlineOrder["sync_at"] = DateTime.now().toIso8601String();
       }
@@ -12074,31 +9505,64 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       _enrichRedeemCouponIdsFromWoo(offlineOrder, result, code);
       await box.put(orderKey, offlineOrder);
 
-      if (localOrderId != null) {
-        await CustomerDisplayHelper.updateCustomerDisplay(localOrderId,
-            summaryEnabled: true);
-      }
-
+      // ✅ UPDATE UI - Same logic as remove coupon
       setState(() {
         discount = (newDiscount != 0) ? -newDiscount.abs() : 0.0;
         tax = newTax;
+      //Raghu--**
+        // Recalculate NetTotal and computedNetPayable with same formula
         NetTotal = grossTotal + discount + merchantDiscount;
         computedNetPayable = NetTotal + tax + cashbackFee;
         orderTotal = newTotal;
-        balanceAmount = newTotal;
+        balanceAmount = computedNetPayable - tenderAmount;
+        if (balanceAmount < 0) balanceAmount = 0.0;
+
         isCouponAppliedFromApi = true;
+
+        // ✅ CRITICAL FIX: Restore merchant discount values (they should NOT change with coupon)
+        merchantDiscount = originalMerchantDiscount;
+        merchantDiscountPercentage = originalMerchantDiscountPercentage;
       });
 
+      // ✅ Update offlineOrder with restored merchant discount values
+      offlineOrder["merchantDiscount"] = originalMerchantDiscount;
+      offlineOrder["merchantDiscountPercentage"] = originalMerchantDiscountPercentage;
+      offlineOrder["merchantDiscountType"] = originalMerchantDiscountType;
+      await box.put(orderKey, offlineOrder);
+      //Raghu---**
+      // ✅ Recalculate with discounts
       await _recalculateTaxOnDiscountedItems();
-      _recalculateGrossAndNetFromLineItemDiscounts();
+      if (!widget.itemPricesAlreadyAdjusted) {
+        await _recalculateGrossAndNetFromLineItemDiscounts();
+      }
+
+      // ✅ Final recalculation
+      setState(() {
+        NetTotal = grossTotal + discount + merchantDiscount;
+        computedNetPayable = NetTotal + tax + cashbackFee;
+        orderTotal = computedNetPayable;
+        balanceAmount = computedNetPayable - tenderAmount;
+        if (balanceAmount < 0) balanceAmount = 0.0;
+      });
+
+      // ✅ Update customer display
+      if (localOrderId != null) {
+        await CustomerDisplayHelper.updateCustomerDisplay(
+          localOrderId,
+          summaryEnabled: true,
+        );
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text("Coupon applied successfully"),
-            backgroundColor: Colors.green),
+          content: Text("Coupon applied successfully"),
+          backgroundColor: Colors.green,
+        ),
       );
+
     } catch (e) {
       print("❌ Apply coupon error: $e");
-      // Restore logic (unchanged)
+      // Restore logic
       try {
         final box = StorageProvider.offlineOrders;
         final String orderKey = widget.orderId?.toString() ??
@@ -12125,11 +9589,47 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text("Failed to apply coupon"),
-            backgroundColor: Colors.red),
+          content: Text("Failed to apply coupon: $e"),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       setState(() => isSummaryLoading = false);
+    }
+  }
+
+  Future<void> _recalculateMerchantDiscount() async {
+    // Get merchant discount type and percentage from offline order
+    final String mdType = offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+    final num mdPercentage = offlineOrder?['merchantDiscountPercentage'] as num? ?? merchantDiscountPercentage;
+    //Raghu--**
+    // Calculate current base (Gross)
+    final double baseAmount = grossTotal;
+
+    if (mdType == 'percentage' && mdPercentage > 0) {
+      // Recalculate merchant discount based on new base amount
+      final double newMerchantDiscount = -((baseAmount * mdPercentage) / 100.0);
+
+      if (kDebugMode) {
+        print('🔄 Recalculating merchant discount:');
+        print('   Base Amount (Gross): $baseAmount');
+        print('   Percentage: $mdPercentage%');
+        print('   New Merchant Discount: $newMerchantDiscount');
+        print('   Old Merchant Discount: $merchantDiscount');
+      }
+
+      setState(() {
+        merchantDiscount = newMerchantDiscount;
+      });
+
+      // Update offline order
+      if (offlineOrder != null) {
+        offlineOrder!['merchantDiscount'] = merchantDiscount;
+        await StorageProvider.offlineOrders.put(
+            (orderId ?? 0).toString(),
+            offlineOrder!
+        );
+      }
     }
   }
 
@@ -12159,13 +9659,142 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     map['coupons'] = cleaned;
     offlineOrder['coupon_response'] = map;
   }
+  // Future<void> _applyCoupon(String code) async {
+  //   try {
+  //     final box = StorageProvider.offlineOrders;
+  //
+  //     final String orderKey =
+  //         widget.orderId?.toString() ?? widget.offlineOrderId?.toString() ?? "";
+  //
+  //     if (orderKey.isEmpty) return;
+  //
+  //     final rawOrder = await box.get(orderKey);
+  //
+  //     final offlineOrder = Map<String, dynamic>.from(
+  //       rawOrder is Map ? rawOrder : {},
+  //     );
+  //
+  //     if (offlineOrder.isEmpty) return;
+  //
+  //     // Store coupon locally (redeem: generate_type true; keep issued coupons if any)
+  //
+  //     offlineOrder["coupon_response"] =
+  //         _mergeRedeemIntoCouponResponse(offlineOrder["coupon_response"], code);
+  //
+  //     // ✅ Use LOCAL order ID instead of Woo ID for syncing
+  //
+  //     final int? localOrderId = int.tryParse(orderKey);
+  //
+  //     if (localOrderId != null) {
+  //       offlineOrder["id"] = localOrderId; // critical for local sync
+  //     }
+  //
+  //     await box.put(orderKey, offlineOrder);
+  //
+  //     setState(() => isSummaryLoading = true);
+  //
+  //     // Send to repository with local ID
+  //
+  //     final result =
+  //     await OrderRepository().syncSingleOfflineOrder(offlineOrder);
+  //
+  //     if (result == null || result is! Map) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(
+  //           content: Text("Invalid coupon or unable to apply"),
+  //           backgroundColor: Colors.red,
+  //         ),
+  //       );
+  //
+  //       return;
+  //     }
+  //
+  //     // ⭐ Extract values from repository response
+  //
+  //     final double newDiscount =
+  //         double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
+  //
+  //     final double newTax =
+  //         double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
+  //
+  //     final double newTotal =
+  //         double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
+  //
+  //     // Update offline order fields
+  //
+  //     offlineOrder["orderDiscount"] = newDiscount;
+  //
+  //     offlineOrder["tax_discount"] = newTax;
+  //
+  //     offlineOrder["grand_total"] = newTotal;
+  //
+  //     offlineOrder["coupon_applied"] = true;
+  //
+  //     offlineOrder["applied_coupons"] = [
+  //       {"code": code, "amount": newDiscount}
+  //     ];
+  //
+  //     // ✅ Store Woo info if returned, but do NOT send Woo ID next time
+  //
+  //     if (result.containsKey("id")) {
+  //       offlineOrder["wooOrderId"] = result["id"];
+  //
+  //       offlineOrder["wooStatus"] =
+  //           result["status"]?.toString().toLowerCase() ?? '';
+  //
+  //       offlineOrder["synced"] = true;
+  //
+  //       offlineOrder["sync_at"] = DateTime.now().toIso8601String();
+  //     }
+  //
+  //     _enrichRedeemCouponIdsFromWoo(offlineOrder, result, code);
+  //
+  //     await box.put(orderKey, offlineOrder);
+  //
+  //     // 🔥 Update display
+  //
+  //     await CustomerDisplayHelper.updateCustomerDisplay(
+  //       localOrderId!,
+  //       summaryEnabled: true,
+  //     );
+  //
+  //     setState(() {
+  //       // Enforce negative sign for display consistency (-$5.00)
+  //       discount = (newDiscount != 0) ? -(newDiscount.abs()) : 0.0;
+  //       tax = newTax;
+  //
+  //       // Use algebraic sum
+  //       NetTotal = grossTotal + discount + merchantDiscount;
+  //       computedNetPayable = NetTotal + tax + cashbackFee;
+  //       orderTotal = newTotal;
+  //
+  //       balanceAmount = newTotal;
+  //
+  //       isCouponAppliedFromApi = true;
+  //     });
+  //
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(
+  //         content: Text("Coupon applied successfully"),
+  //         backgroundColor: Colors.green,
+  //       ),
+  //     );
+  //
+  //     print(
+  //         "✅ Coupon Applied (local ID $localOrderId): Discount $newDiscount, Tax $newTax, Total $newTotal");
+  //   } catch (e) {
+  //     print("❌ Apply coupon error: $e");
+  //   } finally {
+  //     setState(() => isSummaryLoading = false);
+  //   }
+  // }
 
   Widget _buildAmountDisplay(
-      String label,
-      String amount, {
-        required Color leftBarColor,
-        Color? amountColor = Colors.black,
-      }) {
+    String label,
+    String amount, {
+    required Color leftBarColor,
+    Color? amountColor = Colors.black,
+  }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
     return Container(
@@ -12238,10 +9867,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       onTap: () {
         // Remove '$' and ensure the value is numeric
         String cleanAmount =
-        amount.replaceAll(TextConstants.currencySymbol, '');
+            amount.replaceAll(TextConstants.currencySymbol, '');
         double numericValue = double.parse(cleanAmount);
         amountController.text =
-        '${TextConstants.currencySymbol} ${numericValue.toStringAsFixed(2)}';
+            '${TextConstants.currencySymbol} ${numericValue.toStringAsFixed(2)}';
         setState(() {});
       },
       child: Container(
@@ -12331,15 +9960,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Widget _buildPaymentModeButton(
-      String label,
-      Widget iconWidget, {
-        required LinearGradient gradient,
-        required Color borderColor,
-        Color? iconColor, // optional
-        VoidCallback? onTap,
-        bool isLoading = false,
-        bool isDisabled = false,
-      }) {
+    String label,
+    Widget iconWidget, {
+    required LinearGradient gradient,
+    required Color borderColor,
+    Color? iconColor, // optional
+    VoidCallback? onTap,
+    bool isLoading = false,
+    bool isDisabled = false,
+  }) {
     double _scale = 1.0;
     final bool isEnabled = !isDisabled && !isLoading && onTap != null;
 
@@ -12348,25 +9977,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return GestureDetector(
           onTapDown: isEnabled
               ? (_) {
-            setState(() {
-              _scale = 0.95; // press effect
-            });
-          }
+                  setState(() {
+                    _scale = 0.95; // press effect
+                  });
+                }
               : null,
           onTapUp: isEnabled
               ? (_) {
-            setState(() {
-              _scale = 1.0;
-            });
-            if (onTap != null) onTap();
-          }
+                  setState(() {
+                    _scale = 1.0;
+                  });
+                  if (onTap != null) onTap();
+                }
               : null,
           onTapCancel: isEnabled
               ? () {
-            setState(() {
-              _scale = 1.0;
-            });
-          }
+                  setState(() {
+                    _scale = 1.0;
+                  });
+                }
               : null,
           child: AnimatedScale(
             scale: _scale,
@@ -12381,7 +10010,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 decoration: BoxDecoration(
                   gradient: gradient,
                   borderRadius:
-                  BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                      BorderRadius.circular(ResponsiveLayout.getRadius(8)),
                   border: Border.all(color: borderColor),
                   boxShadow: const [
                     BoxShadow(
@@ -12395,7 +10024,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   color: Colors.transparent,
                   child: InkWell(
                     borderRadius:
-                    BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                        BorderRadius.circular(ResponsiveLayout.getRadius(8)),
                     onTap: isEnabled ? onTap : null,
                     splashColor: Colors.white24,
                     highlightColor: Colors.transparent,
@@ -12411,14 +10040,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           ),
                           child: isLoading
                               ? SizedBox(
-                            width: ResponsiveLayout.getIconSize(24),
-                            height: ResponsiveLayout.getIconSize(24),
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  borderColor),
-                            ),
-                          )
+                                  width: ResponsiveLayout.getIconSize(24),
+                                  height: ResponsiveLayout.getIconSize(24),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        borderColor),
+                                  ),
+                                )
                               : iconWidget,
                         ),
                         SizedBox(width: ResponsiveLayout.getWidth(12)),
@@ -12444,11 +10073,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Widget _buildPaymentOptionButton(
-      String title,
-      String iconPath, {
-        required bool isActive,
-        required VoidCallback onTap,
-      }) {
+    String title,
+    String iconPath, {
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
     return InkWell(
       onTap: isActive ? onTap : null,
       child: Container(
@@ -12509,226 +10138,135 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   // Build #1.0.175: Modified _handleVoidPayment for partial void with API call
 
-
-
-  // Future<void> _handleVoidPayment(BuildContext context,
-  //     {required bool isPartial}) async {
-  //   if (_lastPayment == null || _lastPayment!.amount <= 0) {
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       const SnackBar(content: Text("No valid payment to void")),
-  //     );
-  //     return;
-  //   }
-  //
-  //   final voidedAmount = _lastPayment!.amount;
-  //   final method = _lastPayment!.method;
-  //   final serverPaymentId = _lastPayment!.paymentId;
-  //
-  //   if (method.toLowerCase() == TextConstants.card.toLowerCase()) {
-  //     await _voidServerPaymentIfCard(serverPaymentId: serverPaymentId);
-  //   }
-  //
-  //   print("VOID INITIATED → reversing \$${voidedAmount.toStringAsFixed(2)} ($method) | isPartial: $isPartial");
-  //
-  //   final now = DateTime.now();
-  //   final String voidDateTime = DateFormat('yyyy-MM-dd HH:mm:ss').format(now);
-  //
-  //   // Create NEGATIVE payment record
-  //   final negativePayment = LocalPayment(
-  //     orderId: orderId ?? 0,
-  //     title: "Void ($method)",
-  //     amount: -voidedAmount,
-  //     paymentMethod: method,
-  //     shiftId: shiftId,
-  //     vendorId: vendorId,
-  //     userId: userId ?? 0,
-  //     serviceType: serviceType,
-  //     datetime: voidDateTime,
-  //     notes: "Local void of ${method} payment – original ID: ${_lastPayment?.paymentId ?? 'local'}",
-  //     isSynced: false,
-  //     createdAt: now,
-  //     remainingBalance: (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
-  //     status: PaymentDbStatus.voided,
-  //     serverPaymentId: int.tryParse(_lastPayment?.paymentId ?? "0"),
-  //   );
-  //
-  //   try {
-  //     final savedVoid = await LocalPaymentDBHelper.instance.savePayment(negativePayment);
-  //     await _savePaymentToHive(
-  //       amount: -voidedAmount,
-  //       paymentMethod: method,
-  //       transactionId: "void_${savedVoid.id}",
-  //       localPayment: savedVoid,
-  //     );
-  //     await _saveLocalPaymentToHive(savedVoid);
-  //     await _calculateBalanceFromPaymentHistory();
-  //     await _printPaymentHistorySummary();
-  //
-  //     // ✅ FIX: Check if this was a FULL payment void (no remaining balance)
-  //     final bool wasFullPayment = !isPartial && balanceAmount <= 0;
-  //
-  //     setState(() {
-  //       _lastPaymentDetails = null;
-  //       _currentPaymentRemainingBalance = null;
-  //       _successPopupShown = false;
-  //       isPaymentStarted = false;
-  //       selectedPaymentMethod = TextConstants.cash;
-  //     });
-  //
-  //     _resetAmountAfterPay();
-  //
-  //     // ✅ FIX: After FULL VOID, navigate back to home screen immediately
-  //     if (wasFullPayment) {
-  //       print("Full payment voided → navigating to home screen");
-  //       await CustomerDisplayService.showWelcome();
-  //
-  //       if (mounted) {
-  //         OrderHelper.isOrderPanelLoaded = false;
-  //         OrderHelper.notifyOrderPanelToRefresh();
-  //         Navigator.pushReplacement(
-  //           context,
-  //           MaterialPageRoute(builder: (_) => POSHomeScreen()),
-  //           result: TextConstants.refresh,
-  //         );
-  //       }
-  //       return;
-  //     }
-  //
-  //     // // For partial void, just show message
-  //     // ScaffoldMessenger.of(context).showSnackBar(
-  //     //   SnackBar(
-  //     //     content: Text("${isPartial ? 'Partial' : 'Full'} payment of \$${voidedAmount.toStringAsFixed(2)} voided"),
-  //     //     backgroundColor: Colors.orange[800],
-  //     //     duration: const Duration(seconds: 2),
-  //     //   ),
-  //     // );
-  //   } catch (e, stack) {
-  //     print("VOID FAILED: $e");
-  //     print(stack);
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(
-  //         content: Text("Failed to void payment: $e"),
-  //         backgroundColor: Colors.red,
-  //       ),
-  //     );
-  //   }
-  //
-  //   if (mounted) {
-  //     Future.microtask(() async {
-  //       try {
-  //         await _syncCurrentOfflineOrder();
-  //       } catch (e) {
-  //         print("❌ Post-void sync failed: $e");
-  //       }
-  //     });
-  //   }
-  // }
-
   Future<void> _handleVoidPayment(BuildContext context,
       {required bool isPartial}) async {
+    // ────────────────────────────────────────────────
+    //  0. Early validation
+    // ────────────────────────────────────────────────
     if (_lastPayment == null || _lastPayment!.amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("No valid payment to void")),
       );
+      Navigator.of(context).pop(); // close confirmation dialog
       return;
     }
 
     final voidedAmount = _lastPayment!.amount;
     final method = _lastPayment!.method;
-    final serverPaymentId = _lastPayment!.paymentId;
 
-    if (method.toLowerCase() == TextConstants.card.toLowerCase()) {
-      await _voidServerPaymentIfCard(serverPaymentId: serverPaymentId);
-    }
-
-    print("VOID INITIATED → reversing \$${voidedAmount.toStringAsFixed(2)} ($method) | isPartial: $isPartial");
+    print(
+        "VOID INITIATED → reversing \$${voidedAmount.toStringAsFixed(2)} ($method) | isPartial: $isPartial");
 
     final now = DateTime.now();
     final String voidDateTime = DateFormat('yyyy-MM-dd HH:mm:ss').format(now);
 
-    // Create NEGATIVE payment record
+    // ────────────────────────────────────────────────
+    //  1. Create NEGATIVE payment record
+    // ────────────────────────────────────────────────
     final negativePayment = LocalPayment(
       orderId: orderId ?? 0,
       title: "Void ($method)",
       amount: -voidedAmount,
+      // IMPORTANT: use the original payment method so per-method totals (Pay by Cash)
+      // correctly subtract the negative void amount.
       paymentMethod: method,
       shiftId: shiftId,
       vendorId: vendorId,
       userId: userId ?? 0,
       serviceType: serviceType,
       datetime: voidDateTime,
-      notes: "Local void of ${method} payment – original ID: ${_lastPayment?.paymentId ?? 'local'}",
+      notes:
+          "Local void of ${method} payment – original ID: ${_lastPayment?.paymentId ?? 'local'}",
       isSynced: false,
       createdAt: now,
-      remainingBalance: (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
+      remainingBalance:
+          (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
       status: PaymentDbStatus.voided,
       serverPaymentId: int.tryParse(_lastPayment?.paymentId ?? "0"),
     );
 
     try {
-      final savedVoid = await LocalPaymentDBHelper.instance.savePayment(negativePayment);
+      // ────────────────────────────────────────────────
+      //  2. Save void payment (Isar + Hive mirroring)
+      // ────────────────────────────────────────────────
+      final savedVoid =
+          await LocalPaymentDBHelper.instance.savePayment(negativePayment);
+      print(
+          "Void saved in Isar → ID: ${savedVoid.id} | amount: -${voidedAmount.toStringAsFixed(2)}");
+
       await _savePaymentToHive(
         amount: -voidedAmount,
         paymentMethod: method,
         transactionId: "void_${savedVoid.id}",
         localPayment: savedVoid,
       );
+
       await _saveLocalPaymentToHive(savedVoid);
+
+      // ────────────────────────────────────────────────
+      //  3. Refresh balances from full payment history
+      //     (this should now include the -amount entry)
+      // ────────────────────────────────────────────────
       await _calculateBalanceFromPaymentHistory();
       await _printPaymentHistorySummary();
 
-      // ✅ FIX: Check if this was a FULL payment void (no remaining balance)
-      final bool wasFullPayment = !isPartial && balanceAmount <= 0;
-
+      // ────────────────────────────────────────────────
+      //  4. CRITICAL: Force-reset "payment completed" flags
+      //     Especially important when isPartial == false (full void)
+      // ────────────────────────────────────────────────
       setState(() {
+        // Always clear last payment reference
+        _lastPayment = null;
         _lastPaymentDetails = null;
-        _currentPaymentRemainingBalance = null;
-        _successPopupShown = false;
-        isPaymentStarted = false;
+
+        // If this was a FULL payment void → make sure we allow new full payment
+        if (!isPartial) {
+          // Most important resets for full void
+          _currentPaymentRemainingBalance =
+              null; // no longer "in partial session"
+          _successPopupShown = false; // allow success dialog again
+          isPaymentStarted = false; // visually reset "payment in progress"
+        }
+
+        // Clear the input + payment-method highlight so we don't remain in "EBT zone"
+        // when the user voids and continues paying.
         selectedPaymentMethod = TextConstants.cash;
 
-        // ✅ CRITICAL: Clear _lastPayment after void
-        _lastPayment = null;
+        // Always update main UI flags based on new calculated balance
+        isPaymentStarted = tenderAmount > 0;
       });
 
+      // Reset keypad input (amount field) after void.
+      // (Do it outside setState so it also updates controller text.)
       _resetAmountAfterPay();
 
-      // ✅ FIX: After FULL VOID, navigate back to home screen immediately
-      if (wasFullPayment) {
-        print("Full payment voided → navigating to home screen");
-        await CustomerDisplayService.showWelcome();
+      // ────────────────────────────────────────────────
+      //  5. Optional: Show feedback (non-intrusive)
+      // ────────────────────────────────────────────────
+      String message = isPartial
+          ? "Partial payment of \$${voidedAmount.toStringAsFixed(2)} voided"
+          : "Full payment of \$${voidedAmount.toStringAsFixed(2)} voided. Ready for new payment.";
 
-        if (mounted) {
-          OrderHelper.isOrderPanelLoaded = false;
-          OrderHelper.notifyOrderPanelToRefresh();
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => POSHomeScreen()),
-            result: TextConstants.refresh,
-          );
-        }
-        return;
-      }
-
-      // For partial void, just show message
       // ScaffoldMessenger.of(context).showSnackBar(
       //   SnackBar(
-      //     content: Text("${isPartial ? 'Partial' : 'Full'} payment of \$${voidedAmount.toStringAsFixed(2)} voided"),
+      //     content: Text(message),
       //     backgroundColor: Colors.orange[800],
-      //     duration: const Duration(seconds: 2),
+      //     duration: const Duration(seconds: 4),
       //   ),
       // );
     } catch (e, stack) {
       print("VOID FAILED: $e");
       print(stack);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Failed to void payment: $e"),
-          backgroundColor: Colors.red,
-        ),
-      );
+
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   SnackBar(
+      //     content: Text("Failed to void payment: $e"),
+      //     backgroundColor: Colors.red,
+      //   ),
+      // );
     }
 
+    // Push void + updated balances to Woo while Hive still holds wooOrderId
     if (mounted) {
       Future.microtask(() async {
         try {
@@ -12738,6 +10276,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         }
       });
     }
+
+    // Always close the confirmation dialog at the end
+    // if (Navigator.canPop(context)) {
+    //   Navigator.of(context).pop();
+    // }
   }
 
   // Build #1.0.175: New method for void order API call
@@ -12839,66 +10382,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   // --------------------
 
-  // Future<void> _showPartialPaymentDialog(BuildContext context, double amount,
-  //     {bool isVoidDisabled = false}) async {
-  //   if (_isShowingPartialDialog) {
-  //     print("Partial dialog already showing → skipping duplicate call");
-  //     return;
-  //   }
-  //   _isShowingPartialDialog = true;
-  //
-  //   final double remainingToShow =
-  //       _currentPaymentRemainingBalance ?? balanceAmount;
-  //   print(
-  //       "Showing Partial Payment Dialog → amount: $amount | remaining: $remainingToShow");
-  //
-  //   await showDialog(
-  //     context: context,
-  //     barrierDismissible: false,
-  //     builder: (dialogCtx) => PaymentDialog(
-  //       status: PaymentStatus.partial,
-  //       mode: _currentDialogPaymentMode(),
-  //       amount: amount,
-  //       remainingBalance: remainingToShow,
-  //       isVoidDisabled: isVoidDisabled,
-  //       onVoid: () async {
-  //         print("Void tapped from partial dialog");
-  //         // 1. Close the partial dialog cleanly first
-  //         Navigator.of(dialogCtx).pop();
-  //
-  //         // 2. Show void confirmation
-  //         if (!_isShowingPartialDialog) {
-  //           showVoidExitConfirmation(context, false); // false = not partial
-  //         }
-  //         await _showVoidConfirmation(context, isPartial: true);
-  //       },
-  //       onNextPayment: () async {
-  //         // try {
-  //         //   await CustomerDisplayService.showThankYou();
-  //         // } catch (e) {
-  //         //   print(">>> Error showing Thank You screen: $e");
-  //         // }
-  //
-  //         print("Next Payment tapped → closing partial dialog cleanly");
-  //
-  //         Navigator.of(dialogCtx).pop();
-  //
-  //         if (mounted) {
-  //           setState(() {
-  //             selectedPaymentMethod = TextConstants.cash;
-  //           });
-  //           _resetAmountAfterPay();
-  //         }
-  //       },
-  //     ),
-  //   );
-  //
-  //   // Reset guard after dialog is fully closed
-  //   _isShowingPartialDialog = false;
-  //   print("Partial dialog closed → guard reset");
-  // }
-
-
   Future<void> _showPartialPaymentDialog(BuildContext context, double amount,
       {bool isVoidDisabled = false}) async {
     if (_isShowingPartialDialog) {
@@ -12923,53 +10406,40 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         isVoidDisabled: isVoidDisabled,
         onVoid: () async {
           print("Void tapped from partial dialog");
+          // 1. Close the partial dialog cleanly first
           Navigator.of(dialogCtx).pop();
+
+          // 2. Show void confirmation
           if (!_isShowingPartialDialog) {
-            showVoidExitConfirmation(context, false);
+            showVoidExitConfirmation(context, false); // false = not partial
           }
           await _showVoidConfirmation(context, isPartial: true);
         },
-        // onNextPayment: () async {
-        //   print("Next Payment tapped → closing partial dialog cleanly");
-        //
-        //   // ✅ CRITICAL: Clear the remaining balance flag before closing
-        //   // This ensures the next payment doesn't treat it as a partial session
-        //   if (mounted) {
-        //     setState(() {
-        //       _currentPaymentRemainingBalance = null;
-        //       _lastPaymentDetails = null;
-        //       selectedPaymentMethod = TextConstants.cash;
-        //     });
-        //   }
-        //
-        //   Navigator.of(dialogCtx).pop();
-        //
-        //   if (mounted) {
-        //     _resetAmountAfterPay();
-        //   }
-        // },
-
         onNextPayment: () async {
+          // try {
+          //   await CustomerDisplayService.showThankYou();
+          // } catch (e) {
+          //   print(">>> Error showing Thank You screen: $e");
+          // }
+
+          print("Next Payment tapped → closing partial dialog cleanly");
+
+          Navigator.of(dialogCtx).pop();
+
           if (mounted) {
             setState(() {
-              _currentPaymentRemainingBalance = null;
-              _lastPaymentDetails = null;
-              _successPopupShown = false; // ADD THIS LINE
               selectedPaymentMethod = TextConstants.cash;
             });
-          }
-          Navigator.of(dialogCtx).pop();
-          if (mounted) {
             _resetAmountAfterPay();
           }
         },
       ),
     );
 
+    // Reset guard after dialog is fully closed
     _isShowingPartialDialog = false;
     print("Partial dialog closed → guard reset");
   }
-
 
   Future<void> _showVoidConfirmation(BuildContext context,
       {required bool isPartial}) async {
@@ -12988,7 +10458,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   .getPaymentsByOrderId(orderId!);
               final pendingPayments = payments
                   .where((p) =>
-              p.amount > 0 && p.status == PaymentDbStatus.pending)
+                      p.amount > 0 && p.status == PaymentDbStatus.pending)
                   .toList();
               if (pendingPayments.isNotEmpty) {
                 for (final p in pendingPayments) {
@@ -13180,7 +10650,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     try {
       final box = StorageProvider.offlineOrders;
       final String hiveKey =
-      localOrderId.toString(); // key is the local order ID
+          localOrderId.toString(); // key is the local order ID
 
       if (!(await box.containsKey(hiveKey))) return;
 
@@ -13229,73 +10699,41 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
-
-  // ── ADD THIS NEW HELPER (paste just before doBackgroundWork inside _showPaymentDialog) ──
-  Future<void> _checkAndClearActiveOrderBeforeThankYou() async {
+  Future<void> _updateHiveWithLatestMerchantDiscount() async {
     try {
-      // If order panel has an active order, clear it first so display resets cleanly
-      if (orderHelper.activeOrderId != null) {
-        await orderHelper.setActiveOrder(null);
-        OrderHelper.isOrderPanelLoaded = false;
-        OrderHelper.notifyOrderPanelToRefresh();
-        // Small delay so the panel registers the clear before display updates
-        await Future.delayed(const Duration(milliseconds: 150));
+      final box = StorageProvider.offlineOrders;
+      final String orderKey = orderId?.toString() ??
+          widget.orderId?.toString() ??
+          widget.offlineOrderId?.toString() ??
+          "";
+
+      if (orderKey.isEmpty) return;
+
+      final raw = await box.get(orderKey);
+      if (raw is! Map<String, dynamic>) return;
+
+      final order = Map<String, dynamic>.from(raw);
+
+      // Update merchant discount values
+      order['merchantDiscount'] = merchantDiscount.abs();
+      order['merchantDiscountPercentage'] = merchantDiscountPercentage;
+
+      // Also update financial totals to ensure consistency
+      order['NetTotal'] = NetTotal;
+      order['computedNetPayable'] = computedNetPayable;
+      order['order_total'] = orderTotal;
+      order['balance_amount'] = balanceAmount;
+      order['remaining_balance'] = balanceAmount;
+
+      await box.put(orderKey, order);
+
+      if (kDebugMode) {
+        print('✅ Updated Hive with merchant discount: $merchantDiscount');
+        print('   Percentage: $merchantDiscountPercentage%');
       }
-      await CustomerDisplayService.showThankYou();
     } catch (e) {
-      print(">>> Error in _checkAndClearActiveOrderBeforeThankYou: $e");
+      print('❌ Failed to update Hive with merchant discount: $e');
     }
-  }
-
-  Future<void> deleteOrderWithItems(int orderId) async {
-    final db = await DBHelper.instance.database;
-
-    // 0. Fetch and print order items before deletion
-    final List<Map<String, dynamic>> items = await db.query(
-      AppDBConst.purchasedItemsTable,
-      where: '${AppDBConst.orderIdForeignKey} = ?',
-      whereArgs: [orderId],
-    );
-
-    if (items.isNotEmpty) {
-      print("🗑️ Deleting Order #$orderId - Items:");
-      for (var item in items) {
-        print("   - ${item[AppDBConst.itemName]} | "
-            "Qty: ${item[AppDBConst.itemCount]} | "
-            "Price: ${item[AppDBConst.itemPrice]} | "
-            "Total: ${item[AppDBConst.itemSumPrice]}");
-      }
-    } else {
-      print("🗑️ Order #$orderId has no items (or items already deleted).");
-    }
-
-    // 1. Delete order items
-    await db.delete(
-      AppDBConst.purchasedItemsTable,
-      where: '${AppDBConst.orderIdForeignKey} = ?',
-      whereArgs: [orderId],
-    );
-
-    // 2. Delete order row
-    await db.delete(
-      AppDBConst.orderTable,
-      where: '${AppDBConst.orderServerId} = ?',
-      whereArgs: [orderId],
-    );
-
-    // 3. Delete Isar payments (currently commented out)
-    // await LocalPaymentDBHelper.instance.deletePaymentsByOrderId(orderId);
-
-    // 4. Delete Hive entry
-    final box = StorageProvider.offlineOrders;
-    await box.delete(orderId.toString());
-
-    // 5. Refresh in-memory orders
-    await OrderHelper().loadData();
-    OrderHelper.notifyOrderPanelToRefresh();
-
-    print(
-        "✅ Order $orderId completely deleted (including ${items.length} items).");
   }
 
   Future<void> _syncCurrentOfflineOrder() async {
@@ -13314,13 +10752,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     try {
       final box = StorageProvider.offlineOrders;
       final raw = await box.get(orderKey);
-      if (raw is! Map) return;
+      if (raw is! Map<String, dynamic>) return;
 
       var order = Map<String, dynamic>.from(raw);
-      final int localId = orderId ?? int.tryParse(orderKey) ?? 0;
-      if (localId > 0) {
-        order['id'] ??= localId;
-        order['order_id'] ??= localId;
+
+      // ✅ CRITICAL: Update merchant discount values before sync
+      order['merchantDiscount'] = merchantDiscount.abs();
+      order['merchantDiscountPercentage'] = merchantDiscountPercentage;
+
+      // Also update the merchant discount type if available
+      if (offlineOrder?['merchantDiscountType'] != null) {
+        order['merchantDiscountType'] = offlineOrder!['merchantDiscountType'];
       }
 
       // === CRITICAL: Handle coupon validation failures ===
@@ -13352,40 +10794,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           }
 
           // Clean up Hive
-          // if (wooStatus == 'completed' || wooStatus == 'processing' || wooStatus == 'pending') {
-          //   await box.delete(orderKey);
-          //   await deleteOrderWithItems(localOrderId!);  // ✅ FULL DELETE
-          //
-          //   print("✅ Order $orderKey synced & deleted (completed)");
-          // } else {
-          //   order['wooOrderId'] = wooOrderId;
-          //   order['wooStatus'] = wooStatus;
-          //   order['synced'] = true;
-          //   order['sync_at'] = DateTime.now().toIso8601String();
-          //   await box.put(orderKey, order);
-          // }
-
-          if (wooStatus == 'completed' ||
-              wooStatus == 'processing' ||
-              wooStatus == 'pending') {
-            // ✅ Instead, update the local order status to match Woo
-            order['order_status'] = wooStatus;
+          if (wooStatus == 'completed') {
+            await box.delete(orderKey);
+            print("✅ Order $orderKey synced & deleted (completed)");
+          } else {
             order['wooOrderId'] = wooOrderId;
+            order['wooStatus'] = wooStatus;
             order['synced'] = true;
             order['sync_at'] = DateTime.now().toIso8601String();
             await box.put(orderKey, order);
-
-            // Also update SQLite order status
-            final db = await DBHelper.instance.database;
-            await db.update(
-              AppDBConst.orderTable,
-              {AppDBConst.orderStatus: wooStatus},
-              where: '${AppDBConst.orderServerId} = ?',
-              whereArgs: [localOrderId],
-            );
-
-            print(
-                "✅ Order $orderKey status updated to $wooStatus (kept locally)");
           }
         } else if (retryCount < maxRetries) {
           // === HANDLE COUPON FAILURE GRACEFULLY ===
@@ -13431,254 +10848,240 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
-  // void _showPaymentDialog(
-  //     BuildContext context,
-  //     double amount, {
-  //       double? changeAmount,
-  //       required bool showChange,
-  //       Map<String, dynamic>? couponResponse,
-  //       bool isVoidDisabled = false,
-  //     }) async {
-  //   if (_isShowingPaymentDialog) {
-  //     print("Payment dialog already showing → skipping duplicate call");
-  //     return;
-  //   }
-  //
-  //   _isShowingPaymentDialog = true;
-  //
-  //   final storeInfo = PinakaPreferences.getLoggedInStore();
-  //
-  //   // ── Helper: update customer display ──────────────────────
-  //   Future<void> updateCustomerDisplayWelcome() async {
-  //     try {
-  //       if (orderHelper.activeOrderId != null) {
-  //         await orderHelper.setActiveOrder(null);
-  //         OrderHelper.isOrderPanelLoaded = false;
-  //         OrderHelper.notifyOrderPanelToRefresh();
-  //         await Future.delayed(const Duration(milliseconds: 150));
-  //       }
-  //       final storeInfo = PinakaPreferences.getLoggedInStore();
-  //       if (storeInfo.isNotEmpty) {
-  //         await CustomerDisplayHelper.updateWelcomeWithStore(
-  //           storeInfo['storeId'] ?? '0',
-  //           storeInfo['storeName'] ?? 'Store',
-  //           storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
-  //           storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
-  //         );
-  //       } else {
-  //         await CustomerDisplayService.showWelcome();
-  //       }
-  //     } catch (e) {
-  //       print(">>> customer display error: $e");
-  //     }
-  //   }
-  //
-  //   // ── Check if this is a negative/payout order ─────────────
-  //   final bool isNegativeOrder = computedNetPayable <= 0;
-  //
-  //   // ── Helper: mark order completed in Hive ─────────────────
-  //   Future<void> forceMarkHiveOrderCompleted() async {
-  //     try {
-  //       final box = StorageProvider.offlineOrders;
-  //       final String key = (orderId ?? 0).toString();
-  //       if (!(await box.containsKey(key))) return;
-  //
-  //       final raw = await box.get(key);
-  //       final order = Map<String, dynamic>.from(raw is Map ? raw : {});
-  //
-  //       order['order_status'] = 'completed'; // force completed
-  //       order['updated_at'] = DateTime.now().toIso8601String();
-  //
-  //       await box.put(key, order);
-  //       print("✅ Hive order #$orderId force-marked as completed");
-  //     } catch (e) {
-  //       print("❌ forceMarkHiveOrderCompleted error: $e");
-  //     }
-  //   }
-  //
-  //   // ── Helper: background work (non-blocking) ───────────────
-  //   void doBackgroundWork() {
-  //     Future(() async {
-  //       if (orderId != null && orderId! > 0) {
-  //         final allPayments = await LocalPaymentDBHelper.instance
-  //             .getPaymentsByOrderId(orderId!);
-  //
-  //         final bool isNegativeOrder = computedNetPayable <= 0;
-  //
-  //         for (final p in allPayments) {
-  //           if (p.status == PaymentDbStatus.pending) {
-  //             if (p.amount > 0 || isNegativeOrder) {
-  //               await LocalPaymentDBHelper.instance
-  //                   .updateStatus(p.id, PaymentDbStatus.completed);
-  //               print(" Completed payment ID ${p.id} "
-  //                   "amount:\$${p.amount} isNegativeOrder:$isNegativeOrder");
-  //             }
-  //           }
-  //         }
-  //       }
-  //
-  //       // Sync to backend (your original unchanged _syncCurrentOfflineOrder)
-  //       try {
-  //         await _syncCurrentOfflineOrder();
-  //         print("✅ doBackgroundWork: sync done");
-  //       } catch (e) {
-  //         print("❌ doBackgroundWork: sync failed: $e");
-  //       }
-  //
-  //       // Update customer display
-  //       try {
-  //         final storeInfo = PinakaPreferences.getLoggedInStore();
-  //         if (storeInfo.isNotEmpty) {
-  //           await CustomerDisplayHelper.updateWelcomeWithStore(
-  //             storeInfo['storeId'] ?? '0',
-  //             storeInfo['storeName'] ?? 'Store',
-  //             storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
-  //             storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
-  //           );
-  //         } else {
-  //           await CustomerDisplayService.showWelcome();
-  //         }
-  //       } catch (e) {
-  //         print(">>> customer display error: $e");
-  //       }
-  //     });
-  //   }
-  //
-  //   try {
-  //     await CustomerDisplayService.showThankYou();
-  //   } catch (e) {
-  //     print(">>> Error showing Thank You screen: $e");
-  //   }
-  //
-  //   showDialog(
-  //     context: context,
-  //     barrierDismissible: false,
-  //     useRootNavigator: false,
-  //     builder: (dialogCtx) => PaymentDialog(
-  //       status: PaymentStatus.successful,
-  //       mode: _currentDialogPaymentMode(),
-  //       amount: amount,
-  //       changeAmount: showChange ? changeAmount : null,
-  //       couponResponse: couponResponse,
-  //       isVoidDisabled: isVoidDisabled,
-  //
-  //       // ── VOID ─────────────────────────────────────────────
-  //       onVoid: () async {
-  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
-  //
-  //         await Future.delayed(const Duration(milliseconds: 100));
-  //         if (mounted) {
-  //           showVoidExitConfirmation(context, false); // Show VOID confirmation only
-  //         }
-  //
-  //         // SchedulerBinding.instance.addPostFrameCallback((_) {
-  //         //   if (!_isShowingPartialDialog) {
-  //         //     showVoidExitConfirmation(context, false);
-  //         //   }
-  //         // });
-  //       },
-  //
-  //       // ── NO RECEIPT ───────────────────────────────────────
-  //
-  //       onNoReceipt: () async {
-  //         try {
-  //
-  //           await _checkAndClearActiveOrderBeforeThankYou();
-  //
-  //           // await CustomerDisplayService.showThankYou();
-  //         } catch (e) {
-  //           print(">>> Error showing Thank You screen: $e");
-  //         }
-  //
-  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
-  //
-  //         doBackgroundWork();
-  //
-  //         // await _checkAndClearActiveOrderBeforeThankYou();
-  //
-  //         Navigator.pushReplacement(
-  //           context,
-  //           MaterialPageRoute(builder: (_) => POSHomeScreen()),
-  //           result: TextConstants.refresh,
-  //         );
-  //       },
-  //
-  //
-  //       // ── DONE (Print / Email / SMS) ────────────────────────
-  //       onDone: (selectedOption, {String? email}) async {
-  //         try {
-  //           await CustomerDisplayService.showThankYou();
-  //         } catch (e) {
-  //           print(">>> Error showing Thank You screen: $e");
-  //         }
-  //
-  //         print("onDone → $selectedOption, email=$email");
-  //
-  //         // ── EMAIL ────────────────────────────────────────────
-  //         if (selectedOption == TextConstants.email &&
-  //             email != null &&
-  //             email.isNotEmpty) {
-  //           Navigator.of(dialogCtx, rootNavigator: false).pop();
-  //
-  //           if (orderId == null || orderId == 0) {
-  //             ScaffoldMessenger.of(context).showSnackBar(
-  //               SnackBar(
-  //                 content: Text(TextConstants.canNotSendEmail),
-  //                 backgroundColor: Colors.red,
-  //                 duration: const Duration(milliseconds: 1500),
-  //               ),
-  //             );
-  //           } else {
-  //             paymentBloc.sendOrderDetails(orderId!, email);
-  //
-  //             StreamSubscription? subscription;
-  //             subscription =
-  //                 paymentBloc.sendOrderDetailsStream.listen((response) {
-  //                   subscription?.cancel();
-  //                   print(">>> Email sent");
-  //                 });
-  //           }
-  //
-  //           doBackgroundWork();
-  //
-  //           OrderHelper.isOrderPanelLoaded = false;
-  //           OrderHelper.notifyOrderPanelToRefresh();
-  //
-  //           Navigator.pushReplacement(
-  //             context,
-  //             MaterialPageRoute(builder: (_) => POSHomeScreen()),
-  //             result: TextConstants.refresh,
-  //           );
-  //           return;
-  //         }
-  //
-  //         // ── PRINT ─────────────────────────────────────────────
-  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
-  //
-  //         if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
-  //           Future(() async {
-  //             await _preparePrintTicket();
-  //             await _printTicket(manual: true);
-  //           });
-  //         }
-  //
-  //         doBackgroundWork();
-  //
-  //         OrderHelper.isOrderPanelLoaded = false;
-  //         OrderHelper.notifyOrderPanelToRefresh();
-  //
-  //         Navigator.pushReplacement(
-  //           context,
-  //           MaterialPageRoute(builder: (_) => POSHomeScreen()),
-  //           result: TextConstants.refresh,
-  //         );
-  //       },
-  //     ),
-  //   ).then((_) {
-  //     _isShowingPaymentDialog = false;
-  //     print("Payment dialog closed → guard reset");
-  //   });
-  // }
+  void _showPaymentDialog(
+    BuildContext context,
+    double amount, {
+    double? changeAmount,
+    required bool showChange,
+    Map<String, dynamic>? couponResponse,
+    bool isVoidDisabled = false,
+  }) async {
+    if (_isShowingPaymentDialog) {
+      print("Payment dialog already showing → skipping duplicate call");
+      return;
+    }
+
+    _isShowingPaymentDialog = true;
+
+    final storeInfo = PinakaPreferences.getLoggedInStore();
+
+    // ── Helper: update customer display ──────────────────────
+    Future<void> updateCustomerDisplayWelcome() async {
+      try {
+        if (storeInfo.isNotEmpty) {
+          await CustomerDisplayHelper.updateWelcomeWithStore(
+            storeInfo['storeId'] ?? '0',
+            storeInfo['storeName'] ?? 'Store',
+            storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
+            storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
+          );
+        } else {
+          await CustomerDisplayService.showWelcome();
+        }
+      } catch (e) {
+        print(">>> Error updating customer display: $e");
+      }
+    }
+
+    // ── Check if this is a negative/payout order ─────────────
+    final bool isNegativeOrder = computedNetPayable <= 0;
+
+    // ── Helper: mark order completed in Hive ─────────────────
+    Future<void> forceMarkHiveOrderCompleted() async {
+      try {
+        final box = StorageProvider.offlineOrders;
+        final String key = (orderId ?? 0).toString();
+        if (!(await box.containsKey(key))) return;
+
+        final raw = await box.get(key);
+        final order = Map<String, dynamic>.from(raw is Map ? raw : {});
+
+        order['order_status'] = 'completed'; // force completed
+        order['updated_at'] = DateTime.now().toIso8601String();
+
+        await box.put(key, order);
+        print("✅ Hive order #$orderId force-marked as completed");
+      } catch (e) {
+        print("❌ forceMarkHiveOrderCompleted error: $e");
+      }
+    }
+
+    // ── Helper: background work (non-blocking) ───────────────
+    void doBackgroundWork() {
+      Future(() async {
+        if (orderId != null && orderId! > 0) {
+          final allPayments = await LocalPaymentDBHelper.instance
+              .getPaymentsByOrderId(orderId!);
+
+          final bool isNegativeOrder = computedNetPayable <= 0;
+
+          for (final p in allPayments) {
+            if (p.status == PaymentDbStatus.pending) {
+              if (p.amount > 0 || isNegativeOrder) {
+                await LocalPaymentDBHelper.instance
+                    .updateStatus(p.id, PaymentDbStatus.completed);
+                print(" Completed payment ID ${p.id} "
+                    "amount:\$${p.amount} isNegativeOrder:$isNegativeOrder");
+              }
+            }
+          }
+        }
+
+        // ✅ CRITICAL FIX: Update Hive with latest merchant discount values BEFORE sync
+        await _updateHiveWithLatestMerchantDiscount();
+
+        // Sync to backend (your original unchanged _syncCurrentOfflineOrder)
+        try {
+          await _syncCurrentOfflineOrder();
+          print("✅ doBackgroundWork: sync done");
+        } catch (e) {
+          print("❌ doBackgroundWork: sync failed: $e");
+        }
+
+        // Update customer display
+        try {
+          final storeInfo = PinakaPreferences.getLoggedInStore();
+          if (storeInfo.isNotEmpty) {
+            await CustomerDisplayHelper.updateWelcomeWithStore(
+              storeInfo['storeId'] ?? '0',
+              storeInfo['storeName'] ?? 'Store',
+              storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
+              storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
+            );
+          } else {
+            await CustomerDisplayService.showWelcome();
+          }
+        } catch (e) {
+          print(">>> customer display error: $e");
+        }
+      });
+    }
+
+    // try {
+    //   await CustomerDisplayService.showThankYou();
+    // } catch (e) {
+    //   print(">>> Error showing Thank You screen: $e");
+    // }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: false,
+      builder: (dialogCtx) => PaymentDialog(
+        status: PaymentStatus.successful,
+        mode: _currentDialogPaymentMode(),
+        amount: amount,
+        changeAmount: showChange ? changeAmount : null,
+        couponResponse: couponResponse,
+        isVoidDisabled: isVoidDisabled,
+
+        // ── VOID ─────────────────────────────────────────────
+        onVoid: () async {
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
+
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (!_isShowingPartialDialog) {
+              showVoidExitConfirmation(context, false);
+            }
+          });
+        },
+        // ── NO RECEIPT ───────────────────────────────────────
+        onNoReceipt: () async {
+          try {
+            await CustomerDisplayService.showThankYou();
+          } catch (e) {
+            print(">>> Error showing Thank You screen: $e");
+          }
+
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
+
+          doBackgroundWork();
+
+          OrderHelper.isOrderPanelLoaded = false;
+          OrderHelper.notifyOrderPanelToRefresh();
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => POSHomeScreen()),
+            result: TextConstants.refresh,
+          );
+        },
+
+        // ── DONE (Print / Email / SMS) ────────────────────────
+        onDone: (selectedOption, {String? email}) async {
+          try {
+            await CustomerDisplayService.showThankYou();
+          } catch (e) {
+            print(">>> Error showing Thank You screen: $e");
+          }
+
+          print("onDone → $selectedOption, email=$email");
+
+          // ── EMAIL ────────────────────────────────────────────
+          if (selectedOption == TextConstants.email &&
+              email != null &&
+              email.isNotEmpty) {
+            Navigator.of(dialogCtx, rootNavigator: false).pop();
+
+            if (orderId == null || orderId == 0) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(TextConstants.canNotSendEmail),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(milliseconds: 1500),
+                ),
+              );
+            } else {
+              paymentBloc.sendOrderDetails(orderId!, email);
+
+              StreamSubscription? subscription;
+              subscription =
+                  paymentBloc.sendOrderDetailsStream.listen((response) {
+                subscription?.cancel();
+                print(">>> Email sent");
+              });
+            }
+
+            doBackgroundWork();
+
+            OrderHelper.isOrderPanelLoaded = false;
+            OrderHelper.notifyOrderPanelToRefresh();
+
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => POSHomeScreen()),
+              result: TextConstants.refresh,
+            );
+            return;
+          }
+
+          // ── PRINT ─────────────────────────────────────────────
+          Navigator.of(dialogCtx, rootNavigator: false).pop();
+
+          if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
+            Future(() async {
+              await _preparePrintTicket();
+              await _printTicket(manual: true);
+            });
+          }
+
+          doBackgroundWork();
+
+          OrderHelper.isOrderPanelLoaded = false;
+          OrderHelper.notifyOrderPanelToRefresh();
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => POSHomeScreen()),
+            result: TextConstants.refresh,
+          );
+        },
+      ),
+    ).then((_) {
+      _isShowingPaymentDialog = false;
+      print("Payment dialog closed → guard reset");
+    });
+  }
 
 // ============================================================
 // ALSO REPLACE _showPartialPaymentDialog with immediate close on Next Payment
@@ -13822,370 +11225,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //   );
   // }
 
-  void _showPaymentDialog(
-      BuildContext context,
-      double amount, {
-        double? changeAmount,
-        required bool showChange,
-        Map<String, dynamic>? couponResponse,
-        bool isVoidDisabled = false,
-      }) async {
-    if (_isShowingPaymentDialog) {
-      print("Payment dialog already showing → skipping duplicate call");
-      return;
-    }
-
-    _isShowingPaymentDialog = true;
-
-    final storeInfo = PinakaPreferences.getLoggedInStore();
-
-    // ── Helper: update customer display ──────────────────────
-    Future<void> updateCustomerDisplayWelcome() async {
-      try {
-        if (orderHelper.activeOrderId != null) {
-          await orderHelper.setActiveOrder(null);
-          OrderHelper.isOrderPanelLoaded = false;
-          OrderHelper.notifyOrderPanelToRefresh();
-          await Future.delayed(const Duration(milliseconds: 150));
-        }
-        final storeInfo = PinakaPreferences.getLoggedInStore();
-        if (storeInfo.isNotEmpty) {
-          await CustomerDisplayHelper.updateWelcomeWithStore(
-            storeInfo['storeId'] ?? '0',
-            storeInfo['storeName'] ?? 'Store',
-            storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
-            storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
-          );
-        } else {
-          await CustomerDisplayService.showWelcome();
-        }
-      } catch (e) {
-        print(">>> customer display error: $e");
-      }
-    }
-
-    // ── Check if this is a negative/payout order ─────────────
-    final bool isNegativeOrder = computedNetPayable <= 0;
-
-    // ── Helper: mark order completed in Hive ─────────────────
-    Future<void> forceMarkHiveOrderCompleted() async {
-      try {
-        final box = StorageProvider.offlineOrders;
-        final String key = (orderId ?? 0).toString();
-        if (!(await box.containsKey(key))) return;
-
-        final raw = await box.get(key);
-        final order = Map<String, dynamic>.from(raw is Map ? raw : {});
-
-        order['order_status'] = 'completed';
-        order['updated_at'] = DateTime.now().toIso8601String();
-
-        await box.put(key, order);
-        print("✅ Hive order #$orderId force-marked as completed");
-      } catch (e) {
-        print("❌ forceMarkHiveOrderCompleted error: $e");
-      }
-    }
-
-    // ── Helper: background work (non-blocking) ───────────────
-    void doBackgroundWork() {
-      Future(() async {
-        if (orderId != null && orderId! > 0) {
-          final allPayments = await LocalPaymentDBHelper.instance
-              .getPaymentsByOrderId(orderId!);
-
-          for (final p in allPayments) {
-            if (p.status == PaymentDbStatus.pending) {
-              if (p.amount > 0 || isNegativeOrder) {
-                await LocalPaymentDBHelper.instance
-                    .updateStatus(p.id, PaymentDbStatus.completed);
-                print(" Completed payment ID ${p.id} "
-                    "amount:\$${p.amount} isNegativeOrder:$isNegativeOrder");
-              }
-            }
-          }
-        }
-
-        // Sync to backend
-        try {
-          await _syncCurrentOfflineOrder();
-          print("✅ doBackgroundWork: sync done");
-        } catch (e) {
-          print("❌ doBackgroundWork: sync failed: $e");
-        }
-
-        // Update customer display
-        try {
-          final storeInfo = PinakaPreferences.getLoggedInStore();
-          if (storeInfo.isNotEmpty) {
-            await CustomerDisplayHelper.updateWelcomeWithStore(
-              storeInfo['storeId'] ?? '0',
-              storeInfo['storeName'] ?? 'Store',
-              storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
-              storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
-            );
-          } else {
-            await CustomerDisplayService.showWelcome();
-          }
-        } catch (e) {
-          print(">>> customer display error: $e");
-        }
-      });
-    }
-
-    // ── Helper: navigate to home screen ──────────────────────
-    void navigateToHome() {
-      // Reset panel state
-      OrderHelper.isOrderPanelLoaded = false;
-      OrderHelper.notifyOrderPanelToRefresh();
-
-      // Navigate to home screen
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => POSHomeScreen()),
-        result: TextConstants.refresh,
-      );
-    }
-
-    try {
-      await CustomerDisplayService.showThankYou();
-    } catch (e) {
-      print(">>> Error showing Thank You screen: $e");
-    }
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      useRootNavigator: false,
-      builder: (dialogCtx) => PaymentDialog(
-        status: PaymentStatus.successful,
-        mode: _currentDialogPaymentMode(),
-        amount: amount,
-        changeAmount: showChange ? changeAmount : null,
-        couponResponse: couponResponse,
-        isVoidDisabled: isVoidDisabled,
-
-        onVoid: () async {
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
-
-          await Future.delayed(const Duration(milliseconds: 100));
-          if (mounted) {
-            showVoidExitConfirmation(context, false);
-          }
-        },
-
-        onNoReceipt: () async {
-          // Close dialog
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
-
-          // Do background work
-          doBackgroundWork();
-
-          // Navigate to home screen
-          navigateToHome();
-
-          // Show success message
-          // ScaffoldMessenger.of(context).showSnackBar(
-          //   const SnackBar(
-          //     content: Text("Order completed successfully"),
-          //     backgroundColor: Colors.green,
-          //     duration: Duration(seconds: 2),
-          //   ),
-          // );
-        },
-
-        onDone: (selectedOption, {String? email}) async {
-          print("onDone → $selectedOption, email=$email");
-
-          // ── EMAIL ────────────────────────────────────────────
-          if (selectedOption == TextConstants.email &&
-              email != null &&
-              email.isNotEmpty) {
-            // Close dialog
-            Navigator.of(dialogCtx, rootNavigator: false).pop();
-
-            if (orderId == null || orderId == 0) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(TextConstants.canNotSendEmail),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(milliseconds: 1500),
-                ),
-              );
-              // Still navigate to home
-              navigateToHome();
-              return;
-            }
-
-            // Send email
-            paymentBloc.sendOrderDetails(orderId!, email);
-
-            StreamSubscription? subscription;
-            subscription = paymentBloc.sendOrderDetailsStream.listen((response) {
-              subscription?.cancel();
-              print(">>> Email sent: ${response.message}");
-
-              if (response.status == Status.COMPLETED) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(response.data?.message ?? "Receipt sent to email"),
-                    backgroundColor: Colors.green,
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(TextConstants.failedSendEmail),
-                    backgroundColor: Colors.red,
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              }
-            });
-
-            // Do background work
-            doBackgroundWork();
-
-            // Navigate to home screen
-            navigateToHome();
-            return;
-          }
-
-          // ── PRINT ─────────────────────────────────────────────
-          // Close dialog first
-          Navigator.of(dialogCtx, rootNavigator: false).pop();
-
-          if (selectedOption == TextConstants.print && !Misc.disablePrinter) {
-            // Show printing indicator
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Printing receipt..."),
-                duration: Duration(seconds: 1),
-              ),
-            );
-
-            // Print in background
-            Future(() async {
-              await _preparePrintTicket();
-              await _printTicket(manual: true);
-            });
-          }
-
-          // Do background work
-          doBackgroundWork();
-
-          // Navigate to home screen
-          navigateToHome();
-        },
-      ),
-    ).then((_) {
-      _isShowingPaymentDialog = false;
-      print("Payment dialog closed → guard reset");
-    });
-  }
-
 ////
-  void _navigateToHome() {
-    OrderHelper.isOrderPanelLoaded = false;
-    OrderHelper.notifyOrderPanelToRefresh();
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => POSHomeScreen()),
-      result: TextConstants.refresh,
-    );
-  }
-
-  void doBackgroundWork() {
-    Future(() async {
-      await _syncCurrentOfflineOrder();
-      // Update customer display, etc.
-    });
-  }
-
-  // void showVoidExitConfirmation(BuildContext context, bool isPartial) {
-  //   if (_isVoiding) {
-  //     print("Void already in progress → skipping");
-  //     return;
-  //   }
-  //   _isVoiding = true;
-  //
-  //   showDialog(
-  //     context: context,
-  //     barrierDismissible: false,
-  //     useRootNavigator: false,
-  //     builder: (dialogCtx) => PaymentDialog.voidConfirmation(
-  //       onVoidCancel: () {
-  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
-  //         _isVoiding = false;
-  //
-  //         // Go back to success dialog (important fix)
-  //         Future.delayed(const Duration(milliseconds: 150), () {
-  //           if (mounted) {
-  //             final box = StorageProvider.offlineOrders;
-  //             final key = (orderId ?? 0).toString();
-  //             box.get(key).then((raw) {
-  //               final cr = raw is Map ? raw["coupon_response"] : null;
-  //               final couponResponse = cr is Map
-  //                   ? Map<String, dynamic>.from(cr)
-  //                   : <String, dynamic>{};
-  //
-  //               _showPaymentDialog(
-  //                 context,
-  //                 tenderAmount,
-  //                 changeAmount: changeAmount,
-  //                 showChange: changeAmount > 0,
-  //                 couponResponse: couponResponse,
-  //                 isVoidDisabled: true,
-  //               );
-  //             });
-  //           }
-  //         });
-  //       },
-  //
-  //       onVoidConfirm: () async {
-  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
-  //         _isVoiding = false;
-  //
-  //         if (_lastPayment == null) {
-  //           ScaffoldMessenger.of(context).showSnackBar(
-  //             const SnackBar(content: Text("No payment to void")),
-  //           );
-  //           return;
-  //         }
-  //
-  //         final method = _lastPayment!.method.toLowerCase();
-  //
-  //         if (method == TextConstants.card.toLowerCase() &&
-  //             _lastPayment!.sunmiTxnId != null &&
-  //             _lastPayment!.sunmiOrderId != null) {
-  //           await _openSunmiVoidScreen(
-  //             amount: _lastPayment!.amount,
-  //             orderId: _lastPayment!.sunmiOrderId!,
-  //             originTransactionId: _lastPayment!.sunmiTxnId!,
-  //           );
-  //         } else {
-  //           await _handleVoidPayment(context, isPartial: isPartial);
-  //         }
-  //
-  //         // Stay on summary screen after void (do NOT go to exit popup)
-  //         if (mounted) {
-  //           setState(() {});
-  //         }
-  //       },
-  //     ),
-  //   ).then((_) {
-  //     _isVoiding = false;
-  //   });
-  // }
 
   void showVoidExitConfirmation(BuildContext context, bool isPartial) {
+    print("showVoidExitConfirmation → isPartial: $isPartial");
+
     if (_isVoiding) {
       print("Void already in progress → skipping");
       return;
     }
     _isVoiding = true;
+
+    // ✅ CAPTURE these BEFORE showing dialog (dialog context won't have them)
+    final double capturedAmount = tenderAmount;
+    final double capturedChange = changeAmount;
+    final bool capturedShowChange = changeAmount > 0;
 
     showDialog(
       context: context,
@@ -14193,34 +11247,75 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       useRootNavigator: false,
       builder: (dialogCtx) => PaymentDialog.voidConfirmation(
         onVoidCancel: () {
+          // ✅ STEP 1: Close void confirmation dialog IMMEDIATELY
           Navigator.of(dialogCtx, rootNavigator: false).pop();
           _isVoiding = false;
 
-          // Go back to success dialog
-          Future.delayed(const Duration(milliseconds: 150), () {
-            if (mounted) {
-              final box = StorageProvider.offlineOrders;
-              final key = (orderId ?? 0).toString();
-              box.get(key).then((raw) {
-                final cr = raw is Map ? raw["coupon_response"] : null;
-                final couponResponse = cr is Map
-                    ? Map<String, dynamic>.from(cr)
-                    : <String, dynamic>{};
+          // ✅ STEP 2: Re-show the payment success dialog
+          // Small delay to let void dialog fully close first
+          Future.delayed(const Duration(milliseconds: 100), () async {
+            if (!mounted) return;
 
-                _showPaymentDialog(
-                  context,
-                  tenderAmount,
-                  changeAmount: changeAmount,
-                  showChange: changeAmount > 0,
-                  couponResponse: couponResponse,
-                  isVoidDisabled: true,
-                );
-              });
+            // Get coupon response from Hive
+            final box = StorageProvider.offlineOrders;
+            final key = (orderId ?? 0).toString();
+            final raw = await box.get(key);
+            final cr = raw is Map ? raw["coupon_response"] : null;
+            final couponResponse =
+                cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+
+            // ✅ Re-show payment success popup
+            _showPaymentDialog(
+              context,
+              capturedAmount,
+              changeAmount: capturedChange,
+              showChange: capturedShowChange,
+              couponResponse: couponResponse,
+              isVoidDisabled: true, // Disable void button when returning
+            );
+          });
+
+          // ✅ STEP 3: Background sync only (NO navigation)
+          Future(() async {
+            if (orderId != null && orderId! > 0) {
+              int retries = 3;
+              while (retries > 0) {
+                final payments = await LocalPaymentDBHelper.instance
+                    .getPaymentsByOrderId(orderId!);
+
+                final bool isNegativeOrder = computedNetPayable <= 0;
+
+                final pendingPayments = payments
+                    .where((p) =>
+                        p.status == PaymentDbStatus.pending &&
+                        (p.amount > 0 || isNegativeOrder))
+                    .toList();
+
+                if (pendingPayments.isNotEmpty) {
+                  for (final p in pendingPayments) {
+                    await LocalPaymentDBHelper.instance
+                        .updateStatus(p.id, PaymentDbStatus.completed);
+                  }
+                  print(
+                      "✅ Background: Marked ${pendingPayments.length} payments completed");
+                  break;
+                }
+                retries--;
+                if (retries > 0) {
+                  await Future.delayed(const Duration(milliseconds: 200));
+                }
+              }
+            }
+            try {
+              await _syncCurrentOfflineOrder();
+              print("✅ Background: Sync done after void cancel");
+            } catch (e) {
+              print("❌ Background sync failed: $e");
             }
           });
         },
-
         onVoidConfirm: () async {
+          //  Close dialog IMMEDIATELY
           Navigator.of(dialogCtx, rootNavigator: false).pop();
           _isVoiding = false;
 
@@ -14245,16 +11340,152 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             await _handleVoidPayment(context, isPartial: isPartial);
           }
 
-          if (mounted) {
-            setState(() {});
-          }
+          print("Void completed – staying on OrderSummaryScreen");
+          if (mounted) setState(() {});
         },
       ),
     ).then((_) {
-      _isVoiding = false;
+      if (mounted) _isVoiding = false;
     });
   }
 
+  // void showVoidExitConfirmation(BuildContext context, bool isPartial) {
+  //   print("showVoidExitConfirmation → isPartial: $isPartial, orderId: $orderId");
+  //
+  //   if (_isVoiding) {
+  //     print("Void already in progress → skipping");
+  //     return;
+  //   }
+  //   _isVoiding = true;
+  //
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     useRootNavigator: false,
+  //     builder: (dialogCtx) => PaymentDialog.voidConfirmation(
+  //
+  //       onVoidCancel: () async {
+  //         print("❌ VOID CANCELED BY USEeeeR");
+  //
+  //         bool updatedAny = false;
+  //
+  //         // --- 1. Mark all pending payments as completed locally ---
+  //         if (orderId != null && orderId! > 0) {
+  //           int retries = 3;
+  //           while (retries > 0) {
+  //             final payments = await LocalPaymentDBHelper.instance
+  //                 .getPaymentsByOrderId(orderId!);
+  //             final pendingPayments = payments
+  //                 .where((p) => p.amount > 0 && p.status == PaymentDbStatus.pending)
+  //                 .toList();
+  //
+  //             if (pendingPayments.isNotEmpty) {
+  //               for (final p in pendingPayments) {
+  //                 await LocalPaymentDBHelper.instance.updateStatus(
+  //                   p.id,
+  //                   PaymentDbStatus.completed,
+  //                 );
+  //               }
+  //               print("✅ Marked ${pendingPayments.length} payments as completed");
+  //               updatedAny = true;
+  //               break;
+  //             } else {
+  //               retries--;
+  //               if (retries > 0) {
+  //                 print("⏳ No pending payments found, retrying... ($retries left)");
+  //                 await Future.delayed(const Duration(milliseconds: 200));
+  //               }
+  //             }
+  //           }
+  //
+  //         }
+  //
+  //         // --- 2. Sync the updated order to the backend ---
+  //         if (updatedAny && mounted) {
+  //           try {
+  //             await _syncCurrentOfflineOrder(); // This sends the order and completed payments to Woo
+  //             print("✅ Order synced to backend after completing pending payments");
+  //           } catch (e) {
+  //             print("❌ Failed to sync order: $e");
+  //             ScaffoldMessenger.of(context).showSnackBar(
+  //               SnackBar(
+  //                 content: Text("Order completed locally but sync failed: $e"),
+  //                 backgroundColor: Colors.orange,
+  //               ),
+  //             );
+  //           }
+  //         }
+  //
+  //
+  //         // --- 3. Close the confirmation dialog (after all async work) ---
+  //         // Navigator.of(dialogCtx, rootNavigator: false).pop();
+  //         _isVoiding = false;
+  //
+  //         // --- 4. Navigate to home screen only if payments were updated ---
+  //         if (updatedAny && mounted) {
+  //           OrderHelper.isOrderPanelLoaded = false;
+  //           OrderHelper.notifyOrderPanelToRefresh();
+  //           Navigator.pop(context);
+  //
+  //           Navigator.pushReplacement(
+  //             context,
+  //             MaterialPageRoute(builder: (_) => POSHomeScreen()),
+  //             result: TextConstants.refresh,
+  //           );
+  //
+  //           ScaffoldMessenger.of(context).showSnackBar(
+  //             const SnackBar(
+  //               content: Text("Payments completed and order finalized"),
+  //               backgroundColor: Colors.green,
+  //               duration: Duration(seconds: 2),
+  //             ),
+  //           );
+  //         }
+  //       },
+  //
+  //       onVoidConfirm: () async {
+  //         // (unchanged – handles actual void)
+  //         print("✅ VOID CONFIRMED");
+  //         Navigator.of(dialogCtx, rootNavigator: false).pop();
+  //
+  //         if (_lastPayment == null) {
+  //           ScaffoldMessenger.of(context).showSnackBar(
+  //             const SnackBar(content: Text("No payment to void")),
+  //           );
+  //           _isVoiding = false;
+  //           return;
+  //         }
+  //
+  //         final method = _lastPayment!.method.toLowerCase();
+  //
+  //         if (method == TextConstants.card.toLowerCase() &&
+  //             _lastPayment!.sunmiTxnId != null &&
+  //             _lastPayment!.sunmiOrderId != null) {
+  //           await _openSunmiVoidScreen(
+  //             amount: _lastPayment!.amount,
+  //             orderId: _lastPayment!.sunmiOrderId!,
+  //             originTransactionId: _lastPayment!.sunmiTxnId!,
+  //           );
+  //         } else {
+  //           await _handleVoidPayment(context, isPartial: isPartial);
+  //         }
+  //
+  //         print("${isPartial ? 'Partial' : 'Full'} payment voided → staying on OrderSummaryScreen");
+  //
+  //         if (mounted) {
+  //           setState(() {});
+  //         }
+  //
+  //         _isVoiding = false;
+  //       },
+  //     ),
+  //   );
+  // }
+
+  // ============================================================
+// REPLACE your _showExitPaymentConfirmation method with this
+// KEY FIX: Navigate IMMEDIATELY, sync in background
+// ============================================================
 
   void _showExitPaymentConfirmation(BuildContext context) {
     showDialog(
@@ -14263,13 +11494,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       useRootNavigator: false,
       builder: (dialogCtx) => PaymentDialog(
         status: PaymentStatus.exitConfirmation,
-
         onExitCancel: () {
           if (Navigator.of(dialogCtx).canPop()) {
             Navigator.of(dialogCtx).pop();
           }
         },
-
         onExitConfirm: () async {
           // Close popup
           if (Navigator.of(dialogCtx).canPop()) {
@@ -14282,6 +11511,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           } catch (e) {
             print(">>> Error updating customer display: $e");
           }
+
+          // ✅ Update Hive with latest merchant discount before sync
+          await _updateHiveWithLatestMerchantDiscount();
 
           // Refresh order panel
           OrderHelper.isOrderPanelLoaded = false;
@@ -14309,7 +11541,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     );
   }
-
 
   Future<Map<String, dynamic>?> loadPrinterData() async {
     var printerDB = await PrinterDBHelper().getPrinterFromDB();
@@ -14351,7 +11582,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final decodedImage = img.decodeImage(imageBytes)!;
       img.Image thumbnail = img.copyResize(decodedImage, height: 280);
       img.Image originalImg =
-      img.copyResize(decodedImage, width: 470, height: 280);
+          img.copyResize(decodedImage, width: 470, height: 280);
       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
       var padding = (originalImg.width - thumbnail.width) / 2;
       drawImage(originalImg, thumbnail, dstX: padding.toInt());
@@ -14544,9 +11775,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           : 0.0;
 
       double comboDiscount =
-      (discountType == 'combo' || discountType == 'mixmatch')
-          ? (item['auto_discount'] ?? 0).toDouble()
-          : 0.0;
+          (discountType == 'combo' || discountType == 'mixmatch')
+              ? (item['auto_discount'] ?? 0).toDouble()
+              : 0.0;
 
       // Auto Discount
       if (autoDiscount > 0 && !isPayoutOrCoupon) {
@@ -14636,7 +11867,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
-
+//Raghu--**
     bytes += ticket.row([
       PosColumn(
         text: merchantDiscountPercentage > 0
@@ -14652,6 +11883,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
+//Raghu--*
 
     if (cashbackFee > 0) {
       bytes += ticket.row([
@@ -14855,7 +12087,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
     switch (result) {
       case Ok<BluetoothPrinter>():
-      // BluetoothPrinter printer = result.value;
+        // BluetoothPrinter printer = result.value;
         break;
       case Error<BluetoothPrinter>():
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -14937,7 +12169,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   .getPaymentsByOrderId(orderId!);
               final pendingPayments = payments
                   .where((p) =>
-              p.amount > 0 && p.status == PaymentDbStatus.pending)
+                      p.amount > 0 && p.status == PaymentDbStatus.pending)
                   .toList();
               if (pendingPayments.isNotEmpty) {
                 for (final p in pendingPayments) {
@@ -14974,7 +12206,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   .getPaymentsByOrderId(orderId!);
               final pendingPayments = payments
                   .where((p) =>
-              p.amount > 0 && p.status == PaymentDbStatus.pending)
+                      p.amount > 0 && p.status == PaymentDbStatus.pending)
                   .toList();
               if (pendingPayments.isNotEmpty) {
                 for (final p in pendingPayments) {
@@ -15030,37 +12262,37 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             StreamSubscription? subscription;
             subscription =
                 paymentBloc.sendOrderDetailsStream.listen((response) {
-                  if (response.status == Status.COMPLETED) {
-                    if (kDebugMode) {
-                      print("Email sent successfully: ${response.data!.message}");
-                    }
-                    if (Misc.showDebugSnackBar) {
-                      // Build #1.0.254
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(response.data!.message),
-                          backgroundColor: Colors.green,
-                          duration: const Duration(seconds: 3),
-                        ),
-                      );
-                    }
-                  } else if (response.status == Status.ERROR) {
-                    if (kDebugMode) {
-                      print("Failed to send email: ${response.message}");
-                    }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(TextConstants.failedSendEmail),
-                        backgroundColor: Colors.red,
-                        duration: const Duration(seconds: 3),
-                      ),
-                    );
-                  }
-                  subscription?.cancel();
-                  // Proceed to complete the order after email API response
-                  changeStatusToCompletedAndExit(true,
-                      selectedOption: selectedOption);
-                });
+              if (response.status == Status.COMPLETED) {
+                if (kDebugMode) {
+                  print("Email sent successfully: ${response.data!.message}");
+                }
+                if (Misc.showDebugSnackBar) {
+                  // Build #1.0.254
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(response.data!.message),
+                      backgroundColor: Colors.green,
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                }
+              } else if (response.status == Status.ERROR) {
+                if (kDebugMode) {
+                  print("Failed to send email: ${response.message}");
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(TextConstants.failedSendEmail),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              }
+              subscription?.cancel();
+              // Proceed to complete the order after email API response
+              changeStatusToCompletedAndExit(true,
+                  selectedOption: selectedOption);
+            });
           } else {
             // For non-email options, proceed directly to complete the order
             changeStatusToCompletedAndExit(true,
@@ -15075,10 +12307,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   ///it is used called by no receipt and print receipt on order payment completed - print button tap
   void changeStatusToCompletedAndExit(bool isReceipt,
       {String selectedOption = TextConstants.print}) {
-    /// Build #1.0.168: Fixed Issue - Change is showing as zero only
-    /// No need here to reset changeAmount,balanceAmount or tenderAmount
-    /// Every time comes to this screen we are already resetting initially in fetchOrderItems method
-
     if (kDebugMode) {
       print(
           "OrderSummaryScreen _showReceiptDialog Done call print receipt = $isReceipt");
@@ -15106,13 +12334,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     _isAmountEntered = false;
     _amountErrorText = null;
 
-    ///ToDO: Change the status of order to 'completed' here
-    // Build #1.0.49: Added Call Order Status Update API code
+    // ✅ Update Hive with latest merchant discount before final sync
+    _updateHiveWithLatestMerchantDiscount().then((_) {
+      // Background sync after updating Hive
+      Future(() async {
+        try {
+          await _syncCurrentOfflineOrder();
+          print("✅ Background: Final sync completed");
+        } catch (e) {
+          print("❌ Background: Final sync failed: $e");
+        }
+      });
+    });
 
-    /// Build #1.0.175: No need change status to completed API call
-    /// It was handling from backend
     Navigator.of(context).pop(); // Dismiss the receipt dialog
-    // Navigator.of(context).pop(TextConstants.refresh); // Dismiss back to the previous screen with a refresh signal
+
     if (kDebugMode) {
       print("changeStatusToCompletedAndExit -> 3:");
     }
@@ -15132,7 +12368,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           TextConstants.orderCompleted,
           style: const TextStyle(color: Colors.white),
         ),
-        backgroundColor: Colors.green, // Build #1.0.104: updated to green
+        backgroundColor: Colors.green,
         duration: const Duration(seconds: 1),
       ),
     );
@@ -15258,12 +12494,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   // }
 
   Widget _buildPaymentAmountDisplay(
-      String label,
-      String amount, {
-        required Color leftBarColor,
-        Color? amountColor = Colors.black,
-        bool isPaymentBalance = false, // NEW: Add this flag
-      }) {
+    String label,
+    String amount, {
+    required Color leftBarColor,
+    Color? amountColor = Colors.black,
+    bool isPaymentBalance = false, // NEW: Add this flag
+  }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
     return Container(

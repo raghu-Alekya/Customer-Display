@@ -328,6 +328,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
     });
   }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) {
