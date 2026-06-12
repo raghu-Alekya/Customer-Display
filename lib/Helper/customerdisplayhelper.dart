@@ -437,8 +437,8 @@ class CustomerDisplayHelper {
 
 
       // Final calculations
-      double netTotal = grossTotal - orderDiscount;
-      double netPayable = netTotal + cashbackFee + orderTax - merchantDiscount;
+      double netTotal = grossTotal - orderDiscount - merchantDiscount.abs();
+      double netPayable = netTotal + cashbackFee + orderTax;
 
       // ------------------ LOGS ------------------
       print("✅ [CD] CALCULATION RESULTS");

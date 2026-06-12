@@ -220,6 +220,17 @@ class OrderScreenPanel extends StatefulWidget {
 
 class _OrderScreenPanelState extends State<OrderScreenPanel>
     with TickerProviderStateMixin {
+  static const MethodChannel customerDisplayChannel = 
+      MethodChannel('com.example.flutter_customer_display/sunmi_display');
+
+  Future<void> enablePhoneInput() async {
+    try {
+      await customerDisplayChannel.invokeMethod('enablePhoneInput');
+    } catch (e) {
+      print("Enable phone input error: $e");
+    }
+  }
+
   List<Map<String, Object>> tabs = []; // List of order tabs
   TabController? _tabController; // Controller for tab switching
   List<Map<String, dynamic>> orderItems =
@@ -1856,14 +1867,14 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     double calculatedPerc = 0.0;
     if (mdType == 'percentage' && mdPerc > 0) {
       calculatedPerc = mdPerc;
-      double base = grossTotal - orderDiscount.abs();
+      double base = grossTotal;
       if (base > 0) {
         merchantDiscount = -(base * mdPerc / 100.0);
       } else {
         merchantDiscount = 0.0;
       }
     } else if (mdType == 'fixed' && merchantDiscount.abs() > 0) {
-      double base = grossTotal - orderDiscount.abs();
+      double base = grossTotal;
       if (base > 0) {
         calculatedPerc = (merchantDiscount.abs() / base) * 100.0;
       }
@@ -3588,6 +3599,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                         onPressed: netPayable >= 0 &&
                             orderItems.isNotEmpty
                             ? () async {
+                          await enablePhoneInput();
                           if (orderHelper.activeOrderId != null) {
                             final int frozenSummaryOrderId =
                             orderHelper.activeOrderId!;
@@ -3915,6 +3927,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
                               // Build #1.0.143: Fixed Issue : After return from order summary screen , total order screen not refreshing with updated response
                               widget.refreshOrderList?.call();
+                              await enablePhoneInput();
                             }
                             setState(
                                     () => _isPayBtnLoading = false);

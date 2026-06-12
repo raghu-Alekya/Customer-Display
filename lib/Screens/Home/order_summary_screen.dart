@@ -3267,6 +3267,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     totalTax = double.parse(totalTax.toStringAsFixed(4));
+    //Raghu--**
+
+    // Recalculate percentage merchant discount dynamically based on Gross Total (coupon has no impact)
+    final String mdType =
+        offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+    if (mdType == 'percentage' && merchantDiscountPercentage > 0) {
+      double base = totalLineGross - totalLineDiscount;
+      if (base > 0) {
+        merchantDiscount = -((base * merchantDiscountPercentage) / 100.0);
+      } else {
+        merchantDiscount = 0.0;
+      }
+    }
 
     final double serverTax = widget.orderTax;
 
@@ -3276,15 +3289,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     double finalTax;
 
     if (!anyItemHasDiscountOrTaxRate) {
-      // ── ONLY scale tax by coupon ratio when coupon was applied in THIS session.
-      // For pending/reloaded orders, isCouponAppliedFromApi is false,
-      // so we skip scaling and return the server tax as-is (e.g. $6.36).
-      if (serverTax > 0 && discount < 0 && isCouponAppliedFromApi) {
-        final double originalGross = widget.grossTotal;
+        //Raghu--**
+      // ── Scale tax by coupon/merchant discount ratio when coupon was applied in THIS session or merchant discount is active.
+      if (serverTax > 0 && (discount < 0 || merchantDiscount < 0)) {
+        final double originalGross = widget.grossTotal > 0 ? widget.grossTotal : (totalLineGross - totalLineDiscount);
         if (originalGross > 0) {
+          final double baseForTaxScaling = isCouponAppliedFromApi
+              ? originalGross
+              : (originalGross + discount).clamp(0.01, double.infinity);
           final double taxableNet =
-              (originalGross + discount).clamp(0.0, double.infinity);
-          finalTax = serverTax * (taxableNet / originalGross);
+              (originalGross + discount + merchantDiscount).clamp(0.0, double.infinity);
+          finalTax = serverTax * (taxableNet / baseForTaxScaling);
+          finalTax = roundTaxHalfUp(finalTax);
         } else {
           finalTax = 0.0;
         }
@@ -3305,16 +3321,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             '── TAX: Recalc=0, server=$serverTax, net=$netAfterDiscount → finalTax=$finalTax');
       }
     } else {
-      if (discount < 0 && totalLineGross > 0) {
-        final double postCouponBase =
-            (totalLineGross - totalLineDiscount + discount)
-                .clamp(0.0, double.infinity);
-        final double preCouponBase =
-            (totalLineGross - totalLineDiscount).clamp(0.01, double.infinity);
-        totalTax = totalTax * (postCouponBase / preCouponBase);
+        //Raghu--**
+      final double originalBase = totalLineGross - totalLineDiscount;
+      if (originalBase > 0) {
+        final double finalBase =
+            (originalBase + discount + merchantDiscount).clamp(0.0, double.infinity);
+        totalTax = totalTax * (finalBase / originalBase);
         totalTax = double.parse(totalTax.toStringAsFixed(4));
       }
       finalTax = totalTax;
+      finalTax = roundTaxHalfUp(finalTax);
       if (kDebugMode) {
         print('── TAX: Using recalculated value: $finalTax');
       }
@@ -3330,45 +3346,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       print('   Recalculated Tax   : $totalTax');
       print('   Final Tax Used     : $finalTax');
     }
+      //Raghu--**
+    // ✅ NetTotal should be Gross + Coupon/Order Discount + Merchant Discount
+    //Raghu--**
+    final double newNetTotal = grossTotal + discount + merchantDiscount;
 
-    // Recalculate percentage merchant discount dynamically
-    final String mdType =
-        offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
-    if (mdType == 'percentage' && merchantDiscountPercentage > 0) {
-      double base = totalLineGross - totalLineDiscount + discount;
-      if (base > 0) {
-        merchantDiscount = -((base * merchantDiscountPercentage) / 100.0);
-      } else {
-        merchantDiscount = 0.0;
-      }
-    }
+    final double newNetPayable = newNetTotal + finalTax + cashbackFee;
 
-    double calculatedPerc = 0.0;
-    if (mdType == 'percentage' && merchantDiscountPercentage > 0) {
-      calculatedPerc = merchantDiscountPercentage;
-    } else if (mdType == 'fixed' && merchantDiscount.abs() > 0) {
-      double base = totalLineGross - totalLineDiscount + discount;
-      if (base > 0) {
-        calculatedPerc = (merchantDiscount.abs() / base) * 100.0;
-      }
-    }
-
-    if (calculatedPerc > 0) {
-      finalTax = finalTax * (1 - calculatedPerc / 100.0);
-      finalTax = roundTaxHalfUp(finalTax);
-    }
-
-    // final double newNetTotal = grossTotal + discount + merchantDiscount;
-
-
-    // ✅ CORRECT: NetTotal should be Gross + Coupon/Order Discount ONLY
-    // Merchant Discount is shown separately after NetTotal
-    final double newNetTotal = grossTotal + discount;
-
-    final double newNetPayable = newNetTotal + finalTax + cashbackFee + merchantDiscount;
-
-    // final double newNetPayable = newNetTotal + finalTax + cashbackFee;
-
+    
     final bool totalsChanged = (finalTax - tax).abs() > 0.00005 ||
         (newNetPayable - computedNetPayable).abs() > 0.00005;
     if (!totalsChanged) return;
@@ -3404,6 +3389,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             offlineOrder["balance_amount"] = newNetPayable;
             offlineOrder["remaining_balance"] = newNetPayable;
           }
+          // Save merchant discount and NetTotal to Hive as well
+          offlineOrder["merchantDiscount"] = merchantDiscount.abs();
+          offlineOrder["merchant_discount"] = merchantDiscount.abs();
+          offlineOrder["merchantDiscountPercentage"] = merchantDiscountPercentage;
+          offlineOrder["NetTotal"] = newNetTotal;
+          offlineOrder["net_total"] = newNetTotal;
+
           await box.put(orderKey, offlineOrder);
           if (kDebugMode) {
             print(
@@ -3569,7 +3561,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   // }
 
 
-  void _recalculateGrossAndNetFromLineItemDiscounts() {
+  Future<void> _recalculateGrossAndNetFromLineItemDiscounts() async {
     if (orderItems.isEmpty) return;
 
     double toDouble(dynamic v) =>
@@ -3678,8 +3670,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final double newGrossForDisplay = productGrossAfterDiscounts + payoutCashbackTotal;
 
-    final double newNetTotal = newGrossForDisplay + discount;
-    final double newNetPayable = newNetTotal + tax + cashbackFee + merchantDiscount;
+    final double newNetTotal = newGrossForDisplay + discount + merchantDiscount;
+    final double newNetPayable = newNetTotal + tax + cashbackFee;
 
     if (kDebugMode) {
       print('── LINE-ITEM DISCOUNT RECALCULATION ──');
@@ -3700,6 +3692,44 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
     });
 
+    final String orderKey = widget.offlineOrderId?.toString() ??
+        widget.orderId?.toString() ??
+        orderId?.toString() ??
+        "";
+
+    if (orderKey.isNotEmpty) {
+      try {
+        final box = StorageProvider.offlineOrders;
+        final rawOrder = await box.get(orderKey);
+        if (rawOrder != null) {
+          final offlineOrder = Map<String, dynamic>.from(rawOrder);
+          offlineOrder["gross_total"] = newGrossForDisplay;
+          offlineOrder["NetTotal"] = newNetTotal;
+          offlineOrder["net_total"] = newNetTotal;
+          offlineOrder["net_payable"] = newNetPayable;
+          offlineOrder["grand_total"] = newNetPayable;
+          if (tenderAmount <= 0) {
+            offlineOrder["balanceAmount"] = newNetPayable;
+            offlineOrder["balance_amount"] = newNetPayable;
+            offlineOrder["remaining_balance"] = newNetPayable;
+          }
+          offlineOrder["merchantDiscount"] = merchantDiscount.abs();
+          offlineOrder["merchant_discount"] = merchantDiscount.abs();
+          offlineOrder["merchantDiscountPercentage"] = merchantDiscountPercentage;
+
+          await box.put(orderKey, offlineOrder);
+          if (kDebugMode) {
+            print(
+                "💾 [CD/Summary] Updated Hive with recalculated gross: $newGrossForDisplay, netTotal: $newNetTotal, netPayable: $newNetPayable");
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print("❌ [CD/Summary] Failed to update Hive order gross/net: $e");
+        }
+      }
+    }
+
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 🔥 CRITICAL FIX: Update customer display when merchant discount changes
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3708,7 +3738,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     if (merchantDiscountChanged || netPayableChanged) {
       // Update customer display with latest merchant discount values
-      _updateCustomerDisplayWithMerchantDiscount();
+      await _updateCustomerDisplayWithMerchantDiscount();
+      if (widget.offlineOrderId != null) {
+        await CustomerDisplayHelper.updateCustomerDisplay(
+          widget.offlineOrderId!,
+          summaryEnabled: true,
+        );
+      }
     }
   }
 
@@ -3717,55 +3753,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     if (orderIdToUse == null || orderIdToUse == 0) return;
 
     if (kDebugMode) {
-      print('🔄 Updating customer display with merchant discount...');
-      print('   Gross Total: $grossTotal');
-      print('   Discount: $discount');
-      print('   Merchant Discount: $merchantDiscount');
-      print('   Net Payable: $computedNetPayable');
+      print('🔄 Updating customer display via helper...');
     }
 
     try {
-      // Build customer items for display
-      final customerItems = orderItems.map((item) {
-        // Skip discount/coupon line items for display
-        final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
-        final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
-
-        if (itemType.contains('discount') ||
-            itemType.contains('coupon') ||
-            itemName.contains('merchant discount')) {
-          return null;
-        }
-
-        return {
-          "name": item["item_name"] ?? "",
-          "qty": item["items_count"] ?? 1,
-          "price": item["item_price"] ?? 0.0,
-          "image": item["item_image"] ?? "",
-        };
-      }).where((item) => item != null).toList().cast<Map<String, dynamic>>();
-
-      await CustomerDisplayService.showCustomerData(
-        orderId: orderIdToUse,
-        items: customerItems,
-        grossTotal: grossTotal,
-        discount: discount,
-        merchantDiscount: merchantDiscount,
-        netTotal: grossTotal - discount.abs(), // Net before merchant discount
-        tax: tax,
-        netPayable: computedNetPayable,
-        cashbackFee: cashbackFee,
-        redeemedAmount: redeemedValue,
-        loyaltyContact: mobileController.text.trim(),
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        orderIdToUse,
         summaryEnabled: true,
       );
-
-      if (kDebugMode) {
-        print('✅ Customer display updated with merchant discount: $merchantDiscount');
-      }
     } catch (e) {
       if (kDebugMode) {
-        print(' Failed to update customer display: $e');
+        print('Failed to update customer display via helper: $e');
       }
     }
   }
@@ -3954,7 +3952,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       await _enrichOrderItemsFromHiveProducts();
       await _recalculateTaxOnDiscountedItems();
       if (!widget.itemPricesAlreadyAdjusted) {
-        _recalculateGrossAndNetFromLineItemDiscounts();
+        await _recalculateGrossAndNetFromLineItemDiscounts();
       }
 
       if (mounted) setState(() {});
@@ -3973,7 +3971,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       await retrySyncUnsyncedPayments();
       await _recalculateTaxOnDiscountedItems();
       if (!widget.itemPricesAlreadyAdjusted) {
-        _recalculateGrossAndNetFromLineItemDiscounts();
+        await _recalculateGrossAndNetFromLineItemDiscounts();
       }
     });
 
@@ -6326,39 +6324,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                             final localOrderId = widget.offlineOrderId;
                             if (localOrderId != null) {
-                              final customerItems = orderItems.map((item) {
-                                return {
-                                  "name": item["item_name"] ?? "",
-                                  "qty": item["items_count"] ?? 1,
-                                  "price": item["item_price"] ?? 0.0,
-                                  "image": item["item_image"] ?? "",
-                                };
-                              }).toList();
-
-                              await CustomerDisplayService.showCustomerData(
-                                orderId: localOrderId ?? 0,
-
-                                items: customerItems,
-
-                                grossTotal: grossTotal,
-
-                                discount: discount,
-
-                                merchantDiscount: merchantDiscount,
-
-                                // ✅ FIX NET TOTAL
-                                netTotal: grossTotal - discount.abs(),
-
-                                tax: tax,
-
-                                netPayable: computedNetPayable,
-
-                                cashbackFee: cashbackFee,
-
-                                redeemedAmount: redeemedValue.toDouble(),
-
-                                loyaltyContact: "",
-
+                              await CustomerDisplayHelper.updateCustomerDisplay(
+                                localOrderId,
                                 summaryEnabled: true,
                               );
                             }
@@ -7001,7 +6968,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                               : '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
                                           isTotal: true,
                                         ),
-
+                                        //Raghu--**
+                                        if (merchantDiscount < 0)
+                                          _buildOrderCalculation(
+                                            merchantDiscountPercentage > 0
+                                                ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
+                                                : TextConstants
+                                                    .merchantDiscount,
+                                            '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
+                                          ),
                                         _buildOrderCalculation(
                                             TextConstants.discountText,
                                             '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}',
@@ -7046,32 +7021,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                     .black, // ✅ ensures gradient works correctly
                                           ),
                                         ),
-                                        ////Raghu--***
-                                        // _buildOrderCalculation(
-                                        //   TextConstants.NetTotal,
-                                        //   NetTotal < 0
-                                        //       ? '-${TextConstants.currencySymbol}${NetTotal.abs().toStringAsFixed(2)}'
-                                        //       : '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
-                                        // ),
-                                      
+                                        //Raghu--***
+                                                                            
                                         _buildOrderCalculation(
                                           TextConstants.NetTotal,
-                                          //(grossTotal - discount) < 0
-                                             NetTotal < 0
-                                              // ? '-${TextConstants.currencySymbol}${(grossTotal - discount).abs().toStringAsFixed(2)}'
-                                              // : '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}',
+                                            NetTotal < 0
                                               ? '-${TextConstants.currencySymbol}${NetTotal.abs().toStringAsFixed(2)}'
                                               : '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
                                         ),
-                                        //Raghu--**
-                                        if (merchantDiscount < 0)
-                                          _buildOrderCalculation(
-                                            merchantDiscountPercentage > 0
-                                                ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
-                                                : TextConstants
-                                                    .merchantDiscount,
-                                            '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
-                                          ),
+                                        
                                         _buildOrderCalculation(
                                           TextConstants.taxText,
                                           '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}',
@@ -10207,12 +10165,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       await _recalculateTaxOnDiscountedItems();
 
       if (!widget.itemPricesAlreadyAdjusted) {
-        _recalculateGrossAndNetFromLineItemDiscounts();
+        await _recalculateGrossAndNetFromLineItemDiscounts();
       }
-
+      //Raghu--**
       // ================= FINAL TOTAL RECALC =================
       setState(() {
-        NetTotal = grossTotal + discount ;   ////bala
+        NetTotal = grossTotal + discount + merchantDiscount; //Raghu
 
         computedNetPayable = NetTotal + tax + cashbackFee;
 
@@ -10260,16 +10218,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         );
       }
 
-      // ================= BUILD CUSTOMER ITEMS =================
-      final customerItems = orderItems.map((item) {
-        return {
-          "name": item["item_name"] ?? "",
-          "qty": item["items_count"] ?? 1,
-          "price": item["item_price"] ?? 0.0,
-          "image": item["item_image"] ?? "",
-        };
-      }).toList();
-
       // ================= IMPORTANT DELAY =================
       await Future.delayed(
         const Duration(
@@ -10278,32 +10226,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       );
 
       // ================= FINAL CUSTOMER DISPLAY REFRESH =================
-      await CustomerDisplayService.showCustomerData(
-        orderId: safeOrderId,
-
-        items: customerItems,
-
-        grossTotal: grossTotal,
-
-        discount: discount,
-
-        merchantDiscount: merchantDiscount,
-
-        netTotal: grossTotal - discount.abs(),
-
-        tax: tax,
-
-        netPayable: computedNetPayable,
-
-        cashbackFee: cashbackFee,
-
-        redeemedAmount: redeemedValue.toDouble(),
-
-        loyaltyContact: mobileController.text.trim(),
-
-        // VERY IMPORTANT
-        summaryEnabled: true,
-      );
+      if (safeOrderId > 0) {
+        await CustomerDisplayHelper.updateCustomerDisplay(
+          safeOrderId,
+          summaryEnabled: true,
+        );
+      }
 
       // ================= SUCCESS =================
       if (mounted) {
@@ -10648,9 +10576,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       setState(() {
         discount = (newDiscount != 0) ? -newDiscount.abs() : 0.0;
         tax = newTax;
-
+      //Raghu--**
         // Recalculate NetTotal and computedNetPayable with same formula
-        NetTotal = grossTotal + discount;
+        NetTotal = grossTotal + discount + merchantDiscount;
         computedNetPayable = NetTotal + tax + cashbackFee;
         orderTotal = newTotal;
         balanceAmount = computedNetPayable - tenderAmount;
@@ -10668,16 +10596,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       offlineOrder["merchantDiscountPercentage"] = originalMerchantDiscountPercentage;
       offlineOrder["merchantDiscountType"] = originalMerchantDiscountType;
       await box.put(orderKey, offlineOrder);
-
+      //Raghu---**
       // ✅ Recalculate with discounts
       await _recalculateTaxOnDiscountedItems();
       if (!widget.itemPricesAlreadyAdjusted) {
-        _recalculateGrossAndNetFromLineItemDiscounts();
+        await _recalculateGrossAndNetFromLineItemDiscounts();
       }
 
       // ✅ Final recalculation
       setState(() {
-        NetTotal = grossTotal + discount;
+        NetTotal = grossTotal + discount + merchantDiscount;
         computedNetPayable = NetTotal + tax + cashbackFee;
         orderTotal = computedNetPayable;
         balanceAmount = computedNetPayable - tenderAmount;
@@ -10686,27 +10614,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // ✅ Update customer display
       if (localOrderId != null) {
-        final customerItems = orderItems.map((item) {
-          return {
-            "name": item["item_name"] ?? "",
-            "qty": item["items_count"] ?? 1,
-            "price": item["item_price"] ?? 0.0,
-            "image": item["item_image"] ?? "",
-          };
-        }).toList();
-
-        await CustomerDisplayService.showCustomerData(
-          orderId: localOrderId,
-          items: customerItems,
-          grossTotal: grossTotal,
-          discount: discount,
-          merchantDiscount: merchantDiscount,
-          netTotal: grossTotal - discount.abs(),
-          tax: tax,
-          netPayable: computedNetPayable,
-          cashbackFee: cashbackFee,
-          redeemedAmount: redeemedValue,
-          loyaltyContact: mobileController.text.trim(),
+        await CustomerDisplayHelper.updateCustomerDisplay(
+          localOrderId,
           summaryEnabled: true,
         );
       }
@@ -10760,9 +10669,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // Get merchant discount type and percentage from offline order
     final String mdType = offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
     final num mdPercentage = offlineOrder?['merchantDiscountPercentage'] as num? ?? merchantDiscountPercentage;
-
-    // Calculate current base (Gross + Coupon/Order Discount)
-    final double baseAmount = grossTotal + discount;
+    //Raghu--**
+    // Calculate current base (Gross)
+    final double baseAmount = grossTotal;
 
     if (mdType == 'percentage' && mdPercentage > 0) {
       // Recalculate merchant discount based on new base amount
@@ -10770,7 +10679,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       if (kDebugMode) {
         print('🔄 Recalculating merchant discount:');
-        print('   Base Amount (Gross + Coupon): $baseAmount');
+        print('   Base Amount (Gross): $baseAmount');
         print('   Percentage: $mdPercentage%');
         print('   New Merchant Discount: $newMerchantDiscount');
         print('   Old Merchant Discount: $merchantDiscount');

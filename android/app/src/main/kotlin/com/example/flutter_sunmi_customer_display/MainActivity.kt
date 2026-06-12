@@ -2156,8 +2156,7 @@ class MainActivity : FlutterActivity() {
             merchantDiscountView.text = formatCurrency(-merchantDiscount)
 
             // NET TOTAL = GROSS - DISCOUNT
-            val calculatedNetTotal =
-                grossTotal - actualDiscount
+            val calculatedNetTotal = netTotal
 
             netTotalView.text =
                 formatCurrency(calculatedNetTotal)

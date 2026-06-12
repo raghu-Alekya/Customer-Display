@@ -108,7 +108,7 @@ class RightOrderPanel extends StatefulWidget {
 class _RightOrderPanelState extends State<RightOrderPanel>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   static const MethodChannel customerDisplayChannel =
-      MethodChannel('com.alekta.pinakapos/sunmi_display');
+      MethodChannel('com.example.flutter_customer_display/sunmi_display');
 
   Future<void> _agentDebugLog({
     required String hypothesisId,
@@ -3751,7 +3751,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final fixed = double.tryParse(offlineOrder['merchantDiscountFixed']?.toString() ?? '0') ?? 0.0;
 
     if (type == 'percentage' && perc > 0) {
-      double base = grossTotal - orderDiscount;
+      double base = grossTotal;
       merchantDiscountVal = (base * perc) / 100.0;
     } else {
       merchantDiscountVal = fixed;
@@ -4712,7 +4712,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     if (mdType == 'percentage' && mdPerc > 0) {
       calculatedPerc = mdPerc;
     } else if (mdType == 'fixed' && merchantDiscount.abs() > 0) {
-      double base = grossTotal - orderDiscount;
+      double base = grossTotal;
       if (base > 0) {
         calculatedPerc = (merchantDiscount.abs() / base) * 100.0;
       }
@@ -4727,7 +4727,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           rawOfflineOrder?['merchantDiscountPercentage']?.toString() ?? '0') ??
           0.0;
       if (_mdType == 'percentage' && _mdPerc > 0) {
-        final double _base = grossTotal - orderDiscount;
+        final double _base = grossTotal;
         effectiveMerchantDiscount = _base > 0 ? (_base * _mdPerc) / 100.0 : 0.0;
       }
     }
@@ -6929,8 +6929,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                   double recalculatedMerchantDiscount =
                                       merchantDiscount;
                                   if (mdType == 'percentage' && mdPerc > 0) {
-                                    double base = grossAfterDiscount -
-                                        orderDiscount.abs();
+                                    double base = grossAfterDiscount;
+
                                     if (base > 0) {
                                       recalculatedMerchantDiscount =
                                           (base * mdPerc) / 100.0;
@@ -6976,8 +6976,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                     calculatedPerc = mdPerc;
                                   } else if (mdType == 'fixed' &&
                                       recalculatedMerchantDiscount.abs() > 0) {
-                                    double base = grossAfterDiscount -
-                                        orderDiscount.abs();
+                                    double base = grossAfterDiscount;
+
                                     if (base > 0) {
                                       calculatedPerc =
                                           (recalculatedMerchantDiscount.abs() /
