@@ -267,6 +267,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   }
 
   @override
+  //***** */
   void initState() {
     super.initState();
     NativeUsbScanBridge.registerHandler(_onNativeUsbBarcode);
@@ -352,7 +353,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // Search for each method by name and replace ONLY the indicated block.
 // ============================================================
 
-
 // ─────────────────────────────────────────────────────────────
 // METHOD 1: _getPreciseMerchantDiscount
 // Replace the existing method body with this version.
@@ -360,32 +360,29 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // `grossTotal minus payout/cashback totals`, not raw grossTotal.
 // ─────────────────────────────────────────────────────────────
 
-  double _getPreciseMerchantDiscount(
-      Map<String, dynamic>? rawOfflineOrder,
-      double grossTotal,
-      double orderDiscount) {
+  double _getPreciseMerchantDiscount(Map<String, dynamic>? rawOfflineOrder,
+      double grossTotal, double orderDiscount) {
     if (rawOfflineOrder == null) return 0.0;
 
     // ── NEW: exclude payout & cashback from the discount base ──
     double payoutsTotal =
-    ((rawOfflineOrder['payouts'] as List?) ?? []).fold(0.0, (s, p) {
+        ((rawOfflineOrder['payouts'] as List?) ?? []).fold(0.0, (s, p) {
       return s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0);
     });
     double cashbacksTotal =
-    ((rawOfflineOrder['cashbacks'] as List?) ?? []).fold(0.0, (s, c) {
+        ((rawOfflineOrder['cashbacks'] as List?) ?? []).fold(0.0, (s, c) {
       return s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0);
     });
     // products-only subtotal — this is the base for merchant discount
     final double productsBase = grossTotal - payoutsTotal - cashbacksTotal;
     // ── END NEW ──
 
-    final type =
-        rawOfflineOrder['merchantDiscountType']?.toString() ?? 'fixed';
+    final type = rawOfflineOrder['merchantDiscountType']?.toString() ?? 'fixed';
     final perc = double.tryParse(
-        rawOfflineOrder['merchantDiscountPercentage']?.toString() ?? '0') ??
+            rawOfflineOrder['merchantDiscountPercentage']?.toString() ?? '0') ??
         0.0;
     final fixed = double.tryParse(
-        rawOfflineOrder['merchantDiscountFixed']?.toString() ?? '0') ??
+            rawOfflineOrder['merchantDiscountFixed']?.toString() ?? '0') ??
         0.0;
 
     double result = 0.0;
@@ -401,7 +398,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
     return result < 0.000001 ? 0.0 : result;
   }
-
 
 // ─────────────────────────────────────────────────────────────
 // METHOD 2: getCurrentMerchantDiscount
@@ -428,12 +424,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
 
     // ── NEW: exclude payout & cashback from the discount base ──
-    double payoutsTotal =
-    ((order['payouts'] as List?) ?? []).fold(0.0, (s, p) {
+    double payoutsTotal = ((order['payouts'] as List?) ?? []).fold(0.0, (s, p) {
       return s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0);
     });
     double cashbacksTotal =
-    ((order['cashbacks'] as List?) ?? []).fold(0.0, (s, c) {
+        ((order['cashbacks'] as List?) ?? []).fold(0.0, (s, c) {
       return s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0);
     });
     final double productsBase = currentGross - payoutsTotal - cashbacksTotal;
@@ -441,11 +436,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
     final type = order['merchantDiscountType']?.toString() ?? 'fixed';
     final perc = double.tryParse(
-        order['merchantDiscountPercentage']?.toString() ?? '0') ??
+            order['merchantDiscountPercentage']?.toString() ?? '0') ??
         0.0;
-    final fixed = double.tryParse(
-        order['merchantDiscountFixed']?.toString() ?? '0') ??
-        0.0;
+    final fixed =
+        double.tryParse(order['merchantDiscountFixed']?.toString() ?? '0') ??
+            0.0;
 
     double result = 0.0;
     if (type == 'percentage' && perc > 0) {
@@ -3760,13 +3755,18 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     //     (offlineOrder['merchantDiscount'] as num?)?.toDouble() ?? 0.0;
 
     final double grossTotal = productTotal + payoutsTotal + cashbacksTotal;
-    final double orderDiscount = (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+    final double orderDiscount =
+        (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
 
 // ⭐ FIX: Recalculate merchant discount precisely
     double merchantDiscountVal = 0.0;
     final type = offlineOrder['merchantDiscountType']?.toString() ?? 'fixed';
-    final perc = double.tryParse(offlineOrder['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
-    final fixed = double.tryParse(offlineOrder['merchantDiscountFixed']?.toString() ?? '0') ?? 0.0;
+    final perc = double.tryParse(
+            offlineOrder['merchantDiscountPercentage']?.toString() ?? '0') ??
+        0.0;
+    final fixed = double.tryParse(
+            offlineOrder['merchantDiscountFixed']?.toString() ?? '0') ??
+        0.0;
 
     if (type == 'percentage' && perc > 0) {
       double base = grossTotal;
@@ -3774,7 +3774,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     } else {
       merchantDiscountVal = fixed;
     }
-    merchantDiscountVal = merchantDiscountVal < 0.000001 ? 0.0 : merchantDiscountVal;
+    merchantDiscountVal =
+        merchantDiscountVal < 0.000001 ? 0.0 : merchantDiscountVal;
 
     final double cashbackFee =
         (offlineOrder['cashbackFee'] as num?)?.toDouble() ?? 0.0;
@@ -4569,8 +4570,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     double orderDiscount = 0.0;
     double merchantDiscount = 0.0;
     double cashbackFee = 0.0;
-    String displayDate = DateFormat(TextConstants.dateFormat).format(DateTime.now());
-    String displayTime = DateFormat(TextConstants.timeFormat).format(DateTime.now());
+    String displayDate =
+        DateFormat(TextConstants.dateFormat).format(DateTime.now());
+    String displayTime =
+        DateFormat(TextConstants.timeFormat).format(DateTime.now());
 
 // FIRST: Calculate grossTotal and totalItems from orderItems
     double grossTotal = 0.0;
@@ -4594,20 +4597,25 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       final bool isCoupon = itemType.contains('coupon');
 
       final double taxRate = double.tryParse(item['tax_rate']?.toString() ??
-          item['tax_Rate']?.toString() ??
-          '0') ??
+              item['tax_Rate']?.toString() ??
+              '0') ??
           0.0;
-      double itemTax = taxRate > 0 ? roundTaxHalfUp(((price * taxRate) / 100) * qty) : 0.0;
+      double itemTax =
+          taxRate > 0 ? roundTaxHalfUp(((price * taxRate) / 100) * qty) : 0.0;
 
       if (!isPayout && !isCashback && !isCoupon) {
         itemTax = ((item['item_tax'] ?? 0) as num).toDouble();
 
         if (itemTax <= 0) {
           final bool isEbt = item['is_ebt_eligible'] == true;
-          final int productId = int.tryParse((item['product_id'] ?? 0).toString()) ?? 0;
+          final int productId =
+              int.tryParse((item['product_id'] ?? 0).toString()) ?? 0;
           final String taxClass = (item['tax_class'] ?? '').toString();
-          final double taxRate = double.tryParse((item['tax_rate'] ?? item['tax_Rate'] ?? '0').toString()) ?? 0.0;
-          final String lineTaxStatus = (item['tax_status'] ?? 'taxable').toString().toLowerCase();
+          final double taxRate = double.tryParse(
+                  (item['tax_rate'] ?? item['tax_Rate'] ?? '0').toString()) ??
+              0.0;
+          final String lineTaxStatus =
+              (item['tax_status'] ?? 'taxable').toString().toLowerCase();
           const double defaultNonEbtTaxRate = 9.1;
 
           if (isEbt) {
@@ -4617,7 +4625,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               itemTax = roundTaxHalfUp(((price * taxRate) / 100) * qty);
             }
           } else if (productId > 0) {
-            final lineTaxRate = double.tryParse((item['tax_rate'] ?? '0').toString()) ?? 0.0;
+            final lineTaxRate =
+                double.tryParse((item['tax_rate'] ?? '0').toString()) ?? 0.0;
             if (lineTaxStatus == 'taxable' && lineTaxRate > 0) {
               itemTax = ((price * qty) * lineTaxRate) / 100;
             } else {
@@ -4695,10 +4704,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           : 0.0;
 
       // Merchant discount - ALWAYS use the precise method with current grossTotal
-      merchantDiscount = _getPreciseMerchantDiscount(rawOfflineOrder, grossTotal, orderDiscount);
+      merchantDiscount = _getPreciseMerchantDiscount(
+          rawOfflineOrder, grossTotal, orderDiscount);
 
       // Also ensure the rawOfflineOrder has the correct rounded value
-      final double roundedMerchantDiscount = (merchantDiscount * 100).roundToDouble() / 100;
+      final double roundedMerchantDiscount =
+          (merchantDiscount * 100).roundToDouble() / 100;
       if (roundedMerchantDiscount != merchantDiscount) {
         merchantDiscount = roundedMerchantDiscount;
         // Optionally update the stored value
@@ -4723,8 +4734,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     }
 
 // Calculate tax adjustment if merchant discount is percentage-based
-    final String mdType = rawOfflineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
-    final double mdPerc = double.tryParse(rawOfflineOrder?['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
+    final String mdType =
+        rawOfflineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+    final double mdPerc = double.tryParse(
+            rawOfflineOrder?['merchantDiscountPercentage']?.toString() ??
+                '0') ??
+        0.0;
 
     double calculatedPerc = 0.0;
     if (mdType == 'percentage' && mdPerc > 0) {
@@ -4742,7 +4757,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       final String _mdType =
           rawOfflineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
       final double _mdPerc = double.tryParse(
-          rawOfflineOrder?['merchantDiscountPercentage']?.toString() ?? '0') ??
+              rawOfflineOrder?['merchantDiscountPercentage']?.toString() ??
+                  '0') ??
           0.0;
       if (_mdType == 'percentage' && _mdPerc > 0) {
         final double _base = grossTotal;
@@ -4759,7 +4775,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         if (raw == null) return;
         final updated = Map<String, dynamic>.from(raw);
         updated['merchantDiscount'] = effectiveMerchantDiscount;
-        updated['net_total'] = grossTotal - orderDiscount - effectiveMerchantDiscount;
+        updated['net_total'] =
+            grossTotal - orderDiscount - effectiveMerchantDiscount;
         updated['net_payable'] = updated['net_total'] + orderTax + cashbackFee;
         await _offlineBox.put(_orderKey, updated);
       });
@@ -4770,7 +4787,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       orderTax = roundTaxHalfUp(orderTax);
     }
 
-    final double netTotal = grossTotal - orderDiscount - effectiveMerchantDiscount;
+    final double netTotal =
+        grossTotal - orderDiscount - effectiveMerchantDiscount;
     final double netPayable = netTotal + orderTax + cashbackFee;
 
     // ============ RENDER FULL UI (SAME AS BEFORE, TOTALS NOW CORRECT) ============
@@ -7110,9 +7128,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                         orderDiscount: orderDiscount,
                                         // merchantDiscount: merchantDiscount,
 
-                                            merchantDiscount: recalculatedMerchantDiscount,
+                                        merchantDiscount:
+                                            recalculatedMerchantDiscount,
 
-                                            orderTax: totalTaxAfterDiscount,
+                                        orderTax: totalTaxAfterDiscount,
                                         netPayable: updated['net_payable'] ??
                                             (grossAfterDiscount +
                                                 totalTaxAfterDiscount -
