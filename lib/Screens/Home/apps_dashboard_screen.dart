@@ -193,36 +193,7 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen>
 
                               ///////
 
-                              _buildCard(
-                                //title: TextConstants.cashier,
-                                icon: themeHelper.themeMode == ThemeMode.dark
-                                    ? Image.asset(
-                                        "assets/stock_inventory_dark.png",
-                                      )
-                                    : Image.asset("assets/img.png"),
-                                cardIndex: 0,
 
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (context) =>
-                                            NmiPaymentScreen() //Build #1.0.386
-                                        //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
-                                        ),
-                                  );
-                                },
-
-                                // onTap: () async {
-                                //   final response =
-                                //       await VP3350Service.startTransaction("10.00");
-                                //
-                                //   ScaffoldMessenger.of(context).showSnackBar(
-                                //     SnackBar(content: Text(response)),
-                                //   );
-                                //
-                                // },  NmiPaymentScreen
-                              ),
                             ],
                           ),
                   ),
