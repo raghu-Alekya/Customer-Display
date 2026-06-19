@@ -5776,6 +5776,148 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     _handlePay();
                                   },
                                 ),
+                                // _buildPaymentModeButton(
+                                //   TextConstants.ebtText,
+                                //   Image.asset(
+                                //     'assets/ebt.png',
+                                //     width: ResponsiveLayout.getIconSize(24),
+                                //     height: ResponsiveLayout.getIconSize(24),
+                                //     fit: BoxFit.contain,
+                                //   ),
+                                //   gradient: const LinearGradient(
+                                //     colors: [
+                                //       Color(0xFF84A2CB),
+                                //       Color(0xFF84A2CB)
+                                //     ],
+                                //   ),
+                                //   borderColor: const Color(0xFF84A2CB),
+                                //   iconColor: Colors.white,
+                                //   isLoading: _processingPaymentMethod ==
+                                //       TextConstants.ebtText &&
+                                //       isLoading,
+                                //   isDisabled:
+                                //   _processingPaymentMethod != null &&
+                                //       _processingPaymentMethod !=
+                                //           TextConstants.ebtText,
+                                //   // onTap: () {
+                                //   //   // 1️⃣ Check if there is any EBT left
+                                //   //   if (ebtTotal <= 0) {
+                                //   //     setState(() => _amountErrorText =
+                                //   //     "No EBT balance available");
+                                //   //     return;
+                                //   //   }
+                                //   //
+                                //   //   // 2️⃣ Determine the maximum allowed amount
+                                //   //   final allowedAmount =
+                                //   //   balanceAmount.clamp(0.0, ebtTotal);
+                                //   //
+                                //   //   if (allowedAmount <= 0) {
+                                //   //     setState(() => _amountErrorText =
+                                //   //     "Cannot pay with EBT, balance is zero");
+                                //   //     return;
+                                //   //   }
+                                //   //
+                                //   //   // 3️⃣ Respect user-entered partial amount when present.
+                                //   //   final enteredAmount = double.tryParse(
+                                //   //     amountController.text
+                                //   //         .replaceAll(
+                                //   //         TextConstants.currencySymbol,
+                                //   //         '')
+                                //   //         .trim(),
+                                //   //   ) ??
+                                //   //       0.0;
+                                //   //
+                                //   //   final amountToUse = enteredAmount > 0
+                                //   //       ? enteredAmount.clamp(
+                                //   //       0.0, allowedAmount)
+                                //   //       : allowedAmount;
+                                //   //
+                                //   //   if (amountToUse <= 0) {
+                                //   //     setState(() => _amountErrorText =
+                                //   //         TextConstants.amountValidation);
+                                //   //     return;
+                                //   //   }
+                                //   //
+                                //   //   // 4️⃣ Select EBT only (manual amount entry by user)
+                                //   //   _selectPaymentMethod(
+                                //   //     TextConstants.ebtText,
+                                //   //   );
+                                //   //
+                                //   //   // If user already entered amount, submit like Cash flow.
+                                //   //   if (enteredAmount > 0) {
+                                //   //     final normalizedAmount = amountToUse;
+                                //   //     setState(() {
+                                //   //       _rawAmount =
+                                //   //           (normalizedAmount * 100).round();
+                                //   //       amountController.text =
+                                //   //       '${TextConstants.currencySymbol}${normalizedAmount.toStringAsFixed(2)}';
+                                //   //       _isAmountEntered = true;
+                                //   //       _amountErrorText = null;
+                                //   //     });
+                                //   //     _handlePay();
+                                //   //     return;
+                                //   //   }
+                                //   //
+                                //   //   // Otherwise keep EBT amount user-driven.
+                                //   //   setState(() {
+                                //   //     _rawAmount = 0;
+                                //   //     amountController.text =
+                                //   //     '${TextConstants.currencySymbol}0.00';
+                                //   //     _isAmountEntered = false;
+                                //   //     _amountErrorText = null;
+                                //   //   });
+                                //   // },
+                                //   onTap: () async {
+                                //     //  Check if there is any EBT left
+                                //     if (ebtTotal <= 0) {
+                                //       setState(() => _amountErrorText = "No EBT balance available");
+                                //       return;
+                                //     }
+                                //
+                                //     //  Determine the maximum allowed amount
+                                //     final allowedAmount = balanceAmount.clamp(0.0, ebtTotal);
+                                //
+                                //     if (allowedAmount <= 0) {
+                                //       setState(() =>
+                                //       _amountErrorText = "Cannot pay with EBT, balance is zero");
+                                //       return;
+                                //     }
+                                //
+                                //     //  Respect user-entered partial amount when present.
+                                //     final enteredAmount = double.tryParse(
+                                //       amountController.text
+                                //           .replaceAll(TextConstants.currencySymbol, '')
+                                //           .trim(),
+                                //     ) ??
+                                //         0.0;
+                                //
+                                //     final amountToUse = enteredAmount > 0
+                                //         ? enteredAmount.clamp(0.0, allowedAmount)
+                                //         : allowedAmount;
+                                //
+                                //     if (amountToUse <= 0) {
+                                //       setState(
+                                //               () => _amountErrorText = TextConstants.amountValidation);
+                                //       return;
+                                //     }
+                                //
+                                //     //  Select EBT and fill amount
+                                //     _selectPaymentMethod(TextConstants.ebtText);
+                                //
+                                //     setState(() {
+                                //       _rawAmount = (amountToUse * 100).round();
+                                //       amountController.text =
+                                //       '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+                                //       _isAmountEntered = true;
+                                //       _amountErrorText = null;
+                                //     });
+                                //
+                                //     //  Call EBT API (same as card API flow)
+                                //     await _handleEbtCardPaymentViaAPI();
+                                //   },
+                                // ),
+
+                                // ==================== EBT PAYMENT BUTTON ====================
                                 _buildPaymentModeButton(
                                   TextConstants.ebtText,
                                   Image.asset(
@@ -5792,89 +5934,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   ),
                                   borderColor: const Color(0xFF84A2CB),
                                   iconColor: Colors.white,
-                                  isLoading: _processingPaymentMethod ==
-                                      TextConstants.ebtText &&
-                                      isLoading,
-                                  isDisabled:
-                                  _processingPaymentMethod != null &&
-                                      _processingPaymentMethod !=
-                                          TextConstants.ebtText,
-                                  // onTap: () {
-                                  //   // 1️⃣ Check if there is any EBT left
-                                  //   if (ebtTotal <= 0) {
-                                  //     setState(() => _amountErrorText =
-                                  //     "No EBT balance available");
-                                  //     return;
-                                  //   }
-                                  //
-                                  //   // 2️⃣ Determine the maximum allowed amount
-                                  //   final allowedAmount =
-                                  //   balanceAmount.clamp(0.0, ebtTotal);
-                                  //
-                                  //   if (allowedAmount <= 0) {
-                                  //     setState(() => _amountErrorText =
-                                  //     "Cannot pay with EBT, balance is zero");
-                                  //     return;
-                                  //   }
-                                  //
-                                  //   // 3️⃣ Respect user-entered partial amount when present.
-                                  //   final enteredAmount = double.tryParse(
-                                  //     amountController.text
-                                  //         .replaceAll(
-                                  //         TextConstants.currencySymbol,
-                                  //         '')
-                                  //         .trim(),
-                                  //   ) ??
-                                  //       0.0;
-                                  //
-                                  //   final amountToUse = enteredAmount > 0
-                                  //       ? enteredAmount.clamp(
-                                  //       0.0, allowedAmount)
-                                  //       : allowedAmount;
-                                  //
-                                  //   if (amountToUse <= 0) {
-                                  //     setState(() => _amountErrorText =
-                                  //         TextConstants.amountValidation);
-                                  //     return;
-                                  //   }
-                                  //
-                                  //   // 4️⃣ Select EBT only (manual amount entry by user)
-                                  //   _selectPaymentMethod(
-                                  //     TextConstants.ebtText,
-                                  //   );
-                                  //
-                                  //   // If user already entered amount, submit like Cash flow.
-                                  //   if (enteredAmount > 0) {
-                                  //     final normalizedAmount = amountToUse;
-                                  //     setState(() {
-                                  //       _rawAmount =
-                                  //           (normalizedAmount * 100).round();
-                                  //       amountController.text =
-                                  //       '${TextConstants.currencySymbol}${normalizedAmount.toStringAsFixed(2)}';
-                                  //       _isAmountEntered = true;
-                                  //       _amountErrorText = null;
-                                  //     });
-                                  //     _handlePay();
-                                  //     return;
-                                  //   }
-                                  //
-                                  //   // Otherwise keep EBT amount user-driven.
-                                  //   setState(() {
-                                  //     _rawAmount = 0;
-                                  //     amountController.text =
-                                  //     '${TextConstants.currencySymbol}0.00';
-                                  //     _isAmountEntered = false;
-                                  //     _amountErrorText = null;
-                                  //   });
-                                  // },
+                                  isLoading: _processingPaymentMethod == TextConstants.ebtText && isLoading,
+
+                                  //  KEY CHANGE: Disable when no EBT balance
+                                  isDisabled: ebtTotal <= 0 ||
+                                      (_processingPaymentMethod != null &&
+                                          _processingPaymentMethod != TextConstants.ebtText),
+
                                   onTap: () async {
-                                    //  Check if there is any EBT left
+                                    // Check if there is any EBT left
                                     if (ebtTotal <= 0) {
                                       setState(() => _amountErrorText = "No EBT balance available");
                                       return;
                                     }
 
-                                    //  Determine the maximum allowed amount
+                                    // Determine the maximum allowed amount
                                     final allowedAmount = balanceAmount.clamp(0.0, ebtTotal);
 
                                     if (allowedAmount <= 0) {
@@ -5883,7 +5957,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       return;
                                     }
 
-                                    //  Respect user-entered partial amount when present.
+                                    // Respect user-entered partial amount when present.
                                     final enteredAmount = double.tryParse(
                                       amountController.text
                                           .replaceAll(TextConstants.currencySymbol, '')
@@ -5901,7 +5975,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       return;
                                     }
 
-                                    //  Select EBT and fill amount
+                                    // Select EBT and fill amount
                                     _selectPaymentMethod(TextConstants.ebtText);
 
                                     setState(() {
@@ -5912,10 +5986,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       _amountErrorText = null;
                                     });
 
-                                    //  Call EBT API (same as card API flow)
+                                    // Call EBT API (same as card API flow)
                                     await _handleEbtCardPaymentViaAPI();
                                   },
                                 ),
+
+
                               ],
                             ),
                           ),
@@ -6078,43 +6154,43 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           color: textSecondary,
                         ),
                       ),
-                    const SizedBox(height: 24),
-                    // ✅ CANCEL BUTTON
-                    SizedBox(
-                      width: double.infinity,
-                      height: 40,
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red, width: 1.5),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        onPressed: () {
-                          // Set cancel flag
-                          _isCardPaymentCancelled = true;
-                          // Close the progress dialog
-                          if (Navigator.canPop(context)) {
-                            Navigator.pop(context);
-                          }
-                          // Reset loading state
-                          if (mounted) {
-                            setState(() {
-                              isLoading = false;
-                              _processingPaymentMethod = null;
-                            });
-                          }
-                        },
-                        child: const Text(
-                          "Cancel Payment",
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
+                    // const SizedBox(height: 24),
+                    // // ✅ CANCEL BUTTON
+                    // SizedBox(
+                    //   width: double.infinity,
+                    //   height: 40,
+                    //   child: OutlinedButton(
+                    //     style: OutlinedButton.styleFrom(
+                    //       foregroundColor: Colors.red,
+                    //       side: const BorderSide(color: Colors.red, width: 1.5),
+                    //       shape: RoundedRectangleBorder(
+                    //         borderRadius: BorderRadius.circular(10),
+                    //       ),
+                    //     ),
+                    //     onPressed: () {
+                    //       // Set cancel flag
+                    //       _isCardPaymentCancelled = true;
+                    //       // Close the progress dialog
+                    //       if (Navigator.canPop(context)) {
+                    //         Navigator.pop(context);
+                    //       }
+                    //       // Reset loading state
+                    //       if (mounted) {
+                    //         setState(() {
+                    //           isLoading = false;
+                    //           _processingPaymentMethod = null;
+                    //         });
+                    //       }
+                    //     },
+                    //     child: const Text(
+                    //       "Cancel Payment",
+                    //       style: TextStyle(
+                    //         fontSize: 14,
+                    //         fontWeight: FontWeight.w600,
+                    //       ),
+                    //     ),
+                    //   ),
+                    // ),
                   ],
                 ),
               ),

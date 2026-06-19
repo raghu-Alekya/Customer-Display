@@ -72,12 +72,18 @@ class OrderHelper {
   factory OrderHelper() => _instance;
   static bool isOrderPanelLoaded = false;
 
-  /// Notifier so RightOrderPanel can refresh when a new order is created (e.g. from grid).
+  /// Notifier so RightOrderPanel can refresh cart lines after add/update.
   static final ValueNotifier<int> orderPanelRefreshNotifier = ValueNotifier(0);
+  /// Notifier for full reload (new order tab, ensureOrderExists, tab bar sync).
+  static final ValueNotifier<int> orderPanelFullRefreshNotifier = ValueNotifier(0);
   static final Map<int, double> _manualRefundAmounts = {};
 
-  static void notifyOrderPanelToRefresh() {
-    orderPanelRefreshNotifier.value++;
+  static void notifyOrderPanelToRefresh({bool full = false}) {
+    if (full) {
+      orderPanelFullRefreshNotifier.value++;
+    } else {
+      orderPanelRefreshNotifier.value++;
+    }
   }
 
   static void setManualRefundAmount({
@@ -1856,16 +1862,25 @@ class OrderHelper {
   }
 
   Future<int?> ensureOrderExists() async {
+    final sw = Stopwatch()..start();
+    print('[Cart] ensureOrderExists() start — activeOrderId=$activeOrderId');
+
     // Concurrency: if another ensureOrderExists is in progress, wait for it
     if (_ensureOrderInProgress != null) {
+      print('[Cart] ensureOrderExists() waiting on in-flight request…');
       final result = await _ensureOrderInProgress!;
-      if (activeOrderId != null) return activeOrderId;
+      if (activeOrderId != null) {
+        print('[Cart] ensureOrderExists() done in ${sw.elapsedMilliseconds}ms → $activeOrderId (from active)');
+        return activeOrderId;
+      }
+      print('[Cart] ensureOrderExists() done in ${sw.elapsedMilliseconds}ms → $result (waited)');
       return result;
     }
 
     _ensureOrderInProgress = _doEnsureOrderExists();
     try {
       final result = await _ensureOrderInProgress!;
+      print('[Cart] ensureOrderExists() done in ${sw.elapsedMilliseconds}ms → $result');
       return result;
     } finally {
       _ensureOrderInProgress = null;
@@ -1878,14 +1893,18 @@ class OrderHelper {
     // 1️⃣ Reset if no user logged in
     final uId = await getUserIdFromDB();
     if (uId == 0) {
-      if (kDebugMode) print("⛔ ensureOrderExists blocked: No user ID active");
+      print('[Cart] ensureOrderExists blocked: no user logged in');
       return null;
     }
 
     // 1️⃣ If already active
-    if (activeOrderId != null) return activeOrderId;
+    if (activeOrderId != null) {
+      print('[Cart] ensureOrderExists reuse activeOrderId=$activeOrderId');
+      return activeOrderId;
+    }
 
     // 2️⃣ Load orders from offline storage
+    print('[Cart] ensureOrderExists loading orders…');
     await loadData();
 
     // 3️⃣ Try reuse unpaid order
@@ -1899,6 +1918,7 @@ class OrderHelper {
       await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
 
       if (payments.isEmpty) {
+        print('[Cart] ensureOrderExists reusing unpaid order $orderId');
         await setActiveOrder(orderId);
         await saveLastActiveOrderId(orderId);
         return orderId;
@@ -1907,9 +1927,11 @@ class OrderHelper {
 
     // 4️⃣ Create new order (with error handling)
     try {
+      print('[Cart] ensureOrderExists creating new order via API…');
       final repo = OrderRepository();
       final response = await repo.createOrder();
       final int newOrderId = response.id!;
+      print('[Cart] ensureOrderExists API returned orderId=$newOrderId');
 
       // 5️⃣ Activate + persist
       await setActiveOrder(newOrderId);
@@ -1924,24 +1946,19 @@ class OrderHelper {
       // Restore active order
       await restoreActiveOrderId();
 
-      // Force order panel to refresh so new order tab appears
+      // Force order panel to refresh tabs for the new order
       OrderHelper.isOrderPanelLoaded = false;
-      OrderHelper.notifyOrderPanelToRefresh();
+      OrderHelper.notifyOrderPanelToRefresh(full: true);
 
-      if (kDebugMode) {
-        print("🆕 ensureOrderExists → $newOrderId");
-        print("🎯 ActiveOrderId → $activeOrderId");
-      }
+      print('[Cart] ensureOrderExists new order ready → $newOrderId activeOrderId=$activeOrderId');
 
       return newOrderId;
     } catch (e, s) {
       lastEnsureOrderError = e is Exception
           ? e.toString().replaceFirst('Exception: ', '')
           : e.toString();
-      if (kDebugMode) {
-        print("❌ ensureOrderExists failed: $e");
-        print("Stack: $s");
-      }
+      print('[Cart] ensureOrderExists FAILED: $e');
+      if (kDebugMode) print('Stack: $s');
       return null;
     }
   }
@@ -2577,13 +2594,14 @@ class OrderHelper {
         String? taxClass,
         double? taxRate,
       }) async {
-    print("🍏 addItemToOrder() CALLED for: $name | EBT: $isEbtEligible");
+    final sw = Stopwatch()..start();
+    print('[Cart] addItemToOrder START → "$name" orderId=$orderId productId=$productId');
 
     final key = '$orderId-$productId-$variationId';
 
     // 🛡 Prevent double execution
     if (_activeAdds.contains(key)) {
-      print("⚠ Duplicate addItemToOrder ignored for $key");
+      print('[Cart] addItemToOrder DUPLICATE ignored for $key');
       return;
     }
     _activeAdds.add(key);
@@ -2593,18 +2611,20 @@ class OrderHelper {
       final payments =
       await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
       if (payments.isNotEmpty) {
-        if (kDebugMode) {
-          print(
-              "⚠ addItemToOrder blocked: order $orderId has payments (pending) - cannot add line items");
-        }
+        print('[Cart] addItemToOrder BLOCKED: order $orderId has ${payments.length} payment(s)');
         return;
       }
 
       final box = StorageProvider.offlineOrders;
-      final rawOrder = await box.get(orderId.toString());
+      var rawOrder = await box.get(orderId.toString());
       if (rawOrder == null || rawOrder is! Map) {
-        print("⚠ No offline order found for $orderId");
-        return;
+        print('[Cart] addItemToOrder no offline hive entry for $orderId — creating…');
+        await createOrder(serverOrderId: orderId);
+        rawOrder = await box.get(orderId.toString());
+        if (rawOrder == null || rawOrder is! Map) {
+          print('[Cart] addItemToOrder FAILED: still no offline order for $orderId after createOrder');
+          return;
+        }
       }
       final order = Map<String, dynamic>.from(rawOrder);
 
@@ -2844,6 +2864,7 @@ class OrderHelper {
       final updatedOrder = <String, dynamic>{...order, 'products': products};
 
       await saveOfflineOrder(orderId, updatedOrder);
+      print('[Cart] addItemToOrder saved ${products.length} line(s) in ${sw.elapsedMilliseconds}ms');
 
       final double subtotal =
           (updatedOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
@@ -2852,42 +2873,43 @@ class OrderHelper {
       final double total =
           (updatedOrder['net_payable'] as num?)?.toDouble() ?? 0.0;
 
-// refresh UI FIRST
+// refresh UI once after save; customer display is fire-and-forget so cart is not blocked
       notifyOrderPanelToRefresh();
       if (onItemAdded != null) onItemAdded();
+      print('[Cart] addItemToOrder DONE "${name}" total ${sw.elapsedMilliseconds}ms');
 
-      try {
-        await const MethodChannel(
-          'com.alekta.pinakapos/sunmi_display',
-        ).invokeMethod(
-          'showCustomerData',
-          {
-            'orderId': orderId,
-            'items': products,
-            'grossTotal': subtotal,
-            'discount': (updatedOrder['discount'] as num?)?.toDouble() ?? 0.0,
-            'merchantDiscount':
-            (updatedOrder['merchant_discount'] as num?)?.toDouble() ?? 0.0,
-            'netTotal':
-            (updatedOrder['net_total'] as num?)?.toDouble() ?? subtotal,
-            'tax': tax,
-            'netPayable': total,
-            'orderDate': updatedOrder['order_date']?.toString() ?? '',
-            'orderTime': updatedOrder['order_time']?.toString() ?? '',
-            'cashbackFee':
-            (updatedOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
-            'loyaltyContact':
-            updatedOrder['loyalty_contact']?.toString() ?? '',
-            'availablePoints':
-            (updatedOrder['available_points'] as num?)?.toInt() ?? 0,
-            'summaryEnabled': false,
-          },
-        );
-      } catch (e) {
-        print("Customer display unavailable: $e");
-      }
-      notifyOrderPanelToRefresh();
-      if (onItemAdded != null) onItemAdded();
+      unawaited(() async {
+        try {
+          await const MethodChannel(
+            'com.alekta.pinakapos/sunmi_display',
+          ).invokeMethod(
+            'showCustomerData',
+            {
+              'orderId': orderId,
+              'items': products,
+              'grossTotal': subtotal,
+              'discount': (updatedOrder['discount'] as num?)?.toDouble() ?? 0.0,
+              'merchantDiscount':
+              (updatedOrder['merchant_discount'] as num?)?.toDouble() ?? 0.0,
+              'netTotal':
+              (updatedOrder['net_total'] as num?)?.toDouble() ?? subtotal,
+              'tax': tax,
+              'netPayable': total,
+              'orderDate': updatedOrder['order_date']?.toString() ?? '',
+              'orderTime': updatedOrder['order_time']?.toString() ?? '',
+              'cashbackFee':
+              (updatedOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
+              'loyaltyContact':
+              updatedOrder['loyalty_contact']?.toString() ?? '',
+              'availablePoints':
+              (updatedOrder['available_points'] as num?)?.toInt() ?? 0,
+              'summaryEnabled': false,
+            },
+          );
+        } catch (e) {
+          print("Customer display unavailable: $e");
+        }
+      }());
     } finally {
       _activeAdds.remove(key);
     }

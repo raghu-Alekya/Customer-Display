@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,6 +11,8 @@ class WeightProvider extends ChangeNotifier {
   bool   _isConnected     = false;
   bool   _suppressUpdates = false;
   bool   _paused          = false;
+
+  Timer? _notifyDebounce;
 
   double get weightKg        => _weightKg;
   String get weightText      => _weightText;
@@ -33,19 +36,28 @@ class WeightProvider extends ChangeNotifier {
     if (_suppressUpdates) return;
     _nativeUnit = 'lb';
     _isStable   = stable;
-    _weightKg   = _toKg(weight, unit);          // normalise → kg for storage
-    _weightText = displayText ?? _buildDisplayText(_weightKg);
-    notifyListeners();
+    final kg = _toKg(weight, unit);
+    final text = displayText ?? _buildDisplayText(kg);
+    if ((kg - _weightKg).abs() < 0.001 && text == _weightText && stable == _isStable) {
+      return;
+    }
+    _weightKg   = kg;
+    _weightText = text;
+    _scheduleNotify();
   }
 
   /// Legacy helper kept for compatibility — assumes lb display.
   void updateWeight(double kg, {String? displayText}) {
     if (_suppressUpdates) return;
+    final text = displayText ?? _buildDisplayText(kg);
+    if ((kg - _weightKg).abs() < 0.001 && text == _weightText) {
+      return;
+    }
     _weightKg   = kg;
     _nativeUnit = 'lb';
     _isStable   = true;
-    _weightText = displayText ?? _buildDisplayText(kg);
-    notifyListeners();
+    _weightText = text;
+    _scheduleNotify();
   }
 
   void resumeFromScale(double kg, {String? displayText}) {
@@ -67,6 +79,7 @@ class WeightProvider extends ChangeNotifier {
       _paused          = false;
       _suppressUpdates = false;
     }
+    _notifyDebounce?.cancel();
     notifyListeners();
   }
 
@@ -75,6 +88,7 @@ class WeightProvider extends ChangeNotifier {
     _weightKg        = 0.0;
     _weightText      = '0.00 lb';
     _isStable        = false;
+    _notifyDebounce?.cancel();
     notifyListeners();
 
     Future.delayed(const Duration(seconds: 1), () {
@@ -83,7 +97,20 @@ class WeightProvider extends ChangeNotifier {
   }
 
   void pause()  { _paused = true; }
-  void resume() { _paused = false; notifyListeners(); }
+  void resume() { _paused = false; _scheduleNotify(); }
+
+  void _scheduleNotify() {
+    _notifyDebounce?.cancel();
+    _notifyDebounce = Timer(const Duration(milliseconds: 120), () {
+      notifyListeners();
+    });
+  }
+
+  @override
+  void dispose() {
+    _notifyDebounce?.cancel();
+    super.dispose();
+  }
 
   // ── Internal helpers ────────────────────────────────────────────────────
   static double _toKg(double value, String unit) {
@@ -419,10 +446,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _ScaleStatusChip
-// Shows live connection + stability status from USB manager.
-// ─────────────────────────────────────────────────────────────────────────────
+
 class _ScaleStatusChip extends StatelessWidget {
   final bool   isConnected;
   final bool   isLive;

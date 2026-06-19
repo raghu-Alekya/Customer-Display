@@ -17,6 +17,7 @@ import '../../../Database/printer_db_helper.dart';
 import '../../../Database/store_db_helper.dart';
 import '../../../Database/user_db_helper.dart';
 import '../../../Helper/Extentions/theme_notifier.dart';
+import '../../../Helper/native_usb_scan_bridge.dart';
 import '../../../Utilities/global_utility.dart';
 import '../../../Preferences/pinaka_preferences.dart';
 import '../../../Repositories/Auth/store_validation_repository.dart';
@@ -436,7 +437,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: _themeHelper.getTheme(context).textTheme.bodyLarge?.color),
           onPressed: () {
-            Navigator.pop(context); // Return true to indicate a refresh
+            // NativeUsbScanBridge.dispatchFromRaw('/dev/bus/usb/001/003: 2721933233');
+            print("pppppppppppppppp");
+           Navigator.pop(context); // Return true to indicate a refresh
           },
         ),
         title: Text(

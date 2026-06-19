@@ -36,6 +36,7 @@ import '../../Repositories/Orders/order_repository.dart';
 import '../../Repositories/Search/product_search_repository.dart';
 import '../../Utilities/svg_images_utility.dart';
 import '../../Utilities/textfield_search.dart';
+import '../../Widgets/weighing_scale_widget.dart';
 import '../../Widgets/widget_logs_toast.dart';
 import '../../Widgets/widget_alert_popup_dialogs.dart';
 import '../../Widgets/widget_category_list.dart';
@@ -1196,8 +1197,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       if (kDebugMode) print("⚡ Fast Key _onItemSelected");
 
       final adjustedIndex = index - (showAddButton ? 1 : 0);
-      if (adjustedIndex < 0 || adjustedIndex >= fastKeyProductItems.length)
-        return;
+      if (adjustedIndex < 0 || adjustedIndex >= fastKeyProductItems.length) return;
 
       final item = fastKeyProductItems[adjustedIndex];
 
@@ -1214,8 +1214,6 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           ? item["fast_key_item_image"]
           : item["fast_key_item_image"]?["src"] ?? "";
 
-      final hasVariants = (item["type"] == "variable" ||
-          (item["variations"] != null && item["variations"].isNotEmpty));
       final minAge =
           int.tryParse(item["fast_key_item_min_age"]?.toString() ?? "0") ?? 0;
       final hasAgeRestriction = minAge > 0;
@@ -1226,7 +1224,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       }
 
       print(
-          "🧾 Selected → id:$productId | name:$productName | price:$productPrice | variant:$hasVariants | age:$minAge");
+          "🧾 Selected → id:$productId | name:$productName | price:$productPrice | age:$minAge");
 
       final box = StorageProvider.offlineOrders;
       final isOfflineOrder =
@@ -1238,6 +1236,75 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         orderHelper.activeOrderId = activeOrderId;
         await box.put('lastOrderId', activeOrderId);
       }
+
+      // ─────────────────────────────────────────────────────────────
+      // NEW: PRODUCE / WEIGHTED ITEM HANDLING
+      // ─────────────────────────────────────────────────────────────
+      final tagsRaw = item["fast_key_item_tags"] ?? item["tags"];
+      final bool hasProduceTag = (tagsRaw is List)
+          ? tagsRaw.any((t) {
+        if (t is! Map) return false;
+        final slug = (t["slug"] ?? "").toString().toLowerCase();
+        final name = (t["name"] ?? "").toString().toLowerCase();
+        return slug.contains("produce") || name.contains("produce");
+      })
+          : false;
+
+      if (hasProduceTag) {
+        final weightProvider = Provider.of<WeightProvider>(context, listen: false);
+        double liveWeight = 0.0;
+
+        try {
+          final parts = weightProvider.weightText.trim().split(' ');
+          if (parts.isNotEmpty) {
+            liveWeight = double.tryParse(parts[0]) ?? 0.0;
+          }
+        } catch (_) {}
+
+        // Convert lb to kg (adjust multiplier if your scale uses different unit)
+        final double weightKg = liveWeight > 0 ? liveWeight * 0.453592 : 0.0;
+        final double weightToUse = weightKg > 0.00001 ? weightKg : 0.0001;
+
+        final double finalPrice = productPrice * weightToUse;
+
+        if (weightKg <= 0.0001 && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Scale not detected — using 100g default'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+
+        await orderHelper.addItemToOrder(
+          null,
+          productName,
+          productImage,
+          finalPrice,
+          1,
+          productSku,
+          activeOrderId,
+          type: 'weighted',
+          weightQty: weightToUse,
+          productId: productId,
+          variationId: -1,
+          salesPrice: finalPrice,
+          regularPrice: productPrice,
+          unitPrice: productPrice,
+          isEbtEligible: isEbtEligible,
+          onItemAdded: () async {
+            print("✅ Weighted item added locally");
+            weightProvider.updateWeight(0.0);
+          },
+        );
+        return; // Important: Exit early after weighted item
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // ORIGINAL LOGIC FOR NORMAL + VARIABLE PRODUCTS
+      // ─────────────────────────────────────────────────────────────
+      final hasVariants = (item["type"] == "variable" ||
+          (item["variations"] != null && item["variations"].isNotEmpty));
 
       if (hasVariants) {
         List<Map<String, dynamic>> offlineVariations = [];
@@ -1332,15 +1399,14 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                   print("✅ Variant added locally");
                   await CustomerDisplayHelper.updateCustomerDisplay(
                       activeOrderId);
+                  await _refreshOrderList();
                 },
               );
-              await Future.delayed(const Duration(milliseconds: 100));
-              _refreshOrderList();
             },
           ),
         );
       } else {
-        // 🟩 Simple product
+        // 🟩 Simple product - Fast path
         await orderHelper.addItemToOrder(
           0,
           productName,
@@ -1359,23 +1425,24 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           onItemAdded: () async {
             print("✅ Product added locally");
             await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+            await _refreshOrderList();
           },
         );
-        await Future.delayed(const Duration(milliseconds: 100));
-        _refreshOrderList();
       }
 
       print("🎉 Product flow completed for → $productName");
     } catch (e, s) {
       print("❌ ERROR in _onItemSelected: $e");
       print(s);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Failed to add product"),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Failed to add product"),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 

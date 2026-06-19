@@ -178,6 +178,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
   Map<String, dynamic>? resolvedProductMap;
   VoidCallback? _orderPanelRefreshListener;
+  VoidCallback? _orderPanelFullRefreshListener;
   bool _isNewTabDisabled = false;
   bool _isSwitchingOrder = false;
 
@@ -306,12 +307,22 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     });
     _orderPanelRefreshListener = () {
       if (mounted) {
-        OrderHelper.isOrderPanelLoaded = false;
-        fetchOrdersData();
+        print('[Cart] order panel light refresh → fetchOrderItems');
+        unawaited(fetchOrderItems());
       }
     };
     OrderHelper.orderPanelRefreshNotifier
         .addListener(_orderPanelRefreshListener!);
+
+    _orderPanelFullRefreshListener = () {
+      if (mounted) {
+        print('[Cart] order panel FULL refresh → fetchOrdersData');
+        OrderHelper.isOrderPanelLoaded = false;
+        unawaited(fetchOrdersData());
+      }
+    };
+    OrderHelper.orderPanelFullRefreshNotifier
+        .addListener(_orderPanelFullRefreshListener!);
     // CUSTOMER DISPLAY CALLBACK
     customerDisplayChannel.setMethodCallHandler((call) async {
       if (call.method == "showNextActiveOrder") {
@@ -456,18 +467,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   void didUpdateWidget(RightOrderPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.refreshKey != widget.refreshKey) {
-      if (mounted) {
-        setState(() {
-          orderItems = [];
-          _initialRestoreDone = false;
-          _currentOrderVersion++;
-          _listVersion++;
-        });
-      }
-      // ── existing code below, unchanged ──────────────────────────────
-      if (kDebugMode) print("🔄 Refresh key changed — forcing data reload");
-      OrderHelper.isOrderPanelLoaded = false;
-      fetchOrdersData();
+      if (kDebugMode) print("🔄 Refresh key changed — reloading order items");
+      unawaited(fetchOrderItems());
     }
     if (widget.refreshKey != oldWidget.refreshKey &&
         mounted &&
@@ -1331,6 +1332,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       OrderHelper.orderPanelRefreshNotifier
           .removeListener(_orderPanelRefreshListener!);
     }
+    if (_orderPanelFullRefreshListener != null) {
+      OrderHelper.orderPanelFullRefreshNotifier
+          .removeListener(_orderPanelFullRefreshListener!);
+    }
   }
 
   Future<String> getDeviceId() async {
@@ -1478,10 +1483,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       _isLoading = true;
       if (mounted) setState(() {});
       final orderHelper = OrderHelper();
+      final ensureSw = Stopwatch()..start();
       final ensuredOrderId = await orderHelper.ensureOrderExists();
+      print('[Cart] scanner ensureOrderExists ${ensureSw.elapsedMilliseconds}ms → $ensuredOrderId');
 
       if (ensuredOrderId == null) {
-        print("❌ Scanner: Failed to create or restore order");
+        print('[Cart] scanner FAILED: ${OrderHelper.lastEnsureOrderError ?? "no order"}');
         _isLoading = false;
         if (mounted) setState(() {});
         await _openCustomItemDialog(context, trimmedBarcode);
@@ -2221,14 +2228,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           isEbtEligible: isEbtEligible,
           onItemAdded: () async {
             print("✅ Weighted produce item added successfully!");
-
-            // Reset scale after successful add
             weightProvider.updateWeight(0.0);
           },
         );
-
-        await fetchOrderItems();
-        await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
 
         return; // Prevent normal quantity=1 addition below
       }

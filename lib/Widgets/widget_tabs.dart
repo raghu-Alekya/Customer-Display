@@ -535,12 +535,14 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _buildTab(
-                0,
-                SvgUtils.addDiscountIcon,
-                "Merchant \nDiscounts",
+              0,
 
-                const Color(0xFF4C5F7D), // default = white for logo
-                const Color(0xFF4C5F7D), // Foreground text color
+              SvgUtils.addCustomItemIcon,
+              "Custom\nItem",
+              // Color(0xFF55709A),    // icon color
+              // Color(0xFF55709A),
+              const Color(0xFF4C5F7D), // default = white for logo
+              const Color(0xFF4C5F7D)
                 // Color(0xFF007BFF),      // icon color
                 // Color(0xFF007BFF),    // text color
                 // color: isSelected
@@ -561,8 +563,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                         : Color(0xFF8EAAD8)),
               _buildTab(
                   1,
-                  SvgUtils.cashbackIcon,
-                  "Cashback",
+                  SvgUtils.addDiscountIcon,
+                  "Merchant \nDiscounts",
+
                   // Color(0xFF55CBCD),    // icon color
                   // Color(0xFF55CBCD),     // text color
                   const Color(0xFF4C5F7D), // default = white for logo
@@ -579,12 +582,11 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                         : Color(0xFF8EAAD8)),
               _buildTab(
                   2,
-                  SvgUtils.addCustomItemIcon,
-                  "Custom\nItem",
-                  // Color(0xFF55709A),    // icon color
-                  // Color(0xFF55709A),
+                  SvgUtils.cashbackIcon,
+                  "Cashback",
+
                   const Color(0xFF4C5F7D), // default = white for logo
-                  const Color(0xFF4C5F7D)),
+                  const Color(0xFF4C5F7D)), // Foreground text color
               const SizedBox(width: 10),
               if (_selectedTabIndex != 2 && _selectedTabIndex != 3)
                 Divider(
@@ -696,11 +698,14 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   Widget _buildTabContent() {
     switch (_selectedTabIndex) {
       case 0:
-        return _buildDiscountsTab();
-      case 1:
-        return _buildCashbackTab();
-      case 2:
         return _buildCustomItemTab(context);
+        // return _buildDiscountsTab();
+      case 1:
+        return _buildDiscountsTab();
+
+      case 2:
+        return _buildCashbackTab();
+        // return _buildCustomItemTab(context);
       case 3:
         return _buildPayoutsTab();
       default:

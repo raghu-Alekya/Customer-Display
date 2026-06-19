@@ -1263,6 +1263,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   final productBloc = ProductBloc(ProductRepository());
   final PinakaPreferences _preferences = PinakaPreferences();
 
+  int? _cachedActiveOrderId;
   late CategoryBloc _categoryBloc;
   List<CategoryModel> categories = [];
   List<CategoryModel> subCategories = [];
@@ -2040,10 +2041,21 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   void _onIndigoProductTapped(IndigoCategoryBasedProducts product) async {
     if (_productAddTapInFlight) return;
     _productAddTapInFlight = true;
+
     try {
       try {
-        final orderId = await orderHelper.ensureOrderExists();
-        if (orderId == null) {
+        // REPLACE WITH:
+        if (orderHelper.activeOrderId == null) {
+          _cachedActiveOrderId = null;
+        } else if (_cachedActiveOrderId != orderHelper.activeOrderId) {
+          _cachedActiveOrderId = orderHelper.activeOrderId;
+        }
+
+        final ensureSw = Stopwatch()..start();
+        _cachedActiveOrderId ??= await orderHelper.ensureOrderExists();
+        print('[Cart] categories ensureOrderExists ${ensureSw.elapsedMilliseconds}ms → $_cachedActiveOrderId');
+
+        if (_cachedActiveOrderId == null) {
           final msg = OrderHelper.lastEnsureOrderError ??
               "Failed to create or restore order. Please try again.";
           if (mounted)
@@ -2051,6 +2063,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                 .showSnackBar(SnackBar(content: Text(msg)));
           return;
         }
+        final int orderId = _cachedActiveOrderId!;
 
         if (kDebugMode) print("TAP [Indigo]: ${product.name}");
 
@@ -2070,8 +2083,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
 
         final int productId =
             int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
-        final cachedProduct =
-        productId > 0 ? await _getCachedProductFromIsar(productId) : null;
+// Skip slow Isar scan — tags are already on the product object
+        final Map<String, dynamic>? cachedProduct = null;
 
         List<Map<String, dynamic>> tags = product.tags.map((t) {
           return {
@@ -3051,6 +3064,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
 
   void _refreshOrderList() {
     if (!mounted) return;
+    _cachedActiveOrderId = null; // clear so next tap re-validates
     setState(() => _refreshCounter++);
   }
 
@@ -3539,7 +3553,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               isVertical: false,
             ),
         ],
+
       ),
+      
     );
   }
 }
@@ -3604,7 +3620,8 @@ class _IndigoSubCategoryCard extends StatelessWidget {
                             fontWeight: FontWeight.w500,
                             color: textColor,
                             fontFamily: 'poppins',
-                            height: 1.25)))),
+                            height: 1.25)))
+            ),
           ],
         ),
       ),

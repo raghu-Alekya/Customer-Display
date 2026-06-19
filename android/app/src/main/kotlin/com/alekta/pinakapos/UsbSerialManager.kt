@@ -1336,8 +1336,10 @@ data class ConnectionInfo(
     var port: UsbSerialPort? = null,
     var readThread: Thread? = null,
     var stopRead: AtomicBoolean = AtomicBoolean(false),
-    var weightPollRunnable: Runnable? = null,
-    var deviceType: DeviceType = DeviceType.UNKNOWN
+    var weightPollThread: Thread? = null,
+    var deviceType: DeviceType = DeviceType.UNKNOWN,
+    var lastEmittedWeight: Double = Double.NaN,
+    var lastWeightEmitMs: Long = 0L,
 )
 
 class UsbSerialManager(
@@ -1356,7 +1358,13 @@ class UsbSerialManager(
         private const val BAUD_RATE = 9600
         private const val READ_TIMEOUT_MS = 500
         private const val MAX_LOG_LINES = 200
-        private const val WEIGHT_POLL_INTERVAL_MS = 500L
+        private const val WEIGHT_POLL_INTERVAL_MS = 300L
+        private const val WEIGHT_EMIT_DEBOUNCE_MS = 200L
+    }
+
+    /** Dedicated executor for scale USB writes — never blocks the Android main thread. */
+    private val scaleIoExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "ScaleUsbIo").apply { isDaemon = true }
     }
 
     @Volatile
@@ -1482,6 +1490,7 @@ class UsbSerialManager(
         } catch (_: Exception) {}
         stopListening()
         eventSink = null
+        scaleIoExecutor.shutdownNow()
     }
 
     private fun findAndConnect() {
@@ -1632,74 +1641,60 @@ class UsbSerialManager(
         Log.i(TAG, "$typeLabel connected: $key")
 
         if (deviceType == DeviceType.SCALE) {
-            try {
-                port.write("W\r".toByteArray(), 500)
-            } catch (e: Exception) {
-                Log.w(TAG, "Initial command failed", e)
-            }
-
-            Handler(Looper.getMainLooper()).postDelayed({
+            scaleIoExecutor.execute {
                 try {
+                    port.write("W\r".toByteArray(), 500)
+                    Thread.sleep(200)
                     val readBuffer = ByteArray(256)
                     val bytesRead = port.read(readBuffer, READ_TIMEOUT_MS)
                     if (bytesRead > 0) {
                         val rawData = String(readBuffer.take(bytesRead).toByteArray())
                         Log.d("SCALE_RAW", rawData)
-                        addRawLog("Scale: $rawData")
-                        processLine(rawData, key, deviceType)
+                        processLine(rawData, key, deviceType, info)
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Delayed read error", e)
+                    Log.w(TAG, "Initial scale read error", e)
                 }
-            }, 500)
-
+            }
             startWeightPolling(info, key)
         }
 
         startReadThread(info, key)
     }
 
+    /**
+     * Polls the scale on a dedicated background thread so USB I/O never blocks
+     * the main thread or Flutter platform channels.
+     */
     private fun startWeightPolling(info: ConnectionInfo, key: String) {
-        info.weightPollRunnable?.let { mainHandler.removeCallbacks(it) }
-        info.weightPollRunnable = object : Runnable {
-            override fun run() {
-                if (info.stopRead.get() || info.port == null) return
-
+        stopWeightPolling(info)
+        info.weightPollThread = Thread {
+            val pollCmd = byteArrayOf('W'.code.toByte(), '\r'.code.toByte())
+            while (!info.stopRead.get() && info.port != null) {
                 try {
-                    val commands = listOf(
-                        byteArrayOf('W'.code.toByte(), '\r'.code.toByte()),
-                        byteArrayOf('S'.code.toByte(), '\r'.code.toByte()),
-                        byteArrayOf(0x1B, 'W'.code.toByte(), '\r'.code.toByte()),
-                        byteArrayOf(0x1B, 'S'.code.toByte(), '\r'.code.toByte()),
-                        byteArrayOf('W'.code.toByte(), '\r'.code.toByte(), '\n'.code.toByte()),
-                        byteArrayOf('S'.code.toByte(), '\r'.code.toByte(), '\n'.code.toByte()),
-                        byteArrayOf(0x02, 'W'.code.toByte(), 0x03),
-                        byteArrayOf(0x02, 0x57, 0x03),
-                    )
-
-                    for (cmd in commands) {
-                        try {
-                            info.port?.write(cmd, 500)
-                            Thread.sleep(50)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Poll command failed", e)
-                        }
-                    }
+                    info.port?.write(pollCmd, 500)
                 } catch (e: Exception) {
-                    Log.w(TAG, "Weight poll error", e)
+                    if (!info.stopRead.get()) {
+                        Log.w(TAG, "Scale poll write failed", e)
+                    }
+                    break
                 }
-
-                if (!info.stopRead.get() && info.port != null) {
-                    mainHandler.postDelayed(this, WEIGHT_POLL_INTERVAL_MS)
+                try {
+                    Thread.sleep(WEIGHT_POLL_INTERVAL_MS)
+                } catch (_: InterruptedException) {
+                    break
                 }
             }
+        }.apply {
+            name = "ScalePoll-$key"
+            isDaemon = true
+            start()
         }
-        mainHandler.postDelayed(info.weightPollRunnable!!, WEIGHT_POLL_INTERVAL_MS)
     }
 
     private fun stopWeightPolling(info: ConnectionInfo) {
-        info.weightPollRunnable?.let { mainHandler.removeCallbacks(it) }
-        info.weightPollRunnable = null
+        info.weightPollThread?.interrupt()
+        info.weightPollThread = null
     }
 
     private fun startReadThread(info: ConnectionInfo, key: String) {
@@ -1722,7 +1717,7 @@ class UsbSerialManager(
                                     val line = lineBuffer.toString().trim()
                                     lineBuffer.setLength(0)
                                     if (line.isNotEmpty()) {
-                                        processLine(line, key, info.deviceType)
+                                        processLine(line, key, info.deviceType, info)
                                     }
                                 }
                             }
@@ -1733,7 +1728,7 @@ class UsbSerialManager(
                                     val line = lineBuffer.toString().trim()
                                     lineBuffer.setLength(0)
                                     if (line.isNotEmpty()) {
-                                        processLine(line, key, info.deviceType)
+                                        processLine(line, key, info.deviceType, info)
                                     }
                                 }
                             }
@@ -1750,35 +1745,40 @@ class UsbSerialManager(
         }.apply { start() }
     }
 
-    private fun processLine(line: String, source: String, deviceType: DeviceType) {
+    private fun processLine(
+        line: String,
+        source: String,
+        deviceType: DeviceType,
+        info: ConnectionInfo? = null,
+    ) {
         if (line.isEmpty()) return
-        mainHandler.post {
-            addRawLog("$source: $line")
 
+        // Parse on the calling (background) thread; only emit to Flutter on main.
+        val parsed = parseWeight(line)
+        val isScan = looksLikeBarcode(line)
+
+        mainHandler.post {
             when (deviceType) {
                 DeviceType.SCALE -> {
-                    val parsed = parseWeight(line)
                     if (parsed != null) {
-                        emitWeight(parsed, "$source: $line")
+                        emitWeight(parsed, "$source: $line", info)
                     } else if (line.all { it.isDigit() } && line.length in 6..13) {
                         emitScan("$source: $line")
+                    } else {
+                        Log.d(TAG, "Scale line (unparsed): $line")
                     }
                 }
                 DeviceType.SCANNER -> {
-                    if (looksLikeBarcode(line)) {
+                    if (isScan) {
                         emitScan("$source: $line")
-                    } else {
-                        val parsed = parseWeight(line)
-                        if (parsed != null) {
-                            emitWeight(parsed, "$source: $line")
-                        }
+                    } else if (parsed != null) {
+                        emitWeight(parsed, "$source: $line", info)
                     }
                 }
                 DeviceType.UNKNOWN -> {
-                    val parsed = parseWeight(line)
                     if (parsed != null) {
-                        emitWeight(parsed, "$source: $line")
-                    } else if (looksLikeBarcode(line)) {
+                        emitWeight(parsed, "$source: $line", info)
+                    } else if (isScan) {
                         emitScan("$source: $line")
                     }
                 }
@@ -1793,14 +1793,25 @@ class UsbSerialManager(
         return !line.contains(Regex("""\d+[.,]\d+"""))
     }
 
+    /** In-memory log only — do not forward raw scale lines to Flutter (reduces EventChannel load). */
     private fun addRawLog(line: String) {
         rawLog.add(line)
         if (rawLog.size > MAX_LOG_LINES) rawLog.removeAt(0)
-        emitRaw(line)
+    }
+
+    private fun payloadFromLine(line: String): String {
+        val t = line.trim()
+        val sep = ": "
+        val i = t.indexOf(sep)
+        if (i >= 0 && i + sep.length < t.length) {
+            val after = t.substring(i + sep.length).trim()
+            if (after.isNotEmpty()) return after
+        }
+        return t
     }
 
     private fun parseWeight(line: String): JSONObject? {
-        val trimmed = line.trim()
+        val trimmed = payloadFromLine(line)
         if (trimmed.isEmpty()) return null
         val upper = trimmed.uppercase()
 
@@ -1822,6 +1833,21 @@ class UsbSerialManager(
                 put("weight", 0.0)
                 put("unit", "kg")
                 put("stable", false)
+            }
+        }
+
+        // Magellan / NCI: "+000.192 kg" or "000.192 kg"
+        val magellanPlain = Regex(
+            """\+?\s*0*(\d+\.\d+)\s*(kg|lb|g|oz)\s*$""",
+            RegexOption.IGNORE_CASE
+        ).find(trimmed)
+        if (magellanPlain != null) {
+            val weight = magellanPlain.groupValues[1].toDoubleOrNull() ?: return null
+            val unit = magellanPlain.groupValues[2].lowercase()
+            return JSONObject().apply {
+                put("weight", weight)
+                put("unit", unit)
+                put("stable", true)
             }
         }
 
@@ -1968,40 +1994,35 @@ class UsbSerialManager(
         }
     }
 
-    private fun emitWeight(json: JSONObject, rawLine: String) {
-        mainHandler.post {
-            try {
-                if (eventSink == null) return@post
-                val w = json.getDouble("weight")
-                val unit = json.getString("unit")
-                val stable = json.getBoolean("stable")
-                Log.i(TAG, "Weight: $w $unit")
-                val wrapper = JSONObject().apply {
-                    put("type", "weight")
-                    put("weight", w)
-                    put("unit", unit)
-                    put("stable", stable)
-                    put("raw", rawLine)
-                }
-                eventSink?.success(wrapper.toString())
-            } catch (e: Exception) {
-                Log.e(TAG, "Weight emit failed", e)
-            }
-        }
-    }
+    private fun emitWeight(json: JSONObject, rawLine: String, info: ConnectionInfo? = null) {
+        try {
+            if (eventSink == null) return
+            val w = json.getDouble("weight")
+            val unit = json.getString("unit")
+            val stable = json.getBoolean("stable")
 
-    private fun emitRaw(line: String) {
-        mainHandler.post {
-            try {
-                if (eventSink == null) return@post
-                val json = JSONObject().apply {
-                    put("type", "raw")
-                    put("raw", line)
+            if (info != null) {
+                val now = System.currentTimeMillis()
+                val sameWeight = !info.lastEmittedWeight.isNaN() &&
+                    kotlin.math.abs(w - info.lastEmittedWeight) < 0.001
+                if (sameWeight && now - info.lastWeightEmitMs < WEIGHT_EMIT_DEBOUNCE_MS) {
+                    return
                 }
-                eventSink?.success(json.toString())
-            } catch (e: Exception) {
-                Log.e(TAG, "Raw emit failed", e)
+                info.lastEmittedWeight = w
+                info.lastWeightEmitMs = now
             }
+
+            Log.i(TAG, "Weight: $w $unit")
+            val wrapper = JSONObject().apply {
+                put("type", "weight")
+                put("weight", w)
+                put("unit", unit)
+                put("stable", stable)
+                put("raw", rawLine)
+            }
+            eventSink?.success(wrapper.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Weight emit failed", e)
         }
     }
 
