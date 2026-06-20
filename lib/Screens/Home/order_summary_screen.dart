@@ -9,6 +9,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:intl/intl.dart'; // Added for date formatting
 import 'package:pinaka_pos/Database/assets_db_helper.dart';
@@ -35,7 +36,9 @@ import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/api_response.dart';
 import '../../Helper/customerdisplayhelper.dart';
+import '../../Helper/url_helper.dart';
 import '../../Models/Payment/payment_model.dart';
+import '../../Models/Payment/void_payment_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
 import '../../Repositories/Orders/order_repository.dart';
 import '../../Repositories/Payment/payment_repository.dart';
@@ -68,11 +71,10 @@ class LastPaymentInfo {
   final String method;
   final double amount;
   late final String? paymentId;
-
-  // ⭐ SUNMI FIELDS
   final String? sunmiTxnId;
   final String? sunmiOrderId;
-  final String? sunmiDeviceId; // ⭐ ADD THIS
+  final String? sunmiDeviceId;
+  final String? transactionId; // ⭐ ADD THIS
 
   LastPaymentInfo({
     required this.method,
@@ -81,16 +83,18 @@ class LastPaymentInfo {
     this.sunmiTxnId,
     this.sunmiOrderId,
     this.sunmiDeviceId,
+    this.transactionId, // ⭐ ADD THIS
   });
 
   Map<String, dynamic> toJson() => {
-        "method": method,
-        "amount": amount,
-        "paymentId": paymentId,
-        "sunmiTxnId": sunmiTxnId,
-        "sunmiOrderId": sunmiOrderId,
-        "sunmiDeviceId": sunmiDeviceId,
-      };
+    "method": method,
+    "amount": amount,
+    "paymentId": paymentId,
+    "sunmiTxnId": sunmiTxnId,
+    "sunmiOrderId": sunmiOrderId,
+    "sunmiDeviceId": sunmiDeviceId,
+    "transactionId": transactionId, // ⭐ ADD THIS
+  };
 
   factory LastPaymentInfo.fromJson(Map<String, dynamic> json) {
     return LastPaymentInfo(
@@ -100,6 +104,7 @@ class LastPaymentInfo {
       sunmiTxnId: json["sunmiTxnId"],
       sunmiOrderId: json["sunmiOrderId"],
       sunmiDeviceId: json["sunmiDeviceId"],
+      transactionId: json["transactionId"], // ⭐ ADD THIS
     );
   }
 }
@@ -564,6 +569,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   DateTime? _lastOrderSyncAt;
   String? _lastSyncedOrderKey;
 
+  bool _isCardPaymentCancelled = false;
+
   double ebtTotal = 0.0;
   double payByEbt = 0.0; // ADD THIS
   TextEditingController ebtAmountController = TextEditingController();
@@ -790,7 +797,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         // Match API-path logic: non-EBT overflow should reduce remaining EBT.
         final double nonEbtOrderValue =
             (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
-        final double nonEbtPaid = payByCash + payByOther;
+        final double nonEbtPaid = payByCash + payByOther+payByCard;
         final double overflowToEbt =
             nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
         final double remainingEbt =
@@ -2572,17 +2579,39 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     double n(dynamic v) =>
         v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
 
-    double posAuto = n(item['_pos_auto_discount']) +
-        n(item['auto_discount']) +
-        n(item['autoDiscount']) +
-        n(item['auto_discount_total']) +
-        n(item['display_auto_discount']);
+    // 🔥 FIX: Take MAX value for AUTO discounts
+    List<double> autoDiscountValues = [
+      n(item['_pos_auto_discount']),
+      n(item['auto_discount']),
+      n(item['autoDiscount']),
+      n(item['auto_discount_total']),
+      n(item['display_auto_discount']),
+    ];
+    double posAuto = autoDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 
-    double combo =
-        n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
-    double multipack =
-        n(item['multipack_discount_total']) + n(item['multipackDiscountTotal']);
-    double mixmatch = n(item['mixmatch_discount_total']);
+    // 🔥 FIX: Take MAX value for COMBO discounts
+    List<double> comboDiscountValues = [
+      n(item['combo_discount_total']),
+      n(item['comboDiscountTotal']),
+      n(item['combo_discount']),
+    ];
+    double combo = comboDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
+
+    // 🔥 FIX: Take MAX value for MULTIPACK discounts
+    List<double> multipackDiscountValues = [
+      n(item['multipack_discount_total']),
+      n(item['multipackDiscountTotal']),
+      n(item['multipack_discount']),
+    ];
+    double multipack = multipackDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
+
+    // 🔥 FIX: Take MAX value for MIXMATCH discounts
+    List<double> mixmatchDiscountValues = [
+      n(item['mixmatch_discount_total']),
+      n(item['mixMatchDiscountTotal']),
+      n(item['mixmatch_discount']),
+    ];
+    double mixmatch = mixmatchDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 
     // ADD: proportional share of order-level coupon discount
     double couponShare = _proportionalCouponDiscountForItem(item);
@@ -2600,7 +2629,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       lineDiscount = posAuto + combo + multipack + mixmatch;
     }
 
-    return lineDiscount + couponShare; // ✅ Include coupon share
+    return lineDiscount + couponShare;
   }
 
   Future<void> _recalculateTaxOnDiscountedItems() async {
@@ -2624,58 +2653,92 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       double n(dynamic v) =>
           v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
 
-      double posAuto = n(item['_pos_auto_discount']) +
-          n(item['auto_discount']) +
-          n(item['autoDiscount']) +
-          n(item['auto_discount_total']) +
-          n(item['display_auto_discount']);
+      List<double> autoDiscountValues = [
+        n(item['_pos_auto_discount']),
+        n(item['auto_discount']),
+        n(item['autoDiscount']),
+        n(item['auto_discount_total']),
+        n(item['display_auto_discount']),
+      ];
+      double posAuto = autoDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 
-      double combo =
-          n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
-      double multipack = n(item['multipack_discount_total']) +
-          n(item['multipackDiscountTotal']);
-      double mixmatch = n(item['mixmatch_discount_total']);
+      List<double> comboDiscountValues = [
+        n(item['combo_discount_total']),
+        n(item['comboDiscountTotal']),
+        n(item['combo_discount']),
+      ];
+      double combo = comboDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 
-      final String dtype =
-          (item['discount_type'] ?? '').toString().toLowerCase();
+      List<double> multipackDiscountValues = [
+        n(item['multipack_discount_total']),
+        n(item['multipackDiscountTotal']),
+        n(item['multipack_discount']),
+      ];
+      double multipack = multipackDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 
-      if (dtype == 'auto' || dtype.isEmpty) return posAuto;
+      List<double> mixmatchDiscountValues = [
+        n(item['mixmatch_discount_total']),
+        n(item['mixMatchDiscountTotal']),
+        n(item['mixmatch_discount']),
+      ];
+      double mixmatch = mixmatchDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
+
+      final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
+
+      if (dtype.isEmpty) {
+        double total = posAuto + combo + multipack + mixmatch;
+        return total > 0 ? total : 0.0;
+      }
+
+      if (dtype == 'auto') return posAuto;
       if (dtype == 'combo' || dtype == 'mixmatch')
         return combo > 0 ? combo : posAuto;
       if (dtype == 'multipack') return multipack > 0 ? multipack : posAuto;
       return posAuto + combo + multipack + mixmatch;
     }
 
-    double totalTax = 0.0;
-    bool anyItemHasDiscountOrTaxRate = false;
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔥 STEP 1: Calculate product totals (exclude payout/cashback)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    double productGrossTotal = 0.0;
+    double productDiscountTotal = 0.0;
+    double payoutCashbackTotal = 0.0;
     double totalLineGross = 0.0;
     double totalLineDiscount = 0.0;
+    double totalTaxFromItems = 0.0;
+    bool anyItemHasDiscountOrTaxRate = false;
 
     for (final item in orderItems) {
-      final String itemType =
-          (item['item_type'] ?? '').toString().toLowerCase();
-      final String itemName =
-          (item['item_name'] ?? '').toString().toLowerCase();
+      final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+      final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
 
       if (itemType.contains('discount') ||
           itemType.contains('coupon') ||
-          itemType.contains('payout') ||
-          itemType.contains('cashback') ||
           itemType.contains('loyalty') ||
           itemName.contains('merchant discount')) {
         continue;
       }
+
+      final bool isPayout = itemType.contains('payout') || itemName.contains('payout');
+      final bool isCashback = itemType.contains('cashback') || itemName.contains('cashback');
+      final bool isPayoutOrCashback = isPayout || isCashback;
 
       final double unitPrice = toDouble(item['item_price'] ?? item['price']);
       final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
       final double lineTotal = unitPrice * qty;
 
       final double itemDiscount = lineItemOnlyDiscount(item);
-      final double taxableBase =
-          (lineTotal - itemDiscount).clamp(0.0, double.infinity);
+      final double taxableBase = (lineTotal - itemDiscount).clamp(0.0, double.infinity);
 
       totalLineGross += lineTotal;
       totalLineDiscount += itemDiscount;
+
+      if (!isPayoutOrCashback) {
+        productGrossTotal += lineTotal;
+        productDiscountTotal += itemDiscount;
+      } else {
+        payoutCashbackTotal += lineTotal;
+      }
 
       if (itemDiscount > 0) anyItemHasDiscountOrTaxRate = true;
 
@@ -2693,97 +2756,75 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         }
       }
 
-      totalTax += itemTax;
+      totalTaxFromItems += itemTax;
     }
 
-    totalTax = double.parse(totalTax.toStringAsFixed(4));
-    //Raghu--**
+    totalTaxFromItems = double.parse(totalTaxFromItems.toStringAsFixed(4));
 
-    // Recalculate percentage merchant discount dynamically based on Gross Total (coupon has no impact)
-    final String mdType =
-        offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
-    if (mdType == 'percentage' && merchantDiscountPercentage > 0) {
-      double base = totalLineGross - totalLineDiscount;
-      if (base > 0) {
-        merchantDiscount = -((base * merchantDiscountPercentage) / 100.0);
-      } else {
-        merchantDiscount = 0.0;
-      }
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔥 STEP 2: Calculate Merchant Discount on PRODUCTS ONLY
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    final String mdType = offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+    final double productNetAfterDiscounts = productGrossTotal - productDiscountTotal;
+
+    if (mdType == 'percentage' && merchantDiscountPercentage > 0 && productNetAfterDiscounts > 0) {
+      merchantDiscount = -((productNetAfterDiscounts * merchantDiscountPercentage) / 100.0);
+      merchantDiscount = double.parse(merchantDiscount.toStringAsFixed(2));
+    } else {
+      merchantDiscount = 0.0;
     }
 
-    final double serverTax = widget.orderTax;
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔥 STEP 3: Calculate TAX
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    double finalTax = 0.0;
 
-    final double netAfterDiscount =
-        totalLineGross - totalLineDiscount + discount + merchantDiscount;
+    // // ✅ CORRECT: Taxable base = Product Gross - Product Discounts - Merchant Discount
+    // final double taxableNetAmount = (productNetAfterDiscounts + merchantDiscount).clamp(0.0, double.infinity);
+    final double couponDiscount = discount < 0 ? discount.abs() : 0.0;
+    final double taxableNetAmount = (productNetAfterDiscounts + merchantDiscount - couponDiscount).clamp(0.0, double.infinity);
 
-    double finalTax;
-
-    if (!anyItemHasDiscountOrTaxRate) {
-        //Raghu--**
-      // ── Scale tax by coupon/merchant discount ratio when coupon was applied in THIS session or merchant discount is active.
-      if (serverTax > 0 && (discount < 0 || merchantDiscount < 0)) {
-        final double originalGross = widget.grossTotal > 0 ? widget.grossTotal : (totalLineGross - totalLineDiscount);
-        if (originalGross > 0) {
-          final double baseForTaxScaling = isCouponAppliedFromApi
-              ? originalGross
-              : (originalGross + discount).clamp(0.01, double.infinity);
-          final double taxableNet =
-              (originalGross + discount + merchantDiscount).clamp(0.0, double.infinity);
-          finalTax = serverTax * (taxableNet / baseForTaxScaling);
-          finalTax = roundTaxHalfUp(finalTax);
-        } else {
-          finalTax = 0.0;
-        }
-      } else {
-        finalTax = serverTax > 0 ? serverTax : totalTax;
-      }
-      if (kDebugMode) {
-        print('── TAX: No item-level data. finalTax=$finalTax');
-      }
-    } else if (totalTax <= 0 && serverTax > 0) {
-      if (netAfterDiscount > 0.005) {
-        finalTax = serverTax;
+    // ── CASE 1: We have item-level tax data → scale it ──
+    if (anyItemHasDiscountOrTaxRate && totalTaxFromItems > 0 && productGrossTotal > 0) {
+      final double originalBase = productNetAfterDiscounts;
+      if (originalBase > 0) {
+        double scaledTax = totalTaxFromItems * (taxableNetAmount / originalBase);
+        finalTax = roundTaxHalfUp(scaledTax);
       } else {
         finalTax = 0.0;
       }
-      if (kDebugMode) {
-        print(
-            '── TAX: Recalc=0, server=$serverTax, net=$netAfterDiscount → finalTax=$finalTax');
-      }
-    } else {
-        //Raghu--**
-      final double originalBase = totalLineGross - totalLineDiscount;
-      if (originalBase > 0) {
-        final double finalBase =
-            (originalBase + discount + merchantDiscount).clamp(0.0, double.infinity);
-        totalTax = totalTax * (finalBase / originalBase);
-        totalTax = double.parse(totalTax.toStringAsFixed(4));
-      }
-      finalTax = totalTax;
-      finalTax = roundTaxHalfUp(finalTax);
-      if (kDebugMode) {
-        print('── TAX: Using recalculated value: $finalTax');
-      }
     }
+    // ── CASE 2: No item-level tax data → ALWAYS use server tax directly ──
+    else {
+      // 🔥 CRITICAL FIX: Always use server tax directly when no item-level tax data exists
+      // The server tax is the single source of truth for tax on pending orders
+      finalTax = widget.orderTax;
+    }
+
+    // Ensure we have a reasonable tax value
+    finalTax = double.parse(finalTax.toStringAsFixed(2));
 
     if (kDebugMode) {
-      print('── TAX RECALCULATION COMPLETE ──');
-      print('   Gross Total        : $totalLineGross');
-      print('   Line Discounts     : $totalLineDiscount');
-      print('   Coupon/Order Disc  : $discount');
-      print('   Net After Discount : $netAfterDiscount');
-      print('   Server Tax         : $serverTax');
-      print('   Recalculated Tax   : $totalTax');
-      print('   Final Tax Used     : $finalTax');
+      print("🔧 TAX CALCULATION DETAILS:");
+      print("   Product Gross (excl payout)  : $productGrossTotal");
+      print("   Product Discounts            : $productDiscountTotal");
+      print("   Product Net Before Merchant  : $productNetAfterDiscounts");
+      print("   Merchant Discount            : $merchantDiscount");
+      print("   Taxable Net Amount           : $taxableNetAmount");
+      print("   Total Tax From Items         : $totalTaxFromItems");
+      print("   Server Tax (from widget)     : ${widget.orderTax}");
+      print("   Final Tax Used               : $finalTax");
+      print("   ───────────────────────────────────────────────");
+      print("   anyItemHasDiscountOrTaxRate  : $anyItemHasDiscountOrTaxRate");
+      print("   Expected Tax (9.1% of $taxableNetAmount): ${(taxableNetAmount * 0.091).toStringAsFixed(2)}");
     }
-      //Raghu--**
-    // ✅ NetTotal should be Gross + Coupon/Order Discount + Merchant Discount
-    //Raghu--**
-    final double newNetTotal = grossTotal + discount + merchantDiscount;
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔥 STEP 4: Calculate final totals
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    final double newNetTotal = grossTotal + discount + merchantDiscount;
     final double newNetPayable = newNetTotal + finalTax + cashbackFee;
 
-    
     final bool totalsChanged = (finalTax - tax).abs() > 0.00005 ||
         (newNetPayable - computedNetPayable).abs() > 0.00005;
     if (!totalsChanged) return;
@@ -2819,7 +2860,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             offlineOrder["balance_amount"] = newNetPayable;
             offlineOrder["remaining_balance"] = newNetPayable;
           }
-          // Save merchant discount and NetTotal to Hive as well
           offlineOrder["merchantDiscount"] = merchantDiscount.abs();
           offlineOrder["merchant_discount"] = merchantDiscount.abs();
           offlineOrder["merchantDiscountPercentage"] = merchantDiscountPercentage;
@@ -2850,6 +2890,33 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+  Future<void> _loadLatestMerchantDiscount() async {
+    final key = (widget.offlineOrderId ?? orderId ?? 0).toString();
+    final raw = await StorageProvider.offlineOrders.get(key);
+
+    if (raw != null && raw is Map) {
+      final mdRaw = raw['merchantDiscount'] ??
+          raw['merchant_discount'] ??
+          raw['_merchant_discount'] ?? 0;
+
+      final double mdVal = (mdRaw is num)
+          ? mdRaw.toDouble()
+          : double.tryParse(mdRaw.toString()) ?? 0.0;
+
+      setState(() {
+        merchantDiscount = mdVal.abs();           // Positive for UI display
+        merchantDiscountPercentage = (raw['merchantDiscountPercentage'] as num?)?.toDouble() ?? 0.0;
+
+        // Also update internal map
+        _order[AppDBConst.merchantDiscount] = -mdVal;
+        _order["merchantDiscount"] = -mdVal;
+        _order["merchant_discount"] = -mdVal;
+      });
+
+      print("🔄 Loaded fresh merchant discount from Hive: $merchantDiscount (was stale before)");
+    }
+  }
 
   Future<void> _recalculateGrossAndNetFromLineItemDiscounts() async {
     if (orderItems.isEmpty) return;
@@ -2901,14 +2968,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
 
-      double autoDiscount = [
-        item['auto_discount'],
-        item['auto_discount_total'],
-        item['autoDiscount'],
-        item['autoDiscountTotal'],
-        item['display_auto_discount'],
-        item['_pos_auto_discount'],
-      ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
+      // 🔥 FIX: Take MAX value instead of SUM to prevent double counting
+      List<double> discountValues = [
+        toDouble(item['auto_discount']),
+        toDouble(item['auto_discount_total']),
+        toDouble(item['autoDiscount']),
+        toDouble(item['autoDiscountTotal']),
+        toDouble(item['display_auto_discount']),
+        toDouble(item['_pos_auto_discount']),
+      ];
+
+      double autoDiscount = discountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 
       double comboDiscount = [
         item['combo_discount_total'],
@@ -2966,6 +3036,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     if (kDebugMode) {
       print('── LINE-ITEM DISCOUNT RECALCULATION ──');
       print('   New Gross For Display : $newGrossForDisplay');
+      print('   Total Line Discounts  : $totalLineItemDiscount');
       print('   NetTotal (pre-merchant) : $newNetTotal');
       print('   Merchant Discount     : $merchantDiscount');
       print('   New Net Payable       : $newNetPayable');
@@ -3020,14 +3091,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 🔥 CRITICAL FIX: Update customer display when merchant discount changes
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Update customer display when merchant discount changes
     final bool merchantDiscountChanged = (merchantDiscount - previousMerchantDiscount).abs() > 0.01;
     final bool netPayableChanged = (computedNetPayable - previousComputedNetPayable).abs() > 0.01;
 
     if (merchantDiscountChanged || netPayableChanged) {
-      // Update customer display with latest merchant discount values
       await _updateCustomerDisplayWithMerchantDiscount();
       if (widget.offlineOrderId != null) {
         await CustomerDisplayHelper.updateCustomerDisplay(
@@ -4037,6 +4105,1115 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     });
   }
 
+
+
+  Future<void> _voidCardPaymentViaKickbackAPI({
+    required String transactionId,
+    required String paymentId,
+    required int wooOrderId,
+  }) async {
+    if (transactionId.isEmpty) {
+      if (kDebugMode) print("⚠️ Kickback void skipped – no transaction_id");
+      return;
+    }
+
+    try {
+      final String token = await _getTokenFromDb();
+
+      final uri = Uri.parse(
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/void-kickback-transaction",
+      );
+
+      if (kDebugMode) {
+        print("🔄 Voiding card via kickback API");
+        print("   order_id: $wooOrderId");
+        print("   payment_id: $paymentId");
+        print("   transaction_id: $transactionId");
+      }
+
+      final response = await http.post(
+        uri,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+        body: jsonEncode({
+          "order_id": wooOrderId.toString(),
+          "payment_id": paymentId,
+          "transaction_id": transactionId,
+        }),
+      );
+
+      if (kDebugMode) {
+        print("Kickback void response: ${response.statusCode}");
+        print("Body: ${response.body}");
+      }
+
+      final Map<String, dynamic> body =
+      jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (body["success"] == true) {
+        if (kDebugMode) print("✅ Kickback card void successful");
+      } else {
+        if (kDebugMode) {
+          print("Kickback card void failed: ${body["message"]}");
+        }
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        print(" _voidCardPaymentViaKickbackAPI error: $e");
+        print(st);
+      }
+    }
+  }
+
+  Future<void> _voidServerPaymentIfCard({required String? serverPaymentId}) async {
+    if (kDebugMode) {
+      print(" ===== _voidServerPaymentIfCard CALLED =====");
+      print("   serverPaymentId  : $serverPaymentId");
+      print("   _lastPayment     : ${_lastPayment?.toJson()}");
+    }
+
+    if (serverPaymentId == null || serverPaymentId.isEmpty) {
+      if (kDebugMode) print(" Card void skipped – no server payment_id");
+      return;
+    }
+
+    final int wooOrderId = await _resolveWooOrderIdForPayment(forceSync: false);
+    if (kDebugMode) print("   wooOrderId resolved: $wooOrderId");
+
+    if (wooOrderId <= 0) {
+      if (kDebugMode) print(" Card void skipped – wooOrderId missing");
+      return;
+    }
+
+    // ── STEP 1: Try transactionId from in-memory _lastPayment ──────────────
+    String? txnId = _lastPayment?.transactionId;
+    if (kDebugMode) print("   transactionId from _lastPayment: $txnId");
+
+    // ── STEP 2: If null, recover from Hive (handles screen-reload case) ─────
+    if (txnId == null || txnId.isEmpty) {
+      if (kDebugMode) print("🔍 transactionId not in memory → checking Hive...");
+      try {
+        final String orderKey = widget.offlineOrderId?.toString() ??
+            widget.orderId?.toString() ??
+            orderId?.toString() ??
+            "";
+        if (orderKey.isNotEmpty) {
+          final box = StorageProvider.offlineOrders;
+          final rawHive = await box.get(orderKey);
+          if (rawHive is Map) {
+            final hiveMap = Map<String, dynamic>.from(rawHive);
+            final dynamic lastPaymentRaw = hiveMap["lastPayment"];
+            if (lastPaymentRaw is Map) {
+              final Map<String, dynamic> lastPaymentMap =
+              Map<String, dynamic>.from(lastPaymentRaw);
+              txnId = lastPaymentMap["transactionId"]?.toString();
+              if (kDebugMode) {
+                print("   Hive lastPayment: $lastPaymentMap");
+                print("   transactionId recovered from Hive: $txnId");
+              }
+            } else {
+              if (kDebugMode) print("   Hive lastPayment key missing or not a Map");
+            }
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) print("⚠️ Failed to read transactionId from Hive: $e");
+      }
+    }
+
+    // ── STEP 3: Route to kickback API if we have a transactionId ────────────
+    if (txnId != null && txnId.isNotEmpty) {
+      if (kDebugMode) {
+        print("✅ transactionId found → routing to kickback void API");
+        print("   txnId      : $txnId");
+        print("   paymentId  : $serverPaymentId");
+        print("   wooOrderId : $wooOrderId");
+      }
+      await _voidCardPaymentViaKickbackAPI(
+        transactionId: txnId,
+        paymentId: serverPaymentId,
+        wooOrderId: wooOrderId,
+      );
+      return;
+    }
+
+    // ── STEP 4: Fallback to old void API (no transactionId available) ────────
+    if (kDebugMode) {
+      print("⚠️ No transactionId found anywhere → falling back to old void API");
+      print("   paymentId  : $serverPaymentId");
+      print("   wooOrderId : $wooOrderId");
+    }
+
+    final completer = Completer<void>();
+    late StreamSubscription sub;
+    sub = paymentBloc.voidPaymentStream.listen((response) {
+      if (response.status == Status.COMPLETED ||
+          response.status == Status.ERROR) {
+        if (kDebugMode) {
+          print(
+              "Old void API → ${response.status} ${response.message ?? response.data?.message}");
+        }
+        if (!completer.isCompleted) completer.complete();
+        sub.cancel();
+      }
+    });
+
+
+    paymentBloc.voidPayment(VoidPaymentRequestModel(
+      orderId: wooOrderId,
+      paymentId: serverPaymentId,
+    ));
+
+    await completer.future.timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        if (kDebugMode) print("⚠️ Old void API timed out");
+        sub.cancel();
+      },
+    );
+
+    if (kDebugMode) print("🔴 ===== _voidServerPaymentIfCard DONE =====");
+  }
+
+  // Add this helper method to the class
+  Future<http.Response> _postWithRedirect(Uri uri, {required Map<String, String> headers, required String body}) async {
+    final client = http.Client();
+    try {
+      var response = await client.post(uri, headers: headers, body: body);
+
+      // Handle 307 redirect
+      if (response.statusCode == 307 || response.statusCode == 301 || response.statusCode == 302) {
+        final location = response.headers['location'];
+        if (location != null) {
+          final redirectUri = Uri.parse(location);
+          response = await client.post(redirectUri, headers: headers, body: body);
+        }
+      }
+      return response;
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<String> _getTokenFromDb() async {
+    final db = await DBHelper.instance.database;
+    final result = await db.query(
+      AppDBConst.userTable,
+      where:
+      '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+      orderBy: '${AppDBConst.userId} DESC',
+      limit: 1,
+    );
+
+    if (result.isEmpty) {
+      throw Exception('No active user token found');
+    }
+
+    final token = result.first[AppDBConst.userToken] as String;
+    if (kDebugMode) print('Token from DB: $token');
+    return token;
+  }
+
+  Future<void> _handleEbtCardPaymentViaAPI() async {
+    final double amount = double.tryParse(
+      amountController.text
+          .replaceAll(TextConstants.currencySymbol, '')
+          .trim(),
+    ) ??
+        0.0;
+
+    if (amount <= 0) {
+      setState(() => _amountErrorText = TextConstants.amountValidation);
+      return;
+    }
+
+    // EBT-specific validation
+    final int enteredCents = (amount * 100).round();
+    final int ebtCents = (ebtTotal * 100).round();
+
+    if (ebtCents <= 0) {
+      setState(() => _amountErrorText = "No EBT balance available");
+      return;
+    }
+    if (enteredCents > ebtCents) {
+      setState(() => _amountErrorText =
+      "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})");
+      return;
+    }
+
+    _amountErrorText = null;
+
+    // ── 1. Show loading ──────────────────────────────────────
+    setState(() {
+      isLoading = true;
+      _processingPaymentMethod = TextConstants.ebtText;
+    });
+    _showPaymentProgressDialog(context);
+
+    try {
+      // ── 2. Sync offline order → get WooCommerce order id ──
+      final box = StorageProvider.offlineOrders;
+      final String orderKey = widget.offlineOrderId?.toString() ??
+          widget.orderId?.toString() ??
+          orderId?.toString() ??
+          "";
+
+      int wooOrderId = 0;
+
+      if (orderKey.isNotEmpty) {
+        final raw = await box.get(orderKey);
+        if (raw is Map) {
+          final offlineMap = Map<String, dynamic>.from(raw);
+
+          final cached = offlineMap["wooOrderId"];
+          wooOrderId = (cached is int)
+              ? cached
+              : int.tryParse(cached?.toString() ?? "") ?? 0;
+
+          if (wooOrderId == 0) {
+            final syncResult =
+            await OrderRepository().syncSingleOfflineOrder(offlineMap);
+            if (syncResult is Map) {
+              wooOrderId = (syncResult?["id"] as num?)?.toInt() ?? 0;
+              offlineMap["wooOrderId"] = wooOrderId;
+              await box.put(orderKey, offlineMap);
+            }
+          }
+        }
+      }
+
+      if (wooOrderId == 0) {
+        wooOrderId = widget.orderId ?? orderId ?? 0;
+      }
+
+      if (wooOrderId == 0) {
+        _hidePaymentProgressDialog();
+        setState(() {
+          isLoading = false;
+          _processingPaymentMethod = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Could not resolve order – please try again"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // ── 3. Build auth header ──────────────────────────────
+      final String token = await _getTokenFromDb();
+
+      // ── 4. Call create-payment API ────────────────────────
+      if (_isCardPaymentCancelled) return;
+
+// === API Call ===
+      final uri = Uri.parse(
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment",
+      );
+
+      final requestBody = {
+        "order_id": wooOrderId,
+        "amount": amount,
+        "payment_method": "card",
+        "shift_id": shiftId,
+      };
+
+// Print request details
+      print("API URLllllll: $uri");
+      print("Request Body: ${jsonEncode(requestBody)}");
+
+      final http.Response response = await http.post(
+        uri,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+        body: jsonEncode(requestBody),
+      );
+
+// Print response details
+      print("Response Status Code: ${response.statusCode}");
+      print("Response Body: ${response.body}");
+
+      _hidePaymentProgressDialog();
+      setState(() {
+        isLoading = false;
+        _processingPaymentMethod = null;
+      });
+
+      if (kDebugMode) {
+        print("EBT payment API → ${response.statusCode}");
+        print("Body: ${response.body}");
+      }
+
+      final Map<String, dynamic> body =
+      jsonDecode(response.body) as Map<String, dynamic>;
+
+      // ── 5. Handle response ────────────────────────────────
+      if (body["success"] != true) {
+        final String msg =
+            body["message"]?.toString() ?? "EBT payment failed";
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+        );
+        return;
+      }
+
+      // ── 6. success: true → update local state & save ──────
+// Refresh payment history FIRST so balanceAmount is accurate
+// (card/cash payments already made are reflected correctly)
+      await _calculateBalanceFromPaymentHistory();
+
+      final double currentBalance = balanceAmount; // now fresh
+      final double newTender = payByEbt + amount;
+      double newBalance = (currentBalance - amount).clamp(0.0, double.infinity);
+      double newChange = 0.0;
+      if (amount > currentBalance) {
+        newChange = amount - currentBalance;
+        newBalance = 0.0;
+      }
+
+// Use a small tolerance for floating point (e.g. 0.01)
+      final bool isFullPayment = newBalance <= 0.01;
+
+
+      final String datetimeStr =
+      DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
+      final localPayment = LocalPayment(
+        orderId: orderId ?? 0,
+        title: TextConstants.ebtText,
+        amount: amount,
+        paymentMethod: TextConstants.ebtText,
+        shiftId: shiftId,
+        vendorId: vendorId,
+        userId: userId ?? 0,
+        serviceType: serviceType,
+        datetime: datetimeStr,
+        notes: "ebt via API – wooOrderId: $wooOrderId",
+        isSynced: true,
+        createdAt: DateTime.now(),
+        remainingBalance: newBalance,
+        status: isFullPayment
+            ? PaymentDbStatus.completed
+            : PaymentDbStatus.pending,
+      );
+
+      final saved =
+      await LocalPaymentDBHelper.instance.savePayment(localPayment);
+
+      _lastPayment = LastPaymentInfo(
+        method: TextConstants.ebtText,
+        amount: amount,
+        paymentId: saved.id.toString(),
+        sunmiTxnId: null,
+        sunmiOrderId: null,
+      );
+
+      await _savePaymentToHive(
+        amount: amount,
+        paymentMethod: TextConstants.ebtText,
+        transactionId: "ebt_api_${saved.id}",
+        localPayment: saved,
+      );
+      await _saveLocalPaymentToHive(saved);
+
+      setState(() {
+        isPaymentStarted = true;
+        paidAmount = amount;
+        paymentId = saved.id.toString();
+        tenderAmount = newTender;
+        balanceAmount = newBalance;
+        changeAmount = newChange;
+        payByEbt += amount;
+        // Reduce remaining EBT balance
+        ebtTotal = (ebtTotal - amount).clamp(0.0, double.infinity);
+        _currentPaymentRemainingBalance =
+        isFullPayment ? null : newBalance;
+        _lastPaymentDetails = {
+          "amount": amount,
+          "method": TextConstants.ebtText,
+          "remainingBalance": newBalance,
+          "previousBalance": currentBalance,
+          "datetime": DateTime.now().toIso8601String(),
+          "paymentNumber":
+          (_lastPaymentDetails?["paymentNumber"] ?? 0) + 1,
+        };
+      });
+
+      _resetAmountAfterPay();
+
+      // ── 7. Show popup ─────────────────────────────────────
+
+      if (isFullPayment) {
+        _successPopupShown = false; // reset so full dialog always shows
+        // _successPopupShown = true;
+        await CustomerDisplayService.showThankYou();
+        await orderHelper.setActiveOrder(null);
+        await CustomerDisplayService.resetDisplay();
+
+        final boxData = await box.get(orderKey);
+        final cr = boxData is Map ? boxData["coupon_response"] : null;
+        final couponResponse = cr is Map
+            ? Map<String, dynamic>.from(cr)
+            : <String, dynamic>{};
+
+        _showPaymentDialog(
+          context,
+          newTender,
+          changeAmount: newChange,
+          showChange: newChange > 0,
+          couponResponse: couponResponse,
+        );
+      } else if (!isFullPayment && amount > 0) {
+        _showPartialPaymentDialog(context, amount);
+      }
+    } catch (e, st) {
+      _hidePaymentProgressDialog();
+      setState(() {
+        isLoading = false;
+        _processingPaymentMethod = null;
+      });
+      // Only show error if NOT cancelled by user
+      if (!_isCardPaymentCancelled && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("Payment failed. Please try again."),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      // Reset cancel flag
+      _isCardPaymentCancelled = false;
+    }
+  }
+
+  Future<void> _handleCardPaymentViaAPI() async {
+    _isCardPaymentCancelled = false;
+
+    final double enteredAmount = double.tryParse(
+      amountController.text
+          .replaceAll(TextConstants.currencySymbol, '')
+          .trim(),
+    ) ??
+        0.0;
+
+    if (enteredAmount <= 0) {
+      setState(() => _amountErrorText = TextConstants.amountValidation);
+      return;
+    }
+
+    _recalculateGrossAndNetFromLineItemDiscounts();
+    await _recalculateTaxOnDiscountedItems();
+    await _calculateBalanceFromPaymentHistory();
+
+    final double effectiveBalance =
+        _currentPaymentRemainingBalance ?? balanceAmount;
+    final double amount = enteredAmount.clamp(0.0, effectiveBalance + 0.01);
+
+    if ((enteredAmount - amount).abs() > 0.01) {
+      setState(() {
+        _rawAmount = (amount * 100).round();
+        amountController.text =
+        '${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}';
+        _isAmountEntered = true;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Amount adjusted to available balance (\$${amount.toStringAsFixed(2)})'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
+    _amountErrorText = null;
+
+    final double balanceBeforePayment = effectiveBalance;
+    final bool willBeFullPayment = amount >= (balanceBeforePayment - 0.01);
+
+    if (kDebugMode) {
+      print(
+          '💰 CARD PAYMENT → Amount: \$$amount | Balance before: \$$balanceBeforePayment');
+    }
+
+    setState(() {
+      isLoading = true;
+      _processingPaymentMethod = TextConstants.card;
+    });
+    _showPaymentProgressDialog(context);
+
+    try {
+      // ── Detect void and clear cached wooOrderId if needed ──────────────
+      try {
+        final String orderKey = widget.offlineOrderId?.toString() ??
+            widget.orderId?.toString() ??
+            orderId?.toString() ??
+            '';
+        if (orderKey.isNotEmpty) {
+          final box = StorageProvider.offlineOrders;
+          final rawHive = await box.get(orderKey);
+          if (rawHive is Map) {
+            final hiveMap = Map<String, dynamic>.from(rawHive);
+            final int localOrderId = int.tryParse(orderKey) ?? 0;
+            if (localOrderId > 0) {
+              final payments = await LocalPaymentDBHelper.instance
+                  .getPaymentsByOrderId(localOrderId);
+              final bool hasVoidedPayment = payments
+                  .any((p) => p.status == PaymentDbStatus.voided || p.amount < 0);
+              if (hasVoidedPayment) {
+                hiveMap['synced'] = false;
+                await box.put(orderKey, hiveMap);
+                if (kDebugMode) {
+                  print(
+                      '🔄 Void detected → cleared cached wooOrderId for fresh sync');
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('⚠️ Void-detection pre-check failed (non-fatal): $e');
+        }
+      }
+
+      int wooOrderId =
+      await _resolveWooOrderIdForPayment(forceSync: false);
+      if (wooOrderId == 0) {
+        _hidePaymentProgressDialog();
+        setState(() {
+          isLoading = false;
+          _processingPaymentMethod = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Could not resolve order'),
+              backgroundColor: Colors.red),
+        );
+        return;
+      }
+
+      if (_isCardPaymentCancelled) return;
+
+      final String token = await _getTokenFromDb();
+      if (_isCardPaymentCancelled) return;
+
+      final requestBody = {
+        'order_id': wooOrderId,
+        'amount': amount ,
+        'payment_method': 'card',
+        'shift_id': shiftId,
+      };
+
+      if (kDebugMode) {
+        print('========== CARD PAYMENT REQUEST ==========');
+        print('Body: ${jsonEncode(requestBody)}');
+        print('==========================================');
+      }
+
+      final uri = Uri.parse(
+          '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment');
+      //
+      // final http.Response response = await http.post(
+      //   uri,
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //     'Authorization': 'Bearer $token',
+      //   },
+      //   body: jsonEncode(requestBody),
+      // );
+
+      final http.Response response = await _postWithRedirect(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      _hidePaymentProgressDialog();
+      setState(() {
+        isLoading = false;
+        _processingPaymentMethod = null;
+      });
+
+      if (kDebugMode) {
+        print('URL: $uri');
+        print('Response Status Code: ${response.statusCode}');
+        print('Response Body: ${response.body}');
+      }
+
+      // final Map<String, dynamic> body =
+      // jsonDecode(response.body) as Map<String, dynamic>;
+
+      Map<String, dynamic> body;
+      try {
+        body = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (e) {
+        _hidePaymentProgressDialog();
+        setState(() {
+          isLoading = false;
+          _processingPaymentMethod = null;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text("Payment failed. Please try again."),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+              action: SnackBarAction(
+                label: 'Retry',
+                textColor: Colors.white,
+                onPressed: () {
+                  _handleCardPaymentViaAPI();
+                },
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      if (body['success'] != true) {
+        final String msg =
+            body['message']?.toString() ?? 'Card payment failed';
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg), backgroundColor: Colors.red));
+        _resetAmountAfterPay();
+        return;
+      }
+
+      final String? serverPaymentId = _extractServerPaymentId(body);
+
+      // ── KEY FIX: use helper that reads both top-level and nested fields ──
+      final String? cardTransactionId = _extractCardTransactionId(body);
+
+      if (kDebugMode) {
+        print(
+            'cardTransactionId extracted → $cardTransactionId (serverPaymentId: $serverPaymentId)');
+      }
+
+      // ── Cache wooOrderId from response ──────────────────────────────────
+      final int responseWooOrderId =
+          (body['order_id'] as num?)?.toInt() ?? wooOrderId;
+      if (responseWooOrderId > 0) {
+        try {
+          final box = StorageProvider.offlineOrders;
+          final String orderKey = widget.offlineOrderId?.toString() ??
+              widget.orderId?.toString() ??
+              orderId?.toString() ??
+              '';
+          if (orderKey.isNotEmpty) {
+            final rawHive = await box.get(orderKey);
+            if (rawHive is Map) {
+              final hiveMap = Map<String, dynamic>.from(rawHive);
+              hiveMap['wooOrderId'] = responseWooOrderId;
+              hiveMap['synced'] = true;
+              hiveMap['sync_at'] = DateTime.now().toIso8601String();
+              await box.put(orderKey, hiveMap);
+              if (kDebugMode) {
+                print(
+                    '✅ wooOrderId cached from payment response → $responseWooOrderId');
+              }
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Failed to cache wooOrderId from response: $e');
+          }
+        }
+      }
+
+      // ── Build _lastPayment with transactionId populated ─────────────────
+      _lastPayment = LastPaymentInfo(
+        method: TextConstants.card,
+        amount: amount,
+        paymentId: serverPaymentId,
+        transactionId: cardTransactionId, // ← now correctly set
+      );
+
+      if (kDebugMode) {
+        print('💾 _lastPayment built:');
+        print('   method        : ${_lastPayment!.method}');
+        print('   amount        : ${_lastPayment!.amount}');
+        print('   paymentId     : ${_lastPayment!.paymentId}');
+        print('   transactionId : ${_lastPayment!.transactionId}');
+      }
+
+      // ── Persist lastPayment (including transactionId) to Hive ───────────
+      try {
+        final box = StorageProvider.offlineOrders;
+        final String orderKey = widget.offlineOrderId?.toString() ??
+            widget.orderId?.toString() ??
+            orderId?.toString() ??
+            '';
+        if (orderKey.isNotEmpty) {
+          final rawHive = await box.get(orderKey);
+          if (rawHive is Map) {
+            final hiveMap = Map<String, dynamic>.from(rawHive);
+            hiveMap['lastPayment'] = _lastPayment!.toJson();
+            await box.put(orderKey, hiveMap);
+            if (kDebugMode) {
+              print(
+                  '✅ lastPayment persisted to Hive → transactionId: $cardTransactionId');
+            }
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('⚠️ Failed to persist lastPayment to Hive: $e');
+        }
+      }
+
+      // ── Save locally ─────────────────────────────────────────────────────
+      final String datetimeStr =
+      DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+      final localPayment = LocalPayment(
+        orderId: orderId ?? 0,
+        title: TextConstants.card,
+        amount: amount,
+        paymentMethod: TextConstants.card,
+        shiftId: shiftId,
+        vendorId: vendorId,
+        userId: userId ?? 0,
+        serviceType: serviceType,
+        datetime: datetimeStr,
+        notes: 'Card payment via API',
+        isSynced: true,
+        createdAt: DateTime.now(),
+        remainingBalance:
+        (balanceBeforePayment - amount).clamp(0.0, double.infinity),
+        status: PaymentDbStatus.pending,
+      );
+
+      final savedPayment =
+      await LocalPaymentDBHelper.instance.savePayment(localPayment);
+
+      if (serverPaymentId != null) {
+        await LocalPaymentDBHelper.instance
+            .markAsSynced(savedPayment.id, int.tryParse(serverPaymentId) ?? 0);
+      }
+
+      await _savePaymentToHive(
+        amount: amount,
+        paymentMethod: TextConstants.card,
+        transactionId: 'card_api_${savedPayment.id}',
+        localPayment: savedPayment,
+      );
+      await _saveLocalPaymentToHive(savedPayment);
+
+      // ── Refresh balance ──────────────────────────────────────────────────
+      await _calculateBalanceFromPaymentHistory();
+
+      final double finalRemaining =
+          _currentPaymentRemainingBalance ?? balanceAmount;
+      final bool isActuallyFull = finalRemaining <= 0.01;
+
+      final double newTenderAmount = payByCard;
+      final double newChangeAmount = amount > balanceBeforePayment
+          ? (amount - balanceBeforePayment)
+          : 0.0;
+
+      // ── EBT recalculation ────────────────────────────────────────────────
+      final double originalEbt = ebtTotal;
+      final double nonEbtOrderValue =
+      (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
+      final double totalNonEbtPaid = payByCash + payByOther + newTenderAmount;
+      final double overflowToEbt =
+      totalNonEbtPaid > nonEbtOrderValue
+          ? (totalNonEbtPaid - nonEbtOrderValue)
+          : 0.0;
+      final double newEbtTotal =
+      (originalEbt - overflowToEbt).clamp(0.0, double.infinity);
+
+      Future.microtask(() => _recalculateEbtAfterNonEbtPayment?.call());
+
+      setState(() {
+        balanceAmount = finalRemaining;
+        payByCard = newTenderAmount;
+        ebtTotal = newEbtTotal;
+        _currentPaymentRemainingBalance =
+        isActuallyFull ? null : finalRemaining;
+        _lastPaymentDetails = {
+          'amount': amount,
+          'method': TextConstants.card,
+          'remainingBalance': finalRemaining,
+          'previousBalance': balanceBeforePayment,
+          'datetime': DateTime.now().toIso8601String(),
+          'paymentNumber':
+          (_lastPaymentDetails?['paymentNumber'] ?? 0) + 1,
+        };
+      });
+
+      _resetAmountAfterPay();
+
+      // ── Show success or partial dialog ───────────────────────────────────
+      if (isActuallyFull) {
+        _successPopupShown = true;
+        final box = StorageProvider.offlineOrders;
+        final key =
+        (orderId ?? widget.offlineOrderId ?? 0).toString();
+        final raw = await box.get(key);
+        final couponResponse =
+        (raw is Map && raw['coupon_response'] is Map)
+            ? Map<String, dynamic>.from(raw['coupon_response'])
+            : <String, dynamic>{};
+
+        if (mounted) {
+          await CustomerDisplayService.showThankYou();
+          _showPaymentDialog(
+            context,
+            newTenderAmount,
+            changeAmount: newChangeAmount,
+            showChange: newChangeAmount > 0,
+            couponResponse: couponResponse,
+          );
+        }
+      } else {
+        if (mounted) {
+          _showPartialPaymentDialog(context, amount);
+        }
+      }
+    } catch (e, st) {
+      _hidePaymentProgressDialog();
+      setState(() {
+        isLoading = false;
+        _processingPaymentMethod = null;
+        selectedPaymentMethod = TextConstants.cash;
+      });
+      _resetAmountAfterPay();
+
+      if (kDebugMode) {
+        print('❌ _handleCardPaymentViaAPI error: $e');
+        print(st);
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Card payment error: $e'),
+            backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  String? _extractCardTransactionId(Map<String, dynamic> body) {
+    // 1. Top-level "transaction_id" (present in the response you showed)
+    final topLevel = body['transaction_id']?.toString().trim();
+    if (topLevel != null && topLevel.isNotEmpty) return topLevel;
+
+    // 2. Nested inside transaction_details (camelCase and snake_case variants)
+    final details = body['transaction_details'];
+    if (details is Map) {
+      final nested = details['transactionid']?.toString().trim() ??
+          details['transaction_id']?.toString().trim() ??
+          details['transactionId']?.toString().trim();
+      if (nested != null && nested.isNotEmpty) return nested;
+    }
+
+    return null;
+  }
+
+  Future<int> _resolveWooOrderIdForPayment({bool forceSync = true}) async {
+    final box = StorageProvider.offlineOrders;
+    final String orderKey = widget.offlineOrderId?.toString() ??
+        widget.orderId?.toString() ??
+        orderId?.toString() ??
+        "";
+
+    if (orderKey.isEmpty) {
+      return widget.orderId ?? orderId ?? 0;
+    }
+
+    final raw = await box.get(orderKey);
+    if (raw is! Map) {
+      return widget.orderId ?? orderId ?? 0;
+    }
+
+    var offlineMap = Map<String, dynamic>.from(raw);
+    final int localId = orderId ?? int.tryParse(orderKey) ?? 0;
+    if (localId > 0) {
+      offlineMap['id'] ??= localId;
+      offlineMap['order_id'] ??= localId;
+    }
+
+    // ── STEP 1: Read cached wooOrderId (never cleared – the critical fix) ──────
+    int wooOrderId =
+        int.tryParse(offlineMap['wooOrderId']?.toString() ?? '') ?? 0;
+
+    if (wooOrderId > 0) {
+      if (kDebugMode) {
+        print('✅ [resolveWooOrderId] Using cached wooOrderId: $wooOrderId');
+      }
+      return wooOrderId;
+    }
+
+    // ── STEP 2: Cache is empty → this is the very first card tap for this order.
+    //           Attempt a sync.  If the server says "duplicate", extract and cache
+    //           the existing Woo order ID rather than throwing. ─────────────────
+    if (kDebugMode) {
+      print('🔄 [resolveWooOrderId] No cached wooOrderId — attempting first sync');
+    }
+
+    try {
+      final syncResult =
+      await OrderRepository().syncSingleOfflineOrder(offlineMap);
+
+      if (syncResult is Map) {
+        wooOrderId = (syncResult?['id'] as num?)?.toInt() ?? 0;
+
+        if (wooOrderId > 0) {
+          offlineMap['wooOrderId'] = wooOrderId;
+          offlineMap['synced'] = true;
+          offlineMap['sync_at'] = DateTime.now().toIso8601String();
+          await box.put(orderKey, offlineMap);
+
+          if (kDebugMode) {
+            print(
+                '✅ [resolveWooOrderId] Sync succeeded — wooOrderId cached: $wooOrderId');
+          }
+        }
+      }
+    } catch (e) {
+      // ── Handle duplicate_client_order_id gracefully ──────────────────────────
+      // The error arrives as a JSON string like:
+      //   {"code":"duplicate_client_order_id","message":"...already exists (Order ID: 42410).","data":{"status":400}}-Invalid Request:
+      // We parse the embedded Woo order ID and cache it so no further syncs are
+      // attempted, and the payment API receives the correct server-side ID.
+      final errorStr = e.toString();
+
+      if (errorStr.contains('duplicate_client_order_id')) {
+        if (kDebugMode) {
+          print(
+              '⚠️ [resolveWooOrderId] duplicate_client_order_id detected — extracting existing Woo order ID');
+          print('   Raw error: $errorStr');
+        }
+
+        // Try to extract the numeric ID from the message.
+        // Patterns we handle:
+        //   "already exists (Order ID: 42410)"
+        //   "already exists. Order ID: 42410"
+        final RegExp idPattern =
+        RegExp(r'Order ID[:\s]+(\d+)', caseSensitive: false);
+        final match = idPattern.firstMatch(errorStr);
+
+        if (match != null) {
+          final int extractedId = int.tryParse(match.group(1) ?? '') ?? 0;
+
+          if (extractedId > 0) {
+            wooOrderId = extractedId;
+            offlineMap['wooOrderId'] = wooOrderId;
+            offlineMap['synced'] = true;
+            offlineMap['sync_at'] = DateTime.now().toIso8601String();
+            await box.put(orderKey, offlineMap);
+
+            if (kDebugMode) {
+              print(
+                  '✅ [resolveWooOrderId] Extracted & cached wooOrderId from duplicate error: $wooOrderId');
+            }
+          }
+        }
+
+        // Also try parsing the error body as JSON in case the string includes it.
+        if (wooOrderId == 0) {
+          try {
+            // The error string may start with the raw JSON body.
+            final jsonStart = errorStr.indexOf('{');
+            if (jsonStart >= 0) {
+              final jsonPart = errorStr.substring(jsonStart);
+              // Find end of first JSON object (simple heuristic).
+              final jsonEnd = jsonPart.indexOf('}-') + 1;
+              final jsonStr =
+              jsonEnd > 0 ? jsonPart.substring(0, jsonEnd) : jsonPart;
+              final Map<String, dynamic> body =
+              jsonDecode(jsonStr) as Map<String, dynamic>;
+              final msg = body['message']?.toString() ?? '';
+              final m2 = idPattern.firstMatch(msg);
+              if (m2 != null) {
+                final int id2 = int.tryParse(m2.group(1) ?? '') ?? 0;
+                if (id2 > 0) {
+                  wooOrderId = id2;
+                  offlineMap['wooOrderId'] = wooOrderId;
+                  offlineMap['synced'] = true;
+                  offlineMap['sync_at'] = DateTime.now().toIso8601String();
+                  await box.put(orderKey, offlineMap);
+                  if (kDebugMode) {
+                    print(
+                        '✅ [resolveWooOrderId] Extracted wooOrderId from JSON error body: $wooOrderId');
+                  }
+                }
+              }
+            }
+          } catch (_) {
+            // JSON parse failed — not critical, we'll fall through to the
+            // widget.orderId fallback below.
+          }
+        }
+
+        if (wooOrderId == 0 && kDebugMode) {
+          print(
+              '❌ [resolveWooOrderId] Could not extract wooOrderId from duplicate error — payment will likely fail');
+        }
+      } else {
+        // Some other sync error — rethrow so the caller can show the user.
+        if (kDebugMode) {
+          print('❌ [resolveWooOrderId] Sync failed with unexpected error: $e');
+        }
+        rethrow;
+      }
+    }
+
+    // ── STEP 3: Last-resort fallback ─────────────────────────────────────────
+    if (wooOrderId == 0) {
+      wooOrderId = widget.orderId ?? orderId ?? 0;
+      if (kDebugMode) {
+        print(
+            '⚠️ [resolveWooOrderId] Using widget.orderId as last-resort fallback: $wooOrderId');
+      }
+    }
+
+    return wooOrderId;
+  }
+
+
+  String? _extractServerPaymentId(Map<String, dynamic> body) {
+    final dynamic raw = body['payment_id'] ??
+        (body['data'] is Map ? body['data']['payment_id'] : null) ??
+        (body['data'] is Map ? body['data']['id'] : null);
+    if (raw == null) return null;
+    final s = raw.toString().trim();
+    return s.isEmpty ? null : s;
+  }
+
+  void _recalculateEbtAfterNonEbtPayment() {
+    final double originalEbt = widget.ebtAmount; // Original EBT amount from order
+    final double nonEbtOrderValue = (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
+
+    // Calculate total non-EBT payments made (cash, card, other - excluding EBT payments)
+    final double totalNonEbtPaid = payByCash + payByCard + payByOther;
+
+    // If non-EBT payments exceed the non-EBT portion, overflow reduces EBT
+    final double overflowToEbt = totalNonEbtPaid > nonEbtOrderValue
+        ? (totalNonEbtPaid - nonEbtOrderValue)
+        : 0.0;
+
+    // Calculate remaining EBT (original EBT minus EBT payments minus overflow from non-EBT)
+    final double remainingEbt = (originalEbt - payByEbt).clamp(0.0, double.infinity);
+    final double newEbtTotal = (remainingEbt - overflowToEbt).clamp(0.0, double.infinity);
+
+    setState(() {
+      ebtTotal = newEbtTotal;
+    });
+  }
+
+
   Future<void> _callCreatePaymentAPI({bool skipPopup = false}) async {
     if (kDebugMode) {
       print(
@@ -4556,10 +5733,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   onTap: () async {
                                     _selectPaymentMethod(
                                       TextConstants.card,
-                                      //autoFillAmount: true,
                                       maxAllowedAmount: balanceAmount,
                                     );
-                                    _handlePay();
+                                    await _handleCardPaymentViaAPI();
                                   },
                                 ),
                                 _buildPaymentModeButton(
@@ -4615,73 +5791,53 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                       _processingPaymentMethod != null &&
                                           _processingPaymentMethod !=
                                               TextConstants.ebtText,
-                                  onTap: () {
-                                    // 1️⃣ Check if there is any EBT left
+                                  onTap: () async {
+                                    //  Check if there is any EBT left
                                     if (ebtTotal <= 0) {
-                                      setState(() => _amountErrorText =
-                                          "No EBT balance available");
+                                      setState(() => _amountErrorText = "No EBT balance available");
                                       return;
                                     }
 
-                                    // 2️⃣ Determine the maximum allowed amount
-                                    final allowedAmount =
-                                        balanceAmount.clamp(0.0, ebtTotal);
+                                    //  Determine the maximum allowed amount
+                                    final allowedAmount = balanceAmount.clamp(0.0, ebtTotal);
 
                                     if (allowedAmount <= 0) {
-                                      setState(() => _amountErrorText =
-                                          "Cannot pay with EBT, balance is zero");
+                                      setState(() =>
+                                      _amountErrorText = "Cannot pay with EBT, balance is zero");
                                       return;
                                     }
 
-                                    // 3️⃣ Respect user-entered partial amount when present.
+                                    //  Respect user-entered partial amount when present.
                                     final enteredAmount = double.tryParse(
-                                          amountController.text
-                                              .replaceAll(
-                                                  TextConstants.currencySymbol,
-                                                  '')
-                                              .trim(),
-                                        ) ??
+                                      amountController.text
+                                          .replaceAll(TextConstants.currencySymbol, '')
+                                          .trim(),
+                                    ) ??
                                         0.0;
 
                                     final amountToUse = enteredAmount > 0
-                                        ? enteredAmount.clamp(
-                                            0.0, allowedAmount)
+                                        ? enteredAmount.clamp(0.0, allowedAmount)
                                         : allowedAmount;
 
                                     if (amountToUse <= 0) {
-                                      setState(() => _amountErrorText =
-                                          TextConstants.amountValidation);
+                                      setState(
+                                              () => _amountErrorText = TextConstants.amountValidation);
                                       return;
                                     }
 
-                                    // 4️⃣ Select EBT only (manual amount entry by user)
-                                    _selectPaymentMethod(
-                                      TextConstants.ebtText,
-                                    );
+                                    //  Select EBT and fill amount
+                                    _selectPaymentMethod(TextConstants.ebtText);
 
-                                    // If user already entered amount, submit like Cash flow.
-                                    if (enteredAmount > 0) {
-                                      final normalizedAmount = amountToUse;
-                                      setState(() {
-                                        _rawAmount =
-                                            (normalizedAmount * 100).round();
-                                        amountController.text =
-                                            '${TextConstants.currencySymbol}${normalizedAmount.toStringAsFixed(2)}';
-                                        _isAmountEntered = true;
-                                        _amountErrorText = null;
-                                      });
-                                      _handlePay();
-                                      return;
-                                    }
-
-                                    // Otherwise keep EBT amount user-driven.
                                     setState(() {
-                                      _rawAmount = 0;
+                                      _rawAmount = (amountToUse * 100).round();
                                       amountController.text =
-                                          '${TextConstants.currencySymbol}0.00';
-                                      _isAmountEntered = false;
+                                      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+                                      _isAmountEntered = true;
                                       _amountErrorText = null;
                                     });
+
+                                    //  Call EBT API (same as card API flow)
+                                    await _handleEbtCardPaymentViaAPI();
                                   },
                                 ),
                               ],
@@ -9604,7 +10760,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final num mdPercentage = offlineOrder?['merchantDiscountPercentage'] as num? ?? merchantDiscountPercentage;
     //Raghu--**
     // Calculate current base (Gross)
-    final double baseAmount = grossTotal;
+    final double baseAmount = grossTotal  ;
 
     if (mdType == 'percentage' && mdPercentage > 0) {
       // Recalculate merchant discount based on new base amount
@@ -10210,6 +11366,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       await _calculateBalanceFromPaymentHistory();
       await _printPaymentHistorySummary();
 
+      final String? serverPaymentId = _lastPayment?.paymentId;
+      if (_lastPayment?.method.toLowerCase() == TextConstants.card.toLowerCase()) {
+        await _voidServerPaymentIfCard(serverPaymentId: serverPaymentId);
+      }
+
       // ────────────────────────────────────────────────
       //  4. CRITICAL: Force-reset "payment completed" flags
       //     Especially important when isPartial == false (full void)
@@ -10510,6 +11671,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               originTransactionId: _lastPayment!.sunmiTxnId!,
             );
           } else {
+            // For card payments via API (no Sunmi hardware), call kickback void
+            // then do the local void bookkeeping
+            if (method == TextConstants.card.toLowerCase()) {
+              final String? serverPaymentId = _lastPayment!.paymentId;
+              await _voidServerPaymentIfCard(serverPaymentId: serverPaymentId);
+            }
             await _handleVoidPayment(context, isPartial: isPartial);
           }
 

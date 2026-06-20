@@ -1306,6 +1306,45 @@ class OrderRepository {
       }
 
       // ---------------------------------------------------------
+// ⭐ RECALCULATE TAX AFTER COUPON/ORDER DISCOUNT (FIX: sends correct tax)
+// ---------------------------------------------------------
+      // Read stored values
+      double storedOrderTax = (offlineOrder['order_tax'] as num?)?.toDouble() ?? 0.0;
+      double storedOrderDiscount = (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+      double storedGrossTotal = (offlineOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
+
+      // Recalculate gross from line items (most accurate)
+      double computedGross = lineItems.fold<double>(
+        0.0,
+            (sum, li) {
+          final t = double.tryParse(li['total'].toString()) ?? 0.0;
+          return t > 0 ? sum + t : sum; // skip negative/discount lines
+        },
+      );
+      if (computedGross <= 0) computedGross = storedGrossTotal;
+
+      // Recalculate tax proportionally if coupon/order discount exists
+      double finalTax = storedOrderTax;
+      if (storedOrderDiscount > 0 && storedOrderTax > 0 && computedGross > 0) {
+        final double netAfterDiscount = computedGross - storedOrderDiscount;
+        if (netAfterDiscount > 0 && netAfterDiscount < computedGross) {
+          final double taxRatio = netAfterDiscount / computedGross;
+          finalTax = double.parse((storedOrderTax * taxRatio).toStringAsFixed(2));
+          debugPrint("🔁 TAX RECALCULATED FOR SYNC → gross:$computedGross "
+              "discount:$storedOrderDiscount netAfter:$netAfterDiscount "
+              "originalTax:$storedOrderTax finalTax:$finalTax");
+        }
+      }
+
+      // Also check tax_discount field (set by CustomerDisplayHelper after coupon)
+      final double hiveRecalcTax = (offlineOrder['tax_discount'] as num?)?.toDouble() ?? 0.0;
+      if (hiveRecalcTax > 0 && hiveRecalcTax < storedOrderTax) {
+        // CustomerDisplayHelper already recalculated — trust it
+        finalTax = hiveRecalcTax;
+        debugPrint("✅ TAX FROM HIVE tax_discount (post-coupon) → $finalTax");
+      }
+
+      // ---------------------------------------------------------
 // ⭐ HANDLE CASHBACK
 // ---------------------------------------------------------
       final cashbacks = (offlineOrder['cashbacks'] ?? []) as List? ?? [];
@@ -1353,17 +1392,6 @@ class OrderRepository {
         lineItemsTotal: lineItemsSubtotal,
       );
 
-      if (merchantDiscount > 0) {
-        feeLines.add({
-          "name": "merchant_discount",
-          "total": (-merchantDiscount).toStringAsFixed(2),
-          "tax_status": "none",
-        });
-        print(
-          "🟢 Added Merchant Discount as FEE LINE → -${merchantDiscount.toStringAsFixed(2)}",
-        );
-      }
-
       // ---------------------------------------------------------
 // ⭐ SEPARATE ISSUED vs REDEEMED COUPONS
 // ---------------------------------------------------------
@@ -1397,6 +1425,9 @@ class OrderRepository {
       final userData = await UserDbHelper().getUserData();
       final userId = userData?[AppDBConst.userId] ?? "admin";
 
+      // ---------------------------------------------------------
+// ⭐ DECLARE METADATA HERE BEFORE USING IT
+// ---------------------------------------------------------
       final List<Map<String, dynamic>> metaData = [
         {"key": "pos_device_id", "value": "b31b723b92047f4b"},
         {"key": "pos_placed_by", "value": "$userId"},
@@ -1404,6 +1435,24 @@ class OrderRepository {
         {"key": "pos_cash_paid", "value": "0.00"},
         {"key": "_pos_client_order_id", "value": clientOrderId},
       ];
+
+      // Add recalculated tax to meta_data so backend receives correct value
+      metaData.add({
+        "key": "_pos_order_tax",
+        "value": finalTax.toStringAsFixed(2),
+      });
+
+      debugPrint("📤 SYNC SENDING TAX → $finalTax (was stored: $storedOrderTax)");
+
+      if (merchantDiscount > 0) {
+        metaData.add({
+          "key": "_merchant_discount",
+          "value": merchantDiscount.toStringAsFixed(2),
+        });
+        print(
+          "🟢 Added Merchant Discount as META_DATA → ${merchantDiscount.toStringAsFixed(2)}",
+        );
+      }
 
       if (issuedCoupons.isNotEmpty) {
         metaData.add({
@@ -1478,6 +1527,20 @@ class OrderRepository {
       };
 
       printFullJson("woo payloadrrrrrrrrrrrrrrrrrrrrrrrrr", payload);
+
+      final prettyJson = const JsonEncoder.withIndent('  ').convert(payload);
+
+      const chunkSize = 800;
+      for (int i = 0; i < prettyJson.length; i += chunkSize) {
+        debugPrint(
+          prettyJson.substring(
+            i,
+            i + chunkSize > prettyJson.length
+                ? prettyJson.length
+                : i + chunkSize,
+          ),
+        );
+      }
 
       final response = isUpdate
           ? await _helper.put(url, payload, true)
@@ -1567,7 +1630,6 @@ class OrderRepository {
     }
     return null;
   }
-
 
 
   // Future<Map<String, dynamic>?> syncSingleOfflineOrder(

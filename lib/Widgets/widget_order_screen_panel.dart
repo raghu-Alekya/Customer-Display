@@ -1564,20 +1564,42 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
     // 2?? Specifically sum up values from coupon_lines if available (standard WooCommerce structure)
     double couponLinesSum = 0.0;
+    // === FIXED: PROPER SEPARATION OF COUPON vs MERCHANT DISCOUNT ===
     if (order['coupon_lines'] is List) {
       for (var c in order['coupon_lines']) {
         if (c is Map) {
-          couponLinesSum +=
-              double.tryParse(c['discount']?.toString() ?? '') ?? 0.0;
+          final code = (c['code']?.toString() ?? '').toLowerCase();
+          final discStr = c['discount']?.toString() ?? '0.0';
+          final disc = double.tryParse(discStr) ?? 0.0;
+
+          if (code.contains('merchant_discount')) {
+            merchantDiscount += disc;           // ← Merchant Discount
+          } else {
+            orderDiscount += disc;              // ← Regular Coupon
+          }
+        }
+      }
+    }
+
+    if (orderDiscount == 0 && order['meta_data'] is List) {
+      for (var m in order['meta_data']) {
+        if (m is Map) {
+          final key = m['key']?.toString().toLowerCase() ?? '';
+          final val = double.tryParse(m['value']?.toString() ?? '0') ?? 0.0;
+          if (key.contains('merchant_discount') || key == '_merchant_discount') {
+            merchantDiscount += val;
+          } else if (key.contains('coupon') || key.contains('discount_total')) {
+            orderDiscount += val;
+          }
         }
       }
     }
 
     // Prioritize metadata or coupon_lines
     if (couponLinesSum != 0) {
-      orderDiscount = couponLinesSum > 0 ? -couponLinesSum : couponLinesSum;
+      orderDiscount = orderDiscount > 0 ? -orderDiscount : orderDiscount;
     } else if (metaCouponVal != 0) {
-      orderDiscount = metaCouponVal > 0 ? -metaCouponVal : metaCouponVal;
+      merchantDiscount = merchantDiscount > 0 ? -merchantDiscount : merchantDiscount;
     }
 
     // 3?? Iterate through line items as a fallback for manually added coupons or merchant discounts
@@ -1591,9 +1613,17 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
       if (nameLower.contains('coupon') || typeLower.contains('coupon')) {
         // If we haven't found a metadata coupon yet, sum up individual coupon items
+        // if (orderDiscount == 0) {
+        //   orderDiscount += itemSumPrice > 0 ? -itemSumPrice : itemSumPrice;
+        // }
+
+        // Final fallback from order level (discount_total usually = coupon only)
         if (orderDiscount == 0) {
-          orderDiscount += itemSumPrice > 0 ? -itemSumPrice : itemSumPrice;
+          final rawDisc = double.tryParse(order['discount_total']?.toString() ??
+              order['discountTotal']?.toString() ?? '0') ?? 0.0;
+          orderDiscount = rawDisc;
         }
+
       } else if (nameLower.contains('merchant discount') ||
           typeLower.contains('merchant discount') ||
           (nameLower == 'discount' && typeLower == 'discount') ||
@@ -1624,18 +1654,13 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     // }
 
     if (merchantDiscount == 0) {
-      final dynamic rawFallback =
+      final rawMerchant = order[AppDBConst.merchantDiscount] ??
           order['merchantDiscount'] ??
-              order[AppDBConst.merchantDiscount] ??
-              order['merchant_discount'];
-      if (rawFallback != null) {
-        final double rawVal = (rawFallback is num)
-            ? rawFallback.toDouble()
-            : (double.tryParse(rawFallback.toString()) ?? 0.0);
-        // Accept any non-zero value, no matter how small
-        if (rawVal.abs() > 0) {
-          merchantDiscount = -rawVal.abs();
-        }
+          order['merchant_discount'] ??
+          order['merchantDiscountFromFeeLines'];
+      if (rawMerchant != null) {
+        merchantDiscount = (rawMerchant is num ? rawMerchant.toDouble() :
+        double.tryParse(rawMerchant.toString()) ?? 0.0).abs();
       }
     }
 
@@ -1896,7 +1921,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     //     //     (merchantDiscount != 0 ? merchantDiscount : 0.0))      // already negative
     //     //     .clamp(double.negativeInfinity, double.infinity);       // ← Removed 0.0 clamp
 
-    num netTotal = (grossTotal + orderDiscount)
+    num netTotal = (grossTotal - orderDiscount + uiMerchantDiscount)
         .clamp(double.negativeInfinity, double.infinity);
 
 // NET PAYABLE WITH TAX + CASHBACK
@@ -3043,6 +3068,32 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                         ),
                                       ],
                                     ),
+
+                                    SizedBox(
+                                      height: 2,
+                                    ),
+                                    // === MERCHANT DISCOUNT ROW (Corrected) ===
+                                    if (uiMerchantDiscount.abs() > 0.000001)
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            TextConstants.merchantDiscount,
+                                            style: TextStyle(
+                                              color: Colors.blue,
+                                              fontSize: 15,
+                                            ),
+                                          ),
+                                          Text(
+                                            "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}",
+                                            style: TextStyle(
+                                              color: Colors.blue,
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     SizedBox(
                                       height: 2,
                                     ),
@@ -3181,28 +3232,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                                     : Colors.grey)),
                                       ],
                                     ),
-                                    // === MERCHANT DISCOUNT ROW (Corrected) ===
-                                    if (uiMerchantDiscount.abs() > 0.000001)
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(
-                                            TextConstants.merchantDiscount,
-                                            style: TextStyle(
-                                              color: Colors.blue,
-                                              fontSize: 15,
-                                            ),
-                                          ),
-                                          Text(
-                                            "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}",
-                                            style: TextStyle(
-                                              color: Colors.blue,
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+
                                     SizedBox(height: 2),
 
                                     if (cashbackFee > 0)
@@ -3897,9 +3927,8 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                   orderDiscount: uiOrderDiscount,
 
                                   merchantDiscount:
-                                  merchantDiscount,
-                                  orderTax: uiOrderTax,
-                                  netPayable: netPayable.toDouble(),
+                                  uiMerchantDiscount,
+                                  orderTax: double.parse(wooTax.toStringAsFixed(2)),                                  netPayable: netPayable.toDouble(),
 
                                   orderId: selectedOrderId,
 
@@ -6829,14 +6858,25 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       PosColumn(text: formatCurrency(uiGrossTotal), width: 4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
+    // bytes += ticket.row([
+    //   PosColumn(text: TextConstants.discountText, width: 8),
+    //   PosColumn(text: uiOrderDiscount != 0 ? formatCurrency(uiOrderDiscount) : formatCurrency(0.0), width: 4, styles: PosStyles(align: PosAlign.right)),
+    // ]);
+    //
+    // bytes += ticket.row([
+    //   PosColumn(text: TextConstants.merchantDiscount, width: 8),
+    //   PosColumn(text: uiMerchantDiscount != 0 ? "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}" : "${TextConstants.currencySymbol}0.00", width: 4, styles: PosStyles(align: PosAlign.right)),
+    // ]);
+
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.discountText, width: 8),
-      PosColumn(text: uiOrderDiscount != 0 ? formatCurrency(uiOrderDiscount) : formatCurrency(0.0), width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: formatCurrency(uiOrderDiscount), width: 4, styles: PosStyles(align: PosAlign.right)),  // Coupon only
     ]);
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.merchantDiscount, width: 8),
-      PosColumn(text: uiMerchantDiscount != 0 ? "-${TextConstants.currencySymbol}${uiMerchantDiscount.abs().toStringAsFixed(2)}" : "${TextConstants.currencySymbol}0.00", width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: formatCurrency(uiMerchantDiscount), width: 4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
     bytes += ticket.row([

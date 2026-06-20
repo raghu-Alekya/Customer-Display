@@ -6906,7 +6906,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
                                     if (item['is_ebt_eligible'] == true) {
                                       totalEbtAfterDiscount +=
-                                          discountedUnitPrice * qty;
+                                          discountedUnitPrice * qty- merchantDiscount;  ///bala
                                     }
                                   }
 
