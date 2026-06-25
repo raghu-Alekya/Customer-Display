@@ -128,8 +128,13 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
             showDialog(
               context: context,
               barrierDismissible: false,
-              builder: (_) => RefundScreen(order: widget.order),
+              builder: (_)  => RefundScreen(
+              order: widget.order,
+              payments: widget.order.payments,   // ← Pass payments list
+            ),
+                  //RefundScreen(order: widget.order),
             );
+
           }
 
           if (state is RefundValidationFailure) {

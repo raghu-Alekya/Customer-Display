@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:intl/intl.dart';
 import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import '../../Blocs/Orders/order_bloc.dart';

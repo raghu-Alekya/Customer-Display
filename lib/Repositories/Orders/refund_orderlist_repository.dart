@@ -33,6 +33,15 @@ class CompletedOrdersRepository {
     final uri = Uri.parse(
       '${UrlHelper.baseUrl}pinaka-pos/v1/orders/completed-orders',
     ).replace(queryParameters: queryParams);
+    if (kDebugMode) {
+
+      print('API URL: $uri');
+
+      print('cURL:');
+      print('curl -X GET "$uri" \\');
+      print('  -H "Authorization: Bearer $token" \\');
+      print('  -H "Accept: application/json"');
+    }
 
     final response = await http.get(
       uri,

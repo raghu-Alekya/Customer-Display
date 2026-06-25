@@ -2698,7 +2698,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 🔥 STEP 1: Calculate product totals (exclude payout/cashback)
+    // 🔥 STEP 1: Calculate product totals and tax rates (exclude payout/cashback)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     double productGrossTotal = 0.0;
     double productDiscountTotal = 0.0;
@@ -2707,6 +2707,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     double totalLineDiscount = 0.0;
     double totalTaxFromItems = 0.0;
     bool anyItemHasDiscountOrTaxRate = false;
+    double weightedTaxRate = 0.0;
+
+    // 🔥 NEW: Track product tax rates directly from Hive like the order panel
+    final Map<int, double> _hiveTaxRateByProductId = {};
+    final Map<int, String> _hiveTaxStatusByProductId = {};
+
+    // Load tax rates from offline order products
+    if (offlineOrder != null) {
+      final hiveProducts = (offlineOrder?['products'] as List?) ?? [];
+      for (final p in hiveProducts) {
+        final int pid = int.tryParse(
+            (p['product_id'] ?? p['id'] ?? '0').toString()) ?? 0;
+        if (pid <= 0) continue;
+        final double rate = double.tryParse(p['tax_rate']?.toString() ?? '0') ?? 0.0;
+        final String status = (p['tax_status'] ?? 'taxable').toString().toLowerCase();
+        if (rate > 0) _hiveTaxRateByProductId[pid] = rate;
+        _hiveTaxStatusByProductId[pid] = status;
+      }
+    }
 
     for (final item in orderItems) {
       final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
@@ -2748,15 +2767,41 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (taxRate > 0) {
         anyItemHasDiscountOrTaxRate = true;
         itemTax = taxableBase * taxRate;
+        if (taxableBase > 0) {
+          weightedTaxRate += (taxableBase * taxRate);
+        }
       } else {
         final double rawTax = toDouble(item['item_tax'] ?? item['tax_amount']);
         if (rawTax > 0 && lineTotal > 0) {
           anyItemHasDiscountOrTaxRate = true;
           itemTax = rawTax * (taxableBase / lineTotal);
+          if (taxableBase > 0) {
+            weightedTaxRate += (taxableBase * (rawTax / lineTotal));
+          }
+        }
+        // 🔥 FIX: If no tax found, try to get from Hive product map
+        else if (itemTax <= 0) {
+          final int productId = int.tryParse((item['product_id'] ?? 0).toString()) ?? 0;
+          if (productId > 0) {
+            final double hiveTaxRate = _hiveTaxRateByProductId[productId] ?? 0.0;
+            if (hiveTaxRate > 0 && taxableBase > 0) {
+              itemTax = (taxableBase * hiveTaxRate) / 100.0;
+              weightedTaxRate += (taxableBase * (hiveTaxRate / 100.0));
+              anyItemHasDiscountOrTaxRate = true;
+            }
+          }
         }
       }
 
       totalTaxFromItems += itemTax;
+    }
+
+    // Calculate the weighted average tax rate
+    final double totalTaxableBase = productGrossTotal - productDiscountTotal;
+    if (totalTaxableBase > 0) {
+      weightedTaxRate = weightedTaxRate / totalTaxableBase;
+    } else {
+      weightedTaxRate = 0.0;
     }
 
     totalTaxFromItems = double.parse(totalTaxFromItems.toStringAsFixed(4));
@@ -2775,49 +2820,67 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 🔥 STEP 3: Calculate TAX
+    // 🔥 STEP 3: Calculate TAX - CORRECTED VERSION
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     double finalTax = 0.0;
 
-    // // ✅ CORRECT: Taxable base = Product Gross - Product Discounts - Merchant Discount
-    // final double taxableNetAmount = (productNetAfterDiscounts + merchantDiscount).clamp(0.0, double.infinity);
     final double couponDiscount = discount < 0 ? discount.abs() : 0.0;
     final double taxableNetAmount = (productNetAfterDiscounts + merchantDiscount - couponDiscount).clamp(0.0, double.infinity);
 
-    // ── CASE 1: We have item-level tax data → scale it ──
-    if (anyItemHasDiscountOrTaxRate && totalTaxFromItems > 0 && productGrossTotal > 0) {
+    print("🔧 TAX CALCULATION - CORRECTED:");
+    print("   📍 productGrossTotal: $productGrossTotal");
+    print("   📍 productDiscountTotal: $productDiscountTotal");
+    print("   📍 productNetAfterDiscounts: $productNetAfterDiscounts");
+    print("   📍 merchantDiscount: $merchantDiscount");
+    print("   📍 couponDiscount: $couponDiscount");
+    print("   📍 taxableNetAmount: $taxableNetAmount");
+    print("   📍 weightedTaxRate: ${(weightedTaxRate * 100).toStringAsFixed(2)}%");
+    print("   📍 totalTaxFromItems: $totalTaxFromItems");
+    print("   ───────────────────────────────────────────────");
+
+    // 🔥 PRIMARY METHOD: Calculate tax directly from the weighted tax rate
+    // This is what the order panel does - it uses the tax rate from Hive
+    if (weightedTaxRate > 0 && taxableNetAmount > 0) {
+      print("   ✅ Calculating tax directly from weighted tax rate");
+      print("   🧮 Calculation: $taxableNetAmount × ${(weightedTaxRate * 100).toStringAsFixed(2)}%");
+      finalTax = roundTaxHalfUp(taxableNetAmount * weightedTaxRate);
+      print("   🧾 Final tax: $finalTax");
+    }
+    // SECONDARY METHOD: If we have item tax data, use proportional scaling
+    else if (anyItemHasDiscountOrTaxRate && totalTaxFromItems > 0 && productGrossTotal > 0) {
       final double originalBase = productNetAfterDiscounts;
       if (originalBase > 0) {
+        print("   ✅ Using item tax data with proportional scaling");
+        print("   🧮 Calculation: $totalTaxFromItems × ($taxableNetAmount / $originalBase)");
+        print("   🧮 Ratio: ${(taxableNetAmount / originalBase).toStringAsFixed(4)}");
         double scaledTax = totalTaxFromItems * (taxableNetAmount / originalBase);
         finalTax = roundTaxHalfUp(scaledTax);
+        print("   🧾 Final tax: $finalTax");
       } else {
         finalTax = 0.0;
       }
     }
-    // ── CASE 2: No item-level tax data → ALWAYS use server tax directly ──
+    // TERTIARY METHOD: Calculate from product gross using weighted tax rate
+    else if (weightedTaxRate > 0 && productGrossTotal > 0) {
+      print("   ✅ Calculating tax from product gross with weighted tax rate");
+      print("   🧮 Calculation: $taxableNetAmount × ${(weightedTaxRate * 100).toStringAsFixed(2)}%");
+      finalTax = roundTaxHalfUp(taxableNetAmount * weightedTaxRate);
+      print("   🧾 Final tax: $finalTax");
+    }
+    // FALLBACK: Use server tax
     else {
-      // 🔥 CRITICAL FIX: Always use server tax directly when no item-level tax data exists
-      // The server tax is the single source of truth for tax on pending orders
+      print("   ⚠️ Fallback: Using server tax directly");
+      print("   📍 widget.orderTax: ${widget.orderTax}");
       finalTax = widget.orderTax;
+      print("   🧾 Final tax: $finalTax");
     }
 
     // Ensure we have a reasonable tax value
     finalTax = double.parse(finalTax.toStringAsFixed(2));
 
-    if (kDebugMode) {
-      print("🔧 TAX CALCULATION DETAILS:");
-      print("   Product Gross (excl payout)  : $productGrossTotal");
-      print("   Product Discounts            : $productDiscountTotal");
-      print("   Product Net Before Merchant  : $productNetAfterDiscounts");
-      print("   Merchant Discount            : $merchantDiscount");
-      print("   Taxable Net Amount           : $taxableNetAmount");
-      print("   Total Tax From Items         : $totalTaxFromItems");
-      print("   Server Tax (from widget)     : ${widget.orderTax}");
-      print("   Final Tax Used               : $finalTax");
-      print("   ───────────────────────────────────────────────");
-      print("   anyItemHasDiscountOrTaxRate  : $anyItemHasDiscountOrTaxRate");
-      print("   Expected Tax (9.1% of $taxableNetAmount): ${(taxableNetAmount * 0.091).toStringAsFixed(2)}");
-    }
+    print("   ───────────────────────────────────────────────");
+    print("   🎯 FINAL TAX: $finalTax");
+    print("   ✅ Expected tax rate applied to taxable amount");
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 🔥 STEP 4: Calculate final totals
@@ -2825,8 +2888,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final double newNetTotal = grossTotal + discount + merchantDiscount;
     final double newNetPayable = newNetTotal + finalTax + cashbackFee;
 
-    final bool totalsChanged = (finalTax - tax).abs() > 0.00005 ||
-        (newNetPayable - computedNetPayable).abs() > 0.00005;
+    final bool totalsChanged = (finalTax - tax).abs() > 0.000005 ||
+        (newNetPayable - computedNetPayable).abs() > 0.000005;
     if (!totalsChanged) return;
 
     setState(() {

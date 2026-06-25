@@ -6879,9 +6879,25 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       PosColumn(text: formatCurrency(uiMerchantDiscount), width: 4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
+    // bytes += ticket.row([
+    //   PosColumn(text: TextConstants.taxText, width: 8),
+    //   PosColumn(text: formatCurrency(uiOrderTax), width: 4, styles: PosStyles(align: PosAlign.right)),
+    // ]);
+
+    double wooTax = 0.0;
+    if (_wooOrder != null) {
+      wooTax = double.tryParse(_wooOrder!.totalTax ?? '0') ?? 0.0;
+    } else if (_order.isNotEmpty) {
+      wooTax = double.tryParse(_order['total_tax']?.toString() ??
+          _order['wooTax']?.toString() ??
+          _order['orderTax']?.toString() ?? '0') ?? 0.0;
+    } else {
+      wooTax = uiOrderTax; // fallback
+    }
+
     bytes += ticket.row([
       PosColumn(text: TextConstants.taxText, width: 8),
-      PosColumn(text: formatCurrency(uiOrderTax), width: 4, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(text: formatCurrency(wooTax), width: 4, styles: PosStyles(align: PosAlign.right)),
     ]);
 
     if (uiCashbackFee > 0) {

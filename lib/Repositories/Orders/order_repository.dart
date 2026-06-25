@@ -954,6 +954,8 @@ class OrderRepository {
     }
     return value;
   }
+
+
   Future<Map<String, dynamic>?> syncSingleOfflineOrder(
       Map<String, dynamic> offlineOrder) async {
     // Helper to determine if a coupon is redeemed (generate_type == true)
@@ -1039,7 +1041,7 @@ class OrderRepository {
         for (int i = 0; i < productsRaw.length; i++) {
           debugPrint("INDEX $i → ${productsRaw[i]}");
         }
-        debugPrint("📦 END RAW PRODUCTS -------------------\n");
+        debugPrint(" END RAW PRODUCTS -------------------\n");
       }
 
       final List<Map<String, dynamic>> lineItems = [];

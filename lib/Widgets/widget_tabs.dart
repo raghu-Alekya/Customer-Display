@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import 'package:provider/provider.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';

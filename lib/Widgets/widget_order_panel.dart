@@ -16,7 +16,7 @@ import 'package:focus_detector/focus_detector.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:intl/intl.dart';
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:pinaka_pos/Database/discount_rule_isar.dart';
 import 'package:pinaka_pos/Database/isar_cache_entry.dart';
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;

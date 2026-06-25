@@ -6,7 +6,7 @@ import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:pinaka_pos/Database/user_db_helper.dart';
 import 'package:pinaka_pos/Repositories/Orders/order_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:isar/isar.dart'; // Build #1.0.104
+import 'package:isar_community/isar.dart';
 import '../Constants/text.dart';
 import '../Helper/Extentions/money_rounding_helper.dart';
 import '../Helper/customerdisplayhelper.dart';

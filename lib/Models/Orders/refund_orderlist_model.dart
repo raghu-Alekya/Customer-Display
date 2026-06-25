@@ -17,6 +17,7 @@ class CompletedOrder {
   final int? author;
   final List<LineItem> items;
   final List<CouponModel> coupons;
+  final List<Payment> payments;   // ← New field
 
   CompletedOrder({
     required this.orderId,
@@ -32,6 +33,7 @@ class CompletedOrder {
     this.author,
     required this.items,
     required this.coupons,
+    required this.payments,        // ← New parameter
   });
 
   factory CompletedOrder.fromJson(Map<String, dynamic> json) {
@@ -58,6 +60,11 @@ class CompletedOrder {
       coupons: (json['coupon_lines'] as List? ?? [])
           .map((e) => CouponModel.fromJson(e))
           .toList(),
+
+      // ← New mapping for payments
+      payments: (json['payments'] as List? ?? [])
+          .map((e) => Payment.fromJson(e))
+          .toList(),
     );
   }
 }
@@ -72,6 +79,7 @@ class LineItem {
   final double totalTax;
   final String isItemsHasDiscount;
   final String itemDiscountType;
+
   LineItem({
     required this.id,
     required this.name,
@@ -98,6 +106,7 @@ class LineItem {
     );
   }
 }
+
 class CouponModel {
   final String code;
   final double discount;
@@ -114,6 +123,35 @@ class CouponModel {
     );
   }
 }
+
+// ==================== NEW CLASS ====================
+class Payment {
+  final int id;
+  final String orderId;
+  final String paymentMethod;
+  final String paymentId;
+  final double paymentAmount;
+
+  Payment({
+    required this.id,
+    required this.orderId,
+    required this.paymentMethod,
+    required this.paymentId,
+    required this.paymentAmount,
+  });
+
+  factory Payment.fromJson(Map<String, dynamic> json) {
+    return Payment(
+      id: json['id'],
+      orderId: json['order_id']?.toString() ?? '',
+      paymentMethod: json['payment_method'] ?? '',
+      paymentId: json['payment_id']?.toString() ?? '',
+      paymentAmount: double.tryParse(json['payment_amount']?.toString() ?? '0') ?? 0.0,
+    );
+  }
+}
+// ===================================================
+
 class RefundItem {
   final int orderItemId;
   final double orderItemAmount;
@@ -152,5 +190,4 @@ class RefundRequestModel {
 
     return data;
   }
-
 }

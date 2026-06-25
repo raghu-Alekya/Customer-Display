@@ -12,7 +12,7 @@ import firebase_core
 import firebase_crashlytics
 import firebase_messaging
 import flutter_udid
-import isar_flutter_libs
+import isar_community_flutter_libs
 import network_info_plus
 import package_info_plus
 import path_provider_foundation
