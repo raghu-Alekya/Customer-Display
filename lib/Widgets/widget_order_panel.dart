@@ -707,10 +707,213 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   }
 
   // Build #1.0.10: Fetches order items for the active order
+  // Future<void> fetchOrderItems() async {
+  //
+  //   final int requestId = ++_fetchOrderItemsRequestId;
+  //
+  //   final activeId = orderHelper.activeOrderId;
+  //
+  //   // FIX: Immediately clear orderItems when there is no active order
+  //   if (orderHelper.activeOrderId == null) {
+  //     if (mounted) {
+  //       setState(() {
+  //         orderItems = [];
+  //         _listVersion++;
+  //         _currentOrderVersion++;
+  //       });
+  //     }
+  //     return;
+  //   }
+  //
+  //   // #region agent log
+  //   unawaited(_agentDebugLog(
+  //     hypothesisId: "H3",
+  //     location: "widget_order_panel.dart:fetchOrderItems:start",
+  //     message: "fetchOrderItems entry",
+  //     data: {
+  //       "activeOrderId": activeId,
+  //       "tabCount": tabs.length,
+  //       "hasActiveTab":
+  //       activeId != null && tabs.any((t) => t['orderId'] == activeId),
+  //     },
+  //   ));
+  //   // #endregion
+  //
+  //   // Tabs can lag behind activeOrderId (e.g. while _getOrderTabs runs, or offline-only).
+  //   // Never clear the cart just because the tab bar has not caught up yet.
+  //   if (!_tabsContainActiveOrder(activeId)) {
+  //     if (kDebugMode) {
+  //       print(
+  //         "⚠️ fetchOrderItems — active order not in tab bar; still loading by id: $activeId",
+  //       );
+  //     }
+  //   }
+  //
+  //   if (kDebugMode) {
+  //     print("##### DEBUG: fetchOrderItems 112233");
+  //   }
+  //   if (orderHelper.activeOrderId != null) {
+  //     if (kDebugMode) {
+  //       print(
+  //           "##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
+  //     }
+  //     try {
+  //       final int oid = orderHelper.activeOrderId!;
+  //       // 1️⃣ Prefer offline storage; 2️⃣ SQLite — run both reads in parallel when offline may be empty.
+  //       final Future<List<Map<String, dynamic>>> offlineFuture =
+  //       orderHelper.getOrderItemsFromOffline(oid);
+  //       final Future<List<Map<String, dynamic>>> ordersFuture =
+  //       orderHelper.getOrderById(oid);
+  //       final offlineItems = await offlineFuture;
+  //       if (requestId != _fetchOrderItemsRequestId) return;
+  //       // #region agent log
+  //       unawaited(_agentDebugLog(
+  //         hypothesisId: "H3",
+  //         location: "widget_order_panel.dart:fetchOrderItems:offlineRead",
+  //         message: "offline items read",
+  //         data: {
+  //           "activeOrderId": orderHelper.activeOrderId,
+  //           "offlineItemCount": offlineItems.length,
+  //           "firstItemKeys": offlineItems.isNotEmpty
+  //               ? offlineItems.first.keys.take(8).toList()
+  //               : <String>[],
+  //         },
+  //       ));
+  //       // #endregion
+  //
+  //       // FIX: Verify that active order hasn't changed while fetching
+  //       if (orderHelper.activeOrderId != oid) {
+  //         if (kDebugMode) print("⚠️ Active order changed during fetch, discarding results");
+  //         return;
+  //       }
+  //
+  //       if (offlineItems.isNotEmpty) {
+  //         // ── Re-seed tax fields for custom items so buildCurrentOrder
+  //         // displays correct tax without needing to re-derive from Hive ──
+  //         final offlineBox = StorageProvider.offlineOrders;
+  //         final rawOrder = await offlineBox.get(oid.toString());
+  //         if (rawOrder != null) {
+  //           final orderMap = Map<String, dynamic>.from(rawOrder);
+  //           final storedProducts = (orderMap['products'] as List? ?? [])
+  //               .map((e) => Map<String, dynamic>.from(e))
+  //               .toList();
+  //
+  //           for (int i = 0; i < offlineItems.length; i++) {
+  //             final displayItem = Map<String, dynamic>.from(offlineItems[i]);
+  //             final itemType = (displayItem['item_type'] ?? '').toString().toLowerCase();
+  //             if (itemType.contains('custom')) {
+  //               // Find matching product in Hive to get tax fields
+  //               final itemName = (displayItem['item_name'] ?? '').toString().toLowerCase();
+  //               final itemPrice = double.tryParse(displayItem['item_price']?.toString() ?? '0') ?? 0.0;
+  //               final match = storedProducts.firstWhere((p) {
+  //                 final pName = (p['name'] ?? '').toString().toLowerCase();
+  //                 final pPrice = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+  //                 return pName == itemName && (pPrice - itemPrice).abs() < 0.01;
+  //               }, orElse: () => {});
+  //
+  //               if (match.isNotEmpty) {
+  //                 final taxRate = double.tryParse(
+  //                     match['tax_rate']?.toString() ??
+  //                         match['tax_percent']?.toString() ?? '0') ?? 0.0;
+  //                 final qty = int.tryParse(displayItem['items_count']?.toString() ?? '1') ?? 1;
+  //                 final itemTax = taxRate > 0
+  //                     ? roundTaxHalfUp(((itemPrice * taxRate) / 100) * qty)
+  //                     : 0.0;
+  //                 displayItem['tax_rate'] = taxRate;
+  //                 displayItem['tax_class'] = match['tax_class'] ?? match['selected_category_tax_slug'] ?? '';
+  //                 displayItem['item_tax'] = itemTax;
+  //                 offlineItems[i] = displayItem;
+  //               }
+  //             }
+  //           }
+  //         }
+  //
+  //         await orderHelper.loadData();
+  //         if (requestId != _fetchOrderItemsRequestId) return;
+  //         if (orderHelper.activeOrderId != oid) return;
+  //
+  //         if (mounted) {
+  //           setState(() {
+  //             if (requestId != _fetchOrderItemsRequestId) return;
+  //             orderItems = List<Map<String, dynamic>>.from(offlineItems);
+  //             _listVersion++;
+  //             _currentOrderVersion++;
+  //           });
+  //         }
+  //         return;
+  //       }
+  //       // 2️⃣ Fallback to SQLite (synced/API orders)
+  //       var orders = await ordersFuture;
+  //       if (requestId != _fetchOrderItemsRequestId) return;
+  //       // FIX: Double-check active order ID again after await
+  //       if (orderHelper.activeOrderId != oid) return;
+  //
+  //       if (orders.isEmpty) {
+  //         if (kDebugMode) {
+  //           print(
+  //               "##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
+  //         }
+  //         await orderHelper.clearPersistedCartSelection();
+  //         if (mounted) {
+  //           setState(() {
+  //             orderItems = []; // Clear items if no order exists
+  //           });
+  //         }
+  //         await _getOrderTabs(); // Refresh tabs to reflect no active order
+  //         return;
+  //       }
+  //
+  //       var order = orders.first;
+  //       if (kDebugMode) {
+  //         print("##### DEBUG: fetchOrderItems - Retrieved ${order.length}");
+  //         print(
+  //             "##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
+  //         print(
+  //             "##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
+  //       }
+  //       List<Map<String, dynamic>> items =
+  //       await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
+  //       if (requestId != _fetchOrderItemsRequestId) return;
+  //       if (orderHelper.activeOrderId != oid) return;
+  //
+  //       if (kDebugMode) {
+  //         print(
+  //             "##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
+  //       }
+  //
+  //       if (mounted) {
+  //         setState(() {
+  //           if (requestId != _fetchOrderItemsRequestId) return;
+  //           orderItems =
+  //           List<Map<String, dynamic>>.from(items); // Create mutable copy
+  //           _listVersion++; // Build 1.0.214: Increment version when items change
+  //         });
+  //       }
+  //     } catch (e, s) {
+  //       if (kDebugMode) {
+  //         print("##### ERROR: fetchOrderItems failed - $e, Stack: $s");
+  //       }
+  //       if (mounted) {
+  //         setState(() {
+  //           orderItems = []; // Clear items on error
+  //         });
+  //       }
+  //     }
+  //   } else {
+  //     if (kDebugMode) {
+  //       print("##### DEBUG: fetchOrderItems - No active order, clearing items");
+  //     }
+  //     setState(() => _isLoading = false); // Build #1.0.104: Hide loader
+  //     if (mounted) {
+  //       setState(() {
+  //         orderItems = []; // Clear items if no active order
+  //         _listVersion++; // Build 1.0.214: Increment version when items change
+  //       });
+  //     }
+  //   }
+  // }
   Future<void> fetchOrderItems() async {
-
     final int requestId = ++_fetchOrderItemsRequestId;
-
     final activeId = orderHelper.activeOrderId;
 
     // FIX: Immediately clear orderItems when there is no active order
@@ -725,61 +928,21 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       return;
     }
 
-    // #region agent log
-    unawaited(_agentDebugLog(
-      hypothesisId: "H3",
-      location: "widget_order_panel.dart:fetchOrderItems:start",
-      message: "fetchOrderItems entry",
-      data: {
-        "activeOrderId": activeId,
-        "tabCount": tabs.length,
-        "hasActiveTab":
-        activeId != null && tabs.any((t) => t['orderId'] == activeId),
-      },
-    ));
-    // #endregion
-
-    // Tabs can lag behind activeOrderId (e.g. while _getOrderTabs runs, or offline-only).
-    // Never clear the cart just because the tab bar has not caught up yet.
-    if (!_tabsContainActiveOrder(activeId)) {
-      if (kDebugMode) {
-        print(
-          "⚠️ fetchOrderItems — active order not in tab bar; still loading by id: $activeId",
-        );
-      }
-    }
-
     if (kDebugMode) {
       print("##### DEBUG: fetchOrderItems 112233");
     }
     if (orderHelper.activeOrderId != null) {
       if (kDebugMode) {
-        print(
-            "##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
+        print("##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
       }
       try {
         final int oid = orderHelper.activeOrderId!;
-        // 1️⃣ Prefer offline storage; 2️⃣ SQLite — run both reads in parallel when offline may be empty.
+        // 1️⃣ Prefer offline storage
         final Future<List<Map<String, dynamic>>> offlineFuture =
         orderHelper.getOrderItemsFromOffline(oid);
-        final Future<List<Map<String, dynamic>>> ordersFuture =
-        orderHelper.getOrderById(oid);
         final offlineItems = await offlineFuture;
+
         if (requestId != _fetchOrderItemsRequestId) return;
-        // #region agent log
-        unawaited(_agentDebugLog(
-          hypothesisId: "H3",
-          location: "widget_order_panel.dart:fetchOrderItems:offlineRead",
-          message: "offline items read",
-          data: {
-            "activeOrderId": orderHelper.activeOrderId,
-            "offlineItemCount": offlineItems.length,
-            "firstItemKeys": offlineItems.isNotEmpty
-                ? offlineItems.first.keys.take(8).toList()
-                : <String>[],
-          },
-        ));
-        // #endregion
 
         // FIX: Verify that active order hasn't changed while fetching
         if (orderHelper.activeOrderId != oid) {
@@ -798,11 +961,84 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                 .map((e) => Map<String, dynamic>.from(e))
                 .toList();
 
+            // ✅ FIX: Map offline items with proper weight fields
+            final List<Map<String, dynamic>> mappedItems = [];
+
             for (int i = 0; i < offlineItems.length; i++) {
               final displayItem = Map<String, dynamic>.from(offlineItems[i]);
               final itemType = (displayItem['item_type'] ?? '').toString().toLowerCase();
+
+              // ✅ FIX: For weighted items, ensure weight fields are copied from stored products
+              if (itemType.contains('weighted')) {
+                // Find matching product in Hive to get weight fields
+                final itemName = (displayItem['item_name'] ?? '').toString();
+                final itemPrice = double.tryParse(displayItem['item_price']?.toString() ?? '0') ?? 0.0;
+
+                // Try to match by name and price
+                final match = storedProducts.firstWhere((p) {
+                  final pName = (p['name'] ?? '').toString();
+                  final pPrice = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+                  return pName == itemName && (pPrice - itemPrice).abs() < 0.01;
+                }, orElse: () => {});
+
+                if (match.isNotEmpty) {
+                  // ✅ CRITICAL FIX: Copy weight fields from stored product
+                  final weightQty = (match['weight_qty'] as num?)?.toDouble() ??
+                      (match['weightQty'] as num?)?.toDouble() ??
+                      (match['weight'] as num?)?.toDouble() ??
+                      0.0;
+
+                  // Get unit price from stored product or calculate
+                  final unitPrice = (match['unit_price'] as num?)?.toDouble() ??
+                      (match['regular_price'] as num?)?.toDouble() ??
+                      (match['sales_price'] as num?)?.toDouble() ??
+                      itemPrice;
+
+                  displayItem['weight_qty'] = weightQty;
+                  displayItem['weightQty'] = weightQty;
+                  displayItem['weight'] = weightQty;
+                  displayItem['unit_price'] = unitPrice;
+                  displayItem['regular_price'] = unitPrice;
+
+                  // Also update the price to match the stored product's price
+                  displayItem['item_price'] = match['price'] ?? itemPrice;
+
+                  print('🟢 fetchOrderItems: Fixed weight for "$itemName" → weightQty=$weightQty, unitPrice=$unitPrice');
+                } else {
+                  // Fallback: try to find by SKU
+                  final itemSku = (displayItem['sku'] ?? '').toString();
+                  if (itemSku.isNotEmpty) {
+                    final skuMatch = storedProducts.firstWhere((p) {
+                      final pSku = (p['sku'] ?? '').toString();
+                      return pSku == itemSku;
+                    }, orElse: () => {});
+
+                    if (skuMatch.isNotEmpty) {
+                      final weightQty = (skuMatch['weight_qty'] as num?)?.toDouble() ??
+                          (skuMatch['weightQty'] as num?)?.toDouble() ??
+                          (skuMatch['weight'] as num?)?.toDouble() ??
+                          0.0;
+
+                      final unitPrice = (skuMatch['unit_price'] as num?)?.toDouble() ??
+                          (skuMatch['regular_price'] as num?)?.toDouble() ??
+                          (skuMatch['sales_price'] as num?)?.toDouble() ??
+                          itemPrice;
+
+                      displayItem['weight_qty'] = weightQty;
+                      displayItem['weightQty'] = weightQty;
+                      displayItem['weight'] = weightQty;
+                      displayItem['unit_price'] = unitPrice;
+                      displayItem['regular_price'] = unitPrice;
+                      displayItem['item_price'] = skuMatch['price'] ?? itemPrice;
+
+                      print('🟢 fetchOrderItems: Fixed weight via SKU for "$itemName" → weightQty=$weightQty');
+                    }
+                  }
+                }
+              }
+
+              // Handle custom item tax fields
               if (itemType.contains('custom')) {
-                // Find matching product in Hive to get tax fields
                 final itemName = (displayItem['item_name'] ?? '').toString().toLowerCase();
                 final itemPrice = double.tryParse(displayItem['item_price']?.toString() ?? '0') ?? 0.0;
                 final match = storedProducts.firstWhere((p) {
@@ -822,27 +1058,30 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                   displayItem['tax_rate'] = taxRate;
                   displayItem['tax_class'] = match['tax_class'] ?? match['selected_category_tax_slug'] ?? '';
                   displayItem['item_tax'] = itemTax;
-                  offlineItems[i] = displayItem;
                 }
               }
+
+              mappedItems.add(displayItem);
             }
-          }
 
-          await orderHelper.loadData();
-          if (requestId != _fetchOrderItemsRequestId) return;
-          if (orderHelper.activeOrderId != oid) return;
+            await orderHelper.loadData();
+            if (requestId != _fetchOrderItemsRequestId) return;
+            if (orderHelper.activeOrderId != oid) return;
 
-          if (mounted) {
-            setState(() {
-              if (requestId != _fetchOrderItemsRequestId) return;
-              orderItems = List<Map<String, dynamic>>.from(offlineItems);
-              _listVersion++;
-              _currentOrderVersion++;
-            });
+            if (mounted) {
+              setState(() {
+                if (requestId != _fetchOrderItemsRequestId) return;
+                orderItems = List<Map<String, dynamic>>.from(mappedItems);
+                _listVersion++;
+                _currentOrderVersion++;
+              });
+            }
+            return;
           }
-          return;
         }
+
         // 2️⃣ Fallback to SQLite (synced/API orders)
+        final ordersFuture = orderHelper.getOrderById(oid);
         var orders = await ordersFuture;
         if (requestId != _fetchOrderItemsRequestId) return;
         // FIX: Double-check active order ID again after await
@@ -850,8 +1089,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
         if (orders.isEmpty) {
           if (kDebugMode) {
-            print(
-                "##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
+            print("##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
           }
           await orderHelper.clearPersistedCartSelection();
           if (mounted) {
@@ -866,10 +1104,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         var order = orders.first;
         if (kDebugMode) {
           print("##### DEBUG: fetchOrderItems - Retrieved ${order.length}");
-          print(
-              "##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
-          print(
-              "##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
+          print("##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
+          print("##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
         }
         List<Map<String, dynamic>> items =
         await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
@@ -877,15 +1113,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         if (orderHelper.activeOrderId != oid) return;
 
         if (kDebugMode) {
-          print(
-              "##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
+          print("##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
         }
 
         if (mounted) {
           setState(() {
             if (requestId != _fetchOrderItemsRequestId) return;
-            orderItems =
-            List<Map<String, dynamic>>.from(items); // Create mutable copy
+            orderItems = List<Map<String, dynamic>>.from(items); // Create mutable copy
             _listVersion++; // Build 1.0.214: Increment version when items change
           });
         }
@@ -1963,6 +2197,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           (product.variations ?? []).isNotEmpty ||
               hasVariantTag ||
               hasVariantMetaFlag;
+
       final bool hasProduceTag = (product.tags ?? []).any((t) {
         final name = (t.name ?? "").toString().toLowerCase().trim();
         final slug = (t.slug ?? "").toString().toLowerCase().trim();
@@ -2173,45 +2408,41 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       //   return; // critical: prevent normal quantity=1 addition below
       // }
 
+      // ======================================================
+// ⭐ PRODUCE / WEIGHTED ITEM HANDLING (SCANNER)
+// ======================================================
       if (hasProduceTag) {
-        final weightProvider =
-        Provider.of<WeightProvider>(context, listen: false);
+        final weightProvider = Provider.of<WeightProvider>(context, listen: false);
 
-        // Read live weight from scale
-        double liveWeight = 0.0;
+        // Read live weight in LBS (same as scale display + Custom Item tab)
+        double liveWeightLbs = 0.0;
         try {
           final parts = weightProvider.weightText.trim().split(' ');
           if (parts.isNotEmpty) {
-            liveWeight = double.tryParse(parts[0]) ?? 0.0;
+            liveWeightLbs = double.tryParse(parts[0]) ?? 0.0;
           }
         } catch (_) {}
 
-        // Convert lb → kg if needed
-        final double weightKg =
-        liveWeight > 0 ? liveWeight * 0.453592 : 0.0;
+        print('🟢 [SCANNER] Live Weight (lbs): $liveWeightLbs for produce item');
 
-        // Fallback weight
-        final double weightToUse =
-        weightKg > 0.00001 ? weightKg : 0.0001;
+        final double unitPrice = productPrice; // price per lb
+        final double finalPrice = (liveWeightLbs > 0)
+            ? unitPrice * liveWeightLbs
+            : unitPrice; // fallback
 
-        final double finalPrice = productPrice * weightToUse;
+        final double weightToUse = liveWeightLbs > 0 ? liveWeightLbs : 0.0001;
 
-        print(
-          "⚖️ Scale Weight: ${weightToUse.toStringAsFixed(3)}kg | "
-              "Price: ₹${finalPrice.toStringAsFixed(2)}",
-        );
-
-        if (weightKg <= 0.0001 && mounted) {
+        if (liveWeightLbs <= 0 && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Scale not detected — using 100g default'),
+              content: Text('Scale not detected — using default weight'),
               duration: Duration(seconds: 2),
             ),
           );
         }
 
         await orderHelper.addItemToOrder(
-          null,
+          productId,
           productName,
           image,
           finalPrice,
@@ -2219,21 +2450,28 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           productSku,
           activeOrderId,
           type: 'weighted',
-          weightQty: weightToUse,
+          weightQty: weightToUse,           // ← LBS (critical)
           productId: productId,
           variationId: -1,
+          unitPrice: unitPrice,             // per lb
           salesPrice: finalPrice,
-          regularPrice: productPrice,
-          unitPrice: productPrice,
+          regularPrice: unitPrice,
           isEbtEligible: isEbtEligible,
           onItemAdded: () async {
-            print("✅ Weighted produce item added successfully!");
+            print("✅ Weighted produce item added via scanner!");
+            // Optional: reset scale display
             weightProvider.updateWeight(0.0);
           },
         );
 
-        return; // Prevent normal quantity=1 addition below
+        await fetchOrderItems();
+        await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+
+        _isLoading = false;
+        if (mounted) setState(() {});
+        return; // ← Important: stop normal flow
       }
+
 //
 
 // ------------------------------------------------------
@@ -3076,7 +3314,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             0)
             .toDouble();
 
-// 3️⃣ Resolve Tax (all supported variations)
+       // 3️⃣ Resolve Tax (all supported variations)
         final tax = (orderData["tax"] ??
             orderData["wooTax"] ??
             orderData["order_tax"] ??
@@ -4814,8 +5052,708 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                 ],
                               ),
                               child: GestureDetector(
+                                // onTap: () async {
+                                //   if (isCouponOrPayout) return;
+                                //   if (kDebugMode) print("🟩 Tapped on product item (offline mode)");
+//                                   showDialog(
+//                                     context: context,
+//                                     barrierColor: Colors.black.withValues(alpha: 0.5),
+//                                     barrierDismissible: false,
+//                                     builder: (BuildContext dialogContext) {
+//                                       return EditProduct(
+//                                         orderItem: {
+//                                           AppDBConst.itemName: orderItem['item_name'],
+//                                           AppDBConst.itemUnitPrice: orderItem['item_price'],
+//                                           AppDBConst.itemRegularPrice: orderItem['item_price'],
+//                                           AppDBConst.itemCount: orderItem['items_count'],
+//                                           AppDBConst.itemImage: orderItem['item_image'],
+//                                           'product_id': orderItem['product_id'],
+//                                           'variation_id': orderItem['variation_id'],
+//                                           'sku': orderItem['sku'],
+//                                           'item_type': orderItem['item_type'],
+//                                         },
+//                                         onQuantityUpdated:
+//                                             (newQuantity) async {
+//                                           try {
+//                                             if (orderHelper
+//                                                 .activeOrderId ==
+//                                                 null) return;
+//
+//                                             final String orderKey =
+//                                             orderHelper.activeOrderId
+//                                                 .toString();
+//                                             final offlineBox =
+//                                                 StorageProvider
+//                                                     .offlineOrders;
+//                                             final rawOfflineOrder =
+//                                             await offlineBox
+//                                                 .get(orderKey);
+//
+//                                             if (rawOfflineOrder == null)
+//                                               return;
+//
+//                                             // Convert to editable map
+//                                             final Map<String, dynamic>
+//                                             offlineOrder =
+//                                             Map<String, dynamic>.from(
+//                                                 rawOfflineOrder);
+//
+//                                             // -------- NORMAL PRODUCTS ----------
+//                                             final List<
+//                                                 Map<String, dynamic>>
+//                                             products =
+//                                                 (offlineOrder['products']
+//                                                 as List?)
+//                                                     ?.map((e) => Map<
+//                                                     String,
+//                                                     dynamic>.from(e))
+//                                                     .toList() ??
+//                                                     [];
+//
+//                                             // -------- CUSTOM ITEMS ----------
+//                                             final List<
+//                                                 Map<String, dynamic>>
+//                                             customItems =
+//                                                 (offlineOrder['custom_items']
+//                                                 as List?)
+//                                                     ?.map((e) => Map<
+//                                                     String,
+//                                                     dynamic>.from(e))
+//                                                     .toList() ??
+//                                                     [];
+//
+//                                             final tappedItemType =
+//                                             (orderItem['item_type'] ??
+//                                                 'product')
+//                                                 .toString()
+//                                                 .toLowerCase();
+//                                             final productsLen =
+//                                                 products.length;
+//                                             final customLen =
+//                                                 customItems.length;
+//
+//                                             // Index-based update: orderItems = [products..., custom_items..., payouts..., cashbacks...]
+//                                             // Update only the tapped line so variants do not impact each other
+//                                             if (index < productsLen) {
+//                                               final product =
+//                                               products[index];
+//                                               final price =
+//                                                   double.tryParse(product[
+//                                                   'price']
+//                                                       ?.toString() ??
+//                                                       '0') ??
+//                                                       0.0;
+//
+//                                               // Before applying the quantity change, enforce merchant discount rule:
+//                                               // If there is a merchant discount and reducing qty would make
+//                                               // merchantDiscount > (new gross - orderDiscount), then block
+//                                               // the change, show a snackbar, and remove the merchant discount.
+//                                               final currentProducts = List<
+//                                                   Map<String,
+//                                                       dynamic>>.from(
+//                                                   products);
+//                                               double
+//                                               simulatedProductTotal =
+//                                               0.0;
+//                                               for (int i = 0;
+//                                               i <
+//                                                   currentProducts
+//                                                       .length;
+//                                               i++) {
+//                                                 final p =
+//                                                 currentProducts[i];
+//                                                 final pPrice = double
+//                                                     .tryParse(p['price']
+//                                                     ?.toString() ??
+//                                                     '0') ??
+//                                                     0.0;
+//                                                 final pQty = int.tryParse((i ==
+//                                                     index
+//                                                     ? newQuantity
+//                                                     : p['quantity'])
+//                                                     ?.toString() ??
+//                                                     '1') ??
+//                                                     1;
+//                                                 simulatedProductTotal +=
+//                                                     pPrice * pQty;
+//                                               }
+//
+//                                               double
+//                                               simulatedCustomTotal =
+//                                               0.0;
+//                                               for (final c
+//                                               in customItems) {
+//                                                 final cQty = int.tryParse(c[
+//                                                 'quantity']
+//                                                     ?.toString() ??
+//                                                     '1') ??
+//                                                     1;
+//                                                 final cPrice = double.tryParse(c[
+//                                                 'custom_item_price']
+//                                                     ?.toString() ??
+//                                                     c['amount']
+//                                                         ?.toString() ??
+//                                                     c['price']
+//                                                         ?.toString() ??
+//                                                     '0') ??
+//                                                     0.0;
+//                                                 simulatedCustomTotal +=
+//                                                     cPrice * cQty;
+//                                               }
+//
+//                                               final double simulatedGross = simulatedProductTotal +
+//                                                   simulatedCustomTotal +
+//                                                   (((offlineOrder['payouts']
+//                                                   as List?) ??
+//                                                       [])
+//                                                       .fold<double>(
+//                                                       0,
+//                                                           (s, p) =>
+//                                                       s +
+//                                                           (double.tryParse(p['amount']?.toString() ?? '0') ??
+//                                                               0.0))) +
+//                                                   (((offlineOrder['cashbacks']
+//                                                   as List?) ??
+//                                                       [])
+//                                                       .fold<double>(
+//                                                       0,
+//                                                           (s, c) =>
+//                                                       s +
+//                                                           (double.tryParse(c['amount']?.toString() ?? '0') ??
+//                                                               0.0)));
+//
+//                                               final double
+//                                               orderDiscountSim =
+//                                               (offlineOrder[
+//                                               'orderDiscount']
+//                                               is num)
+//                                                   ? (offlineOrder[
+//                                               'orderDiscount']
+//                                               as num)
+//                                                   .toDouble()
+//                                                   : 0.0;
+//                                               double merchantDiscountSim =
+//                                               (offlineOrder[
+//                                               'merchantDiscount']
+//                                               is num)
+//                                                   ? (offlineOrder[
+//                                               'merchantDiscount']
+//                                               as num)
+//                                                   .toDouble()
+//                                                   : 0.0;
+//
+//                                               final double
+//                                               maxAllowedDiscountSim =
+//                                               (simulatedGross -
+//                                                   orderDiscountSim)
+//                                                   .clamp(
+//                                                   0.0,
+//                                                   double
+//                                                       .infinity);
+//
+//                                               if (merchantDiscountSim >
+//                                                   maxAllowedDiscountSim) {
+//                                                 ScaffoldMessenger.of(
+//                                                     context)
+//                                                     .showSnackBar(
+//                                                   const SnackBar(
+//                                                     backgroundColor:
+//                                                     Colors.red,
+//                                                     content: Text(
+//                                                       'Reduce quantity not allowed: please remove merchant discount first.',
+//                                                       style: TextStyle(
+//                                                           color: Colors
+//                                                               .white),
+//                                                     ),
+//                                                   ),
+//                                                 );
+//
+//                                                 // Do not apply quantity change
+//                                                 return;
+//                                               }
+//
+//                                               product['quantity'] =
+//                                                   newQuantity;
+//                                               product['items_count'] =
+//                                                   newQuantity;
+//                                               product['subtotal'] =
+//                                                   price * newQuantity;
+//                                               if (kDebugMode) {
+//                                                 print(
+//                                                     "🟢 Updated PRODUCT → ${product['name'] ?? product['product_name']} | Qty: $newQuantity");
+//                                               }
+//                                             } else if (tappedItemType
+//                                                 .contains('custom') &&
+//                                                 index >= productsLen &&
+//                                                 index <
+//                                                     productsLen +
+//                                                         customLen) {
+//                                               final custom = customItems[
+//                                               index - productsLen];
+//                                               final price = double.tryParse(custom[
+//                                               'custom_item_price']
+//                                                   ?.toString() ??
+//                                                   custom['amount']
+//                                                       ?.toString() ??
+//                                                   custom['price']
+//                                                       ?.toString() ??
+//                                                   '0') ??
+//                                                   0.0;
+//                                               custom['quantity'] =
+//                                                   newQuantity;
+//                                               custom['items_count'] =
+//                                                   newQuantity;
+//                                               custom['subtotal'] =
+//                                                   price * newQuantity;
+//                                               if (kDebugMode) {
+//                                                 final customName = (custom[
+//                                                 'custom_item_name'] ??
+//                                                     custom[
+//                                                     'item_name'] ??
+//                                                     '')
+//                                                     .toString();
+//                                                 print(
+//                                                     "🟣 Updated CUSTOM ITEM → $customName | Qty: $newQuantity");
+//                                               }
+//                                             }
+//
+//                                             // Save updated lists back
+//                                             offlineOrder['products'] =
+//                                                 products;
+//                                             offlineOrder['custom_items'] =
+//                                                 customItems;
+//
+//                                             // Recalculate totals
+//                                             double productTotal = 0.0;
+//                                             for (final p in products) {
+//                                               final qty = int.tryParse(p[
+//                                               'quantity']
+//                                                   ?.toString() ??
+//                                                   '1') ??
+//                                                   1;
+//                                               final price = double
+//                                                   .tryParse(p['price']
+//                                                   ?.toString() ??
+//                                                   '0') ??
+//                                                   0.0;
+//                                               productTotal += price * qty;
+//                                             }
+//                                             for (final c in customItems) {
+//                                               final qty = int.tryParse(c[
+//                                               'quantity']
+//                                                   ?.toString() ??
+//                                                   '1') ??
+//                                                   1;
+//                                               final price = double.tryParse(
+//                                                   c['custom_item_price']
+//                                                       ?.toString() ??
+//                                                       c['amount']
+//                                                           ?.toString() ??
+//                                                       '0') ??
+//                                                   0.0;
+//                                               productTotal += price * qty;
+//                                             }
+//                                             double payoutsTotal = ((offlineOrder[
+//                                             'payouts']
+//                                             as List?) ??
+//                                                 [])
+//                                                 .fold<double>(
+//                                                 0,
+//                                                     (s, p) =>
+//                                                 s +
+//                                                     (double.tryParse(
+//                                                         p['amount']
+//                                                             ?.toString() ??
+//                                                             '0') ??
+//                                                         0.0));
+//                                             double cashbacksTotal = ((offlineOrder[
+//                                             'cashbacks']
+//                                             as List?) ??
+//                                                 [])
+//                                                 .fold<double>(
+//                                                 0,
+//                                                     (s, c) =>
+//                                                 s +
+//                                                     (double.tryParse(
+//                                                         c['amount']
+//                                                             ?.toString() ??
+//                                                             '0') ??
+//                                                         0.0));
+//                                             final grossTotal =
+//                                                 productTotal +
+//                                                     payoutsTotal +
+//                                                     cashbacksTotal;
+//                                             final orderDiscount = (offlineOrder[
+//                                             'orderDiscount']
+//                                             is num)
+//                                                 ? (offlineOrder[
+//                                             'orderDiscount']
+//                                             as num)
+//                                                 .toDouble()
+//                                                 : 0.0;
+//                                             final merchantDiscount =
+//                                             (offlineOrder[
+//                                             'merchantDiscount']
+//                                             is num)
+//                                                 ? (offlineOrder[
+//                                             'merchantDiscount']
+//                                             as num)
+//                                                 .toDouble()
+//                                                 : 0.0;
+//                                             final cashbackFee = (offlineOrder[
+//                                             'cashbackFee'] is num)
+//                                                 ? (offlineOrder[
+//                                             'cashbackFee']
+//                                             as num)
+//                                                 .toDouble()
+//                                                 : 0.0;
+//                                             double orderTax = 0.0;
+//                                             for (final p in products) {
+//                                               final String itemType =
+//                                               (p['item_type'] ??
+//                                                   p['type'] ??
+//                                                   '')
+//                                                   .toString()
+//                                                   .toLowerCase();
+//                                               final int qty = int.tryParse(p[
+//                                               'quantity']
+//                                                   ?.toString() ??
+//                                                   p['items_count']
+//                                                       ?.toString() ??
+//                                                   '1') ??
+//                                                   1;
+//                                               final double price = double
+//                                                   .tryParse(p['price']
+//                                                   ?.toString() ??
+//                                                   '0') ??
+//                                                   0.0;
+//
+//                                               if (!itemType
+//                                                   .contains('custom')) {
+//                                                 final int productId = int.tryParse(
+//                                                     (p['product_id'] ??
+//                                                         p['id'])
+//                                                         ?.toString() ??
+//                                                         '0') ??
+//                                                     0;
+//                                                 orderTax +=
+//                                                     getProductTaxFromHive(
+//                                                         productId,
+//                                                         price,
+//                                                         qty);
+//                                               } else {
+//                                                 orderTax +=
+//                                                     getCustomItemTax(
+//                                                       taxClass:
+//                                                       p['tax_class'] ??
+//                                                           '',
+//                                                       unitPrice: price,
+//                                                       qty: qty,
+//                                                       taxes:
+//                                                       await _assetDBHelper
+//                                                           .getTaxList(),
+//                                                       taxRate: p['tax_rate'],
+//                                                     );
+//                                               }
+//                                             }
+//                                             offlineOrder['order_tax'] =
+//                                                 orderTax;
+//
+// // Update net_total / net_payable
+//                                             offlineOrder['gross_total'] =
+//                                                 grossTotal;
+//                                             offlineOrder['net_total'] =
+//                                                 grossTotal -
+//                                                     orderDiscount -
+//                                                     merchantDiscount;
+//                                             offlineOrder['net_payable'] =
+//                                                 offlineOrder[
+//                                                 'net_total'] +
+//                                                     orderTax +
+//                                                     cashbackFee;
+//
+//                                             await offlineBox.put(
+//                                                 orderKey, offlineOrder);
+//                                             await orderHelper.loadData();
+//                                             OrderHelper
+//                                                 .notifyOrderPanelToRefresh();
+//
+// // 🖥 Update customer display with FRESH values
+//                                             final int orderId =
+//                                                 orderHelper
+//                                                     .activeOrderId ??
+//                                                     0;
+//                                             final List
+//                                             productsForDisplay =
+//                                             products.map((item) {
+//                                               return {
+//                                                 "name": item["name"] ??
+//                                                     item[
+//                                                     "product_name"] ??
+//                                                     "",
+//                                                 "quantity": item[
+//                                                 "quantity"] ??
+//                                                     item["items_count"] ??
+//                                                     1,
+//                                                 "price":
+//                                                 item["price"] ?? 0,
+//                                               };
+//                                             }).toList();
+//
+//                                             // await CustomerService.publishCartUpdate(
+//                                             //   orderId,
+//                                             //   productsForDisplay,
+//                                             //   subtotal: grossTotal,
+//                                             //   tax: orderTax,
+//                                             //   total: (offlineOrder['net_payable'] as num?)?.toDouble() ?? 0.0,
+//                                             // );
+//                                             // 🔁 Refresh UI instantly
+//                                             if (mounted) {
+//                                               setState(() {
+//                                                 // Rebuild products
+//                                                 final updatedProducts =
+//                                                 products.map((item) {
+//                                                   final price = double
+//                                                       .tryParse(item[
+//                                                   'price']
+//                                                       ?.toString() ??
+//                                                       '0') ??
+//                                                       0.0;
+//                                                   final qty = int.tryParse(
+//                                                       item['quantity']
+//                                                           ?.toString() ??
+//                                                           '1') ??
+//                                                       1;
+//
+//                                                   return {
+//                                                     'item_name': item[
+//                                                     'name'] ??
+//                                                         item[
+//                                                         'product_name'] ??
+//                                                         '',
+//                                                     'item_price': price,
+//                                                     'items_count': qty,
+//                                                     'item_sum_price':
+//                                                     price * qty,
+//                                                     'item_type':
+//                                                     'product',
+//                                                     'item_image':
+//                                                     resolveProductImageFromMap(
+//                                                         item),
+//                                                   };
+//                                                 }).toList();
+//
+//                                                 // Rebuild custom items
+//                                                 final updatedCustom =
+//                                                 customItems
+//                                                     .map((item) {
+//                                                   final price = double.tryParse(item[
+//                                                   'custom_item_price']
+//                                                       ?.toString() ??
+//                                                       item['amount']
+//                                                           ?.toString() ??
+//                                                       '0') ??
+//                                                       0.0;
+//                                                   final qty = int.tryParse(
+//                                                       item['quantity']
+//                                                           ?.toString() ??
+//                                                           '1') ??
+//                                                       1;
+//
+//                                                   return {
+//                                                     'item_name': item[
+//                                                     'custom_item_name'] ??
+//                                                         item[
+//                                                         'item_name'] ??
+//                                                         "",
+//                                                     'item_price': price,
+//                                                     'items_count': qty,
+//                                                     'item_sum_price':
+//                                                     price * qty,
+//                                                     'item_type':
+//                                                     'custom item',
+//                                                     'item_image': () {
+//                                                       final img =
+//                                                       resolveProductImageFromMap(
+//                                                           item);
+//                                                       return img
+//                                                           .isNotEmpty
+//                                                           ? img
+//                                                           : 'assets/custom.png';
+//                                                     }(),
+//                                                   };
+//                                                 }).toList();
+//
+//                                                 // Payout & Cashback maps intact
+//                                                 final updatedPayouts =
+//                                                 ((offlineOrder[
+//                                                 'payouts'] ??
+//                                                     []) as List)
+//                                                     .map((e) => Map<
+//                                                     String,
+//                                                     dynamic>.from(e))
+//                                                     .toList();
+//
+//                                                 final updatedCashbacks =
+//                                                 ((offlineOrder[
+//                                                 'cashbacks'] ??
+//                                                     []) as List)
+//                                                     .map((e) => Map<
+//                                                     String,
+//                                                     dynamic>.from(e))
+//                                                     .toList();
+//
+//                                                 // FINAL ORDER ITEMS
+//                                                 orderItems = [
+//                                                   ...updatedProducts,
+//                                                   ...updatedCustom,
+//                                                   ...updatedPayouts
+//                                                       .map((payout) => {
+//                                                     'item_name':
+//                                                     'Payout',
+//                                                     'item_price':
+//                                                     double.tryParse(payout['amount']?.toString() ??
+//                                                         '0') ??
+//                                                         0.0,
+//                                                     'items_count':
+//                                                     1,
+//                                                     'item_sum_price':
+//                                                     double.tryParse(payout['amount']?.toString() ??
+//                                                         '0') ??
+//                                                         0.0,
+//                                                     'item_image':
+//                                                     'assets/svg/payout.svg',
+//                                                     'item_type':
+//                                                     'payout',
+//                                                   }),
+//                                                   ...updatedCashbacks
+//                                                       .map((cb) => {
+//                                                     'item_name':
+//                                                     'Cashback',
+//                                                     'item_price':
+//                                                     double.tryParse(cb['amount']?.toString() ??
+//                                                         '0') ??
+//                                                         0.0,
+//                                                     'items_count':
+//                                                     1,
+//                                                     'item_sum_price':
+//                                                     double.tryParse(cb['amount']?.toString() ??
+//                                                         '0') ??
+//                                                         0.0,
+//                                                     'item_image': cb[
+//                                                     'product_image'] ??
+//                                                         cb['item_image'] ??
+//                                                         cb['image'] ??
+//                                                         "",
+//                                                     'item_type':
+//                                                     'cashback',
+//                                                   }),
+//                                                 ];
+//                                               });
+//                                             }
+//
+//                                             if (kDebugMode) {
+//                                               print(
+//                                                   "✅ Quantity updated for PRODUCT or CUSTOM ITEM");
+//                                             }
+//                                           } catch (e) {
+//                                             if (kDebugMode)
+//                                               print(
+//                                                   "❌ Failed updating quantity: $e");
+//                                           }
+//                                         },
+//                                         isDialog: true,
+//                                       );
+//                                     },
+//                                   );
+//                                 },
+
                                 onTap: () async {
                                   if (isCouponOrPayout) return;
+
+                                  // ── FIX: weighted items open AutoWeightPriceDialog on tap ──────
+                                  final String tappedItemType =
+                                  (orderItem['item_type'] ?? '').toString().toLowerCase();
+                                  final bool isWeightedItem = tappedItemType.contains('weighted');
+                                  if (isWeightedItem) {
+                                    final double unitPriceForDialog =
+                                        (orderItem['unit_price'] as num?)?.toDouble() ??
+                                            (orderItem['regular_price'] as num?)?.toDouble() ??
+                                            (orderItem['item_price'] as num?)?.toDouble() ??
+                                            0.0;
+                                    final String productNameForDialog =
+                                        orderItem['item_name']?.toString() ?? 'Weighted Item';
+
+                                    final result = await showDialog<Map<String, dynamic>>(
+                                      context: context,
+                                      barrierDismissible: false,
+                                      builder: (_) => AutoWeightPriceDialog(
+                                        productName: productNameForDialog,
+                                        unitPrice: unitPriceForDialog,
+                                      ),
+                                    );
+                                    if (result == null || !mounted) return;
+
+                                    final double newFinalPrice = result['finalPrice'] as double;
+                                    final double newWeight     = result['weight']     as double;
+
+                                    // Update the Hive offline order entry
+                                    if (orderHelper.activeOrderId == null) return;
+                                    final String orderKey = orderHelper.activeOrderId.toString();
+                                    final offlineBox = StorageProvider.offlineOrders;
+                                    final rawOfflineOrder = await offlineBox.get(orderKey);
+                                    if (rawOfflineOrder == null) return;
+
+                                    final Map<String, dynamic> offlineOrder =
+                                    Map<String, dynamic>.from(rawOfflineOrder);
+                                    final List<Map<String, dynamic>> products =
+                                        (offlineOrder['products'] as List?)
+                                            ?.map((e) => Map<String, dynamic>.from(e))
+                                            .toList() ??
+                                            [];
+
+                                    // Match by index (most reliable for weighted items)
+                                    if (index < products.length) {
+                                      products[index] = {
+                                        ...products[index],
+                                        'price':      newFinalPrice,
+                                        'weight_qty': newWeight,
+                                        'weightQty':  newWeight,
+                                        'weight':     newWeight,
+                                      };
+                                    }
+
+                                    offlineOrder['products'] = products;
+
+                                    // Recalculate gross total
+                                    double newGross = 0.0;
+                                    for (final p in products) {
+                                      final pQty   = (p['quantity'] as num?)?.toInt()    ?? 1;
+                                      final pPrice = (p['price']    as num?)?.toDouble() ?? 0.0;
+                                      newGross += pPrice * pQty;
+                                    }
+                                    final double existingDiscount =
+                                        (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+                                    final double existingMerchantDiscount =
+                                        (offlineOrder['merchantDiscount'] as num?)?.toDouble() ?? 0.0;
+                                    final double existingTax =
+                                        (offlineOrder['order_tax'] as num?)?.toDouble() ?? 0.0;
+                                    final double existingCashback =
+                                        (offlineOrder['cashbackFee'] as num?)?.toDouble() ?? 0.0;
+
+                                    offlineOrder['gross_total'] = newGross;
+                                    offlineOrder['net_total']   = newGross - existingDiscount - existingMerchantDiscount;
+                                    offlineOrder['net_payable'] =
+                                        offlineOrder['net_total'] + existingTax + existingCashback;
+
+                                    await offlineBox.put(orderKey, offlineOrder);
+                                    await orderHelper.loadData();
+                                    OrderHelper.notifyOrderPanelToRefresh();
+                                    await fetchOrderItems();
+                                    return; // skip the EditProduct dialog below
+                                  }
+                                  // ── END FIX ────────────────────────────────────────────────────
+
                                   if (kDebugMode) print("🟩 Tapped on product item (offline mode)");
                                   showDialog(
                                     context: context,
@@ -5522,40 +6460,147 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                             ),
                                             Row(
                                               children: [
+                                                // if (!isCouponOrPayout)
+                                                //   Builder(
+                                                //     builder: (_) {
+                                                //       final String itemTypeStr =
+                                                //       (orderItem['item_type'] ?? '').toString().toLowerCase();
+                                                //       final bool isWeightedRow = itemTypeStr.contains('weighted');
+                                                //       if (isWeightedRow) {
+                                                //         final dynamic rawQty = orderItem['display_qty'] ??
+                                                //             orderItem['weight_qty'] ??
+                                                //             orderItem['quantity'] ??
+                                                //             1;
+                                                //         final double qty = (rawQty is num)
+                                                //             ? rawQty.toDouble()
+                                                //             : double.tryParse(rawQty.toString()) ?? 1.0;
+                                                //         final double lineTotal =
+                                                //         ((orderItem['original_total'] ?? orderItem['item_price'] ?? 0) as num).toDouble();
+                                                //         final double unitPrice = qty > 0 ? lineTotal / qty : lineTotal;
+                                                //         return Text(
+                                                //           "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)} × $qty",
+                                                //           style: TextStyle(
+                                                //             color: themeHelper.themeMode == ThemeMode.dark
+                                                //                 ? ThemeNotifier.textDark
+                                                //                 : Colors.black54,
+                                                //             fontSize: 14,
+                                                //             fontWeight: FontWeight.bold,
+                                                //           ),
+                                                //         );
+                                                //       }
+                                                //       final double price =
+                                                //       ((orderItem['item_price'] ?? orderItem['price'] ?? 0) as num).toDouble();
+                                                //       final dynamic rawQty = orderItem['display_qty'] ??
+                                                //           orderItem['items_count'] ??
+                                                //           orderItem['quantity'] ??
+                                                //           1;
+                                                //       return Text(
+                                                //         "${TextConstants.currencySymbol}${price.toStringAsFixed(2)} × $rawQty",
+                                                //         style: TextStyle(
+                                                //           color: themeHelper.themeMode == ThemeMode.dark
+                                                //               ? ThemeNotifier.textDark
+                                                //               : Colors.black54,
+                                                //           fontSize: 14,
+                                                //           fontWeight: FontWeight.bold,
+                                                //         ),
+                                                //       );
+                                                //     },
+                                                //   ),
+
+                                                //Bala
+
                                                 if (!isCouponOrPayout)
                                                   Builder(
                                                     builder: (_) {
                                                       final String itemTypeStr =
                                                       (orderItem['item_type'] ?? '').toString().toLowerCase();
                                                       final bool isWeightedRow = itemTypeStr.contains('weighted');
+
                                                       if (isWeightedRow) {
-                                                        final dynamic rawQty = orderItem['display_qty'] ??
-                                                            orderItem['weight_qty'] ??
-                                                            orderItem['quantity'] ??
-                                                            1;
-                                                        final double qty = (rawQty is num)
-                                                            ? rawQty.toDouble()
-                                                            : double.tryParse(rawQty.toString()) ?? 1.0;
-                                                        final double lineTotal =
-                                                        ((orderItem['original_total'] ?? orderItem['item_price'] ?? 0) as num).toDouble();
-                                                        final double unitPrice = qty > 0 ? lineTotal / qty : lineTotal;
-                                                        return Text(
-                                                          "${TextConstants.currencySymbol}${unitPrice.toStringAsFixed(2)} × $qty",
-                                                          style: TextStyle(
-                                                            color: themeHelper.themeMode == ThemeMode.dark
-                                                                ? ThemeNotifier.textDark
-                                                                : Colors.black54,
-                                                            fontSize: 14,
-                                                            fontWeight: FontWeight.bold,
+                                                        // ✅ Get unit price (price per lb) from the item
+                                                        final double unitPricePerLb =
+                                                        ((orderItem['unit_price'] ?? orderItem['regular_price'] ?? orderItem['item_price'] ?? 0) as num)
+                                                            .toDouble();
+
+                                                        // ✅ Get weight from the stored fields
+                                                        dynamic weightValue = orderItem['weight_qty'] ??
+                                                            orderItem['weightQty'] ??
+                                                            orderItem['weight'] ??
+                                                            orderItem['item_weight'] ??
+                                                            0.0;
+
+                                                        double weightLbs = 0.0;
+                                                        if (weightValue != null) {
+                                                          if (weightValue is num) {
+                                                            weightLbs = weightValue.toDouble();
+                                                          } else if (weightValue is String) {
+                                                            weightLbs = double.tryParse(weightValue) ?? 0.0;
+                                                          }
+                                                        }
+
+                                                        // ✅ If weight is still 0, try to calculate from price and unit price
+                                                        if (weightLbs == 0.0 && unitPricePerLb > 0) {
+                                                          final double lineTotal = ((orderItem['item_price'] ?? orderItem['price'] ?? 0) as num).toDouble();
+                                                          weightLbs = lineTotal / unitPricePerLb;
+                                                        }
+
+                                                        // ✅ FIX: Calculate line total as unitPricePerLb * weightLbs
+                                                        final double lineTotal = unitPricePerLb * weightLbs;
+
+                                                        print('🟢 DISPLAY: unitPricePerLb=$unitPricePerLb, weightLbs=$weightLbs, lineTotal=$lineTotal');
+
+                                                        return RichText(
+                                                          text: TextSpan(
+                                                            style: TextStyle(
+                                                              color: themeHelper.themeMode == ThemeMode.dark
+                                                                  ? ThemeNotifier.textDark
+                                                                  : Colors.black54,
+                                                              fontSize: 13,
+                                                              fontWeight: FontWeight.bold,
+                                                            ),
+                                                            children: [
+                                                              TextSpan(
+                                                                text: "\$${unitPricePerLb.toStringAsFixed(2)}",
+                                                                style: TextStyle(
+                                                                  color: themeHelper.themeMode == ThemeMode.dark
+                                                                      ? ThemeNotifier.textDark
+                                                                      : Colors.black54,
+                                                                  fontSize: 14,
+                                                                  fontWeight: FontWeight.bold,
+                                                                ),
+                                                              ),
+                                                              TextSpan(
+                                                                text: " × ${weightLbs.toStringAsFixed(3)} lb",
+                                                                style: TextStyle(
+                                                                  color: themeHelper.themeMode == ThemeMode.dark
+                                                                      ? ThemeNotifier.textDark
+                                                                      : Colors.black54,
+                                                                  fontSize: 14,
+                                                                  fontWeight: FontWeight.bold,
+                                                                ),
+                                                              ),
+                                                              // TextSpan(
+                                                              //   text: " = \$${lineTotal.toStringAsFixed(2)}",
+                                                              //   style: TextStyle(
+                                                              //     fontWeight: FontWeight.w700,
+                                                              //     color: themeHelper.themeMode == ThemeMode.dark
+                                                              //         ? ThemeNotifier.textDark
+                                                              //         : ThemeNotifier.textLight,
+                                                              //   ),
+                                                              // ),
+                                                            ],
                                                           ),
                                                         );
                                                       }
+                                                      // Non-weighted items (original logic)
                                                       final double price =
-                                                      ((orderItem['item_price'] ?? orderItem['price'] ?? 0) as num).toDouble();
+                                                      ((orderItem['item_price'] ?? orderItem['price'] ?? 0) as num)
+                                                          .toDouble();
                                                       final dynamic rawQty = orderItem['display_qty'] ??
                                                           orderItem['items_count'] ??
                                                           orderItem['quantity'] ??
                                                           1;
+
                                                       return Text(
                                                         "${TextConstants.currencySymbol}${price.toStringAsFixed(2)} × $rawQty",
                                                         style: TextStyle(
@@ -6245,10 +7290,50 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                             // =======================================================
                             // 🔒 FREEZE SNAPSHOT FOR SUMMARY
                             // =======================================================
-                            final List<Map<String, dynamic>>
-                            summaryItems = workingItems
-                                .map((e) =>
-                            Map<String, dynamic>.from(e))
+                            // final List<Map<String, dynamic>>
+                            // summaryItems = workingItems
+                            //     .map((e) =>
+                            // Map<String, dynamic>.from(e))
+                            //     .toList();
+
+                            // =======================================================
+// 🔒 FREEZE SNAPSHOT FOR SUMMARY (WITH WEIGHT FIELDS)
+// =======================================================
+                            final List<Map<String, dynamic>> summaryItems = workingItems
+                                .map((e) {
+                              final Map<String, dynamic> item = Map<String, dynamic>.from(e);
+
+                              // 🔥 PRESERVE WEIGHT FIELDS FOR WEIGHTED ITEMS
+                              final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+                              if (itemType.contains('weighted')) {
+                                // Copy all weight-related fields from the original item
+                                item['weight_qty'] = e['weight_qty'] ?? e['weightQty'] ?? e['weight'] ?? 0.0;
+                                item['weightQty'] = e['weightQty'] ?? e['weight_qty'] ?? e['weight'] ?? 0.0;
+                                item['weight'] = e['weight'] ?? e['weight_qty'] ?? e['weightQty'] ?? 0.0;
+                                item['unit_price'] = e['unit_price'] ?? e['regular_price'] ?? e['item_price'] ?? 0.0;
+                                item['regular_price'] = e['regular_price'] ?? e['unit_price'] ?? e['item_price'] ?? 0.0;
+                                item['sales_price'] = e['sales_price'] ?? e['item_price'] ?? 0.0;
+
+                                // Calculate and store the line total
+                                final double unitPrice = (item['unit_price'] as num?)?.toDouble() ?? 0.0;
+                                final double weightQty = (item['weight_qty'] as num?)?.toDouble() ?? 0.0;
+                                if (unitPrice > 0 && weightQty > 0) {
+                                  final double lineTotal = unitPrice * weightQty;
+                                  item['line_total'] = lineTotal;
+                                  item['item_price'] = lineTotal; // Ensure the price reflects the total
+                                  item['item_sum_price'] = lineTotal;
+                                }
+
+                                // Debug print to verify
+                                print('🟢 SUMMARY ITEM: ${item['item_name']} | '
+                                    'unitPricePerLb=${item['unit_price']} | '
+                                    'weightLbs=${item['weight_qty']} | '
+                                    'lineTotal=${item['line_total']}');
+                              }
+
+                              // Also preserve for non-weighted items
+                              return item;
+                            })
                                 .toList();
 
                             // =======================================================

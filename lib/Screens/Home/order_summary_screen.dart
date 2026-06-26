@@ -338,9 +338,59 @@ Future<void> _mergeOrderSummaryLineItemsFromProductCache(
         if (lType.isEmpty || lType == 'product') {
           line['item_type'] = 'variant';
         }
+        // NEW: Merge meta_data (loyalty points etc.) from cached Indigo product
+        // === IMPROVED: Merge meta_data (loyalty points + other merchant data) ===
+        if (p != null) {
+          print('🔍 [Merge Meta] Found cached product for ID: ${p['fast_key_product_id'] ?? p['id']} | Name: ${p['name'] ?? p['fast_key_item_name']}');
+
+          dynamic meta = p['meta_data'] ?? p['metaData'];
+
+          if (meta is List) {
+            line['meta_data'] = List<Map<String, dynamic>>.from(meta);
+            print('✅ [Merge Meta] Copied meta_data List with ${meta.length} entries');
+          } else if (meta is Map) {
+            line['meta_data'] = [Map<String, dynamic>.from(meta)];
+            print('✅ [Merge Meta] Converted single meta Map to List');
+          } else {
+            // Try alternative keys
+            meta = p['metaData'] ?? p['metadata'] ?? p['meta'] ?? null;
+            if (meta is List) {
+              line['meta_data'] = List<Map<String, dynamic>>.from(meta);
+              print('✅ [Merge Meta] Found meta_data using fallback key');
+            } else {
+              print('⚠️ [Merge Meta] No meta_data found in cached product');
+            }
+          }
+
+          // Always provide fallback key
+          if (line['meta_data'] != null) {
+            line['metaData'] = line['meta_data'];
+          }
+
+          // Extract loyalty points + debug print
+          if (line['meta_data'] is List) {
+            bool foundLoyalty = false;
+            for (var m in line['meta_data']) {
+              if (m is Map && m['key'] == '_product_loyalty_points') {
+                final points = int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+                line['loyalty_points'] = points;
+                print('🎯 [Merge Meta] Loyalty Points Found: $points for ${p['name']}');
+                foundLoyalty = true;
+                break;
+              }
+            }
+            if (!foundLoyalty) {
+              print('ℹ️ [Merge Meta] No _product_loyalty_points found in meta_data');
+            }
+          }
+        } else {
+          print('⚠️ [Merge Meta] No cached product (p == null)');
+        }
+
       }
     }
   } catch (_) {}
+
 }
 
 /// Pending orders often load line items from SQLite without EBT/variation flags
@@ -568,6 +618,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   String? _activeSyncOrderKey;
   DateTime? _lastOrderSyncAt;
   String? _lastSyncedOrderKey;
+
+  double? _pendingTaxRefTax;
+  double? _pendingTaxRefBase;
+  double? _pendingTaxRefRate;
 
   double ebtTotal = 0.0;
   double payByEbt = 0.0; // ADD THIS
@@ -799,7 +853,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
         // final double nonEbtPaid = payByCash + payByOther;
 
-        final double nonEbtPaid = payByCash + payByOther+payByCard + merchantDiscount;
+        final double nonEbtPaid = payByCash + payByOther+payByCard ;
 
         final double overflowToEbt =
         nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
@@ -2487,6 +2541,206 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     await _mergeOrderSummaryLineItemsFromProductCache(orderItems);
   }
 
+
+  // === LOYALTY POINTS CALCULATION (FIXED + DEBUG) ===
+// FIX: Added Hive fallback so meta_data missing from orderItems is recovered
+//      from the offline order's products array. All other code unchanged.
+  void _calculateAndPrintLoyaltyPoints() async {
+    if (orderItems.isEmpty) {
+      print("⚠️ [Loyalty] No order items found");
+      return;
+    }
+
+    // --- FIX: Pre-load Hive products so we can recover meta_data ---
+    Map<String, List<Map<String, dynamic>>> _hiveMetaByName = {};
+    Map<String, List<Map<String, dynamic>>> _hiveMetaBySku  = {};
+
+    try {
+      final box = StorageProvider.offlineOrders;
+      final String orderKey = widget.offlineOrderId?.toString() ??
+          widget.orderId?.toString() ??
+          orderId?.toString() ??
+          "";
+
+      if (orderKey.isNotEmpty) {
+        final rawOrder = await box.get(orderKey);
+        if (rawOrder is Map) {
+          final hiveOrder = Map<String, dynamic>.from(rawOrder);
+          final hiveProducts = (hiveOrder['products'] as List?) ?? [];
+
+          for (final p in hiveProducts) {
+            if (p is! Map) continue;
+            final product = Map<String, dynamic>.from(p);
+            final metaRaw = product['meta_data'] ?? product['metaData'];
+            if (metaRaw == null) continue;
+
+            List<Map<String, dynamic>> metaList = [];
+            if (metaRaw is List) {
+              for (final m in metaRaw) {
+                if (m is Map) metaList.add(Map<String, dynamic>.from(m));
+              }
+            }
+            if (metaList.isEmpty) continue;
+
+            // Index by name (lowercase)
+            final name = (product['name'] ?? product['product_name'] ?? '')
+                .toString().toLowerCase().trim();
+            if (name.isNotEmpty) {
+              _hiveMetaByName[name] = metaList;
+            }
+
+            // Index by sku (lowercase)
+            final sku = (product['sku'] ?? product['item_sku'] ?? '')
+                .toString().toLowerCase().trim();
+            if (sku.isNotEmpty) {
+              _hiveMetaBySku[sku] = metaList;
+            }
+          }
+          print('🔍 [Loyalty] Hive fallback loaded: '
+              '${_hiveMetaByName.length} by name, '
+              '${_hiveMetaBySku.length} by sku');
+        }
+      }
+    } catch (e) {
+      print('⚠️ [Loyalty] Hive pre-load error (non-fatal): $e');
+    }
+    // --- END FIX ---
+
+    int totalLoyaltyPoints = 0;
+
+    for (var item in orderItems) {
+      final int qty =
+      (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+
+      int itemPoints = 0;
+
+      // Step 1: try meta_data already on the item (original logic, unchanged)
+      final meta = item['meta_data'];
+      if (meta is List) {
+        for (var m in meta) {
+          if (m is Map && m['key'] == '_product_loyalty_points') {
+            itemPoints = int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+            break;
+          }
+        }
+      } else if (meta is Map && meta['key'] == '_product_loyalty_points') {
+        itemPoints = int.tryParse(meta['value']?.toString() ?? '0') ?? 0;
+      }
+
+      // --- FIX: Step 2 – fall back to Hive when item has no meta_data ---
+      if (itemPoints == 0 && (_hiveMetaByName.isNotEmpty || _hiveMetaBySku.isNotEmpty)) {
+        final itemName = (item['item_name'] ?? item['fast_key_item_name'] ?? '')
+            .toString().toLowerCase().trim();
+        final itemSku  = (item['sku'] ?? item['item_sku'] ?? '')
+            .toString().toLowerCase().trim();
+
+        List<Map<String, dynamic>>? fallbackMeta;
+        if (itemName.isNotEmpty) fallbackMeta = _hiveMetaByName[itemName];
+        if (fallbackMeta == null && itemSku.isNotEmpty) {
+          fallbackMeta = _hiveMetaBySku[itemSku];
+        }
+
+        if (fallbackMeta != null) {
+          for (final m in fallbackMeta) {
+            if (m['key'] == '_product_loyalty_points') {
+              itemPoints =
+                  int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+              print('🔄 [Loyalty] Recovered meta from Hive for "$itemName" '
+                  '→ $itemPoints pts');
+              break;
+            }
+          }
+        }
+      }
+      // --- END FIX ---
+
+      final linePoints = qty * itemPoints;
+      item['loyalty_points'] = linePoints; // save per item (unchanged)
+
+      if (linePoints > 0) {
+        final itemName = (item['item_name'] ??
+            item['fast_key_item_name'] ??
+            'Unknown')
+            .toString();
+        print(
+            '🔹 [Loyalty] $itemName × $qty = $linePoints pts (per item: $itemPoints)');
+      }
+
+      totalLoyaltyPoints += linePoints;
+    }
+
+    // Store total on order level (unchanged)
+    _order['total_loyalty_points'] = totalLoyaltyPoints;
+
+    if (totalLoyaltyPoints > 0) {
+      print(
+          '🛒 [Loyalty] ORDER TOTAL LOYALTY POINTS = $totalLoyaltyPoints pts');
+    } else {
+      print('ℹ️ [Loyalty] No loyalty points found in this order');
+    }
+
+    // Refresh UI so the points row shows the new total
+    if (mounted) setState(() {});
+  }
+
+
+  // DEBUG ONLY - call this to find where loyalty data actually lives
+  Future<void> _debugPrintHiveOrderStructure() async {
+    try {
+      final box = StorageProvider.offlineOrders;
+      final String orderKey = widget.offlineOrderId?.toString() ??
+          widget.orderId?.toString() ??
+          orderId?.toString() ??
+          "";
+
+      print('🔎 [DEBUG] Looking for orderKey: $orderKey');
+
+      if (orderKey.isEmpty) {
+        print('🔎 [DEBUG] orderKey is EMPTY');
+        return;
+      }
+
+      final rawOrder = await box.get(orderKey);
+      if (rawOrder == null) {
+        print('🔎 [DEBUG] Hive entry is NULL for key: $orderKey');
+        // Print ALL keys in box to find correct one
+        final allKeys = await box.getKeys();
+        print('🔎 [DEBUG] All Hive keys: $allKeys');
+        return;
+      }
+
+      final hiveOrder = Map<String, dynamic>.from(rawOrder as Map);
+      print('🔎 [DEBUG] Hive order top-level keys: ${hiveOrder.keys.toList()}');
+
+      // Check products array
+      final products = (hiveOrder['products'] as List?) ?? [];
+      print('🔎 [DEBUG] products[] count: ${products.length}');
+
+      for (int i = 0; i < products.length; i++) {
+        if (products[i] is! Map) continue;
+        final p = Map<String, dynamic>.from(products[i] as Map);
+        print('🔎 [DEBUG] products[$i] keys: ${p.keys.toList()}');
+        print('🔎 [DEBUG] products[$i] name: ${p['name'] ?? p['product_name']}');
+        print('🔎 [DEBUG] products[$i] meta_data: ${p['meta_data']}');
+        print('🔎 [DEBUG] products[$i] loyalty_points: ${p['loyalty_points']}');
+      }
+
+      // Also check orderItems (what fetchOrderItems returns)
+      print('🔎 [DEBUG] orderItems count: ${orderItems.length}');
+      for (int i = 0; i < orderItems.length; i++) {
+        final item = orderItems[i];
+        print('🔎 [DEBUG] orderItems[$i] keys: ${item.keys.toList()}');
+        print('🔎 [DEBUG] orderItems[$i] name: ${item['item_name']}');
+        print('🔎 [DEBUG] orderItems[$i] meta_data: ${item['meta_data']}');
+        print('🔎 [DEBUG] orderItems[$i] loyalty_points: ${item['loyalty_points']}');
+        print('🔎 [DEBUG] orderItems[$i] product_id: ${item['product_id']}');
+      }
+
+    } catch (e, st) {
+      print('🔎 [DEBUG] Error: $e\n$st');
+    }
+  }
+
   static const MethodChannel customerDisplayChannel = MethodChannel(
     'com.example.flutter_customer_display/sunmi_display',
   );
@@ -2605,17 +2859,39 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     double n(dynamic v) =>
         v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
 
-    double posAuto = n(item['_pos_auto_discount']) +
-        n(item['auto_discount']) +
-        n(item['autoDiscount']) +
-        n(item['auto_discount_total']) +
-        n(item['display_auto_discount']);
+    // 🔥 FIX: Take MAX value for AUTO discounts
+    List<double> autoDiscountValues = [
+      n(item['_pos_auto_discount']),
+      n(item['auto_discount']),
+      n(item['autoDiscount']),
+      n(item['auto_discount_total']),
+      n(item['display_auto_discount']),
+    ];
+    double posAuto = autoDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 
-    double combo =
-        n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
-    double multipack =
-        n(item['multipack_discount_total']) + n(item['multipackDiscountTotal']);
-    double mixmatch = n(item['mixmatch_discount_total']);
+    // 🔥 FIX: Take MAX value for COMBO discounts
+    List<double> comboDiscountValues = [
+      n(item['combo_discount_total']),
+      n(item['comboDiscountTotal']),
+      n(item['combo_discount']),
+    ];
+    double combo = comboDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
+
+    // 🔥 FIX: Take MAX value for MULTIPACK discounts
+    List<double> multipackDiscountValues = [
+      n(item['multipack_discount_total']),
+      n(item['multipackDiscountTotal']),
+      n(item['multipack_discount']),
+    ];
+    double multipack = multipackDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
+
+    // 🔥 FIX: Take MAX value for MIXMATCH discounts
+    List<double> mixmatchDiscountValues = [
+      n(item['mixmatch_discount_total']),
+      n(item['mixMatchDiscountTotal']),
+      n(item['mixmatch_discount']),
+    ];
+    double mixmatch = mixmatchDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 
     // ADD: proportional share of order-level coupon discount
     double couponShare = _proportionalCouponDiscountForItem(item);
@@ -2633,7 +2909,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       lineDiscount = posAuto + combo + multipack + mixmatch;
     }
 
-    return lineDiscount + couponShare; // ✅ Include coupon share
+    return lineDiscount + couponShare;
   }
 
   Future<void> _recalculateTaxOnDiscountedItems() async {
@@ -2657,58 +2933,111 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       double n(dynamic v) =>
           v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
 
-      double posAuto = n(item['_pos_auto_discount']) +
-          n(item['auto_discount']) +
-          n(item['autoDiscount']) +
-          n(item['auto_discount_total']) +
-          n(item['display_auto_discount']);
+      List<double> autoDiscountValues = [
+        n(item['_pos_auto_discount']),
+        n(item['auto_discount']),
+        n(item['autoDiscount']),
+        n(item['auto_discount_total']),
+        n(item['display_auto_discount']),
+      ];
+      double posAuto = autoDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 
-      double combo =
-          n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
-      double multipack = n(item['multipack_discount_total']) +
-          n(item['multipackDiscountTotal']);
-      double mixmatch = n(item['mixmatch_discount_total']);
+      List<double> comboDiscountValues = [
+        n(item['combo_discount_total']),
+        n(item['comboDiscountTotal']),
+        n(item['combo_discount']),
+      ];
+      double combo = comboDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 
-      final String dtype =
-      (item['discount_type'] ?? '').toString().toLowerCase();
+      List<double> multipackDiscountValues = [
+        n(item['multipack_discount_total']),
+        n(item['multipackDiscountTotal']),
+        n(item['multipack_discount']),
+      ];
+      double multipack = multipackDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 
-      if (dtype == 'auto' || dtype.isEmpty) return posAuto;
+      List<double> mixmatchDiscountValues = [
+        n(item['mixmatch_discount_total']),
+        n(item['mixMatchDiscountTotal']),
+        n(item['mixmatch_discount']),
+      ];
+      double mixmatch = mixmatchDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
+
+      final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
+
+      if (dtype.isEmpty) {
+        double total = posAuto + combo + multipack + mixmatch;
+        return total > 0 ? total : 0.0;
+      }
+
+      if (dtype == 'auto') return posAuto;
       if (dtype == 'combo' || dtype == 'mixmatch')
         return combo > 0 ? combo : posAuto;
       if (dtype == 'multipack') return multipack > 0 ? multipack : posAuto;
       return posAuto + combo + multipack + mixmatch;
     }
 
-    double totalTax = 0.0;
-    bool anyItemHasDiscountOrTaxRate = false;
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔥 STEP 1: Calculate product totals and tax rates (exclude payout/cashback)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    double productGrossTotal = 0.0;
+    double productDiscountTotal = 0.0;
+    double payoutCashbackTotal = 0.0;
     double totalLineGross = 0.0;
     double totalLineDiscount = 0.0;
+    double totalTaxFromItems = 0.0;
+    bool anyItemHasDiscountOrTaxRate = false;
+    double weightedTaxRate = 0.0;
+
+    // 🔥 NEW: Track product tax rates directly from Hive like the order panel
+    final Map<int, double> _hiveTaxRateByProductId = {};
+    final Map<int, String> _hiveTaxStatusByProductId = {};
+
+    // Load tax rates from offline order products
+    if (offlineOrder != null) {
+      final hiveProducts = (offlineOrder?['products'] as List?) ?? [];
+      for (final p in hiveProducts) {
+        final int pid = int.tryParse(
+            (p['product_id'] ?? p['id'] ?? '0').toString()) ?? 0;
+        if (pid <= 0) continue;
+        final double rate = double.tryParse(p['tax_rate']?.toString() ?? '0') ?? 0.0;
+        final String status = (p['tax_status'] ?? 'taxable').toString().toLowerCase();
+        if (rate > 0) _hiveTaxRateByProductId[pid] = rate;
+        _hiveTaxStatusByProductId[pid] = status;
+      }
+    }
 
     for (final item in orderItems) {
-      final String itemType =
-      (item['item_type'] ?? '').toString().toLowerCase();
-      final String itemName =
-      (item['item_name'] ?? '').toString().toLowerCase();
+      final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+      final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
 
       if (itemType.contains('discount') ||
           itemType.contains('coupon') ||
-          itemType.contains('payout') ||
-          itemType.contains('cashback') ||
           itemType.contains('loyalty') ||
           itemName.contains('merchant discount')) {
         continue;
       }
+
+      final bool isPayout = itemType.contains('payout') || itemName.contains('payout');
+      final bool isCashback = itemType.contains('cashback') || itemName.contains('cashback');
+      final bool isPayoutOrCashback = isPayout || isCashback;
 
       final double unitPrice = toDouble(item['item_price'] ?? item['price']);
       final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
       final double lineTotal = unitPrice * qty;
 
       final double itemDiscount = lineItemOnlyDiscount(item);
-      final double taxableBase =
-      (lineTotal - itemDiscount).clamp(0.0, double.infinity);
+      final double taxableBase = (lineTotal - itemDiscount).clamp(0.0, double.infinity);
 
       totalLineGross += lineTotal;
       totalLineDiscount += itemDiscount;
+
+      if (!isPayoutOrCashback) {
+        productGrossTotal += lineTotal;
+        productDiscountTotal += itemDiscount;
+      } else {
+        payoutCashbackTotal += lineTotal;
+      }
 
       if (itemDiscount > 0) anyItemHasDiscountOrTaxRate = true;
 
@@ -2718,126 +3047,129 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (taxRate > 0) {
         anyItemHasDiscountOrTaxRate = true;
         itemTax = taxableBase * taxRate;
+        if (taxableBase > 0) {
+          weightedTaxRate += (taxableBase * taxRate);
+        }
       } else {
         final double rawTax = toDouble(item['item_tax'] ?? item['tax_amount']);
         if (rawTax > 0 && lineTotal > 0) {
           anyItemHasDiscountOrTaxRate = true;
           itemTax = rawTax * (taxableBase / lineTotal);
+          if (taxableBase > 0) {
+            weightedTaxRate += (taxableBase * (rawTax / lineTotal));
+          }
+        }
+        // 🔥 FIX: If no tax found, try to get from Hive product map
+        else if (itemTax <= 0) {
+          final int productId = int.tryParse((item['product_id'] ?? 0).toString()) ?? 0;
+          if (productId > 0) {
+            final double hiveTaxRate = _hiveTaxRateByProductId[productId] ?? 0.0;
+            if (hiveTaxRate > 0 && taxableBase > 0) {
+              itemTax = (taxableBase * hiveTaxRate) / 100.0;
+              weightedTaxRate += (taxableBase * (hiveTaxRate / 100.0));
+              anyItemHasDiscountOrTaxRate = true;
+            }
+          }
         }
       }
 
-      totalTax += itemTax;
+      totalTaxFromItems += itemTax;
     }
 
-    totalTax = double.parse(totalTax.toStringAsFixed(4));
+    // Calculate the weighted average tax rate
+    final double totalTaxableBase = productGrossTotal - productDiscountTotal;
+    if (totalTaxableBase > 0) {
+      weightedTaxRate = weightedTaxRate / totalTaxableBase;
+    } else {
+      weightedTaxRate = 0.0;
+    }
 
-    final double serverTax = widget.orderTax;
+    totalTaxFromItems = double.parse(totalTaxFromItems.toStringAsFixed(4));
 
-    final double netAfterDiscount =
-        totalLineGross - totalLineDiscount + discount + merchantDiscount;
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔥 STEP 2: Calculate Merchant Discount on PRODUCTS ONLY
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    final String mdType = offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+    final double productNetAfterDiscounts = productGrossTotal - productDiscountTotal;
 
-    double finalTax;
+    if (mdType == 'percentage' && merchantDiscountPercentage > 0 && productNetAfterDiscounts > 0) {
+      merchantDiscount = -((productNetAfterDiscounts * merchantDiscountPercentage) / 100.0);
+      merchantDiscount = double.parse(merchantDiscount.toStringAsFixed(2));
+    } else {
+      merchantDiscount = 0.0;
+    }
 
-    if (!anyItemHasDiscountOrTaxRate) {
-      // ── ONLY scale tax by coupon ratio when coupon was applied in THIS session.
-      // For pending/reloaded orders, isCouponAppliedFromApi is false,
-      // so we skip scaling and return the server tax as-is (e.g. $6.36).
-      if (serverTax > 0 && discount < 0 && isCouponAppliedFromApi) {
-        final double originalGross = widget.grossTotal;
-        if (originalGross > 0) {
-          final double taxableNet =
-          (originalGross + discount).clamp(0.0, double.infinity);
-          finalTax = serverTax * (taxableNet / originalGross);
-        } else {
-          finalTax = 0.0;
-        }
-      } else {
-        finalTax = serverTax > 0 ? serverTax : totalTax;
-      }
-      if (kDebugMode) {
-        print('── TAX: No item-level data. finalTax=$finalTax');
-      }
-    } else if (totalTax <= 0 && serverTax > 0) {
-      if (netAfterDiscount > 0.005) {
-        finalTax = serverTax;
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔥 STEP 3: Calculate TAX - CORRECTED VERSION
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    double finalTax = 0.0;
+
+    final double couponDiscount = discount < 0 ? discount.abs() : 0.0;
+    final double taxableNetAmount = (productNetAfterDiscounts + merchantDiscount - couponDiscount).clamp(0.0, double.infinity);
+
+    print("🔧 TAX CALCULATION - CORRECTED:");
+    print("   📍 productGrossTotal: $productGrossTotal");
+    print("   📍 productDiscountTotal: $productDiscountTotal");
+    print("   📍 productNetAfterDiscounts: $productNetAfterDiscounts");
+    print("   📍 merchantDiscount: $merchantDiscount");
+    print("   📍 couponDiscount: $couponDiscount");
+    print("   📍 taxableNetAmount: $taxableNetAmount");
+    print("   📍 weightedTaxRate: ${(weightedTaxRate * 100).toStringAsFixed(2)}%");
+    print("   📍 totalTaxFromItems: $totalTaxFromItems");
+    print("   ───────────────────────────────────────────────");
+
+    // 🔥 PRIMARY METHOD: Calculate tax directly from the weighted tax rate
+    // This is what the order panel does - it uses the tax rate from Hive
+    if (weightedTaxRate > 0 && taxableNetAmount > 0) {
+      print("   ✅ Calculating tax directly from weighted tax rate");
+      print("   🧮 Calculation: $taxableNetAmount × ${(weightedTaxRate * 100).toStringAsFixed(2)}%");
+      finalTax = roundTaxHalfUp(taxableNetAmount * weightedTaxRate);
+      print("   🧾 Final tax: $finalTax");
+    }
+    // SECONDARY METHOD: If we have item tax data, use proportional scaling
+    else if (anyItemHasDiscountOrTaxRate && totalTaxFromItems > 0 && productGrossTotal > 0) {
+      final double originalBase = productNetAfterDiscounts;
+      if (originalBase > 0) {
+        print("   ✅ Using item tax data with proportional scaling");
+        print("   🧮 Calculation: $totalTaxFromItems × ($taxableNetAmount / $originalBase)");
+        print("   🧮 Ratio: ${(taxableNetAmount / originalBase).toStringAsFixed(4)}");
+        double scaledTax = totalTaxFromItems * (taxableNetAmount / originalBase);
+        finalTax = roundTaxHalfUp(scaledTax);
+        print("   🧾 Final tax: $finalTax");
       } else {
         finalTax = 0.0;
       }
-      if (kDebugMode) {
-        print(
-            '── TAX: Recalc=0, server=$serverTax, net=$netAfterDiscount → finalTax=$finalTax');
-      }
-    } else {
-      if (discount < 0 && totalLineGross > 0) {
-        final double postCouponBase =
-        (totalLineGross - totalLineDiscount + discount)
-            .clamp(0.0, double.infinity);
-        final double preCouponBase =
-        (totalLineGross - totalLineDiscount).clamp(0.01, double.infinity);
-        totalTax = totalTax * (postCouponBase / preCouponBase);
-        totalTax = double.parse(totalTax.toStringAsFixed(4));
-      }
-      finalTax = totalTax;
-      if (kDebugMode) {
-        print('── TAX: Using recalculated value: $finalTax');
-      }
+    }
+    // TERTIARY METHOD: Calculate from product gross using weighted tax rate
+    else if (weightedTaxRate > 0 && productGrossTotal > 0) {
+      print("   ✅ Calculating tax from product gross with weighted tax rate");
+      print("   🧮 Calculation: $taxableNetAmount × ${(weightedTaxRate * 100).toStringAsFixed(2)}%");
+      finalTax = roundTaxHalfUp(taxableNetAmount * weightedTaxRate);
+      print("   🧾 Final tax: $finalTax");
+    }
+    // FALLBACK: Use server tax
+    else {
+      print("   ⚠️ Fallback: Using server tax directly");
+      print("   📍 widget.orderTax: ${widget.orderTax}");
+      finalTax = widget.orderTax;
+      print("   🧾 Final tax: $finalTax");
     }
 
-    if (kDebugMode) {
-      print('── TAX RECALCULATION COMPLETE ──');
-      print('   Gross Total        : $totalLineGross');
-      print('   Line Discounts     : $totalLineDiscount');
-      print('   Coupon/Order Disc  : $discount');
-      print('   Net After Discount : $netAfterDiscount');
-      print('   Server Tax         : $serverTax');
-      print('   Recalculated Tax   : $totalTax');
-      print('   Final Tax Used     : $finalTax');
-    }
+    // Ensure we have a reasonable tax value
+    finalTax = double.parse(finalTax.toStringAsFixed(2));
 
-    // Recalculate percentage merchant discount dynamically
-    final String mdType =
-        offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
-    if (mdType == 'percentage' && merchantDiscountPercentage > 0) {
-      double base = totalLineGross - totalLineDiscount + discount;
-      if (base > 0) {
-        merchantDiscount = -((base * merchantDiscountPercentage) / 100.0);
-      } else {
-        merchantDiscount = 0.0;
-      }
-    }
+    print("   ───────────────────────────────────────────────");
+    print("   🎯 FINAL TAX: $finalTax");
+    print("   ✅ Expected tax rate applied to taxable amount");
 
-    double calculatedPerc = 0.0;
-    if (mdType == 'percentage' && merchantDiscountPercentage > 0) {
-      calculatedPerc = merchantDiscountPercentage;
-    } else if (mdType == 'fixed' && merchantDiscount.abs() > 0) {
-      double base = totalLineGross - totalLineDiscount + discount;
-      if (base > 0) {
-        calculatedPerc = (merchantDiscount.abs() / base) * 100.0;
-      }
-    }
-// Only scale tax by merchant discount percentage when we have item-level tax data.
-    // When using server tax directly (anyItemHasDiscountOrTaxRate == false),
-    // the server already computed tax on the pre-merchant-discount base,
-    // so applying the percentage reduction again would double-count it.
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔥 STEP 4: Calculate final totals
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    final double newNetTotal = grossTotal + discount + merchantDiscount;
+    final double newNetPayable = newNetTotal + finalTax + cashbackFee;
 
-    if (calculatedPerc > 0 && anyItemHasDiscountOrTaxRate) {
-      finalTax = finalTax * (1 - calculatedPerc / 100.0);
-      finalTax = roundTaxHalfUp(finalTax);
-    }
-
-
-    // final double newNetTotal = grossTotal + discount + merchantDiscount;
-
-    // Merchant Discount is shown separately after NetTotal
-
-    final double newNetTotal = grossTotal + discount;
-
-    final double newNetPayable = newNetTotal + finalTax + cashbackFee + merchantDiscount;
-
-    // final double newNetPayable = newNetTotal + finalTax + cashbackFee;
-
-    final bool totalsChanged = (finalTax - tax).abs() > 0.00005 ||
-        (newNetPayable - computedNetPayable).abs() > 0.00005;
+    final bool totalsChanged = (finalTax - tax).abs() > 0.000005 ||
+        (newNetPayable - computedNetPayable).abs() > 0.000005;
     if (!totalsChanged) return;
 
     setState(() {
@@ -2850,11 +3182,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         balanceAmount = newNetPayable;
       }
     });
-
-    // ✅ FIX: Recalculate EBT proportionally after merchant discount changes net payable
-    _recalculateEbtTotalAfterDiscount();
-    if (mounted) setState(() {});
-
 
     final String orderKey = widget.offlineOrderId?.toString() ??
         widget.orderId?.toString() ??
@@ -2876,6 +3203,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             offlineOrder["balance_amount"] = newNetPayable;
             offlineOrder["remaining_balance"] = newNetPayable;
           }
+          offlineOrder["merchantDiscount"] = merchantDiscount.abs();
+          offlineOrder["merchant_discount"] = merchantDiscount.abs();
+          offlineOrder["merchantDiscountPercentage"] = merchantDiscountPercentage;
+          offlineOrder["NetTotal"] = newNetTotal;
+          offlineOrder["net_total"] = newNetTotal;
+
           await box.put(orderKey, offlineOrder);
           if (kDebugMode) {
             print(
@@ -2899,7 +3232,35 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
+
 // ─────────────────────────────────────────────────────────────────────────────
+
+  Future<void> _loadLatestMerchantDiscount() async {
+    final key = (widget.offlineOrderId ?? orderId ?? 0).toString();
+    final raw = await StorageProvider.offlineOrders.get(key);
+
+    if (raw != null && raw is Map) {
+      final mdRaw = raw['merchantDiscount'] ??
+          raw['merchant_discount'] ??
+          raw['_merchant_discount'] ?? 0;
+
+      final double mdVal = (mdRaw is num)
+          ? mdRaw.toDouble()
+          : double.tryParse(mdRaw.toString()) ?? 0.0;
+
+      setState(() {
+        merchantDiscount = mdVal.abs();           // Positive for UI display
+        merchantDiscountPercentage = (raw['merchantDiscountPercentage'] as num?)?.toDouble() ?? 0.0;
+
+        // Also update internal map
+        _order[AppDBConst.merchantDiscount] = -mdVal;
+        _order["merchantDiscount"] = -mdVal;
+        _order["merchant_discount"] = -mdVal;
+      });
+
+      print("🔄 Loaded fresh merchant discount from Hive: $merchantDiscount (was stale before)");
+    }
+  }
 
   Future<void> _recalculateGrossAndNetFromLineItemDiscounts() async {
     if (orderItems.isEmpty) return;
@@ -2951,14 +3312,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
 
-      double autoDiscount = [
-        item['auto_discount'],
-        item['auto_discount_total'],
-        item['autoDiscount'],
-        item['autoDiscountTotal'],
-        item['display_auto_discount'],
-        item['_pos_auto_discount'],
-      ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
+      // 🔥 FIX: Take MAX value instead of SUM to prevent double counting
+      List<double> discountValues = [
+        toDouble(item['auto_discount']),
+        toDouble(item['auto_discount_total']),
+        toDouble(item['autoDiscount']),
+        toDouble(item['autoDiscountTotal']),
+        toDouble(item['display_auto_discount']),
+        toDouble(item['_pos_auto_discount']),
+      ];
+
+      double autoDiscount = discountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 
       double comboDiscount = [
         item['combo_discount_total'],
@@ -3016,12 +3380,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     if (kDebugMode) {
       print('── LINE-ITEM DISCOUNT RECALCULATION ──');
       print('   New Gross For Display : $newGrossForDisplay');
+      print('   Total Line Discounts  : $totalLineItemDiscount');
       print('   NetTotal (pre-merchant) : $newNetTotal');
       print('   Merchant Discount     : $merchantDiscount');
       print('   New Net Payable       : $newNetPayable');
+
     }
 
-    // After the existing setState block in _recalculateGrossAndNetFromLineItemDiscounts()
     setState(() {
       grossTotal = newGrossForDisplay;
       NetTotal = newNetTotal;
@@ -3032,27 +3397,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         balanceAmount = newNetPayable;
       }
     });
-
-// ✅ FIX: recompute payable using the correct tax already set by _recalculateTaxOnDiscountedItems
-// tax variable already holds the merchant-discount-adjusted correct value (e.g. 2.70)
-// newNetPayable was computed with stale tax — recalculate it now
-    final double correctedNetPayable = NetTotal + tax + cashbackFee + merchantDiscount;
-// Note: NetTotal = grossTotal + discount (no merchantDiscount), so add it here
-// Actually NetTotal already includes merchantDiscount per your formula — use:
-    final double fixedNetPayable = NetTotal + tax + cashbackFee;
-    if ((fixedNetPayable - computedNetPayable).abs() > 0.005) {
-      setState(() {
-        computedNetPayable = fixedNetPayable;
-        orderTotal = fixedNetPayable;
-        if (tenderAmount <= 0) {
-          balanceAmount = fixedNetPayable;
-        }
-      });
-    }
-
-    // ADD after the fixedNetPayable setState block (around line with fixedNetPayable check)
-    _recalculateEbtTotalAfterDiscount();
-    if (mounted) setState(() {});
 
     final String orderKey = widget.offlineOrderId?.toString() ??
         widget.orderId?.toString() ??
@@ -3092,14 +3436,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 🔥 CRITICAL FIX: Update customer display when merchant discount changes
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Update customer display when merchant discount changes
     final bool merchantDiscountChanged = (merchantDiscount - previousMerchantDiscount).abs() > 0.01;
     final bool netPayableChanged = (computedNetPayable - previousComputedNetPayable).abs() > 0.01;
 
     if (merchantDiscountChanged || netPayableChanged) {
-      // Update customer display with latest merchant discount values
       await _updateCustomerDisplayWithMerchantDiscount();
       if (widget.offlineOrderId != null) {
         await CustomerDisplayHelper.updateCustomerDisplay(
@@ -3129,6 +3470,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
     }
   }
+
+
 
   @override
   void initState() {
@@ -3228,6 +3571,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     ScannerGuard.isCouponPopupOpen = true;
 
+
+    orderItems = List.from(widget.orderItems); // ensure copy
+
+    // IMPORTANT: Call after merges
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _mergeOrderSummaryLineItemsFromProductCache(orderItems);
+       _mergeOrderSummaryLineItemsFromHive(orderItems, offlineOrder); // if exists
+
+      _calculateAndPrintLoyaltyPoints();   // ← ADD THIS
+      if (mounted) setState(() {});
+    });
+
     orderItems =
         widget.orderItems.map((e) => Map<String, dynamic>.from(e)).toList();
     grossTotal = widget.grossTotal;
@@ -3312,6 +3667,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
 
       await _enrichOrderItemsFromHiveProducts();
+      await _debugPrintHiveOrderStructure();
+
+      _calculateAndPrintLoyaltyPoints();
       await _recalculateTaxOnDiscountedItems();
       if (!widget.itemPricesAlreadyAdjusted) {
         await _recalculateGrossAndNetFromLineItemDiscounts();
@@ -7483,6 +7841,29 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                             _buildOrderCalculation(
                                 TextConstants.change,
                                 '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
+                            // After Change Amount Row
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  "Order Earned Points",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.amber[800],
+                                  ),
+                                ),
+                                Text(
+                                  "${_order['total_loyalty_points'] ?? 0} pts",
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.amber[700],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
@@ -7691,6 +8072,321 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
+//   Widget _buildOrderItem(int index) {
+//     final themeHelper = Provider.of<ThemeNotifier>(context);
+//     final orderItem = orderItems[index];
+//
+//     final String itemType =
+//         orderItem['item_type']?.toString().toLowerCase() ?? '';
+//     final String itemNameLower =
+//     (orderItem['item_name']?.toString() ?? '').toLowerCase();
+//
+//     // Hide merchant discount line-items from the list (keep it in totals section).
+//     if (itemType.contains('discount') ||
+//         itemNameLower.contains('merchant discount')) {
+//       return const SizedBox.shrink();
+//     }
+//
+//     final bool isPayout = itemType.contains(TextConstants.payoutText);
+//     final bool isCoupon = itemType.contains(TextConstants.couponText);
+//     final bool isCashback = itemType.contains("cashback");
+//     final bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+//
+//     // Parse variation_id: Woo/Hive use variation_id; SQLite uses item_variation_id.
+//     final int varId = _orderSummaryLineVariationId(orderItem);
+//     final bool hasVariationId = varId > 0;
+//
+//     // Only show variant icon for actual product line items (not payout/coupon/custom/cashback)
+//     final bool isProductItem = !isPayoutOrCoupon;
+//     final bool isVariantFlag =
+//         orderItem['is_variant'] == true || orderItem['is_variant'] == 1;
+//     // item_variation_custom_name is populated from API even for simple lines
+//     // (fallback is the full line-item name), so never treat name alone as variant.
+//     final bool isVariant = isProductItem &&
+//         (isVariantFlag ||
+//             (itemType == 'variant' || itemType == 'variation') ||
+//             hasVariationId);
+//
+//     final bool isEbtEligible = _orderSummaryLineEbtEligible(orderItem);
+//
+//     final String itemName = orderItem['item_name']?.toString() ?? '';
+//     final double itemPrice = (orderItem['item_price'] ?? 0).toDouble();
+//     final int itemCount = (orderItem['items_count'] ?? 0).toInt();
+//
+//     final double originalTotal = (orderItem['item_sum_price'] ?? 0).toDouble();
+//
+//     // --------------------------------------------------
+//     // ✅ DISCOUNT EXTRACTION
+//     // --------------------------------------------------
+//     // -----------------------------
+// // DISCOUNT EXTRACTION
+// // -----------------------------
+//     final String discountType =
+//         orderItem['discount_type']?.toString().toLowerCase() ?? '';
+//
+//     double _num(dynamic value) {
+//       if (value is num) return value.toDouble();
+//       return double.tryParse(value?.toString() ?? '') ?? 0.0;
+//     }
+//
+//     // Pending/offline orders may use *_total or camelCase keys.
+//     double autoDiscount = _num(orderItem['auto_discount']) != 0
+//         ? _num(orderItem['auto_discount'])
+//         : _num(orderItem['auto_discount_total']) != 0
+//         ? _num(orderItem['auto_discount_total'])
+//         : _num(orderItem['autoDiscount']) != 0
+//         ? _num(orderItem['autoDiscount'])
+//         : _num(orderItem['autoDiscountTotal']) != 0
+//         ? _num(orderItem['autoDiscountTotal'])
+//         : _num(orderItem['display_auto_discount']);
+//
+//     double comboDiscount = [
+//       orderItem['combo_discount_total'],
+//       orderItem['comboDiscountTotal'],
+//       orderItem['combo_discount'],
+//     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
+//
+//     double mixMatchDiscount = [
+//       orderItem['mixmatch_discount_total'],
+//       orderItem['mixMatchDiscountTotal'],
+//       orderItem['mixmatch_discount'],
+//     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
+//
+//     double multipackDiscount = [
+//       orderItem['multipack_discount_total'],
+//       orderItem['multipackDiscountTotal'],
+//       orderItem['multipack_discount'],
+//     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
+//
+//     /// 🔥 FIX: backend sometimes moves discount into auto_discount
+//     if (discountType == 'mixmatch' &&
+//         autoDiscount > 0 &&
+//         mixMatchDiscount == 0) {
+//       mixMatchDiscount = autoDiscount;
+//       autoDiscount = 0;
+//     }
+//
+//     if (discountType == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
+//       comboDiscount = autoDiscount;
+//       autoDiscount = 0;
+//     }
+//
+//     if (discountType == 'multipack' &&
+//         autoDiscount > 0 &&
+//         multipackDiscount == 0) {
+//       multipackDiscount = autoDiscount;
+//       autoDiscount = 0;
+//     }
+//
+//     /// Flags
+//     final bool hasAutoDiscount = autoDiscount > 0;
+//     final bool isComboDiscount = comboDiscount > 0 || mixMatchDiscount > 0;
+//     final bool isMultipackDiscount = multipackDiscount > 0;
+//
+//     /// Final price
+//     final double finalItemTotal = originalTotal -
+//         autoDiscount -
+//         comboDiscount -
+//         mixMatchDiscount -
+//         multipackDiscount;
+//
+//     print(
+//       "SUMMARY ITEM -> ${orderItem['item_name']} "
+//           "TYPE:$discountType "
+//           "AUTO:$autoDiscount "
+//           "COMBO:$comboDiscount "
+//           "MIX:$mixMatchDiscount "
+//           "MULTIPACK:$multipackDiscount",
+//     );
+//     return Column(
+//       children: [
+//         Padding(
+//           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+//           child: SizedBox(
+//             height: 40,
+//             child: Row(
+//               crossAxisAlignment: CrossAxisAlignment.start,
+//               children: [
+//                 /// LEFT + CENTER COLUMN
+//                 Expanded(
+//                   child: Column(
+//                     crossAxisAlignment: CrossAxisAlignment.start,
+//                     children: [
+//                       /// ROW 1 — NAME + QTY
+//                       SizedBox(
+//                         height: 16,
+//                         child: Row(
+//                           children: [
+//                             SizedBox(
+//                               width: 150,
+//                               child: Text(
+//                                 itemName.length > 30
+//                                     ? '${itemName.substring(0, 30)}...'
+//                                     : itemName,
+//                                 maxLines: 1,
+//                                 overflow: TextOverflow.ellipsis,
+//                                 style: TextStyle(
+//                                   fontSize: 12.5,
+//                                   height: 1.0,
+//                                   fontWeight: FontWeight.bold,
+//                                   color: themeHelper.themeMode == ThemeMode.dark
+//                                       ? ThemeNotifier.textDark
+//                                       : ThemeNotifier.textLight,
+//                                 ),
+//                               ),
+//                             ),
+//                             const SizedBox(width: 8),
+//                             if (!isPayoutOrCoupon)
+//                               Text(
+//                                 "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
+//                                 style: TextStyle(
+//                                   fontSize: 14,
+//                                   height: 1.0,
+//                                   fontWeight: FontWeight.bold,
+//                                   color: themeHelper.themeMode == ThemeMode.dark
+//                                       ? ThemeNotifier.textDark
+//                                       : Colors.black87,
+//                                 ),
+//                               ),
+//                           ],
+//                         ),
+//                       ),
+//
+//                       /// ROW 2 — BADGES
+//                       /// ROW 2 — BADGES
+//                       if (isEbtEligible ||
+//                           isVariant ||
+//                           hasAutoDiscount ||
+//                           isComboDiscount ||
+//                           isMultipackDiscount)
+//                         SizedBox(
+//                           height: 12,
+//                           child: Row(
+//                             children: [
+//                               if (isEbtEligible)
+//                                 Container(
+//                                   height: 14,
+//                                   padding:
+//                                   const EdgeInsets.symmetric(horizontal: 6),
+//                                   alignment: Alignment.center,
+//                                   decoration: BoxDecoration(
+//                                     color: Colors.green,
+//                                     borderRadius: BorderRadius.circular(3),
+//                                   ),
+//                                   child: const Text(
+//                                     "EBT",
+//                                     style: TextStyle(
+//                                       fontSize: 8,
+//                                       color: Colors.white,
+//                                       fontWeight: FontWeight.bold,
+//                                     ),
+//                                   ),
+//                                 ),
+//                               if (isVariant) ...[
+//                                 const SizedBox(width: 5),
+//                                 SvgPicture.asset(
+//                                   SvgUtils.variationIcon,
+//                                   height: 8,
+//                                   width: 8,
+//                                 ),
+//                               ],
+//                               if (hasAutoDiscount) ...[
+//                                 const SizedBox(width: 5),
+//                                 _discountBadge(
+//                                   "Autodiscount",
+//                                   Colors.red,
+//                                   amount: autoDiscount,
+//                                 ),
+//                               ],
+//                               if (isComboDiscount) ...[
+//                                 const SizedBox(width: 5),
+//                                 _discountBadge(
+//                                   "combo discount",
+//                                   Colors.orange,
+//                                   amount: comboDiscount + mixMatchDiscount,
+//                                 ),
+//                               ],
+//                               if (isMultipackDiscount) ...[
+//                                 const SizedBox(width: 5),
+//                                 _discountBadge(
+//                                   "Multipack",
+//                                   Colors.blue,
+//                                   amount: multipackDiscount,
+//                                 ),
+//                               ],
+//                             ],
+//                           ),
+//                         ),
+//                     ],
+//                   ),
+//                 ),
+//
+//                 /// RIGHT PRICE COLUMN
+//                 SizedBox(
+//                   //width: 55,
+//                   child: Column(
+//                     crossAxisAlignment: CrossAxisAlignment.start,
+//                     children: [
+//                       /// FINAL PRICE
+//                       SizedBox(
+//                         height: 16,
+//                         child: Text(
+//                           isCoupon || isPayout
+//                               ? "-${TextConstants.currencySymbol}${originalTotal.abs().toStringAsFixed(2)}"
+//                               : "${TextConstants.currencySymbol}${finalItemTotal.toStringAsFixed(2)}",
+//                           style: TextStyle(
+//                             fontSize: 14,
+//                             height: 1.0,
+//                             fontWeight: FontWeight.bold,
+//                             color: isCoupon || isPayout
+//                                 ? Colors.red
+//                                 : themeHelper.themeMode == ThemeMode.dark
+//                                 ? ThemeNotifier.textDark
+//                                 : ThemeNotifier.textLight,
+//                           ),
+//                         ),
+//                       ),
+//
+//                       /// STRIKED ORIGINAL
+//                       SizedBox(
+//                         height: 12,
+//                         child: ((hasAutoDiscount ||
+//                             isComboDiscount ||
+//                             isMultipackDiscount) &&
+//                             !isPayoutOrCoupon)
+//                             ? Text(
+//                           "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
+//                           style: const TextStyle(
+//                             fontSize: 12,
+//                             height: 1.0,
+//                             color: Colors.grey,
+//                             decoration: TextDecoration.lineThrough,
+//                           ),
+//                         )
+//                             : const SizedBox.shrink(),
+//                       ),
+//
+//                       const SizedBox(height: 12),
+//                     ],
+//                   ),
+//                 ),
+//               ],
+//             ),
+//           ),
+//         ),
+//
+//         /// ✅ DIVIDER — NOW IT WILL SHOW
+//         Divider(
+//           height: 1,
+//           thickness: 0.8,
+//           color: themeHelper.themeMode == ThemeMode.dark
+//               ? Colors.black26
+//               : Colors.grey.shade300,
+//         ),
+//       ],
+//     );
+//   }
+
   Widget _buildOrderItem(int index) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final orderItem = orderItems[index];
@@ -7711,6 +8407,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final bool isCashback = itemType.contains("cashback");
     final bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
 
+    // 🔥 CHECK IF WEIGHTED ITEM
+    final bool isWeightedItem = itemType.contains('weighted');
+
     // Parse variation_id: Woo/Hive use variation_id; SQLite uses item_variation_id.
     final int varId = _orderSummaryLineVariationId(orderItem);
     final bool hasVariationId = varId > 0;
@@ -7719,8 +8418,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final bool isProductItem = !isPayoutOrCoupon;
     final bool isVariantFlag =
         orderItem['is_variant'] == true || orderItem['is_variant'] == 1;
-    // item_variation_custom_name is populated from API even for simple lines
-    // (fallback is the full line-item name), so never treat name alone as variant.
     final bool isVariant = isProductItem &&
         (isVariantFlag ||
             (itemType == 'variant' || itemType == 'variation') ||
@@ -7734,12 +8431,28 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final double originalTotal = (orderItem['item_sum_price'] ?? 0).toDouble();
 
+    // 🔥 EXTRACT WEIGHT DATA FOR WEIGHTED ITEMS
+    double weightQty = 0.0;
+    double unitPrice = 0.0;
+    if (isWeightedItem) {
+      weightQty = (orderItem['weight_qty'] ??
+          orderItem['weightQty'] ??
+          orderItem['weight'] ??
+          0.0).toDouble();
+      unitPrice = (orderItem['unit_price'] ??
+          orderItem['regular_price'] ??
+          orderItem['item_price'] ??
+          0.0).toDouble();
+
+      print('🟢 DISPLAY ITEM: ${orderItem['item_name']} | '
+          'unitPricePerLb=$unitPrice | '
+          'weightLbs=$weightQty | '
+          'lineTotal=${unitPrice * weightQty}');
+    }
+
     // --------------------------------------------------
     // ✅ DISCOUNT EXTRACTION
     // --------------------------------------------------
-    // -----------------------------
-// DISCOUNT EXTRACTION
-// -----------------------------
     final String discountType =
         orderItem['discount_type']?.toString().toLowerCase() ?? '';
 
@@ -7748,7 +8461,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       return double.tryParse(value?.toString() ?? '') ?? 0.0;
     }
 
-    // Pending/offline orders may use *_total or camelCase keys.
     double autoDiscount = _num(orderItem['auto_discount']) != 0
         ? _num(orderItem['auto_discount'])
         : _num(orderItem['auto_discount_total']) != 0
@@ -7777,10 +8489,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       orderItem['multipack_discount'],
     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
 
-    /// 🔥 FIX: backend sometimes moves discount into auto_discount
-    if (discountType == 'mixmatch' &&
-        autoDiscount > 0 &&
-        mixMatchDiscount == 0) {
+    if (discountType == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
       mixMatchDiscount = autoDiscount;
       autoDiscount = 0;
     }
@@ -7790,33 +8499,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       autoDiscount = 0;
     }
 
-    if (discountType == 'multipack' &&
-        autoDiscount > 0 &&
-        multipackDiscount == 0) {
+    if (discountType == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
       multipackDiscount = autoDiscount;
       autoDiscount = 0;
     }
 
-    /// Flags
     final bool hasAutoDiscount = autoDiscount > 0;
     final bool isComboDiscount = comboDiscount > 0 || mixMatchDiscount > 0;
     final bool isMultipackDiscount = multipackDiscount > 0;
 
-    /// Final price
     final double finalItemTotal = originalTotal -
         autoDiscount -
         comboDiscount -
         mixMatchDiscount -
         multipackDiscount;
 
-    print(
-      "SUMMARY ITEM -> ${orderItem['item_name']} "
-          "TYPE:$discountType "
-          "AUTO:$autoDiscount "
-          "COMBO:$comboDiscount "
-          "MIX:$mixMatchDiscount "
-          "MULTIPACK:$multipackDiscount",
-    );
     return Column(
       children: [
         Padding(
@@ -7856,23 +8553,87 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                             ),
                             const SizedBox(width: 8),
                             if (!isPayoutOrCoupon)
-                              Text(
-                                "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  height: 1.0,
-                                  fontWeight: FontWeight.bold,
-                                  color: themeHelper.themeMode == ThemeMode.dark
-                                      ? ThemeNotifier.textDark
-                                      : Colors.black87,
-                                ),
+                              Builder(
+                                builder: (_) {
+                                  // 🔥 FOR WEIGHTED ITEMS - SHOW WEIGHT INFO
+                                  if (isWeightedItem && weightQty > 0 && unitPrice > 0) {
+                                    final double lineTotal = unitPrice * weightQty;
+                                    return Text(
+                                      "\$${unitPrice.toStringAsFixed(2)} × ${weightQty.toStringAsFixed(3)} lb",
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        height: 1.0,
+                                        fontWeight: FontWeight.bold,
+                                        color: themeHelper.themeMode == ThemeMode.dark
+                                            ? ThemeNotifier.textDark
+                                            : Colors.black87,
+                                      ),
+                                    );
+                                  }
+                                  // 🔥 NORMAL ITEMS
+                                  return Text(
+                                    "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} × $itemCount",
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      height: 1.0,
+                                      fontWeight: FontWeight.bold,
+                                      color: themeHelper.themeMode == ThemeMode.dark
+                                          ? ThemeNotifier.textDark
+                                          : Colors.black87,
+                                    ),
+                                  );
+                                },
                               ),
                           ],
                         ),
                       ),
 
-                      /// ROW 2 — BADGES
-                      /// ROW 2 — BADGES
+                      /// ROW 2 — WEIGHT BADGE (for weighted items)
+                      // if (isWeightedItem && weightQty > 0)
+                      //   SizedBox(
+                      //     height: 12,
+                      //     child: Row(
+                      //       children: [
+                      //         Container(
+                      //           height: 14,
+                      //           padding: const EdgeInsets.symmetric(horizontal: 6),
+                      //           alignment: Alignment.center,
+                      //           decoration: BoxDecoration(
+                      //             color: Colors.orange,
+                      //             borderRadius: BorderRadius.circular(3),
+                      //           ),
+                      //           child: Text(
+                      //             "${weightQty.toStringAsFixed(3)} lb",
+                      //             style: const TextStyle(
+                      //               fontSize: 8,
+                      //               color: Colors.white,
+                      //               fontWeight: FontWeight.bold,
+                      //             ),
+                      //           ),
+                      //         ),
+                      //         const SizedBox(width: 5),
+                      //         Container(
+                      //           height: 14,
+                      //           padding: const EdgeInsets.symmetric(horizontal: 6),
+                      //           alignment: Alignment.center,
+                      //           decoration: BoxDecoration(
+                      //             color: Colors.blue.shade300,
+                      //             borderRadius: BorderRadius.circular(3),
+                      //           ),
+                      //           child: Text(
+                      //             "\$${unitPrice.toStringAsFixed(2)}/lb",
+                      //             style: const TextStyle(
+                      //               fontSize: 8,
+                      //               color: Colors.white,
+                      //               fontWeight: FontWeight.bold,
+                      //             ),
+                      //           ),
+                      //         ),
+                      //       ],
+                      //     ),
+                      //   ),
+
+                      /// ROW 2 — BADGES (existing)
                       if (isEbtEligible ||
                           isVariant ||
                           hasAutoDiscount ||
@@ -7885,8 +8646,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               if (isEbtEligible)
                                 Container(
                                   height: 14,
-                                  padding:
-                                  const EdgeInsets.symmetric(horizontal: 6),
+                                  padding: const EdgeInsets.symmetric(horizontal: 6),
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(
                                     color: Colors.green,
@@ -7942,7 +8702,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                 /// RIGHT PRICE COLUMN
                 SizedBox(
-                  //width: 55,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -7952,6 +8711,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         child: Text(
                           isCoupon || isPayout
                               ? "-${TextConstants.currencySymbol}${originalTotal.abs().toStringAsFixed(2)}"
+                              : isWeightedItem
+                              ? "${TextConstants.currencySymbol}${(unitPrice * weightQty).toStringAsFixed(2)}"
                               : "${TextConstants.currencySymbol}${finalItemTotal.toStringAsFixed(2)}",
                           style: TextStyle(
                             fontSize: 14,
@@ -7984,8 +8745,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         )
                             : const SizedBox.shrink(),
                       ),
-
-                      const SizedBox(height: 12),
                     ],
                   ),
                 ),
@@ -7994,7 +8753,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           ),
         ),
 
-        /// ✅ DIVIDER — NOW IT WILL SHOW
+        /// DIVIDER
         Divider(
           height: 1,
           thickness: 0.8,
@@ -10911,9 +11670,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
 
-      // Sync to server
-      // final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
-
       if (result == null || result is! Map<String, dynamic>) {
         offlineOrder["coupon_response"] = originalCouponResponse;
         await box.put(orderKey, offlineOrder);
@@ -10956,21 +11712,33 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       _enrichRedeemCouponIdsFromWoo(offlineOrder, result, code);
       await box.put(orderKey, offlineOrder);
 
-      // ✅ UPDATE UI - Same logic as remove coupon
+      // ============================================================
+      // ✅ FIX: RECALCULATE TAX AFTER DISCOUNT IS APPLIED
+      // ============================================================
+
+      // Step 1: Update discount value first
       setState(() {
         discount = (newDiscount != 0) ? -newDiscount.abs() : 0.0;
-        tax = newTax;
-        //Raghu--**
-        // Recalculate NetTotal and computedNetPayable with same formula
+        isCouponAppliedFromApi = true;
+      });
+
+      // Step 2: Recalculate tax based on discounted items
+      await _recalculateTaxOnDiscountedItems();
+
+      // Step 3: Recalculate gross/net from line item discounts
+      if (!widget.itemPricesAlreadyAdjusted) {
+        await _recalculateGrossAndNetFromLineItemDiscounts();
+      }
+
+      // Step 4: Final totals update
+      setState(() {
         NetTotal = grossTotal + discount + merchantDiscount;
         computedNetPayable = NetTotal + tax + cashbackFee;
-        orderTotal = newTotal;
+        orderTotal = computedNetPayable;
         balanceAmount = computedNetPayable - tenderAmount;
         if (balanceAmount < 0) balanceAmount = 0.0;
 
-        isCouponAppliedFromApi = true;
-
-        // ✅ CRITICAL FIX: Restore merchant discount values (they should NOT change with coupon)
+        // ✅ Restore merchant discount values
         merchantDiscount = originalMerchantDiscount;
         merchantDiscountPercentage = originalMerchantDiscountPercentage;
       });
@@ -10980,21 +11748,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       offlineOrder["merchantDiscountPercentage"] = originalMerchantDiscountPercentage;
       offlineOrder["merchantDiscountType"] = originalMerchantDiscountType;
       await box.put(orderKey, offlineOrder);
-      //Raghu---**
-      // ✅ Recalculate with discounts
-      await _recalculateTaxOnDiscountedItems();
-      if (!widget.itemPricesAlreadyAdjusted) {
-        await _recalculateGrossAndNetFromLineItemDiscounts();
-      }
-
-      // ✅ Final recalculation
-      setState(() {
-        NetTotal = grossTotal + discount + merchantDiscount;
-        computedNetPayable = NetTotal + tax + cashbackFee;
-        orderTotal = computedNetPayable;
-        balanceAmount = computedNetPayable - tenderAmount;
-        if (balanceAmount < 0) balanceAmount = 0.0;
-      });
 
       // ✅ Update customer display
       if (localOrderId != null) {
@@ -11013,7 +11766,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     } catch (e) {
       print("❌ Apply coupon error: $e");
-      // Restore logic
+      // Restore logic...
       try {
         final box = StorageProvider.offlineOrders;
         final String orderKey = widget.orderId?.toString() ??
@@ -11049,13 +11802,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
+
   Future<void> _recalculateMerchantDiscount() async {
     // Get merchant discount type and percentage from offline order
     final String mdType = offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
     final num mdPercentage = offlineOrder?['merchantDiscountPercentage'] as num? ?? merchantDiscountPercentage;
     //Raghu--**
     // Calculate current base (Gross)
-    final double baseAmount = grossTotal;
+    final double baseAmount = grossTotal  ;
 
     if (mdType == 'percentage' && mdPercentage > 0) {
       // Recalculate merchant discount based on new base amount
@@ -13016,6 +13770,586 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     return printerDB.first;
   }
 
+//   Future _preparePrintTicket() async {
+//     if (kDebugMode) {
+//       print("OrderSummaryScreen _preparePrintTicket call print receipt");
+//     }
+//
+//     var printerData = await loadPrinterData();
+//     var header = printerData?[AppDBConst.receiptHeaderText] ?? "";
+//     var footer = printerData?[AppDBConst.receiptFooterText] ?? "";
+//     var logo = printerData?[AppDBConst.receiptIconPath] ?? "";
+//
+//     bytes = [];
+//     final ticket = await _printerSettings.getTicket();
+//
+//     // -------------------------------
+//     // LOGO (unchanged)
+//     // -------------------------------
+//     final ByteData data;
+//     if (logo != "") {
+//       data = await GlobalUtility.fileToByteData(File(logo)) ??
+//           await rootBundle.load('assets/Bubbas_logo.png');
+//     } else {
+//       data = await rootBundle.load('assets/Bubbas_logo.png');
+//     }
+//
+//     if (data.lengthInBytes > 0) {
+//       final Uint8List imageBytes = data.buffer.asUint8List();
+//       final decodedImage = img.decodeImage(imageBytes)!;
+//       img.Image thumbnail = img.copyResize(decodedImage, height: 280);
+//       img.Image originalImg =
+//       img.copyResize(decodedImage, width: 470, height: 280);
+//       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
+//       var padding = (originalImg.width - thumbnail.width) / 2;
+//       drawImage(originalImg, thumbnail, dstX: padding.toInt());
+//       var grayscaleImage = img.grayscale(originalImg);
+//       // bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
+//     }
+//
+//     // -------------------------------
+//     // HEADER & STORE INFO (unchanged)
+//     // -------------------------------
+//     var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
+//     var storeId = "${merchantDetails?[AppDBConst.storeId]}";
+//     var storePhone = "${merchantDetails?[AppDBConst.storePhone]}";
+//
+//     var storeDetails = await AssetDBHelper.instance.getStoreDetails();
+//     var storeName = "${storeDetails?.name}";
+//     var address = "${storeDetails?.address},";
+//     var cityStateZip =
+//         "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
+//     var orderIdToPrint = '$orderId';
+//
+//     final userData = await UserDbHelper().getUserData();
+//     var cashierName =
+//         "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
+//     var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
+//
+//     if (header != "") {
+//       bytes += ticket.row([
+//         PosColumn(
+//             text: header, width: 12, styles: PosStyles(align: PosAlign.center)),
+//       ]);
+//     }
+//
+//     bytes += ticket.row([
+//       PosColumn(
+//         text: "***** CUST-INVOICE *****",
+//         width: 12,
+//         styles: PosStyles(align: PosAlign.center, bold: true),
+//       ),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//
+//     bytes += ticket.row([
+//       PosColumn(
+//         text: storeName,
+//         width: 12,
+//         styles: PosStyles(
+//           align: PosAlign.center,
+//           bold: true,
+//           height: PosTextSize.size2,
+//           width: PosTextSize.size2,
+//         ),
+//       ),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: address, width: 12, styles: PosStyles(align: PosAlign.center))
+//     ]);
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: cityStateZip,
+//           width: 12,
+//           styles: PosStyles(align: PosAlign.center))
+//     ]);
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: "Phone: $storePhone",
+//           width: 12,
+//           styles: PosStyles(align: PosAlign.center)),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: "-----------------------------------------------", width: 12),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: "Date: $_displayDate", width: 7),
+//       PosColumn(text: "Time: $_displayTime", width: 5),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: "Cashier: $cashierName", width: 7),
+//       PosColumn(text: "StoreID: $storeId", width: 5),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: "Role: $cashierRole", width: 7),
+//       PosColumn(text: "OrderID: $orderIdToPrint", width: 5),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: "-----------------------------------------------", width: 12),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//
+//     // -------------------------------
+//     // ITEM HEADER
+//     // -------------------------------
+//     bytes += ticket.row([
+//       PosColumn(text: "#", width: 1, styles: PosStyles(bold: true)),
+//       PosColumn(text: "Description", width: 5, styles: PosStyles(bold: true)),
+//       PosColumn(
+//           text: "Qty",
+//           width: 1,
+//           styles: PosStyles(align: PosAlign.center, bold: true)),
+//       PosColumn(
+//           text: "Rate",
+//           width: 2,
+//           styles: PosStyles(align: PosAlign.right, bold: true)),
+//       PosColumn(
+//           text: "Amt",
+//           width: 3,
+//           styles: PosStyles(align: PosAlign.right, bold: true)),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//
+//     String formatCurrency(double amount) {
+//       if (amount < 0) {
+//         return "-${TextConstants.currencySymbol}${amount.abs().toStringAsFixed(2)}";
+//       } else {
+//         return "${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}";
+//       }
+//     }
+//
+//     // -------------------------------
+//     // ITEMS LOOP (with Combo Discount added)
+//     // -------------------------------
+//     // for (int i = 0; i < orderItems.length; i++) {
+//     //   var item = orderItems[i];
+//     //
+//     //   String itemName = item['item_name'] ?? '';
+//     //   double unitPrice = (item['item_price'] ?? 0).toDouble();
+//     //   int qty = (item['items_count'] ?? 0).toInt();
+//     //   double lineTotal = (item['item_sum_price'] ?? 0).toDouble();
+//     //   String type = item['item_type']?.toString().toLowerCase() ?? '';
+//     //
+//     //   // Hide merchant discount/discount line-items from print item list
+//     //   final nameLower = itemName.toLowerCase();
+//     //   if (type.contains('discount') ||
+//     //       nameLower.contains('merchant discount')) {
+//     //     continue;
+//     //   }
+//     //
+//     //   bool isPayout = type.contains(TextConstants.payoutText);
+//     //   bool isCoupon = type.contains(TextConstants.couponText);
+//     //   bool isCashback = type.contains("cashback");
+//     //   bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+//     //
+//     //   String formattedRate = formatCurrency(unitPrice);
+//     //   String formattedTotal = formatCurrency(lineTotal);
+//     //
+//     //   bytes += ticket.row([
+//     //     PosColumn(text: "${i + 1}", width: 1),
+//     //     PosColumn(text: itemName, width: 5),
+//     //     PosColumn(
+//     //         text: "$qty", width: 1, styles: PosStyles(align: PosAlign.center)),
+//     //     PosColumn(
+//     //         text: formattedRate,
+//     //         width: 2,
+//     //         styles: PosStyles(align: PosAlign.right)),
+//     //     PosColumn(
+//     //         text: formattedTotal,
+//     //         width: 3,
+//     //         styles: PosStyles(align: PosAlign.right)),
+//     //   ]);
+//     //
+//     //   // ────────────────────────────────────────────────
+//     //   // DISCOUNT EXTRACTION & PRINTING
+//     //   // ────────────────────────────────────────────────
+//     //   String discountType = item['discount_type']?.toString() ?? '';
+//     //
+//     //   double autoDiscount = (discountType.isEmpty || discountType == 'auto')
+//     //       ? (item['auto_discount'] ?? 0).toDouble()
+//     //       : 0.0;
+//     //
+//     //   double multipackDiscount = (discountType == 'multipack')
+//     //       ? (item['auto_discount'] ?? 0).toDouble()
+//     //       : 0.0;
+//     //
+//     //   double comboDiscount =
+//     //   (discountType == 'combo' || discountType == 'mixmatch')
+//     //       ? (item['auto_discount'] ?? 0).toDouble()
+//     //       : 0.0;
+//     //
+//     //   // Auto Discount
+//     //   if (autoDiscount > 0 && !isPayoutOrCoupon) {
+//     //     bytes += ticket.row([
+//     //       PosColumn(text: "Auto Discount", width: 9),
+//     //       PosColumn(
+//     //         text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
+//     //         width: 3,
+//     //         styles: PosStyles(align: PosAlign.right),
+//     //       ),
+//     //     ]);
+//     //   }
+//     //
+//     //   // Combo / Mix & Match Discount
+//     //   if (comboDiscount > 0 && !isPayoutOrCoupon) {
+//     //     bytes += ticket.row([
+//     //       PosColumn(text: "Combo Discount", width: 9),
+//     //       PosColumn(
+//     //         text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
+//     //         width: 3,
+//     //         styles: PosStyles(align: PosAlign.right),
+//     //       ),
+//     //     ]);
+//     //   }
+//     //
+//     //   // Multipack Discount
+//     //   if (multipackDiscount > 0 && !isPayoutOrCoupon) {
+//     //     bytes += ticket.row([
+//     //       PosColumn(text: "Multipack Discount", width: 9),
+//     //       PosColumn(
+//     //         text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
+//     //         width: 3,
+//     //         styles: PosStyles(align: PosAlign.right),
+//     //       ),
+//     //     ]);
+//     //   }
+//     //
+//     //   bytes += ticket.emptyLines(1);
+//     // }
+//
+//     // Prefer discount coming from GetOrderModel/API (json['discount']) for printing.
+//     // Falls back to passed-in discountValue (offline) and finally the screen's discount.
+//
+//
+//     // -------------------------------
+//     // ITEMS LOOP (with Combo Discount added)
+//     // -------------------------------
+//     for (int i = 0; i < orderItems.length; i++) {
+//       var item = orderItems[i];
+//
+//       String itemName = item['item_name'] ?? '';
+//       double unitPrice = (item['item_price'] ?? 0).toDouble();
+//       int qty = (item['items_count'] ?? 0).toInt();
+//       double lineTotal = (item['item_sum_price'] ?? 0).toDouble();
+//       String type = item['item_type']?.toString().toLowerCase() ?? '';
+//
+//       // Hide merchant discount/discount line-items from print item list
+//       final nameLower = itemName.toLowerCase();
+//       if (type.contains('discount') ||
+//           nameLower.contains('merchant discount')) {
+//         continue;
+//       }
+//
+//       bool isPayout = type.contains(TextConstants.payoutText);
+//       bool isCoupon = type.contains(TextConstants.couponText);
+//       bool isCashback = type.contains("cashback");
+//       bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+//
+//       // ── WEIGHTED ITEM DETECTION (same logic as UI) ──
+//       final bool isWeightedItem = type.contains('weighted');
+//
+//       double weightQty = 0.0;
+//       double weightUnitPrice = 0.0;
+//       if (isWeightedItem) {
+//         weightQty = (item['weight_qty'] ??
+//             item['weightQty'] ??
+//             item['weight'] ??
+//             0.0).toDouble();
+//         weightUnitPrice = (item['unit_price'] ??
+//             item['regular_price'] ??
+//             item['item_price'] ??
+//             0.0).toDouble();
+//       }
+//
+//       // ── FORMAT RATE & QTY/WEIGHT columns ──
+//       String formattedQtyOrWeight;
+//       String formattedRate;
+//       String formattedTotal;
+//
+//       if (isWeightedItem && weightQty > 0 && weightUnitPrice > 0) {
+//         // e.g.  "2.000lb"   "$2.99/lb"   "$5.98"
+//         formattedQtyOrWeight = "${weightQty.toStringAsFixed(2)}lb";
+//         formattedRate = "${formatCurrency(weightUnitPrice)}";
+//         formattedTotal = formatCurrency(weightUnitPrice * weightQty);
+//       } else {
+//         formattedQtyOrWeight = "$qty";
+//         formattedRate = formatCurrency(unitPrice);
+//         formattedTotal = formatCurrency(lineTotal);
+//       }
+//
+//       bytes += ticket.row([
+//         PosColumn(text: "${i + 1}", width: 1),
+//         PosColumn(text: itemName, width: 5),
+//         PosColumn(
+//             text: formattedQtyOrWeight,
+//             width: 1,
+//             styles: PosStyles(align: PosAlign.center)),
+//         PosColumn(
+//             text: formattedRate,
+//             width: 2,
+//             styles: PosStyles(align: PosAlign.right)),
+//         PosColumn(
+//             text: formattedTotal,
+//             width: 3,
+//             styles: PosStyles(align: PosAlign.right)),
+//       ]);
+//
+//       // ────────────────────────────────────────────────
+//       // DISCOUNT EXTRACTION & PRINTING (unchanged)
+//       // ────────────────────────────────────────────────
+//       String discountType = item['discount_type']?.toString() ?? '';
+//
+//       double autoDiscount = (discountType.isEmpty || discountType == 'auto')
+//           ? (item['auto_discount'] ?? 0).toDouble()
+//           : 0.0;
+//
+//       double multipackDiscount = (discountType == 'multipack')
+//           ? (item['auto_discount'] ?? 0).toDouble()
+//           : 0.0;
+//
+//       double comboDiscount =
+//       (discountType == 'combo' || discountType == 'mixmatch')
+//           ? (item['auto_discount'] ?? 0).toDouble()
+//           : 0.0;
+//
+//       // Auto Discount
+//       if (autoDiscount > 0 && !isPayoutOrCoupon) {
+//         bytes += ticket.row([
+//           PosColumn(text: "Auto Discount", width: 9),
+//           PosColumn(
+//             text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
+//             width: 3,
+//             styles: PosStyles(align: PosAlign.right),
+//           ),
+//         ]);
+//       }
+//
+//       // Combo / Mix & Match Discount
+//       if (comboDiscount > 0 && !isPayoutOrCoupon) {
+//         bytes += ticket.row([
+//           PosColumn(text: "Combo Discount", width: 9),
+//           PosColumn(
+//             text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
+//             width: 3,
+//             styles: PosStyles(align: PosAlign.right),
+//           ),
+//         ]);
+//       }
+//
+//       // Multipack Discount
+//       if (multipackDiscount > 0 && !isPayoutOrCoupon) {
+//         bytes += ticket.row([
+//           PosColumn(text: "Multipack Discount", width: 9),
+//           PosColumn(
+//             text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
+//             width: 3,
+//             styles: PosStyles(align: PosAlign.right),
+//           ),
+//         ]);
+//       }
+//
+//       bytes += ticket.emptyLines(1);
+//     }
+//
+//     final double discount = () {
+//       final raw = _order["discount"] ??
+//           _order["order_discount"] ??
+//           _order["discount_amount"];
+//       final parsed = raw == null ? null : double.tryParse(raw.toString());
+//       final fromGetOrder =
+//           parsed ?? (discountValue != 0 ? discountValue : null);
+//       if (fromGetOrder == null) return this.discount;
+//       return fromGetOrder != 0 ? -(fromGetOrder.abs()) : 0.0;
+//     }();
+//
+//     // -------------------------------
+//     // TOTALS (unchanged from your version)
+//     // -------------------------------
+//     bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: "-----------------------------------------------", width: 12),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.grossTotal, width: 8),
+//       PosColumn(
+//         text: formatCurrency(grossTotal),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     // Show Coupon (standardized negative display)
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.discountText, width: 8),
+//       PosColumn(
+//         text: discount != 0 ? formatCurrency(discount) : formatCurrency(0.0),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.taxText, width: 8),
+//       PosColumn(
+//         text: formatCurrency(tax),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+// //Raghu--**
+//     bytes += ticket.row([
+//       PosColumn(
+//         text: merchantDiscountPercentage > 0
+//             ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
+//             : TextConstants.merchantDiscount,
+//         width: 8,
+//       ),
+//       PosColumn(
+//         text: merchantDiscount != 0
+//             ? formatCurrency(merchantDiscount)
+//             : formatCurrency(0.0),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+// //Raghu--*
+//
+//     if (cashbackFee > 0) {
+//       bytes += ticket.row([
+//         PosColumn(text: TextConstants.cashbackFee, width: 8),
+//         PosColumn(
+//           text: formatCurrency(cashbackFee),
+//           width: 4,
+//           styles: PosStyles(align: PosAlign.right),
+//         ),
+//       ]);
+//     }
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.servicecharges, width: 8),
+//       PosColumn(
+//         text: formatCurrency(servicecharges),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: "-----------------------------------------------", width: 12),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//
+//     // Final Net Payable logic matching the summary screen precisely
+//     double printNetPayable = grossTotal +
+//         discount +
+//         merchantDiscount +
+//         tax +
+//         servicecharges +
+//         cashbackFee;
+//     if (printNetPayable < 0) printNetPayable = 0.0;
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.netPayable, width: 8),
+//       PosColumn(
+//         text: formatCurrency(printNetPayable),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     if (redeemedValue > 0) {
+//       bytes += ticket.row([
+//         PosColumn(text: "Redeemed Amount", width: 8),
+//         PosColumn(
+//           text: "-${formatCurrency(redeemedValue).replaceAll('-', '')}",
+//           width: 4,
+//           styles: PosStyles(align: PosAlign.right),
+//         ),
+//       ]);
+//     }
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.payByCash, width: 8),
+//       PosColumn(
+//         text: formatCurrency(payByCash),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: "Pay by EBT", width: 8),
+//       PosColumn(
+//         text: formatCurrency(payByEbt),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.payByOther, width: 8),
+//       PosColumn(
+//         text: formatCurrency(payByOther),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.tenderAmount, width: 8),
+//       PosColumn(
+//         text: formatCurrency(tenderAmount),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.change, width: 8),
+//       PosColumn(
+//         text: formatCurrency(changeAmount),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: "-----------------------------------------------", width: 12),
+//     ]);
+//
+//     if (footer != "") {
+//       bytes += ticket.feed(1);
+//       bytes += ticket.row([
+//         PosColumn(
+//             text: footer, width: 12, styles: PosStyles(align: PosAlign.center)),
+//       ]);
+//     }
+//   }
+
+
   Future _preparePrintTicket() async {
     if (kDebugMode) {
       print("OrderSummaryScreen _preparePrintTicket call print receipt");
@@ -13182,8 +14516,31 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
     }
 
+    // Helper function to wrap long item names
+    List<String> wrapItemName(String name, int maxLength) {
+      List<String> lines = [];
+      String remaining = name;
+
+      while (remaining.isNotEmpty) {
+        if (remaining.length <= maxLength) {
+          lines.add(remaining);
+          break;
+        } else {
+          // Find a good break point (space) within the maxLength
+          int breakIndex = remaining.lastIndexOf(' ', maxLength);
+          if (breakIndex == -1) {
+            // No space found, force break at maxLength
+            breakIndex = maxLength;
+          }
+          lines.add(remaining.substring(0, breakIndex));
+          remaining = remaining.substring(breakIndex).trim();
+        }
+      }
+      return lines;
+    }
+
     // -------------------------------
-    // ITEMS LOOP (with Combo Discount added)
+    // ITEMS LOOP (with Weighted Item support + Name Wrapping)
     // -------------------------------
     for (int i = 0; i < orderItems.length; i++) {
       var item = orderItems[i];
@@ -13206,14 +14563,57 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       bool isCashback = type.contains("cashback");
       bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
 
-      String formattedRate = formatCurrency(unitPrice);
-      String formattedTotal = formatCurrency(lineTotal);
+      // ── WEIGHTED ITEM DETECTION ──
+      final bool isWeightedItem = type.contains('weighted');
 
+      double weightQty = 0.0;
+      double weightUnitPrice = 0.0;
+      if (isWeightedItem) {
+        weightQty = (item['weight_qty'] ??
+            item['weightQty'] ??
+            item['weight'] ??
+            0.0).toDouble();
+        weightUnitPrice = (item['unit_price'] ??
+            item['regular_price'] ??
+            item['item_price'] ??
+            0.0).toDouble();
+      }
+
+      // ── FORMAT QTY/WEIGHT ──
+      String formattedQtyOrWeight;
+      if (isWeightedItem && weightQty > 0) {
+        formattedQtyOrWeight = "${weightQty.toStringAsFixed(2)}lb";
+      } else {
+        formattedQtyOrWeight = "$qty";
+      }
+
+      // ── FORMAT RATE ──
+      String formattedRate;
+      if (isWeightedItem && weightUnitPrice > 0) {
+        formattedRate = formatCurrency(weightUnitPrice);
+      } else {
+        formattedRate = formatCurrency(unitPrice);
+      }
+
+      // ── FORMAT TOTAL ──
+      String formattedTotal;
+      if (isWeightedItem && weightQty > 0 && weightUnitPrice > 0) {
+        formattedTotal = formatCurrency(weightUnitPrice * weightQty);
+      } else {
+        formattedTotal = formatCurrency(lineTotal);
+      }
+
+      // ── WRAP LONG ITEM NAMES ──
+      List<String> nameLines = wrapItemName(itemName, 18); // Max 18 chars per line
+
+      // Print first line with all details
       bytes += ticket.row([
         PosColumn(text: "${i + 1}", width: 1),
-        PosColumn(text: itemName, width: 5),
+        PosColumn(text: nameLines[0], width: 5),
         PosColumn(
-            text: "$qty", width: 1, styles: PosStyles(align: PosAlign.center)),
+            text: formattedQtyOrWeight,
+            width: 1,
+            styles: PosStyles(align: PosAlign.center)),
         PosColumn(
             text: formattedRate,
             width: 2,
@@ -13224,8 +14624,19 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             styles: PosStyles(align: PosAlign.right)),
       ]);
 
+      // Print additional name lines (if any) with indentation
+      for (int j = 1; j < nameLines.length; j++) {
+        bytes += ticket.row([
+          PosColumn(text: "", width: 1),           // Empty # column
+          PosColumn(text: "  ${nameLines[j]}", width: 5), // Indented description
+          PosColumn(text: "", width: 1),           // Empty qty
+          PosColumn(text: "", width: 2),           // Empty rate
+          PosColumn(text: "", width: 3),           // Empty amount
+        ]);
+      }
+
       // ────────────────────────────────────────────────
-      // DISCOUNT EXTRACTION & PRINTING
+      // DISCOUNT EXTRACTION & PRINTING (unchanged)
       // ────────────────────────────────────────────────
       String discountType = item['discount_type']?.toString() ?? '';
 
@@ -13245,7 +14656,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // Auto Discount
       if (autoDiscount > 0 && !isPayoutOrCoupon) {
         bytes += ticket.row([
-          PosColumn(text: "Auto Discount", width: 9),
+          PosColumn(text: "  Auto Discount", width: 9),
           PosColumn(
             text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
             width: 3,
@@ -13257,7 +14668,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // Combo / Mix & Match Discount
       if (comboDiscount > 0 && !isPayoutOrCoupon) {
         bytes += ticket.row([
-          PosColumn(text: "Combo Discount", width: 9),
+          PosColumn(text: "  Combo Discount", width: 9),
           PosColumn(
             text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
             width: 3,
@@ -13269,7 +14680,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // Multipack Discount
       if (multipackDiscount > 0 && !isPayoutOrCoupon) {
         bytes += ticket.row([
-          PosColumn(text: "Multipack Discount", width: 9),
+          PosColumn(text: "  Multipack Discount", width: 9),
           PosColumn(
             text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
             width: 3,
@@ -13281,8 +14692,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       bytes += ticket.emptyLines(1);
     }
 
-    // Prefer discount coming from GetOrderModel/API (json['discount']) for printing.
-    // Falls back to passed-in discountValue (offline) and finally the screen's discount.
     final double discount = () {
       final raw = _order["discount"] ??
           _order["order_discount"] ??
@@ -13330,7 +14739,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
-//Raghu--**
+
     bytes += ticket.row([
       PosColumn(
         text: merchantDiscountPercentage > 0
@@ -13346,7 +14755,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
-//Raghu--*
 
     if (cashbackFee > 0) {
       bytes += ticket.row([
@@ -13448,6 +14856,27 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
+
+
+
+    // ── NEW: Only print "Order Earned Points" when redeem/loyalty was active for this order ──
+    final bool _shouldPrintEarnedPoints =
+        isRedeemActive || redeemedValue > 0 || availablePoints > 0;
+
+    if (_shouldPrintEarnedPoints) {
+      final int earnedPoints =
+          (_order['total_loyalty_points'] as num?)?.toInt() ?? 0;
+
+      bytes += ticket.row([
+        PosColumn(text: "Order Earned Points", width: 8),
+        PosColumn(
+          text: "$earnedPoints pts",
+          width: 4,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
+
 
     bytes += ticket.row([
       PosColumn(

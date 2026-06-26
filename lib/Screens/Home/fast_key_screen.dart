@@ -66,6 +66,9 @@ class FastKeyScreen extends StatefulWidget {
   /// Used by POSHomeScreen to embed in IndexedStack.
   final bool embedInShell;
 
+  /// Called by TopBar after a product sync completes.
+  static VoidCallback? onRefreshCompleted;
+
   const FastKeyScreen(
       {super.key, this.lastSelectedIndex, this.embedInShell = false});
 
@@ -91,14 +94,14 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   bool _isPaginating = false;
   int? userId;
 
+  bool _isRefreshing = false; // Add this flag
+  bool _isLoadingItems = false;
   // ── PRODUCT META CACHE ─────────────────────────────────────────────────────
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
 
 
-// ── FASTKEY ITEMS IN-MEMORY CACHE (Prevents repeated DB/API calls) ────────
   static final Map<int, List<Map<String, dynamic>>> _fastKeyItemsCache = {};
 
-  // ── SESSION-LEVEL API SEARCH CACHE (mirrors TopBar._apiSearchCache) ────────
   static final Map<String, List<Map<String, dynamic>>> _fastKeyApiSearchCache = {};
 
   static int? _productMetaIdFromCacheMap(dynamic raw) {
@@ -168,8 +171,49 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     _initializeData();
     fastKeyTabIdNotifier.addListener(_onTabChanged);
-    TopBar.mergedProductCacheRevision
-        .addListener(_onMergedProductCacheRevision);
+
+    // Listen to product cache revision changes
+    TopBar.mergedProductCacheRevision.addListener(_onMergedProductCacheRevision);
+
+    TopBar.onRefreshCompleted = () async {
+      if (!mounted) return;
+
+      debugPrint("🔄 FastKeyScreen: Refreshing after TopBar sync");
+
+      // Add a flag to prevent multiple simultaneous refreshes
+      if (_isRefreshing) return;
+      _isRefreshing = true;
+
+      try {
+        setState(() => isItemsLoading = true);
+
+        // Clear all in-memory caches
+        _productMetaCache.clear();
+        _clearFastKeyCache(); // Clear ALL tab caches
+
+        // Re-ingest product meta from updated Isar/Hive
+        await _ingestProductMetaFromMerged();
+
+        // Force reload from DB (not from cache) - ONLY ONCE
+        if (_fastKeyTabId != null) {
+          _fastKeyItemsCache.remove(_fastKeyTabId);
+          await _loadFastKeyTabItems();
+
+          //  NEW: Ensure SQLite FastKey items get latest product data
+          await fastKeyDBHelper.refreshFastKeyItemMetadata(_fastKeyTabId!);
+        }
+
+        // Refresh tab list (item counts may have changed)
+        await _loadFastKeysTabs();
+        await _resolveFastKeyMeta();
+
+        setState(() => isItemsLoading = false);
+        debugPrint("✅ FastKeyScreen: Refresh complete");
+      } finally {
+        _isRefreshing = false;
+      }
+    };
+
   }
 
   Future<void> _initializeData() async {
@@ -227,16 +271,43 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     _autoSuggest.listentextchange(_productSearchController.text ?? "");
   }
 
+// ── REPLACE _onTabChanged ────────────────────────────────────────────────────
   Future<void> _onTabChanged() async {
     if (kDebugMode) {
       print(
           "### FastKeyScreen: _onTabChanged: New Tab ID: ${fastKeyTabIdNotifier.value}");
     }
+
+    final newTabId = fastKeyTabIdNotifier.value;
+
+    // ✅ FIX: If the tab's items are already in memory, swap instantly — no
+    //         loading state, no flicker, no extra DB/API call.
+    if (newTabId != null && _fastKeyItemsCache.containsKey(newTabId)) {
+      if (kDebugMode) {
+        print("⚡ _onTabChanged: instant swap from cache for tab $newTabId");
+      }
+      if (mounted) {
+        setState(() {
+          _fastKeyTabId = newTabId;
+          fastKeyProductItems =
+          List<Map<String, dynamic>>.from(_fastKeyItemsCache[newTabId]!);
+          reorderedIndices = List.filled(fastKeyProductItems.length, null);
+          isItemsLoading = false; // never show spinner for cached tabs
+        });
+      }
+      await fastKeyDBHelper.saveActiveFastKeyTab(newTabId);
+      // Quietly refresh meta (EBT/variants) without blocking the UI
+      _resolveFastKeyMeta();
+      return;
+    }
+
+    // Cache miss — show loading only when we truly have to fetch
     setState(() {
-      _fastKeyTabId = fastKeyTabIdNotifier.value;
+      _fastKeyTabId = newTabId;
       fastKeyProductItems.clear();
       isItemsLoading = true;
     });
+
     if (_fastKeyTabId != null) {
       await fastKeyDBHelper.saveActiveFastKeyTab(_fastKeyTabId!);
       if (kDebugMode) {
@@ -263,12 +334,25 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     _pendingMergedMetaRefresh = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _pendingMergedMetaRefresh = false;
-      if (!mounted || _fastKeyTabId == null || fastKeyProductItems.isEmpty) {
-        return;
-      }
-      await _ingestProductMetaFromMerged();
+      if (!mounted || _fastKeyTabId == null) return;
+
+      debugPrint("🔄 FastKeyScreen: Product cache revision changed");
+
+      setState(() => isItemsLoading = true);
+
+      _clearFastKeyCache(tabId: _fastKeyTabId);
+      _productMetaCache.clear();
+
+      // Remove the redundant calls and keep only one clean refresh
+      await _loadFastKeyTabItems();
+
+      // Only call this if metadata needs refreshing
+      await fastKeyDBHelper.refreshFastKeyItemMetadata(_fastKeyTabId!);
+
       if (!mounted) return;
       await _resolveFastKeyMeta();
+
+      setState(() => isItemsLoading = false);
     });
   }
 
@@ -607,31 +691,35 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
   }
 
+  // ── REPLACE _loadFastKeyTabItems ─────────────────────────────────────────────
   Future<void> _loadFastKeyTabItems() async {
     if (_fastKeyTabId == null) {
       setState(() => isItemsLoading = false);
       return;
     }
 
-    // ── NEW: Check In-Memory Cache First (Fastest) ─────────────────────
+    // ── 1. In-memory cache (instant, no spinner) ───────────────────────────
     if (_fastKeyItemsCache.containsKey(_fastKeyTabId!)) {
       if (kDebugMode) {
-        print("⚡ FastKeyScreen: Loading from IN-MEMORY CACHE for tab $_fastKeyTabId");
+        print(
+            "⚡ FastKeyScreen: Loading from IN-MEMORY CACHE for tab $_fastKeyTabId");
       }
       if (mounted) {
         setState(() {
-          fastKeyProductItems = List<Map<String, dynamic>>.from(_fastKeyItemsCache[_fastKeyTabId!]!);
+          fastKeyProductItems =
+          List<Map<String, dynamic>>.from(_fastKeyItemsCache[_fastKeyTabId!]!);
           reorderedIndices = List.filled(fastKeyProductItems.length, null);
-          isItemsLoading = false;
+          isItemsLoading = false; // ✅ never flicker for cached data
         });
       }
-      await _resolveFastKeyMeta(); // Still refresh meta if needed
+      _resolveFastKeyMeta(); // background refresh, non-blocking
       return;
     }
 
+    // ── 2. Cache miss → show spinner, then try local DB ────────────────────
+    //    (isItemsLoading is already true when we reach here from _onTabChanged)
     await _awaitMergedProductCacheReadyForFastKeys();
 
-    // ALWAYS CHECK LOCAL DB FIRST (your original logic)
     final cachedItems = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
 
     if (cachedItems.isNotEmpty) {
@@ -641,6 +729,10 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
       final preparedItems = await _prepareFastKeyItemsForInitialUi(cachedItems);
 
+      // Store in memory so next switch is instant
+      _fastKeyItemsCache[_fastKeyTabId!] =
+      List<Map<String, dynamic>>.from(preparedItems);
+
       if (mounted) {
         setState(() {
           fastKeyProductItems = preparedItems;
@@ -648,19 +740,16 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           isItemsLoading = false;
         });
       }
-
-      // ── NEW: Store in memory cache ─────────────────────
-      _fastKeyItemsCache[_fastKeyTabId!] = List<Map<String, dynamic>>.from(preparedItems);
-
       return;
     }
 
-    // CACHE MISS → API (your original logic)
+    // ── 3. DB miss → API (only on very first load or after cache clear) ────
     if (kDebugMode) {
       print("🌐 Cache miss → Fetching FastKey items from API");
     }
 
-    final tabs = await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId!);
+    final tabs =
+    await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId!);
     if (tabs.isEmpty) {
       if (mounted) {
         setState(() {
@@ -672,11 +761,15 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
 
     final fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
-
-    await _fastKeyProductBloc.fetchProductsByFastKeyId(_fastKeyTabId!, fastKeyServerId);
+    await _fastKeyProductBloc.fetchProductsByFastKeyId(
+        _fastKeyTabId!, fastKeyServerId);
 
     final apiItems = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
     final preparedItems = await _prepareFastKeyItemsForInitialUi(apiItems);
+
+    // Store in memory so every subsequent switch is instant
+    _fastKeyItemsCache[_fastKeyTabId!] =
+    List<Map<String, dynamic>>.from(preparedItems);
 
     if (mounted) {
       setState(() {
@@ -685,16 +778,15 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         isItemsLoading = false;
       });
     }
-
-    // ── NEW: Store in memory cache after API load ─────────────────────
-    _fastKeyItemsCache[_fastKeyTabId!] = List<Map<String, dynamic>>.from(preparedItems);
   }
-  /// Clear cache when tab is deleted or items change significantly
+
   void _clearFastKeyCache({int? tabId}) {
     if (tabId != null) {
       _fastKeyItemsCache.remove(tabId);
+      if (kDebugMode) print("🧹 Cleared FastKey cache for tab: $tabId");
     } else {
       _fastKeyItemsCache.clear();
+      if (kDebugMode) print("🧹 Cleared ALL FastKey caches");
     }
   }
 
@@ -863,54 +955,6 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   }
 
   // Build #1.0.87 : Reload fastKey tab products after adding new item into fastKey
-  Future<void> _refreshFastKeyTabItems() async {
-    if (_fastKeyTabId == null) {
-      if (kDebugMode) {
-        print("FastKey Screen _loadFastKeyTabItems aborted, no tab selected");
-      }
-      return;
-    }
-    // Clear memory cache before refresh
-    _clearFastKeyCache(tabId: _fastKeyTabId);
-
-    if (kDebugMode) {
-      print("FastKey Screen _loadFastKeyTabItems $_fastKeyTabId");
-    }
-    setState(() => isItemsLoading = true);
-    try {
-      final tabs =
-      await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
-      if (tabs.isNotEmpty) {
-        final fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
-        if (kDebugMode) {
-          print(
-              "FastKey Screen _loadFastKeyTabItems selected tab server id: $fastKeyServerId");
-        }
-        final items = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId ?? 1);
-        final preparedItems = await _prepareFastKeyItemsForInitialUi(items);
-        if (kDebugMode) {
-          print(
-              "#### Retrieved ${items.length} FastKey Items for Tab ID: $_fastKeyTabId");
-        }
-        setState(() {
-          fastKeyProductItems = preparedItems;
-          reorderedIndices = List.filled(fastKeyProductItems.length, null);
-          isItemsLoading = false;
-        });
-      } else {
-        setState(() {
-          fastKeyProductItems = [];
-          isItemsLoading = false;
-        });
-      }
-      await _resolveFastKeyMeta();
-    } catch (e) {
-      if (kDebugMode) {
-        print("Error loading FastKey tab items: $e");
-      }
-      setState(() => isItemsLoading = false);
-    }
-  }
 
   // Build #1.0.87: code updated
   // Future<void> _addFastKeyTabItem(
@@ -999,6 +1043,60 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   //   await _fastKeyProductBloc
   //       .addProducts(fastKeyId: fastKeyServerId, products: [item]);
   // }
+
+  Future<void> _refreshFastKeyTabItems() async {
+    if (_fastKeyTabId == null) {
+      if (kDebugMode) {
+        print("FastKey Screen _loadFastKeyTabItems aborted, no tab selected");
+      }
+      return;
+    }
+
+    // Prevent multiple simultaneous refreshes
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+
+    try {
+      // ✅ Clear memory cache before refresh
+      _clearFastKeyCache(tabId: _fastKeyTabId);
+
+      if (kDebugMode) {
+        print("FastKey Screen _loadFastKeyTabItems $_fastKeyTabId");
+      }
+      setState(() => isItemsLoading = true);
+
+      final tabs = await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
+      if (tabs.isNotEmpty) {
+        final fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
+        if (kDebugMode) {
+          print("FastKey Screen _loadFastKeyTabItems selected tab server id: $fastKeyServerId");
+        }
+        final items = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId ?? 1);
+        final preparedItems = await _prepareFastKeyItemsForInitialUi(items);
+        if (kDebugMode) {
+          print("#### Retrieved ${items.length} FastKey Items for Tab ID: $_fastKeyTabId");
+        }
+        setState(() {
+          fastKeyProductItems = preparedItems;
+          reorderedIndices = List.filled(fastKeyProductItems.length, null);
+          isItemsLoading = false;
+        });
+      } else {
+        setState(() {
+          fastKeyProductItems = [];
+          isItemsLoading = false;
+        });
+      }
+      await _resolveFastKeyMeta();
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error loading FastKey tab items: $e");
+      }
+      setState(() => isItemsLoading = false);
+    } finally {
+      _isRefreshing = false;
+    }
+  }
 
   Future<void> _addFastKeyTabItem(
       String name, String image, String price) async {
@@ -2816,8 +2914,11 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   @override
   void dispose() {
-    TopBar.mergedProductCacheRevision
-        .removeListener(_onMergedProductCacheRevision);
+    // ✅ Remove listener
+    TopBar.mergedProductCacheRevision.removeListener(_onMergedProductCacheRevision);
+    // ✅ Clear callback to prevent calling disposed state
+    TopBar.onRefreshCompleted = null;
+
     WidgetsBinding.instance.removeObserver(this);
     _fastKeyBloc.dispose();
     orderBloc.dispose();

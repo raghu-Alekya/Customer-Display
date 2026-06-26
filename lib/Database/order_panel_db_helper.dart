@@ -350,7 +350,7 @@ class OrderHelper {
 
     final String mdType = order['merchantDiscountType']?.toString() ?? 'fixed';
     final double mdPerc = double.tryParse(order['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
-    
+
     double calculatedPerc = 0.0;
     if (mdType == 'percentage' && mdPerc > 0) {
       calculatedPerc = mdPerc;
@@ -360,7 +360,7 @@ class OrderHelper {
         calculatedPerc = (merchantDiscount.abs() / base) * 100.0;
       }
     }
-    
+
     if (calculatedPerc > 0) {
       orderTax = orderTax * (1 - calculatedPerc / 100.0);
       orderTax = roundTaxHalfUp(orderTax);
@@ -642,11 +642,11 @@ class OrderHelper {
       if (currentActiveOrderId == null ||
           currentActiveOrderId <= 0 ||
           !localOrderIds.contains(currentActiveOrderId)) {
-        
+
         // Build #1.0.316: Prioritize lastActiveOrderId for focus persistence across screens
         final checkpointId = prefs.getInt('lastActiveOrderId');
-        if (checkpointId != null && 
-            checkpointId > 0 && 
+        if (checkpointId != null &&
+            checkpointId > 0 &&
             localOrderIds.contains(checkpointId)) {
           if (kDebugMode) print("🔄 loadData: Restoring focus from lastActiveOrderId: $checkpointId");
           currentActiveOrderId = checkpointId;
@@ -1189,7 +1189,7 @@ class OrderHelper {
       final double itemPrice = apiItem.productData.price == ''
           ? double.parse(apiItem.productData.price ?? '0.0')
           : double.parse(apiItem.productData.price ?? '0.0');
-      final int itemQuantity = apiItem.quantity ?? 0;
+      final int itemQuantity = (apiItem.quantity ?? 0) as int;
       final double itemSumPrice = double.parse(apiItem.subtotal);
 
       if (kDebugMode) {
@@ -2309,6 +2309,16 @@ class OrderHelper {
         (map['item_type'] ?? map['type'] ?? 'product').toString();
         // Skip discount type - we add from discounts list separately
         if (itemType.toLowerCase().contains('discount')) continue;
+
+        // ─────── WEIGHTED ITEM SUPPORT ───────
+        final bool isWeighted = itemType.contains('weighted');
+        double weightQty = 0.0;
+        if (isWeighted) {
+          weightQty = (map['weightQty'] as num?)?.toDouble() ??
+              (map['weight_qty'] as num?)?.toDouble() ??
+              (map['weight'] as num?)?.toDouble() ??
+              0.0;
+        }
         final multipack = _toDouble(
             map['multipack_discount_total'] ?? map['multipackDiscount'] ?? 0);
         final auto = _toDouble(map['auto_discount_total'] ??
@@ -2320,13 +2330,57 @@ class OrderHelper {
         final vid = offlineLineItemVariationId(map);
         final vName = offlineLineItemVariationName(map);
         final itemTypeLower = itemType.toLowerCase();
+        // items.add({
+        //   AppDBConst.itemName: name,
+        //   AppDBConst.itemPrice: price,
+        //   AppDBConst.itemCount: qty,
+        //   AppDBConst.itemSumPrice: price * qty,
+        //   AppDBConst.itemImage: resolveProductImageFromMap(map),
+        //   AppDBConst.itemType: itemType,
+        //   'is_ebt_eligible': offlineLineItemEbtEligible(map['is_ebt_eligible']),
+        //   'product_id': (map['product_id'] as num?)?.toInt() ?? 0,
+        //   'variation_id': vid,
+        //   'variationId': vid,
+        //   'item_variation': vid,
+        //   'item_variation_id': vid,
+        //   'variation_name': vName,
+        //   'is_variant': vid > 0 ||
+        //       itemTypeLower == 'variant' ||
+        //       itemTypeLower == 'variation',
+        //   'sku': map['sku'] ?? map['item_sku'] ?? '',
+        //   AppDBConst.multipackDiscount: multipack,
+        //   AppDBConst.autoDiscountTotal: auto,
+        //   AppDBConst.comboDiscountTotal: combo,
+        //   'weightQty': weightQty,
+        //   'weight_qty': weightQty,        // alias for UI
+        //   'weight': weightQty
+        // });
+
+        // REPLACE with:
+        // Extract weight fields for weighted items
+        final bool isWeightedProduct = itemType.contains('weighted');
+        double weightQtyVal = 0.0;
+        if (isWeightedProduct) {
+          weightQtyVal = (map['weight_qty'] as num?)?.toDouble() ??
+              (map['weightQty'] as num?)?.toDouble() ??
+              (map['weight'] as num?)?.toDouble() ??
+              0.0;
+        }
+        // unit_price = price per lb (stored as regularPrice/unitPrice when added)
+        final double unitPriceVal = (map['unit_price'] as num?)?.toDouble() ??
+            (map['regular_price'] as num?)?.toDouble() ??
+            (map['unitPrice'] as num?)?.toDouble() ??
+            price;
+
+        final double sumPrice = price * qty;
+
         items.add({
           AppDBConst.itemName: name,
           AppDBConst.itemPrice: price,
           AppDBConst.itemCount: qty,
-          AppDBConst.itemSumPrice: price * qty,
+          AppDBConst.itemSumPrice: sumPrice,
           AppDBConst.itemImage: resolveProductImageFromMap(map),
-          AppDBConst.itemType: itemType,
+          AppDBConst.itemType: map['item_type'] ?? map['type'] ?? 'product',
           'is_ebt_eligible': offlineLineItemEbtEligible(map['is_ebt_eligible']),
           'product_id': (map['product_id'] as num?)?.toInt() ?? 0,
           'variation_id': vid,
@@ -2334,13 +2388,23 @@ class OrderHelper {
           'item_variation': vid,
           'item_variation_id': vid,
           'variation_name': vName,
-          'is_variant': vid > 0 ||
-              itemTypeLower == 'variant' ||
-              itemTypeLower == 'variation',
-          'sku': map['sku'] ?? map['item_sku'] ?? '',
+          'is_variant':
+          vid > 0 || itemType == 'variant' || itemType == 'variation',
+          'sku': map['sku'] ?? '',
           AppDBConst.multipackDiscount: multipack,
           AppDBConst.autoDiscountTotal: auto,
           AppDBConst.comboDiscountTotal: combo,
+          // ── Weighted item fields ──────────────────────────────────────
+          'weight_qty': weightQtyVal,
+          'weightQty': weightQtyVal,
+          'weight': weightQtyVal,
+          'unit_price': unitPriceVal,
+          'regular_price': (map['regular_price'] as num?)?.toDouble() ?? unitPriceVal,
+          'sales_price': (map['sales_price'] as num?)?.toDouble() ?? price,
+          'tax_rate': (map['tax_rate'] as num?)?.toDouble() ?? 0.0,
+          'tax_class': map['tax_class']?.toString() ?? '',
+          'tax_status': map['tax_status']?.toString() ?? 'taxable',
+          'item_tax': (map['item_tax'] as num?)?.toDouble() ?? 0.0,
         });
       }
     } else {
@@ -2570,6 +2634,356 @@ class OrderHelper {
       "tax_rate": rate,
     };
   }
+
+  // Future<void> addItemToOrder(
+  //     int? serverItemId,
+  //     String name,
+  //     String image,
+  //     double price,
+  //     int quantity,
+  //     String sku,
+  //     int orderId, {
+  //       VoidCallback? onItemAdded,
+  //       String? type,
+  //       double? weightQty,
+  //       int? productId = -1,
+  //       int? variationId = -1,
+  //       String? variationName,
+  //       int? variationCount,
+  //       String? combo,
+  //       double? salesPrice,
+  //       double? regularPrice,
+  //       double? unitPrice,
+  //       bool isEbtEligible = false,
+  //       String? taxStatus,
+  //       String? taxClass,
+  //       double? taxRate,
+  //     }) async {
+  //   final sw = Stopwatch()..start();
+  //   print('[Cart] addItemToOrder START → "$name" orderId=$orderId productId=$productId weightQty=$weightQty');
+  //
+  //   final key = '$orderId-$productId-$variationId';
+  //
+  //   // 🛡 Prevent double execution
+  //   if (_activeAdds.contains(key)) {
+  //     print('[Cart] addItemToOrder DUPLICATE ignored for $key');
+  //     return;
+  //   }
+  //   _activeAdds.add(key);
+  //
+  //   try {
+  //     // Block adding items to orders that have payments (pending orders)
+  //     final payments = await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+  //     if (payments.isNotEmpty) {
+  //       print('[Cart] addItemToOrder BLOCKED: order $orderId has ${payments.length} payment(s)');
+  //       return;
+  //     }
+  //
+  //     final box = StorageProvider.offlineOrders;
+  //     var rawOrder = await box.get(orderId.toString());
+  //     if (rawOrder == null || rawOrder is! Map) {
+  //       print('[Cart] addItemToOrder no offline hive entry for $orderId — creating…');
+  //       await createOrder(serverOrderId: orderId);
+  //       rawOrder = await box.get(orderId.toString());
+  //       if (rawOrder == null || rawOrder is! Map) {
+  //         print('[Cart] addItemToOrder FAILED: still no offline order for $orderId after createOrder');
+  //         return;
+  //       }
+  //     }
+  //     final order = Map<String, dynamic>.from(rawOrder);
+  //
+  //     // Clone products
+  //     final List<Map<String, dynamic>> products = (order['products'] ?? [])
+  //         .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
+  //         .toList();
+  //
+  //     final normProductId = (productId ?? -1).toInt();
+  //     final rawNormVar = (variationId ?? 0).toInt();
+  //     final normVariationId = rawNormVar <= 0 ? 0 : rawNormVar;
+  //
+  //     // Determine if this is a weighted item
+  //     final bool isWeightedItem = (type ?? '').toString().toLowerCase().contains('weighted');
+  //
+  //     // Resolve tax metadata
+  //     const double defaultNonEbtTaxRate = 9.1;
+  //     String effectiveTaxStatus = (taxStatus ?? '').trim();
+  //     String? effectiveTaxClass = taxClass;
+  //     double effectiveTaxRate = taxRate ?? 0.0;
+  //
+  //     if (normProductId > 0 && (effectiveTaxStatus.isEmpty || effectiveTaxRate <= 0)) {
+  //       final meta = await _resolveProductTaxMeta(normProductId);
+  //       effectiveTaxStatus = (meta["tax_status"]?.toString().trim().isNotEmpty == true)
+  //           ? meta["tax_status"].toString()
+  //           : (effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus);
+  //       effectiveTaxClass = (meta["tax_class"]?.toString().isNotEmpty == true)
+  //           ? meta["tax_class"].toString()
+  //           : effectiveTaxClass;
+  //       effectiveTaxRate = (meta["tax_rate"] as num?)?.toDouble() ?? effectiveTaxRate;
+  //     }
+  //
+  //     // Business rule: all non-EBT items are taxable; EBT items are tax-free.
+  //     if (isEbtEligible) {
+  //       effectiveTaxStatus = "none";
+  //       effectiveTaxRate = 0.0;
+  //     } else {
+  //       effectiveTaxStatus = "taxable";
+  //       if (effectiveTaxRate <= 0) {
+  //         effectiveTaxRate = defaultNonEbtTaxRate;
+  //       }
+  //     }
+  //
+  //     // Find existing item to merge
+  //     final existingIndex = products.indexWhere((p) {
+  //       final dynamic rawPid = p['product_id'] ?? p['id'] ?? -1;
+  //       final dynamic rawVid = p['variation_id'] ?? p['item_variation'] ?? p['variationId'] ?? 0;
+  //
+  //       int pid;
+  //       if (rawPid is int) {
+  //         pid = rawPid;
+  //       } else {
+  //         pid = int.tryParse(rawPid.toString()) ?? -1;
+  //       }
+  //
+  //       int vid;
+  //       if (rawVid is int) {
+  //         vid = rawVid;
+  //       } else {
+  //         vid = int.tryParse(rawVid.toString()) ?? 0;
+  //       }
+  //       if (vid <= 0) vid = 0;
+  //
+  //       final matchesIds = pid == normProductId && vid == normVariationId;
+  //
+  //       // For custom items, match by SKU as well
+  //       if (normProductId == 0 || normProductId == -1) {
+  //         final storedSku = normalizeSku(p['sku']?.toString() ?? '');
+  //         final newSku = normalizeSku(sku);
+  //         return matchesIds && storedSku == newSku;
+  //       }
+  //       return matchesIds;
+  //     });
+  //
+  //     // 🆕 MERGE OR ADD
+  //     if (existingIndex != -1) {
+  //       final existing = products[existingIndex];
+  //       final incomingType = (type ?? '').toString().toLowerCase();
+  //       final existingType = (existing['type'] ?? '').toString().toLowerCase();
+  //       final bool incomingWeighted = incomingType.contains('weighted');
+  //       final bool existingWeighted = existingType.contains('weighted');
+  //
+  //       final oldQty = (existing['quantity'] ?? 0).toInt();
+  //       final int newQty;
+  //
+  //       // Get unit price from existing item
+  //       final double existingUnitPrice = (existing['unit_price'] as num?)?.toDouble() ??
+  //           (existing['regular_price'] as num?)?.toDouble() ??
+  //           (existing['sales_price'] as num?)?.toDouble() ??
+  //           (existing['price'] as num?)?.toDouble() ??
+  //           0.0;
+  //
+  //       double mergedLinePrice;
+  //       double mergedWeightQty = 0.0;
+  //
+  //       // 🆕 WEIGHTED ITEM MERGE LOGIC
+  //       if (incomingWeighted || existingWeighted) {
+  //         newQty = 1;
+  //
+  //         // Get old weight from existing item
+  //         final double oldWeight = (existing['weight_qty'] as num?)?.toDouble() ??
+  //             (existing['weight'] as num?)?.toDouble() ??
+  //             ((existingUnitPrice > 0 && (existing['price'] as num?)?.toDouble() != null)
+  //                 ? ((existing['price'] as num?)?.toDouble() ?? 0.0) / existingUnitPrice
+  //                 : 0.0);
+  //
+  //         // Get new weight to add
+  //         final double addWeight = weightQty ??
+  //             ((existingUnitPrice > 0 && price > 0) ? price / existingUnitPrice : 0.0);
+  //
+  //         // Accumulate weight
+  //         mergedWeightQty = oldWeight + addWeight;
+  //
+  //         // Recalculate price based on accumulated weight × unit price
+  //         mergedLinePrice = mergedWeightQty * existingUnitPrice;
+  //
+  //         print('🔄 Weight Merge: Old: $oldWeight + New: $addWeight = $mergedWeightQty');
+  //         print('🔄 Price Merge: $existingUnitPrice × $mergedWeightQty = $mergedLinePrice');
+  //
+  //         // Update price to use merged line price
+  //         price = mergedLinePrice;
+  //       } else {
+  //         newQty = oldQty + quantity;
+  //         mergedLinePrice = (existing['price'] ?? 0).toDouble();
+  //       }
+  //
+  //       final mergedEbt = (existing['is_ebt_eligible'] == true) || (isEbtEligible == true);
+  //
+  //       double itemTaxRate = double.tryParse(
+  //           (existing['tax_rate'] ?? effectiveTaxRate).toString()) ?? 0.0;
+  //       String itemTaxStatus = (existing['tax_status'] ?? effectiveTaxStatus)
+  //           .toString()
+  //           .toLowerCase();
+  //
+  //       if (mergedEbt) {
+  //         itemTaxStatus = "none";
+  //         itemTaxRate = 0.0;
+  //       } else {
+  //         itemTaxStatus = "taxable";
+  //         if (itemTaxRate <= 0) itemTaxRate = defaultNonEbtTaxRate;
+  //       }
+  //
+  //       double itemTax = 0.0;
+  //       if (itemTaxStatus == "taxable" && itemTaxRate > 0) {
+  //         final double taxableBase = (incomingWeighted || existingWeighted)
+  //             ? mergedLinePrice
+  //             : (mergedLinePrice * newQty);
+  //         itemTax = roundTaxHalfUp(taxableBase * (itemTaxRate / 100));
+  //         print("🔁 UPDATED TAX → rate:$itemTaxRate qty:$newQty tax:$itemTax");
+  //       }
+  //
+  //       print("🔁 EXISTING ITEM FOUND → $name");
+  //       print("   Old Qty: $oldQty → New Qty: $newQty");
+  //       print("   EBT (existing or new): $mergedEbt");
+  //
+  //       // Build updated item map
+  //       final updatedItem = {
+  //         ...existing,
+  //         'quantity': newQty,
+  //         'is_ebt_eligible': mergedEbt,
+  //         'price': mergedLinePrice,
+  //         'tax_status': itemTaxStatus,
+  //         'tax_class': existing['tax_class'] ?? effectiveTaxClass,
+  //         'tax_rate': itemTaxRate,
+  //         'item_tax': itemTax,
+  //       };
+  //
+  //       // Preserve weight fields for weighted items
+  //       if (incomingWeighted || existingWeighted) {
+  //         updatedItem['weight_qty'] = mergedWeightQty;
+  //         updatedItem['weight'] = mergedWeightQty;
+  //         updatedItem['unit_price'] = existingUnitPrice;
+  //       }
+  //
+  //       products[existingIndex] = updatedItem;
+  //       print("🔁 SAME PRODUCT → Merged successfully.");
+  //
+  //     } else {
+  //       // 🆕 ADD NEW PRODUCT
+  //       print("🆕 ADDING NEW PRODUCT → $name");
+  //       print("   EBT Eligible: $isEbtEligible");
+  //       print("   WeightQty: $weightQty");
+  //       print("   Unit Price: $unitPrice");
+  //
+  //       // Determine if this is a weighted item for quantity handling
+  //       final int itemQuantity = isWeightedItem ? 1 : quantity;
+  //
+  //       // For weighted items, ensure we have a weight value
+  //       double finalWeightQty = 0.0;
+  //       if (isWeightedItem) {
+  //         // Use provided weightQty, or calculate from price/unitPrice
+  //         if (weightQty != null && weightQty > 0) {
+  //           finalWeightQty = weightQty;
+  //         } else if (unitPrice != null && unitPrice > 0 && price > 0) {
+  //           finalWeightQty = price / unitPrice;
+  //         }
+  //         print('   Calculated Weight: $finalWeightQty');
+  //       }
+  //
+  //       // Build the new product map
+  //       final newProduct = {
+  //         'server_item_id': serverItemId,
+  //         'name': name,
+  //         'image': image,
+  //         'price': price,
+  //         'quantity': itemQuantity,
+  //         'sku': sku,
+  //         'type': (variationId != null && variationId > 0)
+  //             ? 'variant'
+  //             : (type ?? 'product'),
+  //         'product_id': productId,
+  //         'variation_id': variationId,
+  //         'item_variation': variationId,
+  //         'variationId': variationId,
+  //         'variation_name': variationName,
+  //         'variation_count': variationCount,
+  //         'combo': combo,
+  //         'sales_price': salesPrice,
+  //         'regular_price': regularPrice,
+  //         'unit_price': unitPrice,
+  //         'is_ebt_eligible': isEbtEligible,
+  //         'tax_status': effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus,
+  //         'tax_class': effectiveTaxClass,
+  //         'tax_rate': effectiveTaxRate,
+  //         'auto_discount': 0.0,
+  //         'auto_discount_total': 0.0,
+  //         'multipack_discount_total': 0.0,
+  //         'combo_discount_total': 0.0,
+  //         'item_tax': 0.0,
+  //       };
+  //
+  //       // Add weight fields for weighted items
+  //       if (isWeightedItem) {
+  //         newProduct['weight_qty'] = finalWeightQty;
+  //         newProduct['weight'] = finalWeightQty;
+  //       }
+  //
+  //       products.add(newProduct);
+  //       print("🆕 NEW PRODUCT ADDED → ${products.length} total items");
+  //     }
+  //
+  //     print("💾 ORDER UPDATED → Product Count: ${products.length}");
+  //     for (var p in products) {
+  //       final isWeighted = p.containsKey('weight_qty') && (p['weight_qty'] as num?)?.toDouble() != 0;
+  //       print("   ▶ ${p['name']} | Qty: ${p['quantity']} | Price: ${p['price']}${isWeighted ? ' | Weight: ${p['weight_qty']}' : ''} | EBT: ${p['is_ebt_eligible']}");
+  //     }
+  //
+  //     final updatedOrder = <String, dynamic>{...order, 'products': products};
+  //
+  //     await saveOfflineOrder(orderId, updatedOrder);
+  //     print('[Cart] addItemToOrder saved ${products.length} line(s) in ${sw.elapsedMilliseconds}ms');
+  //
+  //     final double subtotal = (updatedOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
+  //     final double tax = (updatedOrder['order_tax'] as num?)?.toDouble() ?? 0.0;
+  //     final double total = (updatedOrder['net_payable'] as num?)?.toDouble() ?? 0.0;
+  //
+  //     // Refresh UI
+  //     notifyOrderPanelToRefresh();
+  //     if (onItemAdded != null) onItemAdded();
+  //     print('[Cart] addItemToOrder DONE "${name}" total ${sw.elapsedMilliseconds}ms');
+  //
+  //     // Update customer display (fire-and-forget)
+  //     unawaited(() async {
+  //       try {
+  //         await const MethodChannel(
+  //           'com.alekta.pinakapos/sunmi_display',
+  //         ).invokeMethod(
+  //           'showCustomerData',
+  //           {
+  //             'orderId': orderId,
+  //             'items': products,
+  //             'grossTotal': subtotal,
+  //             'discount': (updatedOrder['discount'] as num?)?.toDouble() ?? 0.0,
+  //             'merchantDiscount': (updatedOrder['merchant_discount'] as num?)?.toDouble() ?? 0.0,
+  //             'netTotal': (updatedOrder['net_total'] as num?)?.toDouble() ?? subtotal,
+  //             'tax': tax,
+  //             'netPayable': total,
+  //             'orderDate': updatedOrder['order_date']?.toString() ?? '',
+  //             'orderTime': updatedOrder['order_time']?.toString() ?? '',
+  //             'cashbackFee': (updatedOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
+  //             'loyaltyContact': updatedOrder['loyalty_contact']?.toString() ?? '',
+  //             'availablePoints': (updatedOrder['available_points'] as num?)?.toInt() ?? 0,
+  //             'summaryEnabled': false,
+  //           },
+  //         );
+  //       } catch (e) {
+  //         print("Customer display unavailable: $e");
+  //       }
+  //     }());
+  //
+  //   } finally {
+  //     _activeAdds.remove(key);
+  //   }
+  // }
+
   Future<void> addItemToOrder(
       int? serverItemId,
       String name,
@@ -2593,9 +3007,11 @@ class OrderHelper {
         String? taxStatus,
         String? taxClass,
         double? taxRate,
+        List<Map<String, dynamic>>? metaData,   // ✅ NEW
+        int? loyaltyPoints,                      // ✅ NEW
       }) async {
     final sw = Stopwatch()..start();
-    print('[Cart] addItemToOrder START → "$name" orderId=$orderId productId=$productId');
+    print('[Cart] addItemToOrder START → "$name" orderId=$orderId productId=$productId weightQty=$weightQty');
 
     final key = '$orderId-$productId-$variationId';
 
@@ -2608,8 +3024,7 @@ class OrderHelper {
 
     try {
       // Block adding items to orders that have payments (pending orders)
-      final payments =
-      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+      final payments = await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
       if (payments.isNotEmpty) {
         print('[Cart] addItemToOrder BLOCKED: order $orderId has ${payments.length} payment(s)');
         return;
@@ -2634,28 +3049,29 @@ class OrderHelper {
           .toList();
 
       final normProductId = (productId ?? -1).toInt();
-      // Treat null / 0 / -1 as "no variation" so different callers (scanner,
-      // categories, search) don't create separate rows for the same simple item.
       final rawNormVar = (variationId ?? 0).toInt();
       final normVariationId = rawNormVar <= 0 ? 0 : rawNormVar;
 
+      // Determine if this is a weighted item
+      final bool isWeightedItem = (type ?? '').toString().toLowerCase().contains('weighted');
+
+      // Resolve tax metadata
       const double defaultNonEbtTaxRate = 9.1;
       String effectiveTaxStatus = (taxStatus ?? '').trim();
       String? effectiveTaxClass = taxClass;
       double effectiveTaxRate = taxRate ?? 0.0;
-      if (normProductId > 0 &&
-          (effectiveTaxStatus.isEmpty || effectiveTaxRate <= 0)) {
+
+      if (normProductId > 0 && (effectiveTaxStatus.isEmpty || effectiveTaxRate <= 0)) {
         final meta = await _resolveProductTaxMeta(normProductId);
-        effectiveTaxStatus =
-        (meta["tax_status"]?.toString().trim().isNotEmpty == true)
+        effectiveTaxStatus = (meta["tax_status"]?.toString().trim().isNotEmpty == true)
             ? meta["tax_status"].toString()
             : (effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus);
         effectiveTaxClass = (meta["tax_class"]?.toString().isNotEmpty == true)
             ? meta["tax_class"].toString()
             : effectiveTaxClass;
-        effectiveTaxRate =
-            (meta["tax_rate"] as num?)?.toDouble() ?? effectiveTaxRate;
+        effectiveTaxRate = (meta["tax_rate"] as num?)?.toDouble() ?? effectiveTaxRate;
       }
+
       // Business rule: all non-EBT items are taxable; EBT items are tax-free.
       if (isEbtEligible) {
         effectiveTaxStatus = "none";
@@ -2667,14 +3083,10 @@ class OrderHelper {
         }
       }
 
-      // Find existing item to merge quantity (scan/search/selection)
+      // Find existing item to merge
       final existingIndex = products.indexWhere((p) {
-        // Normalize stored ids to int because some flows store them as String/num
-        // (e.g. scanner vs category/search), which would otherwise fail equality
-        // and create duplicate entries for the same product.
         final dynamic rawPid = p['product_id'] ?? p['id'] ?? -1;
-        final dynamic rawVid =
-            p['variation_id'] ?? p['item_variation'] ?? p['variationId'] ?? 0;
+        final dynamic rawVid = p['variation_id'] ?? p['item_variation'] ?? p['variationId'] ?? 0;
 
         int pid;
         if (rawPid is int) {
@@ -2689,39 +3101,20 @@ class OrderHelper {
         } else {
           vid = int.tryParse(rawVid.toString()) ?? 0;
         }
-        // Normalize stored variation id: <= 0 means "no variation"
         if (vid <= 0) vid = 0;
 
         final matchesIds = pid == normProductId && vid == normVariationId;
 
-        // If it's a custom item (productId 0 or -1), we MUST also match the SKU
+        // For custom items, match by SKU as well
         if (normProductId == 0 || normProductId == -1) {
           final storedSku = normalizeSku(p['sku']?.toString() ?? '');
           final newSku = normalizeSku(sku);
           return matchesIds && storedSku == newSku;
         }
-        // For normal products, also allow merge when SKU matches and there is
-        // effectively no variation on either side. This handles flows where one
-        // caller passes a different internal product id for the same barcode.
-        // Only when at least one side has no reliable product id — otherwise
-        // many items share placeholders like "N/A" and would incorrectly merge.
-        if (!matchesIds) {
-          final ambiguousIncoming = normProductId <= 0;
-          final ambiguousStored = pid <= 0;
-          if (ambiguousIncoming || ambiguousStored) {
-            final storedSku = normalizeSku(p['sku']?.toString() ?? '');
-            final newSku = normalizeSku(sku);
-            final bothNoVariation = vid == 0 && normVariationId == 0;
-            if (bothNoVariation &&
-                storedSku.isNotEmpty &&
-                storedSku == newSku) {
-              return true;
-            }
-          }
-        }
         return matchesIds;
       });
 
+      // 🆕 MERGE OR ADD
       if (existingIndex != -1) {
         final existing = products[existingIndex];
         final incomingType = (type ?? '').toString().toLowerCase();
@@ -2731,42 +3124,56 @@ class OrderHelper {
 
         final oldQty = (existing['quantity'] ?? 0).toInt();
         final int newQty;
-        final double unitPrice = (existing['unit_price'] as num?)?.toDouble() ??
+
+        // Get unit price from existing item
+        final double existingUnitPrice = (existing['unit_price'] as num?)?.toDouble() ??
             (existing['regular_price'] as num?)?.toDouble() ??
             (existing['sales_price'] as num?)?.toDouble() ??
             (existing['price'] as num?)?.toDouble() ??
             0.0;
 
-        // For weighted items, we merge by accumulating weight + total price,
-        // while keeping quantity fixed at 1 (so totals remain correct).
         double mergedLinePrice;
         double mergedWeightQty = 0.0;
+
+        // 🆕 WEIGHTED ITEM MERGE LOGIC
         if (incomingWeighted || existingWeighted) {
           newQty = 1;
 
-          final double oldLinePrice =
-              (existing['price'] as num?)?.toDouble() ?? 0.0;
-          mergedLinePrice = oldLinePrice + price;
+          // Get old weight from existing item
+          final double oldWeight = (existing['weight_qty'] as num?)?.toDouble() ??
+              (existing['weight'] as num?)?.toDouble() ??
+              ((existingUnitPrice > 0 && (existing['price'] as num?)?.toDouble() != null)
+                  ? ((existing['price'] as num?)?.toDouble() ?? 0.0) / existingUnitPrice
+                  : 0.0);
 
-          final double oldWeight =
-              (existing['weight_qty'] as num?)?.toDouble() ??
-                  ((unitPrice > 0) ? (oldLinePrice / unitPrice) : 0.0);
-          final double addWeight =
-              weightQty ?? ((unitPrice > 0) ? (price / unitPrice) : 0.0);
+          // Get new weight to add
+          final double addWeight = weightQty ??
+              ((existingUnitPrice > 0 && price > 0) ? price / existingUnitPrice : 0.0);
+
+          // Accumulate weight
           mergedWeightQty = oldWeight + addWeight;
+
+          // Recalculate price based on accumulated weight × unit price
+          mergedLinePrice = mergedWeightQty * existingUnitPrice;
+
+          print('🔄 Weight Merge: Old: $oldWeight + New: $addWeight = $mergedWeightQty');
+          print('🔄 Price Merge: $existingUnitPrice × $mergedWeightQty = $mergedLinePrice');
+
+          // Update price to use merged line price
+          price = mergedLinePrice;
         } else {
           newQty = oldQty + quantity;
           mergedLinePrice = (existing['price'] ?? 0).toDouble();
         }
 
-        final mergedEbt =
-            (existing['is_ebt_eligible'] == true) || (isEbtEligible == true);
+        final mergedEbt = (existing['is_ebt_eligible'] == true) || (isEbtEligible == true);
+
         double itemTaxRate = double.tryParse(
-            (existing['tax_rate'] ?? effectiveTaxRate).toString()) ??
-            0.0;
+            (existing['tax_rate'] ?? effectiveTaxRate).toString()) ?? 0.0;
         String itemTaxStatus = (existing['tax_status'] ?? effectiveTaxStatus)
             .toString()
             .toLowerCase();
+
         if (mergedEbt) {
           itemTaxStatus = "none";
           itemTaxRate = 0.0;
@@ -2776,7 +3183,6 @@ class OrderHelper {
         }
 
         double itemTax = 0.0;
-
         if (itemTaxStatus == "taxable" && itemTaxRate > 0) {
           final double taxableBase = (incomingWeighted || existingWeighted)
               ? mergedLinePrice
@@ -2789,7 +3195,8 @@ class OrderHelper {
         print("   Old Qty: $oldQty → New Qty: $newQty");
         print("   EBT (existing or new): $mergedEbt");
 
-        products[existingIndex] = {
+        // Build updated item map
+        final updatedItem = {
           ...existing,
           'quantity': newQty,
           'is_ebt_eligible': mergedEbt,
@@ -2797,68 +3204,89 @@ class OrderHelper {
           'tax_status': itemTaxStatus,
           'tax_class': existing['tax_class'] ?? effectiveTaxClass,
           'tax_rate': itemTaxRate,
-
-          // 🔥 UPDATE TAX
           'item_tax': itemTax,
-          if (incomingWeighted || existingWeighted)
-            'weight_qty': mergedWeightQty,
         };
 
-        print("🔁 SAME PRODUCT → Qty incremented.");
+        // Preserve weight fields for weighted items
+        if (incomingWeighted || existingWeighted) {
+          updatedItem['weight_qty'] = mergedWeightQty;
+          updatedItem['weight'] = mergedWeightQty;
+          updatedItem['unit_price'] = existingUnitPrice;
+        }
+
+        products[existingIndex] = updatedItem;
+        print("🔁 SAME PRODUCT → Merged successfully.");
+
       } else {
+        // 🆕 ADD NEW PRODUCT
         print("🆕 ADDING NEW PRODUCT → $name");
         print("   EBT Eligible: $isEbtEligible");
+        print("   WeightQty: $weightQty");
+        print("   Unit Price: $unitPrice");
 
-        products.add({
+        // Determine if this is a weighted item for quantity handling
+        final int itemQuantity = isWeightedItem ? 1 : quantity;
+
+        // For weighted items, ensure we have a weight value
+        double finalWeightQty = 0.0;
+        if (isWeightedItem) {
+          // Use provided weightQty, or calculate from price/unitPrice
+          if (weightQty != null && weightQty > 0) {
+            finalWeightQty = weightQty;
+          } else if (unitPrice != null && unitPrice > 0 && price > 0) {
+            finalWeightQty = price / unitPrice;
+          }
+          print('   Calculated Weight: $finalWeightQty');
+        }
+
+        // Build the new product map
+        final newProduct = {
           'server_item_id': serverItemId,
           'name': name,
           'image': image,
           'price': price,
-          'quantity': (type ?? '').toString().toLowerCase().contains('weighted')
-              ? 1
-              : quantity,
+          'quantity': itemQuantity,
           'sku': sku,
           'type': (variationId != null && variationId > 0)
               ? 'variant'
               : (type ?? 'product'),
-
           'product_id': productId,
-          // ✅ ADD ALL THREE KEYS (safe + backward compatible)
           'variation_id': variationId,
           'item_variation': variationId,
           'variationId': variationId,
-
           'variation_name': variationName,
           'variation_count': variationCount,
           'combo': combo,
           'sales_price': salesPrice,
           'regular_price': regularPrice,
           'unit_price': unitPrice,
-          if ((type ?? '').toString().toLowerCase().contains('weighted'))
-            'weight_qty': weightQty ??
-                ((unitPrice != null && unitPrice > 0)
-                    ? (price / unitPrice)
-                    : 0.0),
-
-          /// ⭐ NOW SAVED CORRECTLY
           'is_ebt_eligible': isEbtEligible,
-          'tax_status':
-          effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus,
+          'tax_status': effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus,
           'tax_class': effectiveTaxClass,
           'tax_rate': effectiveTaxRate,
-
-          // Discount fields (0 for new items; preserve when merged from existing)
           'auto_discount': 0.0,
           'auto_discount_total': 0.0,
           'multipack_discount_total': 0.0,
           'combo_discount_total': 0.0,
-        });
+          'item_tax': 0.0,
+          'meta_data': metaData ?? [],        // ✅ NEW — persists loyalty points meta
+          'loyalty_points': loyaltyPoints ?? 0, // ✅ NEW — persists computed loyalty points
+        };
+
+        // Add weight fields for weighted items
+        if (isWeightedItem) {
+          newProduct['weight_qty'] = finalWeightQty;
+          newProduct['weight'] = finalWeightQty;
+        }
+
+        products.add(newProduct);
+        print("🆕 NEW PRODUCT ADDED → ${products.length} total items");
       }
 
       print("💾 ORDER UPDATED → Product Count: ${products.length}");
       for (var p in products) {
-        print(
-            "   ▶ ${p['name']} | Qty: ${p['quantity']} | EBT: ${p['is_ebt_eligible']}");
+        final isWeighted = p.containsKey('weight_qty') && (p['weight_qty'] as num?)?.toDouble() != 0;
+        print("   ▶ ${p['name']} | Qty: ${p['quantity']} | Price: ${p['price']}${isWeighted ? ' | Weight: ${p['weight_qty']}' : ''} | EBT: ${p['is_ebt_eligible']}");
       }
 
       final updatedOrder = <String, dynamic>{...order, 'products': products};
@@ -2866,18 +3294,16 @@ class OrderHelper {
       await saveOfflineOrder(orderId, updatedOrder);
       print('[Cart] addItemToOrder saved ${products.length} line(s) in ${sw.elapsedMilliseconds}ms');
 
-      final double subtotal =
-          (updatedOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
-      final double tax =
-          (updatedOrder['order_tax'] as num?)?.toDouble() ?? 0.0;
-      final double total =
-          (updatedOrder['net_payable'] as num?)?.toDouble() ?? 0.0;
+      final double subtotal = (updatedOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
+      final double tax = (updatedOrder['order_tax'] as num?)?.toDouble() ?? 0.0;
+      final double total = (updatedOrder['net_payable'] as num?)?.toDouble() ?? 0.0;
 
-// refresh UI once after save; customer display is fire-and-forget so cart is not blocked
+      // Refresh UI
       notifyOrderPanelToRefresh();
       if (onItemAdded != null) onItemAdded();
       print('[Cart] addItemToOrder DONE "${name}" total ${sw.elapsedMilliseconds}ms');
 
+      // Update customer display (fire-and-forget)
       unawaited(() async {
         try {
           await const MethodChannel(
@@ -2889,20 +3315,15 @@ class OrderHelper {
               'items': products,
               'grossTotal': subtotal,
               'discount': (updatedOrder['discount'] as num?)?.toDouble() ?? 0.0,
-              'merchantDiscount':
-              (updatedOrder['merchant_discount'] as num?)?.toDouble() ?? 0.0,
-              'netTotal':
-              (updatedOrder['net_total'] as num?)?.toDouble() ?? subtotal,
+              'merchantDiscount': (updatedOrder['merchant_discount'] as num?)?.toDouble() ?? 0.0,
+              'netTotal': (updatedOrder['net_total'] as num?)?.toDouble() ?? subtotal,
               'tax': tax,
               'netPayable': total,
               'orderDate': updatedOrder['order_date']?.toString() ?? '',
               'orderTime': updatedOrder['order_time']?.toString() ?? '',
-              'cashbackFee':
-              (updatedOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
-              'loyaltyContact':
-              updatedOrder['loyalty_contact']?.toString() ?? '',
-              'availablePoints':
-              (updatedOrder['available_points'] as num?)?.toInt() ?? 0,
+              'cashbackFee': (updatedOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
+              'loyaltyContact': updatedOrder['loyalty_contact']?.toString() ?? '',
+              'availablePoints': (updatedOrder['available_points'] as num?)?.toInt() ?? 0,
               'summaryEnabled': false,
             },
           );
@@ -2910,12 +3331,14 @@ class OrderHelper {
           print("Customer display unavailable: $e");
         }
       }());
+
     } finally {
       _activeAdds.remove(key);
     }
   }
 
   static Map<String, dynamic> _inMemoryProductCache = {};
+
 
   static String normalizeSku(String s) {
     return s.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9\-]'), '');

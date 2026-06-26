@@ -656,7 +656,7 @@
 //             case 'weight':
 //               final double w = (data['weight'] as num?)?.toDouble() ?? 0.0;
 //               final String unit = data['unit'] as String? ?? 'lb';
-//               _scaleLog('⚖️ Weight: $w $unit');
+//               _scaleLog(' Weight: $w $unit');
 //               double kg = w;
 //               if (unit == 'lb')
 //                 kg = w * 0.453592;
@@ -3015,6 +3015,7 @@ import '../Blocs/Orders/order_bloc.dart';
 import '../Blocs/Search/product_search_bloc.dart';
 import '../Constants/text.dart';
 import '../Database/db_helper.dart';
+import '../Database/fast_key_db_helper.dart';
 import '../Database/isar_cache_entry.dart';
 import '../Database/isar_service.dart';
 import '../Database/order_panel_db_helper.dart';
@@ -3030,6 +3031,7 @@ import '../Repositories/Auth/logout_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
 import '../Screens/Auth/login_screen.dart' show LoginScreen;
+import '../Screens/Home/fast_key_screen.dart';
 import '../Utilities/printer_settings.dart';
 import '../Utilities/svg_images_utility.dart';
 import 'ManualPriceDialog.dart';
@@ -3399,6 +3401,20 @@ class TopBar extends StatefulWidget {
   static Completer<void>? _firstMergedReloadCompleter;
   static bool _mergedReloadCompletedOnce = false;
 
+
+  // Inside class TopBar { ... }  (not _TopBarState)
+
+  /// Public helper to get product ID from any cached product map
+  /// Used by FastKeyDBHelper after product sync
+  static int? productIdFromCacheMap(dynamic product) {
+    if (product is! Map) return null;
+    final dynamic raw = product["fast_key_product_id"] ??
+        product["product_id"] ??
+        product["id"];
+    if (raw is int) return raw;
+    return int.tryParse(raw?.toString() ?? "");
+  }
+
   static Future<void> waitForFirstMergedProductCacheReload() async {
     if (_mergedReloadCompletedOnce) return;
     _firstMergedReloadCompleter ??= Completer<void>();
@@ -3504,6 +3520,42 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
   // ── LIFECYCLE ───────────────────────────────────────────────────────────────
 
+
+   // Add this method to _TopBarState
+  Future<void> _syncFastKeysFromApi() async {
+    try {
+      if (kDebugMode) print("🔄 Syncing FastKeys from API...");
+
+      final db = await DBHelper.instance.database;
+      final result = await db.query(
+        AppDBConst.userTable,
+        where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+        orderBy: '${AppDBConst.userId} DESC',
+        limit: 1,
+      );
+
+      if (result.isEmpty) {
+        if (kDebugMode) print('⚠️ No user found for FastKey sync');
+        return;
+      }
+
+      final token = result.first[AppDBConst.userToken] as String;
+      final userId = result.first[AppDBConst.userId] as int;
+
+      // Sync FastKeys from API
+      final fastKeyDBHelper = FastKeyDBHelper();
+      await fastKeyDBHelper.syncFastKeysFromApi(token, userId);
+
+      // Clear FastKeyScreen cache
+      // FastKeyScreen.clearFastKeyCache();
+
+      if (kDebugMode) print("✅ FastKey sync completed");
+
+    } catch (e) {
+      if (kDebugMode) print('❌ FastKey sync error: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -3521,6 +3573,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       _weightProvider = Provider.of<WeightProvider>(context, listen: false);
       _listenToScale();
     });
+
+
 
     if (!_isUserDataLoaded) {
       _initialUserFuture = UserDbHelper().getUserData();
@@ -3542,6 +3596,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         userRole = _cachedUserData![AppDBConst.userRole] as String?;
       }
     }
+
   }
 
   void setModeChangePending(bool value) {}
@@ -3650,7 +3705,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               );
               if (kDebugMode) {
                 _scaleLog(
-                  '⚖️ ${data['weight']} ${data['unit']} stable=${data['stable']}',
+                  ' ${data['weight']} ${data['unit']} stable=${data['stable']}',
                 );
               }
               break;
@@ -3779,6 +3834,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         }
         TopBar.notifyMergedProductCacheMayHaveChanged();
         await _reloadAllProductsFromIsar();
+        await _syncFastKeysFromApi();
+
         TopBar.onRefreshCompleted?.call();
         return;
       }
@@ -5079,31 +5136,32 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
       // ── Step 6: Produce / weighted ──────────────────────────────────────────
       final bool hasProduceTag = tags.any((t) =>
-      t.slug?.toLowerCase() == "produce" ||
-          t.name?.toLowerCase() == "produce");
+      (t.slug?.toString().toLowerCase() == "produce") ||
+          (t.name?.toString().toLowerCase() == "produce"));
 
       if (hasProduceTag) {
-        final weightProvider =
-        Provider.of<WeightProvider>(context, listen: false);
+        final weightProvider = Provider.of<WeightProvider>(context, listen: false);
 
-        double liveWeight = 0.0;
+        double liveWeightLbs = 0.0;
         try {
           final parts = weightProvider.weightText.trim().split(' ');
           if (parts.isNotEmpty) {
-            liveWeight = double.tryParse(parts[0]) ?? 0.0;
+            liveWeightLbs = double.tryParse(parts[0]) ?? 0.0;
           }
         } catch (_) {}
 
-        final double weightKg =
-        liveWeight > 0 ? liveWeight * 0.453592 : 0.0;
-        final double weightToUse =
-        weightKg > 0.00001 ? weightKg : 0.0001;
-        final double finalPrice = unitPrice * weightToUse;
+        print('🟢 Live Weight (lbs) from TopBar: $liveWeightLbs for produce item');
 
-        if (weightKg <= 0.0001 && mounted) {
+        final double finalPrice = (liveWeightLbs > 0)
+            ? unitPrice * liveWeightLbs
+            : unitPrice; // fallback
+
+        final double weightToUse = liveWeightLbs > 0 ? liveWeightLbs : 0.0001;
+
+        if (liveWeightLbs <= 0 && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Scale not detected — using 100g default'),
+              content: Text('Scale not detected — using default weight'),
               duration: Duration(seconds: 2),
             ),
           );
@@ -5120,13 +5178,12 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           product.sku ?? '',
           _cachedEnsuredOrderId!,
           type: 'weighted',
-          weightQty: weightToUse,
+          weightQty: weightToUse,           // ← lbs (important)
           productId: product.id,
           variationId: -1,
-          unitPrice: unitPrice,
+          unitPrice: unitPrice,             // price per lb
           salesPrice: finalPrice,
           regularPrice: unitPrice,
-          combo: null,
           isEbtEligible: isEbtEligible,
           onItemAdded: () {
             _removeOverlay();

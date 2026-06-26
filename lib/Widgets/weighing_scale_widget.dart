@@ -274,7 +274,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
           final kg       = weightProvider.weightKg;
           final displayVal = kg > 0 ? _weightLbFromKg(kg) : 0.0;
           final liveText =
-              displayVal > 0 ? _formatWeight(displayVal) : '';
+          displayVal > 0 ? _formatWeight(displayVal) : '';
 
           if (_weightController.text != liveText) {
             _setControllerSilently(liveText);
@@ -296,7 +296,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                
+
                     // ── Title ────────────────────────────────────────────────
                     Stack(
                       alignment: Alignment.center,
@@ -327,18 +327,18 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                         ),
                       ],
                     ),
-                
+
                     const SizedBox(height: 16),
-                
+
                     // ── Scale status chip ─────────────────────────────────────
                     _ScaleStatusChip(
                       isConnected: weightProvider.isConnected,
                       isLive:      isLive,
                       isStable:    isStable,
                     ),
-                
+
                     const SizedBox(height: 20),
-                
+
                     // ── Row 1: Product name + Unit price ──────────────────────
                     Row(
                       children: [
@@ -357,9 +357,9 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                         ),
                       ],
                     ),
-                
+
                     const SizedBox(height: 20),
-                
+
                     // ── Row 2: Weight field + Calculated price ─────────────────
                     Row(
                       children: [
@@ -389,9 +389,9 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                         ),
                       ],
                     ),
-                
+
                     const SizedBox(height: 28),
-                
+
                     // ── Confirm button ─────────────────────────────────────────
                     Align(
                       alignment: Alignment.centerRight,
@@ -402,14 +402,14 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                               ? () {
                             final capturedWeight = weight;
                             final capturedPrice  = price;
-                
+
                             weightProvider.clearWeight();
-                
+
                             Navigator.of(context).pop({
                               'weight':     capturedWeight,
                               'finalPrice': capturedPrice,
                             });
-                
+
                             widget.onConfirm
                                 ?.call(capturedWeight, capturedPrice);
                           }
@@ -434,7 +434,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
                         ),
                       ),
                     ),
-                
+
                   ],
                 ),
               ),

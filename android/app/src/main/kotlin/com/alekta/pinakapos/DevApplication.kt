@@ -1,5 +1,6 @@
 package com.alekta.pinakapos
 
+import android.app.Application
 import com.creditcall.chipdnamobile.ChipDnaApplication
 
 // ChipDNA Mobile (Tap to Mobile) requires the process Application to extend ChipDnaApplication
@@ -8,6 +9,7 @@ class DevApplication : ChipDnaApplication() {
 
     override fun onCreate() {
         super.onCreate()
+        // Any application-level initialization
     }
 
     override fun onSDKInitializationSuccess() {
@@ -20,4 +22,3 @@ class DevApplication : ChipDnaApplication() {
         println("SDK Initialization Failed: $errorMessage")
     }
 }
-

@@ -1,14 +1,26 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-feature android:name="android.hardware.usb.host" />
     <uses-permission android:name="android.permission.USB_PERMISSION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- Bluetooth permissions -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+
     <application
         android:label="Grocery Pinaka"
         android:name=".DevApplication"
-        android:icon="@mipmap/logo">
+        android:icon="@mipmap/logo"
+        tools:replace="android:label">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -18,52 +30,62 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-            <!-- Specifies an Android theme to apply to this Activity as soon as
-                 the Android process has started. This theme is visible to the user
-                 while the Flutter UI initializes. After that, this theme continues
-                 to determine the Window background behind the Flutter UI. -->
+
+            <!-- Normal Theme -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
-                android:resource="@style/NormalTheme"
-                />
+                android:resource="@style/NormalTheme" />
+
+            <!-- Main launcher intent -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
+            <!-- USB Device attached intent filter -->
             <intent-filter>
-                <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED" />
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
-
             </intent-filter>
+
+            <!-- USB Device filter metadata - THIS IS CRUCIAL -->
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter" />
+
         </activity>
-        <!-- Don't delete the meta-data below.
-             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+
+        <!-- Flutter embedding version -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- USB Receiver for handling USB events -->
         <receiver
             android:name="com.codingdevs.thermal_printer.usb.UsbReceiver"
             android:exported="false">
-
             <intent-filter>
-                <action android:name="android.hardware.usb.action.ACTION_USB_PERMISSION" />
-                <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED" />
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+                <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED" />
                 <action android:name="com.flutter_pos_printer.USB_PERMISSION" />
             </intent-filter>
-        </receiver>
-    </application>
-    <!-- Required to query activities that can process text, see:
-         https://developer.android.com/training/package-visibility and
-         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
 
-         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+            <!-- USB Device filter for receiver -->
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter" />
+        </receiver>
+
+    </application>
+
+    <!-- Queries for package visibility -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <intent>
+            <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+        </intent>
     </queries>
+
 </manifest>

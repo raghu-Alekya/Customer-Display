@@ -1,10 +1,13 @@
 package com.alekta.pinakapos
 
 import android.app.Activity
+import android.app.PendingIntent
 import android.app.Presentation
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -12,8 +15,10 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
+import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.nfc.NfcAdapter
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -59,8 +64,38 @@ class MainActivity : FlutterActivity() {
     private var authToken: String = ""
     private var isShowingThankYou = false
 
+    // ===== USB Printer Permission =====
+    private val PRINTER_CHANNEL = "com.alekta.pinakapos/printer_permission"
+    private var usbPermissionReceiver: BroadcastReceiver? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // ===== USB Printer Permission Channel =====
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PRINTER_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "hasUSBPermission" -> {
+                        val vendorId = call.argument<Int>("vendorId")
+                        val productId = call.argument<Int>("productId")
+                        if (vendorId != null && productId != null) {
+                            result.success(checkUSBPermission(vendorId, productId))
+                        } else {
+                            result.success(false)
+                        }
+                    }
+                    "requestUSBPermission" -> {
+                        val vendorId = call.argument<Int>("vendorId")
+                        val productId = call.argument<Int>("productId")
+                        if (vendorId != null && productId != null) {
+                            requestUSBPermission(vendorId, productId, result)
+                        } else {
+                            result.error("INVALID_ARGS", "Vendor ID and Product ID required", null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
 
         // ===== Weighing scale setup =====
         usbSerialManager = UsbSerialManager(this).also { manager ->
@@ -466,6 +501,86 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    // ===== USB Printer Permission Methods =====
+
+    private fun checkUSBPermission(vendorId: Int, productId: Int): Boolean {
+        val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+        val device = usbManager.deviceList.values.find {
+            it.vendorId == vendorId && it.productId == productId
+        }
+        return device?.let { usbManager.hasPermission(it) } ?: false
+    }
+
+    private fun requestUSBPermission(vendorId: Int, productId: Int, result: MethodChannel.Result) {
+        val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+
+        val device = usbManager.deviceList.values.find {
+            it.vendorId == vendorId && it.productId == productId
+        }
+
+        if (device == null) {
+            result.error("DEVICE_NOT_FOUND", "USB device not found", null)
+            return
+        }
+
+        if (usbManager.hasPermission(device)) {
+            result.success(true)
+            return
+        }
+
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+
+        val permissionIntent = PendingIntent.getBroadcast(
+            this,
+            device.deviceId,
+            Intent("com.alekta.pinakapos.USB_PERMISSION"),
+            flags
+        )
+
+        usbPermissionReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if ("com.alekta.pinakapos.USB_PERMISSION" == intent.action) {
+                    synchronized(this) {
+                        val grantedDevice = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                        }
+
+                        if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+                            && grantedDevice != null
+                            && grantedDevice.vendorId == vendorId
+                            && grantedDevice.productId == productId) {
+                            result.success(true)
+                        } else {
+                            result.error("PERMISSION_DENIED", "USB permission denied", null)
+                        }
+
+                        try {
+                            unregisterReceiver(this)
+                        } catch (e: Exception) {
+                            // Receiver already unregistered
+                        }
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter("com.alekta.pinakapos.USB_PERMISSION")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(usbPermissionReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(usbPermissionReceiver, filter)
+        }
+
+        usbManager.requestPermission(device, permissionIntent)
+    }
+
     // ===== ChipDnaMobile (VP3350) =====
 
     private fun initializeSoftPos(result: MethodChannel.Result) {
@@ -643,6 +758,14 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         usbSerialManager?.dispose()
         usbSerialManager = null
+
+        // Clean up USB permission receiver
+        try {
+            usbPermissionReceiver?.let { unregisterReceiver(it) }
+        } catch (e: Exception) {
+            // Receiver already unregistered
+        }
+
         Log.d("CustomerDisplay", "➡ onDestroy called, dismissing CustomerDisplayPresentation")
         customerDisplayPresentation?.dismiss()
         super.onDestroy()

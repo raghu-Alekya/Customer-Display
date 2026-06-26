@@ -777,6 +777,8 @@ class IndigoCategoryBasedProducts {
   final List<String> images;
   final List<IndigoTaxRate> taxRates;
   final String type;
+  // NEW: Meta data support (loyalty points etc.)
+  final List<Map<String, dynamic>> metaData;
 
   IndigoCategoryBasedProducts({
     required this.id,
@@ -790,6 +792,7 @@ class IndigoCategoryBasedProducts {
     required this.images,
     required this.taxRates,
     required this.type,
+    this.metaData = const [], // default empty
   });
 
   factory IndigoCategoryBasedProducts.fromJson(Map<String, dynamic> json) {
@@ -823,7 +826,20 @@ class IndigoCategoryBasedProducts {
           IndigoTaxRate.fromJson(Map<String, dynamic>.from(tr as Map)))
           .toList();
     }
+// NEW: Parse meta_data
+    List<Map<String, dynamic>> metaList = [];
+    if (json['meta_data'] != null && json['meta_data'] is List) {
+      metaList = (json['meta_data'] as List)
+          .map((m) => Map<String, dynamic>.from(m as Map))
+          .toList();
 
+      // Console print for debugging (as requested)
+      for (var m in metaList) {
+        if (m['key'] == '_product_loyalty_points') {
+          print('🔹 [Indigo] Loyalty Points for ${json['name']}: ${m['value']}');
+        }
+      }
+    }
 
     return IndigoCategoryBasedProducts(
       id: json['id'] ?? 0,
@@ -837,6 +853,7 @@ class IndigoCategoryBasedProducts {
       images: imageList,
       taxRates: taxRateList,
       type: json['type']?.toString() ?? 'simple',
+      metaData: metaList,
     );
   }
 
@@ -852,6 +869,7 @@ class IndigoCategoryBasedProducts {
     "images": images,
     "tax_rates": taxRates.map((tr) => tr.toJson()).toList(),
     "type": type,
+    "meta_data": metaData, // NEW
   };
 }
 
@@ -2079,7 +2097,21 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           'fast_key_item_tags': <Map<String, dynamic>>[],
           'variations': <dynamic>[],
           'type': product.type,
+          // NEW: Store meta_data (loyalty points etc.) - no breaking changes to old code
+          'meta_data': product.metaData,
+          'loyalty_points': product.metaData.any((m) => m['key'] == '_product_loyalty_points')
+              ? int.tryParse(product.metaData.firstWhere((m) => m['key'] == '_product_loyalty_points')['value'].toString()) ?? 0
+              : 0,
         };
+
+        // Debug print - Loyalty Points (as you requested)
+        final loyaltyMeta = product.metaData.firstWhere(
+              (m) => m['key'] == '_product_loyalty_points',
+          orElse: () => <String, dynamic>{},
+        );
+        if (loyaltyMeta.isNotEmpty) {
+          print('🛒 Added product with loyalty points: ${product.name} → ${loyaltyMeta['value']}');
+        }
 
         final int productId =
             int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
@@ -2238,65 +2270,48 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         if (hasProduceTag) {
           final weightProvider = Provider.of<WeightProvider>(context, listen: false);
 
-          // Parse current weight from display text
-          double liveWeight = 0.0;
+          // Parse current weight from display text (weight is in lbs from scale)
+          double liveWeightLbs = 0.0;
           try {
             final parts = weightProvider.weightText.trim().split(' ');
             if (parts.isNotEmpty) {
-              liveWeight = double.tryParse(parts[0]) ?? 0.0;
+              liveWeightLbs = double.tryParse(parts[0]) ?? 0.0;
             }
           } catch (_) {}
 
-          // Convert lb to kg (adjust if your scale uses different unit)
-          final double weightKg = liveWeight > 0 ? liveWeight * 0.453592 : 0.0;
+          print('Live Weight (lbs): $liveWeightLbs');
 
-          // Fallback
-          final double weightToUse = weightKg > 0.00001 ? weightKg : 0.0001;
+          // finalPrice = unitPrice(per lb) * weight(lbs)
+          final double finalPrice = liveWeightLbs > 0 ? productPrice * liveWeightLbs : 0.0;
 
-          final double finalPrice = productPrice * weightToUse;
+          print('Unit Price: $productPrice | Weight: $liveWeightLbs lbs | Final Price: $finalPrice');
 
-          if (weightKg <= 0.0001 && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Scale not detected — using 100g default'),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
+          // Store the weight value before adding
+          final double weightToAdd = liveWeightLbs;
 
-          // Add the item
+          // Add the item — send productPrice as the main price, finalPrice as salesPrice
           await orderHelper.addItemToOrder(
             null,
             productName,
             productImage,
-            finalPrice,
+            finalPrice,  // ← Unit price (per lb)
             1,
             productSku,
             activeOrderId,
             type: 'weighted',
-            weightQty: weightToUse,
+            weightQty: weightToAdd,   // store weight in lbs
             productId: productId,
             variationId: -1,
-            salesPrice: finalPrice,
-            regularPrice: productPrice,
-            unitPrice: productPrice,
+            salesPrice: finalPrice,   // ← Total price (unit price × weight)
+            regularPrice: productPrice,  // unit price per lb
+            unitPrice: productPrice,     // unit price per lb
             isEbtEligible: isEbtEligible,
             onItemAdded: () async {
               _refreshOrderList();
-
-              // ←←← CLEAR SCALE WEIGHT AFTER SUCCESSFUL ADD
-              weightProvider.updateWeight(0.0);
-
-              // Optional: Show feedback
-              // if (mounted) {
-              //   ScaffoldMessenger.of(context).showSnackBar(
-              //     const SnackBar(
-              //       content: Text('Item added • Scale reset'),
-              //       duration: Duration(seconds: 1),
-              //       backgroundColor: Colors.green,
-              //     ),
-              //   );
-              // }
+              // Only clear after a short delay to ensure the item is saved
+              Future.delayed(const Duration(milliseconds: 200), () {
+                weightProvider.updateWeight(0.0);
+              });
             },
           );
           return;
@@ -2334,11 +2349,16 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                 productId: productId,
                 variationId: -1,
                 salesPrice: finalPrice,
-                regularPrice: finalPrice,
-                unitPrice: finalPrice,
+                regularPrice: productPrice,
+                unitPrice: productPrice,
                 isEbtEligible: isEbtEligible,
-                onItemAdded: () async {});
-            _refreshOrderList();
+                // ✅ ADD THESE:
+                metaData: product.metaData.map((m) => Map<String, dynamic>.from(m)).toList(),
+                loyaltyPoints: product.metaData.any((m) => m['key'] == '_product_loyalty_points')
+                    ? int.tryParse(product.metaData.firstWhere(
+                        (m) => m['key'] == '_product_loyalty_points')['value'].toString()) ?? 0
+                    : 0,
+                onItemAdded: () async => _refreshOrderList());
             return;
           }
           final enteredPrice = await ManualPriceDialog.show(context,
@@ -2472,6 +2492,17 @@ class _CategoriesScreenState extends State<CategoriesScreen>
             ),
           );
         } else {
+          // await orderHelper.addItemToOrder(null, productName, productImage,
+          //     finalPrice, 1, productSku, activeOrderId,
+          //     type: 'product',
+          //     productId: productId,
+          //     variationId: -1,
+          //     salesPrice: finalPrice,
+          //     regularPrice: productPrice,
+          //     unitPrice: productPrice,
+          //     isEbtEligible: isEbtEligible,
+          //     onItemAdded: () async => _refreshOrderList());
+
           await orderHelper.addItemToOrder(null, productName, productImage,
               finalPrice, 1, productSku, activeOrderId,
               type: 'product',
@@ -2481,6 +2512,12 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               regularPrice: productPrice,
               unitPrice: productPrice,
               isEbtEligible: isEbtEligible,
+              // ✅ ADD THESE:
+              metaData: product.metaData.map((m) => Map<String, dynamic>.from(m)).toList(),
+              loyaltyPoints: product.metaData.any((m) => m['key'] == '_product_loyalty_points')
+                  ? int.tryParse(product.metaData.firstWhere(
+                      (m) => m['key'] == '_product_loyalty_points')['value'].toString()) ?? 0
+                  : 0,
               onItemAdded: () async => _refreshOrderList());
         }
       } catch (e, s) {

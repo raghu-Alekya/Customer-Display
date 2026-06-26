@@ -17,6 +17,7 @@ class CompletedOrder {
   final int? author;
   final List<LineItem> items;
   final List<CouponModel> coupons;
+  final List<Payment> payments;
 
   CompletedOrder({
     required this.orderId,
@@ -32,31 +33,36 @@ class CompletedOrder {
     this.author,
     required this.items,
     required this.coupons,
+    required this.payments,
   });
 
   factory CompletedOrder.fromJson(Map<String, dynamic> json) {
     return CompletedOrder(
-      orderId: json['order_id'],
-      status: json['status'],
-      completedAt: DateTime.parse(json['date_completed']),
-      paymentMethod: json['payment_method'],
-      orderType: json['order_type'],
+      orderId: _parseInt(json['order_id']) ?? 0,
+      status: json['status']?.toString() ?? '',
+      completedAt: DateTime.tryParse(json['date_completed']?.toString() ?? '') ?? DateTime.now(),
+      paymentMethod: json['payment_method']?.toString() ?? '',
+      orderType: json['order_type']?.toString() ?? '',
 
       transactionId: json['transaction_id']?.toString() ?? '',
 
-      amount: double.tryParse(json['amount']?.toString() ?? '0') ?? 0,
-      discount: double.tryParse(json['discount']?.toString() ?? '0') ?? 0,
-      tax: double.tryParse(json['items_tax']?.toString() ?? '0') ?? 0,
-      total: double.tryParse(json['total']?.toString() ?? '0') ?? 0,
+      amount: _parseDouble(json['amount']) ?? 0.0,
+      discount: _parseDouble(json['discount']) ?? 0.0,
+      tax: _parseDouble(json['items_tax']) ?? 0.0,
+      total: _parseDouble(json['total']) ?? 0.0,
 
-      author: int.tryParse(json['author']?.toString() ?? '0') ?? 0,
+      author: _parseInt(json['author']),
 
       items: (json['line_items'] as List? ?? [])
-          .map((e) => LineItem.fromJson(e))
+          .map((e) => LineItem.fromJson(e as Map<String, dynamic>))
           .toList(),
 
       coupons: (json['coupon_lines'] as List? ?? [])
-          .map((e) => CouponModel.fromJson(e))
+          .map((e) => CouponModel.fromJson(e as Map<String, dynamic>))
+          .toList(),
+
+      payments: (json['payments'] as List? ?? [])
+          .map((e) => Payment.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
   }
@@ -72,6 +78,7 @@ class LineItem {
   final double totalTax;
   final String isItemsHasDiscount;
   final String itemDiscountType;
+
   LineItem({
     required this.id,
     required this.name,
@@ -86,18 +93,19 @@ class LineItem {
 
   factory LineItem.fromJson(Map<String, dynamic> json) {
     return LineItem(
-      id: json['id'],
-      name: json['name'],
-      productId: json['product_id'],
-      quantity: json['quantity'],
-      total: double.parse(json['total']),
-      image: json['image']?['src'] ?? '',
-      totalTax: double.tryParse(json['total_tax']?.toString() ?? '0') ?? 0.0,
-      isItemsHasDiscount: json['is_items_has_discount'] ?? "No",
-      itemDiscountType: json['item_discount_type'] ?? "",
+      id: _parseInt(json['id']) ?? 0,
+      name: json['name']?.toString() ?? '',
+      productId: _parseInt(json['product_id']) ?? 0,
+      quantity: _parseInt(json['quantity']) ?? 0,
+      total: _parseDouble(json['total']) ?? 0.0,
+      image: json['image']?['src']?.toString() ?? '',
+      totalTax: _parseDouble(json['total_tax']) ?? 0.0,
+      isItemsHasDiscount: json['is_items_has_discount']?.toString() ?? "No",
+      itemDiscountType: json['item_discount_type']?.toString() ?? "",
     );
   }
 }
+
 class CouponModel {
   final String code;
   final double discount;
@@ -109,11 +117,55 @@ class CouponModel {
 
   factory CouponModel.fromJson(Map<String, dynamic> json) {
     return CouponModel(
-      code: json['code'],
-      discount: double.parse(json['discount']),
+      code: json['code']?.toString() ?? '',
+      discount: _parseDouble(json['discount']) ?? 0.0,
     );
   }
 }
+
+class Payment {
+  final int id;
+  final String orderId;
+  final String paymentMethod;
+  final String paymentId;
+  final double paymentAmount;
+
+  Payment({
+    required this.id,
+    required this.orderId,
+    required this.paymentMethod,
+    required this.paymentId,
+    required this.paymentAmount,
+  });
+
+  factory Payment.fromJson(Map<String, dynamic> json) {
+    return Payment(
+      id: _parseInt(json['id']) ?? 0,
+      orderId: json['order_id']?.toString() ?? '',
+      paymentMethod: json['payment_method']?.toString() ?? '',
+      paymentId: json['payment_id']?.toString() ?? '',
+      paymentAmount: _parseDouble(json['payment_amount']) ?? 0.0,
+    );
+  }
+}
+
+// Helper functions (add these at the bottom of the file)
+int? _parseInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is double) return value.toInt();
+  if (value is String) return int.tryParse(value);
+  return null;
+}
+
+double? _parseDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is double) return value;
+  if (value is int) return value.toDouble();
+  if (value is String) return double.tryParse(value);
+  return null;
+}
+
 class RefundItem {
   final int orderItemId;
   final double orderItemAmount;
@@ -152,5 +204,4 @@ class RefundRequestModel {
 
     return data;
   }
-
 }

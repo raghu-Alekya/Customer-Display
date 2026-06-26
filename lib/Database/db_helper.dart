@@ -127,7 +127,8 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String fastKeyItemHasVariant = 'fast_key_item_has_variant';
   /// JSON array of Woo tags from Fast Keys API (EBT, age restriction, etc.)
   static const String fastKeyItemTags = 'fast_key_item_tags';
-
+// In AppDBConst class, add:
+  static const String updatedAt = 'updated_at';
   /// Printer Table Added
   static const String printerTable = 'printer_table';
   static const String printerId = 'printer_id';
@@ -205,7 +206,6 @@ class DBHelper {
 
   // Initialize the database
   Future<Database> _initDB(String filePath) async {
-
     if(Platform.isWindows){
       // Init ffi loader if needed.
       sqfliteFfiInit();
@@ -228,7 +228,7 @@ class DBHelper {
       return await databaseFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 2,
+          version: 3, // 🔥 CHANGE THIS FROM 2 TO 3
           onCreate: _createTables,
           onUpgrade: _upgradeTables,
         ),
@@ -253,22 +253,44 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3, // 🔥 CHANGE THIS FROM 2 TO 3
       onCreate: _createTables,
       onUpgrade: _upgradeTables,
     );
   }
 
   Future<void> _upgradeTables(Database db, int oldVersion, int newVersion) async {
+    // Upgrade to version 2
     if (oldVersion < 2) {
       try {
         await db.execute(
           'ALTER TABLE ${AppDBConst.fastKeyItemsTable} ADD COLUMN ${AppDBConst.fastKeyItemTags} TEXT',
         );
+        if (kDebugMode) print('✅ Upgraded to v2: fast_key_item_tags added');
       } catch (e) {
-        if (kDebugMode) {
-          print('#### DB onUpgrade v2 fast_key_item_tags: $e');
+        if (kDebugMode) print('v2 upgrade (may already exist): $e');
+      }
+    }
+
+    // Upgrade to version 3
+    if (oldVersion < 3) {
+      try {
+        // First check if column exists
+        final columns = await db.rawQuery(
+            "PRAGMA table_info(${AppDBConst.fastKeyItemsTable})"
+        );
+        final hasUpdatedAt = columns.any((col) => col['name'] == AppDBConst.updatedAt);
+
+        if (!hasUpdatedAt) {
+          await db.execute(
+            'ALTER TABLE ${AppDBConst.fastKeyItemsTable} ADD COLUMN ${AppDBConst.updatedAt} TEXT',
+          );
+          if (kDebugMode) print('✅ Upgraded to v3: updated_at column added');
+        } else {
+          if (kDebugMode) print('✅ v3: updated_at column already exists');
         }
+      } catch (e) {
+        if (kDebugMode) print('v3 upgrade error: $e');
       }
     }
   }

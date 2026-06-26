@@ -243,15 +243,15 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> with Widg
 
                     /// 🔹 CENTER CONTENT (Completed Orders Table)
                     Expanded(
-                      child: BlocConsumer<CompletedOrdersBloc,
-                          CompletedOrdersState>(
+                      child:
+                      BlocConsumer<CompletedOrdersBloc, CompletedOrdersState>(
                         listener: (context, state) {
                           if (state is CompletedOrdersLoaded) {
+                            debugPrint("Orders received: ${state.orders.length}");
+
                             setState(() {
                               _allOrders = state.orders;
-
-                              filteredOrders =
-                                  List.from(_allOrders); // ✅ important
+                              filteredOrders = List.from(_allOrders);
 
                               transactionIds = _allOrders
                                   .map((o) => o.transactionId)
@@ -262,18 +262,24 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> with Widg
                               _currentPage = 1;
 
                               _totalPages =
-                                  (filteredOrders.length / _rowsPerPage)
-                                      .ceil();
+                                  (filteredOrders.length / _rowsPerPage).ceil();
 
-                              _paginate(); // ✅ now correct
+                              _paginate();
+
+                              debugPrint(
+                                  "Filtered: ${filteredOrders.length}, Paged: ${_pagedOrders.length}");
                             });
                           }
                         },
                         builder: (context, state) {
-                          if (_pagedOrders.isEmpty) {
+                          /// Loading
+                          if (state is CompletedOrdersLoading) {
                             return const Center(
-                                child: CircularProgressIndicator());
+                              child: CircularProgressIndicator(),
+                            );
                           }
+
+                          /// Error
                           if (state is CompletedOrdersError) {
                             return Center(
                               child: Text(
@@ -283,39 +289,46 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen> with Widg
                             );
                           }
 
-                          // Loaded / Initial
-                          return Container(
-                            margin: const EdgeInsets.all(12),
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: themeHelper.themeMode == ThemeMode.dark
-                                  ? ThemeNotifier.primaryBackground
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
-                                  blurRadius: 6,
-                                )
-                              ],
-                            ),
-                            child: Column(
-                              children: [
-                                /// 🔹 HEADER
-                                _buildHeader(),
+                          /// Loaded but no data
+                          if (state is CompletedOrdersLoaded &&
+                              filteredOrders.isEmpty) {
+                            return const Center(
+                              child: Text("No completed orders found"),
+                            );
+                          }
 
-                                const SizedBox(height: 12),
+                          /// Loaded
+                          if (state is CompletedOrdersLoaded) {
+                            return Container(
+                              margin: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: themeHelper.themeMode == ThemeMode.dark
+                                    ? ThemeNotifier.primaryBackground
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.05),
+                                    blurRadius: 6,
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                children: [
+                                  _buildHeader(),
+                                  const SizedBox(height: 12),
+                                  Expanded(
+                                    child: _buildOrderTable(themeHelper),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _buildPagination(),
+                                ],
+                              ),
+                            );
+                          }
 
-                                /// 🔹 TABLE
-                                Expanded(
-                                    child: _buildOrderTable(themeHelper)),
-
-                                /// 🔹 PAGINATION
-                                const SizedBox(height: 8),
-                                _buildPagination(),
-                              ],
-                            ),
-                          );
+                          return const SizedBox();
                         },
                       ),
                     ),

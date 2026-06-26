@@ -1,10 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Common RS232-USB Chips for Weighing Scales -->
-    <usb-device vendor-id="1659" product-id="8963" /> <!-- PL2303 -->
-    <usb-device vendor-id="4292" product-id="60000" /> <!-- CP210x -->
-    <usb-device vendor-id="1027" /> <!-- FTDI -->
-    <usb-device vendor-id="1a86" /> <!-- CH340/CH341 -->
-    <usb-device vendor-id="6790" /> <!-- WCH CH340 -->
+    <!-- ===== YOUR EXISTING DEVICES ===== -->
+    <!-- Magellan Scanner -->
+    <usb-device vendor-id="1529"/>
+    <!-- FTDI Scale -->
+    <usb-device vendor-id="1027"/>
+    <!-- Prolific -->
+    <usb-device vendor-id="1659"/>
+    <!-- CP210x -->
+    <usb-device vendor-id="4292"/>
+    <!-- CH340/CH341 -->
+    <usb-device vendor-id="6790"/>
 
+    <!-- ===== YOUR THERMAL PRINTERS ===== -->
+    <!-- XPrinter XP-N160I - Based on your code comments -->
+    <usb-device vendor-id="22339" product-id="1155"/>
+
+    <!-- Common thermal printer vendor IDs (uncomment if needed) -->
+    <!-- Epson -->
+    <!-- <usb-device vendor-id="1208"/> -->
+    <!-- Zebra -->
+    <!-- <usb-device vendor-id="2650"/> -->
+    <!-- Bixolon -->
+    <!-- <usb-device vendor-id="5943"/> -->
+    <!-- Citizen -->
+    <!-- <usb-device vendor-id="4779"/> -->
+    <!-- Star Micronics -->
+    <!-- <usb-device vendor-id="1252"/> -->
 </resources>

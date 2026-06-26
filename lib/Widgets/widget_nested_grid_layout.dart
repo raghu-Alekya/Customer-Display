@@ -71,20 +71,6 @@ class NestedGridWidget extends StatelessWidget {
     return int.tryParse(idRaw?.toString() ?? "");
   }
 
-  static Future<void> _ingestNestedProductMetaFromMerged() async {
-    try {
-      final allCached = await TopBar.mergedCachedProductsForSearch();
-      for (final raw in allCached) {
-        final pid = _nestedProductMetaIdFromCacheMap(raw);
-        if (pid == null) continue;
-        _productMetaCache[pid] = Map<String, dynamic>.from(raw as Map);
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print("⚠️ merged product cache failed → $e");
-      }
-    }
-  }
 
   /// One product-add flow at a time across the grid (fast taps otherwise queue heavy async work).
   static bool _productTapInFlight = false;
@@ -112,12 +98,29 @@ class NestedGridWidget extends StatelessWidget {
     required this.orderHelper,
     required this.isPaginating,
   });
+
   Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
     if (!_productMetaCache.containsKey(productId)) {
       await _ingestNestedProductMetaFromMerged();
     }
     return _productMetaCache[productId];
   }
+
+  static Future<void> _ingestNestedProductMetaFromMerged() async {
+    try {
+      _productMetaCache.clear(); // Force fresh
+      final allCached = await TopBar.mergedCachedProductsForSearch();
+      for (final raw in allCached) {
+        final pid = _nestedProductMetaIdFromCacheMap(raw);
+        if (pid != null) {
+          _productMetaCache[pid] = Map<String, dynamic>.from(raw as Map);
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print("⚠️ _ingestNestedProductMetaFromMerged failed: $e");
+    }
+  }
+
   Future<bool> _fastKeyHasVariants(Map<String, dynamic> item) async {
     final int? productId =
     int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
@@ -408,8 +411,13 @@ class NestedGridWidget extends StatelessWidget {
                             // 🧠 Hydrate from Isar cache (same flow as category load)
                             final productId =
                                 int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
+                            // FORCE refresh from latest cache
                             if (productId > 0) {
                               await _enrichFastKeyItemSkuForNested(item);
+                              final cached = await _getCachedProductFromIsar(productId);
+                              if (cached != null) {
+                                item.addAll(cached); // merge latest
+                              }
                             }
                             final cachedProduct =
                             productId > 0 ? await _getCachedProductFromIsar(productId) : null;
@@ -1326,34 +1334,37 @@ class NestedGridWidget extends StatelessWidget {
 Future<void> _enrichFastKeyItemSkuForNested(Map<String, dynamic> item) async {
   final sku = (item['fast_key_item_sku'] ?? '').toString().trim();
   if (sku.isEmpty || sku == 'N/A') return;
+
   try {
     final box = StorageProvider.productCache;
     final raw = await box.get('sku_${sku.toLowerCase()}');
     if (raw is! Map) return;
+
     final products = raw['products'];
     if (products is! List || products.isEmpty) return;
+
     final first = products.first;
     if (first is! Map) return;
+
     final p = Map<String, dynamic>.from(first);
-    final typeStr = (p['type'] ?? item['type'] ?? '').toString();
-    if (typeStr.isNotEmpty) item['type'] = typeStr;
-    if (item['variations'] == null && p['variations'] is List) {
-      item['variations'] = p['variations'];
-    }
-    if ((item['fast_key_item_tags'] == null ||
-            (item['fast_key_item_tags'] is List &&
-                (item['fast_key_item_tags'] as List).isEmpty)) &&
-        p['tags'] != null) {
-      item['fast_key_item_tags'] = p['tags'];
-    }
-    if (_truthyEbtNested(p['is_ebt_eligible']) ||
-        _ebtMetaNested(p['meta_data'])) {
+
+    // Core fields
+    if (p['type'] != null) item['type'] = p['type'];
+    if (p['variations'] is List) item['variations'] = p['variations'];
+    if (p['tags'] != null) item['fast_key_item_tags'] = p['tags'];
+    if (p['meta_data'] != null) item['meta_data'] = p['meta_data'];
+
+    // EBT
+    if (_truthyEbtNested(p['is_ebt_eligible']) || _ebtMetaNested(p['meta_data'])) {
       item['is_ebt_eligible'] = true;
     }
-    if (item['meta_data'] == null && p['meta_data'] != null) {
-      item['meta_data'] = p['meta_data'];
-    }
-  } catch (_) {}
+
+    // Price / Name fallback
+    if (p['price'] != null) item['fast_key_item_price'] = p['price'];
+    if (p['name'] != null) item['fast_key_item_name'] = p['name'];
+  } catch (e) {
+    if (kDebugMode) print("⚠️ _enrichFastKeyItemSkuForNested error: $e");
+  }
 }
 
 bool _truthyEbtNested(dynamic v) {
