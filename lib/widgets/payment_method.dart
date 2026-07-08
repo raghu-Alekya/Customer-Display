@@ -116,6 +116,7 @@ class _PaymentMethodsState extends State<PaymentMethods> {
             subtotal: widget.subtotal,
             tax: widget.tax,
             total: widget.total,
+            orderId: createdOrderId!,
           );
           break;
         case 'upi':
