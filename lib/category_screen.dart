@@ -61,16 +61,30 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
     return product.isVeg == true; // Veg
   }
 
+
   @override
   void initState() {
     super.initState();
+
+    selectedCategory = 0;
+    selectedSubcategory = 0;
+    selectedSubcategoryId = null;
+
     promoPageController = PageController(
       initialPage: promoVirtualBasePage(promoImages.length),
     );
+
     searchController = TextEditingController();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ProductBloc>().add(const ResetProducts());
+      context.read<CategoryBloc>().add(const FetchCategories());
+    });
+
     _startPromoAutoSlide();
     _loadBannerPromotions();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadStoreDetailsIfNeeded());
+    WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _loadStoreDetailsIfNeeded());
   }
 
   List<String> get _activePromoList =>

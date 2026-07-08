@@ -104,13 +104,15 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
   void _onResetProducts(ResetProducts event, Emitter<ProductState> emit) {
     emit(const ProductInitial());
   }
-
   Future<void> _onFetchProductsForCategory(
       FetchProductsForCategory event,
       Emitter<ProductState> emit,
       ) async {
+    // Clear previous products
+    emit(const ProductLoaded([]));
 
-    emit(ProductLoading());
+    // Show loader
+    emit(const ProductLoading());
 
     try {
       final products =

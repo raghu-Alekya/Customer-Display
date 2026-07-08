@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:kiosk/cart_manger.dart';
 import 'package:kiosk/Homescreen.dart';
+
+import '../bloc/product_bloc.dart';
 
 class PrintReceiptScreen extends StatelessWidget {
   final double total;
@@ -159,14 +162,17 @@ class PrintReceiptScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () {
-                    CartManager.cartItems.clear();
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const HomeScreen()),
-                      (route) => false,
-                    );
-                  },
+                    onPressed: () {
+                      CartManager.cartItems.clear();
+
+                      context.read<ProductBloc>().add(const ResetProducts());
+
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (_) => const HomeScreen()),
+                            (route) => false,
+                      );
+                    },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFF9900),
                     foregroundColor: Colors.white,
