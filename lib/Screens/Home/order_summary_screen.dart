@@ -49,6 +49,7 @@ import '../../Utilities/result_utility.dart';
 import '../../Utilities/svg_images_utility.dart';
 import '../../Widgets/PaymentNumPad.dart';
 import '../../Widgets/offline_order_sync_service.dart';
+import '../../Widgets/pay_later_widget.dart';
 import '../../Widgets/scanner_guard.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_payment_dialog.dart';
@@ -626,6 +627,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   double ebtTotal = 0.0;
   double payByEbt = 0.0; // ADD THIS
   TextEditingController ebtAmountController = TextEditingController();
+
+  Map<String, dynamic>? _selectedPayLaterUser;  // ← ADD THIS LINE
+  bool _isPayLaterSelected = false;
 
   PaymentMode _paymentModeFromMethod(dynamic method) {
     final String m = (method ?? '').toString().trim().toLowerCase();
@@ -6909,13 +6913,53 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             ),
           ),
 
-          const SizedBox(width: 70),
+          const SizedBox(width: 20),
 
-          const SizedBox(width: 160),
+          Flexible(
+            child: PayLaterWidget(
+              onUserSelected: (user) {
+                print("✅ PayLater User Selected: ${user?['name'] ?? 'Unknown'} | ID: ${user?['id']}");
+
+                setState(() {
+                  if (user != null) {
+                    _selectedPayLaterUser = Map<String, dynamic>.from(user);
+                    _isPayLaterSelected = true;
+                    selectedPaymentMethod = "Pay Later";
+                    amountController.text = '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}';
+                    _isAmountEntered = true;
+
+                    // ✅ CRITICAL: Also save directly to offlineOrder when selected
+                    if (offlineOrder != null) {
+                      offlineOrder!['selectedPayLaterUser'] = Map<String, dynamic>.from(user);
+                      offlineOrder!['is_pay_later_order'] = true;
+
+                      // Save to Hive immediately
+                      final box = StorageProvider.offlineOrders;
+                      final String key = offlineOrder?['id']?.toString() ??
+                          offlineOrder?['order_id']?.toString() ??
+                          widget.offlineOrderId?.toString() ??
+                          "";
+                      if (key.isNotEmpty) {
+                        box.put(key, offlineOrder).then((_) {
+                          print("✅ Pay Later user saved to Hive immediately on selection: ${user['name']}");
+                        });
+                      }
+                    }
+                  } else {
+                    _selectedPayLaterUser = null;
+                    _isPayLaterSelected = false;
+                  }
+                });
+              },
+            ),
+          ),
+
+          const SizedBox(width: 20),
           Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+
                 // ---------------- CUSTOMER INPUT CONTAINER ----------------
                 Expanded(
                   child: Container(
@@ -6947,6 +6991,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           ),
                         ),
                         const SizedBox(width: 10),
+
                         Expanded(
                           child: Container(
                             height: 40,
@@ -10558,6 +10603,137 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   bool isGenerateCouponActive = false;
 
+  // Future<bool> _syncAndShowCouponPopup() async {
+  //   if (_isProcessing) return false;
+  //
+  //   setState(() => _isProcessing = true);
+  //   bool loaderOpen = true;
+  //
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (_) => const Center(child: CircularProgressIndicator()),
+  //   );
+  //
+  //   try {
+  //     final response = await OrderRepository().CouponApply(offlineOrder!);
+  //
+  //     if (loaderOpen) {
+  //       Navigator.of(context).pop();
+  //       loaderOpen = false;
+  //     }
+  //
+  //     if (response == null || response is! Map<String, dynamic>) {
+  //       _showErrorPopup("Coupon applied but no response data received.");
+  //       return false;
+  //     }
+  //
+  //     final coupons = response["coupons"] as List? ?? [];
+  //     if (coupons.isEmpty) {
+  //       _showErrorPopup("Coupon applied, but no coupon details returned.");
+  //       return false;
+  //     }
+  //
+  //     final coupon = coupons.first;
+  //     final double discountAmount =
+  //         (coupon["amount"] as num?)?.toDouble() ?? 0.0;
+  //     final String couponCode = coupon["code"]?.toString() ?? "";
+  //
+  //     // Optional: Early minimum amount check (if backend provides it)
+  //     final double minAmount =
+  //         (coupon["min_amount"] as num?)?.toDouble() ?? 0.0;
+  //     final double currentSubtotal = grossTotal; // or computed subtotal
+  //
+  //     if (minAmount > 0 && currentSubtotal < minAmount) {
+  //       _showErrorPopup(
+  //           "Coupon '$couponCode' requires minimum order of \$$minAmount");
+  //       return false;
+  //     }
+  //
+  //     // Update UI temporarily
+  //     setState(() {
+  //       couponValue = discountAmount;
+  //       ebtTotal = 0.0;
+  //       cashbackFee = 0.0;
+  //       isGenerateCouponActive = true;
+  //     });
+  //
+  //     // Show confirmation popup
+  //     final bool confirmed = await _showCouponResponsePopup(response);
+  //
+  //     if (!confirmed) {
+  //       debugPrint("🔵 Coupon popup closed with X – not saving to Hive");
+  //       setState(() => isGenerateCouponActive = false);
+  //       return false;
+  //     }
+  //
+  //     // === Save to Hive only after user confirmation ===
+  //     final box = StorageProvider.offlineOrders;
+  //     final String key = offlineOrder?['id']?.toString() ??
+  //         offlineOrder?['order_id']?.toString() ??
+  //         offlineOrder?['local_order_id']?.toString() ??
+  //         "";
+  //
+  //     if (key.isEmpty) return true;
+  //
+  //     final hasKey = await box.containsKey(key);
+  //     final raw = hasKey ? await box.get(key) : null;
+  //     final Map<String, dynamic> existing = raw is Map
+  //         ? Map<String, dynamic>.from(raw)
+  //         : Map<String, dynamic>.from(offlineOrder!);
+  //
+  //     // Prepare issued coupons
+  //     final List<Map<String, dynamic>> issueCoupons = [];
+  //     for (final c in response["coupons"] as List? ?? []) {
+  //       if (c is! Map) continue;
+  //       final m = Map<String, dynamic>.from(c);
+  //       if (m["generate_type"] != true) {
+  //         m["generate_type"] = false;
+  //       }
+  //       issueCoupons.add(m);
+  //     }
+  //
+  //     // Keep previous redeemed coupons
+  //     final prevCoupons = <Map<String, dynamic>>[];
+  //     final prevCr = existing["coupon_response"];
+  //     if (prevCr is Map && prevCr["coupons"] is List) {
+  //       for (final x in prevCr["coupons"] as List) {
+  //         if (x is Map) prevCoupons.add(Map<String, dynamic>.from(x));
+  //       }
+  //     }
+  //
+  //     final keptRedeems =
+  //     prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
+  //
+  //     final mergedResponse = Map<String, dynamic>.from(response);
+  //     mergedResponse["coupons"] = [...issueCoupons, ...keptRedeems];
+  //
+  //     existing["coupon_response"] = mergedResponse;
+  //     existing["coupon_applied"] = true;
+  //     existing["coupon_applied_at"] = DateTime.now().toIso8601String();
+  //     existing["coupon_amount"] = discountAmount;
+  //
+  //     await box.put(key, existing);
+  //     offlineOrder = existing;
+  //
+  //     debugPrint("✅ Generated Coupon saved in Hive for order $key");
+  //     return true;
+  //   } catch (e) {
+  //     if (loaderOpen) {
+  //       Navigator.of(context).pop();
+  //       loaderOpen = false;
+  //     }
+  //     _showErrorPopup("Something went wrong while applying coupon.");
+  //     debugPrint("❌ Coupon popup error: $e");
+  //     return false;
+  //   } finally {
+  //     setState(() => _isProcessing = false);
+  //   }
+  // }
+
+///above code was working code
+  ///
+
   Future<bool> _syncAndShowCouponPopup() async {
     if (_isProcessing) return false;
 
@@ -10571,6 +10747,44 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     );
 
     try {
+      // ✅ CRITICAL FIX: Save Pay Later user to offlineOrder and Hive BEFORE sync
+      if (offlineOrder != null && _selectedPayLaterUser != null) {
+        // Add to offlineOrder map
+        offlineOrder!['selectedPayLaterUser'] = Map<String, dynamic>.from(_selectedPayLaterUser!);
+        offlineOrder!['is_pay_later_order'] = true;
+
+        debugPrint("✅ Pay Later user added to offlineOrder: ${_selectedPayLaterUser!['name']} (ID: ${_selectedPayLaterUser!['user_id']})");
+
+        // ✅ CRITICAL: Save to Hive immediately so the sync function can read it
+        final box = StorageProvider.offlineOrders;
+        final String key = offlineOrder?['id']?.toString() ??
+            offlineOrder?['order_id']?.toString() ??
+            offlineOrder?['local_order_id']?.toString() ??
+            widget.offlineOrderId?.toString() ??
+            "";
+
+        if (key.isNotEmpty) {
+          await box.put(key, offlineOrder);
+          debugPrint("✅ Pay Later user saved to Hive before sync: ${_selectedPayLaterUser!['name']}");
+
+          // ✅ Verify it was saved
+          final verify = await box.get(key);
+          if (verify is Map) {
+            final savedUser = verify['selectedPayLaterUser'];
+            if (savedUser is Map) {
+              debugPrint("✅ Verification: Pay Later user found in Hive: ${savedUser['name']} (ID: ${savedUser['user_id']})");
+            } else {
+              debugPrint("⚠️ Verification: Pay Later user NOT found in Hive after save!");
+            }
+          }
+        } else {
+          debugPrint("⚠️ Could not save to Hive - key is empty");
+        }
+      } else {
+        debugPrint("⚠️ No Pay Later user selected or offlineOrder is null");
+      }
+
+      // Now call the repository with the updated offlineOrder
       final response = await OrderRepository().CouponApply(offlineOrder!);
 
       if (loaderOpen) {
@@ -10594,10 +10808,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           (coupon["amount"] as num?)?.toDouble() ?? 0.0;
       final String couponCode = coupon["code"]?.toString() ?? "";
 
-      // Optional: Early minimum amount check (if backend provides it)
       final double minAmount =
           (coupon["min_amount"] as num?)?.toDouble() ?? 0.0;
-      final double currentSubtotal = grossTotal; // or computed subtotal
+      final double currentSubtotal = grossTotal;
 
       if (minAmount > 0 && currentSubtotal < minAmount) {
         _showErrorPopup(
@@ -10605,7 +10818,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return false;
       }
 
-      // Update UI temporarily
       setState(() {
         couponValue = discountAmount;
         ebtTotal = 0.0;
@@ -10613,7 +10825,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         isGenerateCouponActive = true;
       });
 
-      // Show confirmation popup
       final bool confirmed = await _showCouponResponsePopup(response);
 
       if (!confirmed) {
@@ -10622,11 +10833,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return false;
       }
 
-      // === Save to Hive only after user confirmation ===
       final box = StorageProvider.offlineOrders;
       final String key = offlineOrder?['id']?.toString() ??
           offlineOrder?['order_id']?.toString() ??
           offlineOrder?['local_order_id']?.toString() ??
+          widget.offlineOrderId?.toString() ??
           "";
 
       if (key.isEmpty) return true;
@@ -10637,7 +10848,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           ? Map<String, dynamic>.from(raw)
           : Map<String, dynamic>.from(offlineOrder!);
 
-      // Prepare issued coupons
+      // ✅ PRESERVE PAY LATER USER DATA IN HIVE
+      if (_selectedPayLaterUser != null) {
+        existing['selectedPayLaterUser'] = Map<String, dynamic>.from(_selectedPayLaterUser!);
+        existing['is_pay_later_order'] = true;
+        debugPrint("✅ Pay Later user preserved in Hive: ${_selectedPayLaterUser!['name']}");
+      }
+
       final List<Map<String, dynamic>> issueCoupons = [];
       for (final c in response["coupons"] as List? ?? []) {
         if (c is! Map) continue;
@@ -10648,7 +10865,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         issueCoupons.add(m);
       }
 
-      // Keep previous redeemed coupons
       final prevCoupons = <Map<String, dynamic>>[];
       final prevCr = existing["coupon_response"];
       if (prevCr is Map && prevCr["coupons"] is List) {
@@ -10671,7 +10887,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       await box.put(key, existing);
       offlineOrder = existing;
 
-      debugPrint("✅ Generated Coupon saved in Hive for order $key");
+      debugPrint("✅ Coupon saved in Hive for order $key");
+      if (_selectedPayLaterUser != null) {
+        debugPrint("✅ Pay Later user data verified in Hive: ${_selectedPayLaterUser!['name']} (ID: ${_selectedPayLaterUser!['user_id']})");
+      }
       return true;
     } catch (e) {
       if (loaderOpen) {
@@ -10685,121 +10904,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       setState(() => _isProcessing = false);
     }
   }
-
-  // Future<bool> _syncAndShowCouponPopup() async {
-  //   if (_isProcessing) return false;
-  //
-  //   setState(() => _isProcessing = true);
-  //
-  //   bool loaderOpen = true;
-  //
-  //   showDialog(
-  //     context: context,
-  //     barrierDismissible: false,
-  //     builder: (_) => const Center(child: CircularProgressIndicator()),
-  //   );
-  //
-  //   try {
-  //     final response = await OrderRepository().CouponApply(offlineOrder!);
-  //
-  //     if (loaderOpen) {
-  //       Navigator.of(context).pop();
-  //       loaderOpen = false;
-  //     }
-  //
-  //     // 🔒 HARD GUARD
-  //     if (response == null || response is! Map<String, dynamic>) {
-  //       _showErrorPopup("Coupon applied but no response data received.");
-  //       return false;
-  //     }
-  //
-  //     final coupons = response["coupons"] as List? ?? [];
-  //     if (coupons.isEmpty) {
-  //       _showErrorPopup("Coupon applied, but no coupon details returned.");
-  //       return false;
-  //     }
-  //
-  //     final coupon = coupons.first;
-  //     final double discountAmount =
-  //         (coupon["amount"] as num?)?.toDouble() ?? 0.0;
-  //
-  //     // ✅ Only update UI state here; save to Hive only after user clicks OK
-  //     setState(() {
-  //       couponValue = discountAmount;
-  //       ebtTotal = 0.0;
-  //       cashbackFee = 0.0;
-  //       isGenerateCouponActive = true;
-  //     });
-  //
-  //     // ✅ Await popup result: true = OK (confirm), false = X (cancel)
-  //     final bool confirmed = await _showCouponResponsePopup(response);
-  //
-  //     if (!confirmed) {
-  //       // User closed with X – don't save to Hive, reset UI state so they can issue again
-  //       debugPrint("🔵 Coupon popup closed with X – not saving to Hive");
-  //       setState(() {
-  //         isGenerateCouponActive = false;
-  //       });
-  //       return false;
-  //     }
-  //
-  //     final box = StorageProvider.offlineOrders;
-  //
-  //     final String key = offlineOrder?['id']?.toString() ??
-  //         offlineOrder?['order_id']?.toString() ??
-  //         offlineOrder?['local_order_id']?.toString() ??
-  //         "";
-  //
-  //     if (key.isEmpty) return true;
-  //
-  //     final hasKey = await box.containsKey(key);
-  //     final raw = hasKey ? await box.get(key) : null;
-  //     final Map<String, dynamic> existing = raw is Map
-  //         ? Map<String, dynamic>.from(raw)
-  //         : Map<String, dynamic>.from(offlineOrder!);
-  //
-  //     final List<Map<String, dynamic>> issueCoupons = [];
-  //     for (final c in response["coupons"] as List? ?? []) {
-  //       if (c is! Map) continue;
-  //       final m = Map<String, dynamic>.from(c);
-  //       if (m["generate_type"] != true) {
-  //         m["generate_type"] = false;
-  //       }
-  //       issueCoupons.add(m);
-  //     }
-  //     final prevCoupons = <Map<String, dynamic>>[];
-  //     final prevCr = existing["coupon_response"];
-  //     if (prevCr is Map && prevCr["coupons"] is List) {
-  //       for (final x in prevCr["coupons"] as List) {
-  //         if (x is Map) prevCoupons.add(Map<String, dynamic>.from(x));
-  //       }
-  //     }
-  //     final keptRedeems =
-  //     prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
-  //     final mergedResponse = Map<String, dynamic>.from(response);
-  //     mergedResponse["coupons"] = [...issueCoupons, ...keptRedeems];
-  //     existing["coupon_response"] = mergedResponse;
-  //     existing["coupon_applied"] = true;
-  //     existing["coupon_applied_at"] = DateTime.now().toIso8601String();
-  //     existing["coupon_amount"] = discountAmount;
-  //
-  //     await box.put(key, existing);
-  //     offlineOrder = existing;
-  //
-  //     debugPrint("✅ Coupon saved in Hive for order $key");
-  //     return true;
-  //   } catch (e) {
-  //     if (loaderOpen) {
-  //       Navigator.of(context).pop();
-  //       loaderOpen = false;
-  //     }
-  //     _showErrorPopup("Something went wrong while applying coupon.");
-  //     debugPrint("❌ Coupon popup error: $e");
-  //     return false;
-  //   } finally {
-  //     setState(() => _isProcessing = false);
-  //   }
-  // }
 
   void _showErrorPopup(String message) {
     showDialog(

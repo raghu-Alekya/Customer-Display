@@ -3031,6 +3031,7 @@ import '../Repositories/Auth/logout_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
 import '../Screens/Auth/login_screen.dart' show LoginScreen;
+import '../Screens/Home/categories_screen.dart';
 import '../Screens/Home/fast_key_screen.dart';
 import '../Utilities/printer_settings.dart';
 import '../Utilities/svg_images_utility.dart';
@@ -4904,13 +4905,44 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     try {
       final productBox = StorageProvider.productCache;
 
+      // List<Map<String, dynamic>> _normalizeVariants(dynamic raw) {
+      //   if (raw is! List || raw.isEmpty) return <Map<String, dynamic>>[];
+      //   return raw
+      //       .whereType<Map>()
+      //       .map<Map<String, dynamic>>((v) {
+      //     final map =
+      //     v.map((key, value) => MapEntry(key.toString(), value));
+      //     final attrs = map["attributes"];
+      //     final String fallbackName = attrs is List
+      //         ? attrs
+      //         .whereType<Map>()
+      //         .map((a) => (a["option"] ?? "").toString())
+      //         .where((x) => x.isNotEmpty)
+      //         .join(" - ")
+      //         : "";
+      //     return {
+      //       "id": map["id"],
+      //       "name": (map["name"] ?? "").toString().isNotEmpty
+      //           ? map["name"]
+      //           : (fallbackName.isNotEmpty ? fallbackName : "Variant"),
+      //       "price": map["regular_price"] ?? map["price"] ?? "0",
+      //       "image":
+      //       (map["image"] is Map && map["image"]["src"] != null)
+      //           ? map["image"]["src"]
+      //           : (map["image"] is String ? map["image"] : ""),
+      //       "sku": map["sku"] ?? "",
+      //     };
+      //   })
+      //       .where((v) => v["id"] != null)
+      //       .toList();
+      // }
+
       List<Map<String, dynamic>> _normalizeVariants(dynamic raw) {
         if (raw is! List || raw.isEmpty) return <Map<String, dynamic>>[];
         return raw
             .whereType<Map>()
             .map<Map<String, dynamic>>((v) {
-          final map =
-          v.map((key, value) => MapEntry(key.toString(), value));
+          final map = v.map((key, value) => MapEntry(key.toString(), value));
           final attrs = map["attributes"];
           final String fallbackName = attrs is List
               ? attrs
@@ -4919,17 +4951,26 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               .where((x) => x.isNotEmpty)
               .join(" - ")
               : "";
+
+          // ✅ NEW: preserve meta_data
+          final List<Map<String, dynamic>> metaData = (map["meta_data"] is List)
+              ? (map["meta_data"] as List)
+              .whereType<Map>()
+              .map((m) => Map<String, dynamic>.from(m))
+              .toList()
+              : <Map<String, dynamic>>[];
+
           return {
             "id": map["id"],
             "name": (map["name"] ?? "").toString().isNotEmpty
                 ? map["name"]
                 : (fallbackName.isNotEmpty ? fallbackName : "Variant"),
             "price": map["regular_price"] ?? map["price"] ?? "0",
-            "image":
-            (map["image"] is Map && map["image"]["src"] != null)
+            "image": (map["image"] is Map && map["image"]["src"] != null)
                 ? map["image"]["src"]
                 : (map["image"] is String ? map["image"] : ""),
             "sku": map["sku"] ?? "",
+            "meta_data": metaData, // ✅ NEW
           };
         })
             .where((v) => v["id"] != null)
@@ -4943,27 +4984,55 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           .keyStartsWith("products_")
           .findAll();
 
-      for (final entry in entries) {
+    //   for (final entry in entries) {
+    //     final List<dynamic> products = jsonDecode(entry.json);
+    //     final match = products.firstWhere(
+    //           (p) =>
+    //       p["fast_key_product_id"]?.toString() == productId.toString(),
+    //       orElse: () => null,
+    //     );
+    //     if (match == null) continue;
+    //
+    //     final rawVariations = match["variations"] ??
+    //         (await productBox
+    //             .get("product_${productId}_variations"))?["variations"];
+    //     final variants = _normalizeVariants(rawVariations);
+    //     if (variants.isNotEmpty) return variants;
+    //   }
+    //
+    //   final cached =
+    //   await productBox.get("product_${productId}_variations");
+    //   final fallbackVariants =
+    //   _normalizeVariants(cached is Map ? cached["variations"] : null);
+    //   if (fallbackVariants.isNotEmpty) return fallbackVariants;
+    // } catch (e) {
+    //   debugPrint("_getVariantsFromCache error: $e");
+    // }
+    // return [];
+           for (final entry in entries) {
         final List<dynamic> products = jsonDecode(entry.json);
         final match = products.firstWhere(
-              (p) =>
-          p["fast_key_product_id"]?.toString() == productId.toString(),
+              (p) => p["fast_key_product_id"]?.toString() == productId.toString(),
           orElse: () => null,
         );
         if (match == null) continue;
 
         final rawVariations = match["variations"] ??
-            (await productBox
-                .get("product_${productId}_variations"))?["variations"];
+            (await productBox.get("product_${productId}_variations_v2"))?["variations"];
         final variants = _normalizeVariants(rawVariations);
-        if (variants.isNotEmpty) return variants;
+
+        // ✅ NEW: treat missing meta_data as a cache miss
+        final bool allHaveMetaData = variants.isNotEmpty &&
+            variants.every((v) => v["meta_data"] is List);
+        if (allHaveMetaData) return variants;
       }
 
-      final cached =
-      await productBox.get("product_${productId}_variations");
+      final cached = await productBox.get("product_${productId}_variations_v2");
       final fallbackVariants =
       _normalizeVariants(cached is Map ? cached["variations"] : null);
-      if (fallbackVariants.isNotEmpty) return fallbackVariants;
+      final bool fallbackHasMeta = fallbackVariants.isNotEmpty &&
+          fallbackVariants.every((v) => v["meta_data"] is List);
+      if (fallbackHasMeta) return fallbackVariants;
     } catch (e) {
       debugPrint("_getVariantsFromCache error: $e");
     }
@@ -5008,6 +5077,13 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               ? map["image"]["src"]
               : (map["image"] is String ? map["image"] : ""),
           "sku": map["sku"] ?? "",
+          // ✅ NEW
+          "meta_data": (map["meta_data"] is List)
+              ? (map["meta_data"] as List)
+              .whereType<Map>()
+              .map((m) => Map<String, dynamic>.from(m))
+              .toList()
+              : <Map<String, dynamic>>[],
         };
       })
           .where((v) => v["id"] != null)
@@ -5169,6 +5245,43 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
         setState(() => isAddingItemLoading = true);
 
+        // ─────────────────────────────────────────────────────────────
+        // Extract metaData + loyaltyPoints (works for both normal & Indigo products)
+        // ─────────────────────────────────────────────────────────────
+        List<Map<String, dynamic>> metaDataList = [];
+        int loyaltyPoints = 0;
+
+        // Try multiple sources
+        dynamic rawMeta = null;
+        if (product is IndigoCategoryBasedProducts) {
+          rawMeta = product.metaData;
+        } else {
+          // Try from cached product map
+          final cached = _cachedProducts.firstWhere(
+                (p) => _productIdFromCacheMap(p) == product.id,
+            orElse: () => null,
+          );
+          if (cached is Map) {
+            rawMeta = cached['meta_data'] ?? cached['metaData'] ?? cached['metaData'];
+          }
+        }
+
+        if (rawMeta is List) {
+          metaDataList = rawMeta
+              .whereType<Map>()
+              .map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m))
+              .toList();
+
+          // Extract loyalty points
+          final loyaltyEntry = metaDataList.firstWhere(
+                (m) => m['key'] == '_product_loyalty_points',
+            orElse: () => {},
+          );
+          if (loyaltyEntry.isNotEmpty) {
+            loyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+          }
+        }
+
         await orderHelper.addItemToOrder(
           product.id!,
           product.name ?? 'Unknown',
@@ -5236,6 +5349,21 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               onAddVariant: (selected, qty) async {
                 final varPrice =
                     double.tryParse(selected["price"].toString()) ?? 0.0;
+                final List<Map<String, dynamic>> variantMetaData =
+                selected["meta_data"] is List
+                    ? List<Map<String, dynamic>>.from(selected["meta_data"])
+                    : <Map<String, dynamic>>[];
+
+                final int variantLoyaltyPoints = variantMetaData.any(
+                        (m) => m['key'] == '_product_loyalty_points')
+                    ? int.tryParse(variantMetaData
+                    .firstWhere((m) => m['key'] == '_product_loyalty_points')['value']
+                    .toString()) ??
+                    0
+                    : 0;
+
+                print(
+                    '🛒 [TopBar] Added variant with loyalty points: ${selected["name"]} → $variantLoyaltyPoints');
 
                 await orderHelper.addItemToOrder(
                   selected["id"],
@@ -5252,6 +5380,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
                   salesPrice: varPrice,
                   regularPrice: varPrice,
                   isEbtEligible: isEbtEligible,
+                  metaData: variantMetaData,           // ✅ NEW
+                  loyaltyPoints: variantLoyaltyPoints, //
                   onItemAdded: () {
                     _removeOverlay();
                     _clearSearch();
@@ -5326,6 +5456,43 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       // ── Step 9: Simple product — add directly ───────────────────────────────
       setState(() => isAddingItemLoading = true);
 
+      // ─────────────────────────────────────────────────────────────
+      // Extract metaData + loyaltyPoints (works for both normal & Indigo products)
+      // ─────────────────────────────────────────────────────────────
+      List<Map<String, dynamic>> metaDataList = [];
+      int loyaltyPoints = 0;
+
+      // Try multiple sources
+      dynamic rawMeta = null;
+      if (product is IndigoCategoryBasedProducts) {
+        rawMeta = product.metaData;
+      } else {
+        // Try from cached product map
+        final cached = _cachedProducts.firstWhere(
+              (p) => _productIdFromCacheMap(p) == product.id,
+          orElse: () => null,
+        );
+        if (cached is Map) {
+          rawMeta = cached['meta_data'] ?? cached['metaData'] ?? cached['metaData'];
+        }
+      }
+
+      if (rawMeta is List) {
+        metaDataList = rawMeta
+            .whereType<Map>()
+            .map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m))
+            .toList();
+
+        // Extract loyalty points
+        final loyaltyEntry = metaDataList.firstWhere(
+              (m) => m['key'] == '_product_loyalty_points',
+          orElse: () => {},
+        );
+        if (loyaltyEntry.isNotEmpty) {
+          loyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+        }
+      }
+
       await orderHelper.addItemToOrder(
         product.id!,
         product.name ?? 'Unknown',
@@ -5344,6 +5511,10 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         regularPrice: finalPrice,
         unitPrice: finalPrice,
         isEbtEligible: isEbtEligible,
+
+        metaData: metaDataList,
+        loyaltyPoints: loyaltyPoints,
+
         onItemAdded: () {
           _removeOverlay();
           _clearSearch();

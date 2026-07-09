@@ -205,6 +205,86 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     );
   }
 
+
+  // Helper to extract loyalty points from product metadata
+// Helper to extract loyalty points from product metadata
+  int _extractLoyaltyPoints(Map<String, dynamic> productMap) {
+    if (productMap == null) {
+      print('⚠️ [Loyalty] productMap is null');
+      return 0;
+    }
+
+    print('🔍 [Loyalty] Extracting from productMap keys: ${productMap.keys}');
+
+    // Try from meta_data
+    final metaData = productMap['meta_data'];
+    if (metaData is List) {
+      print('🔍 [Loyalty] meta_data is List with ${metaData.length} items');
+      for (final meta in metaData) {
+        if (meta is Map) {
+          final key = (meta['key'] ?? '').toString();
+          print('🔍 [Loyalty] Checking meta key: $key');
+          if (key == '_product_loyalty_points') {
+            final value = meta['value']?.toString() ?? '0';
+            final points = int.tryParse(value) ?? 0;
+            print('✅ [Loyalty] Found loyalty points in meta_data: $points');
+            return points;
+          }
+        }
+      }
+    } else {
+      print('⚠️ [Loyalty] meta_data is not a List: ${metaData.runtimeType}');
+    }
+
+    // Try direct loyalty_points field
+    final directPoints = productMap['loyalty_points'] ?? productMap['loyaltyPoints'];
+    if (directPoints != null) {
+      final points = int.tryParse(directPoints.toString()) ?? 0;
+      print('✅ [Loyalty] Found loyalty points in direct field: $points');
+      return points;
+    }
+
+    // Check if product has meta_data in a nested structure
+    final nestedMeta = productMap['metaData'];
+    if (nestedMeta is List) {
+      print('🔍 [Loyalty] metaData is List with ${nestedMeta.length} items');
+      for (final meta in nestedMeta) {
+        if (meta is Map) {
+          final key = (meta['key'] ?? '').toString();
+          print('🔍 [Loyalty] Checking nested meta key: $key');
+          if (key == '_product_loyalty_points') {
+            final value = meta['value']?.toString() ?? '0';
+            final points = int.tryParse(value) ?? 0;
+            print('✅ [Loyalty] Found loyalty points in nested metaData: $points');
+            return points;
+          }
+        }
+      }
+    }
+
+    print('❌ [Loyalty] No loyalty points found in productMap');
+    return 0;
+  }
+
+// Helper to extract meta_data from product
+  List<Map<String, dynamic>> _extractMetaData(Map<String, dynamic> productMap) {
+    if (productMap == null) return [];
+
+    // Try from meta_data
+    final metaData = productMap['meta_data'];
+    if (metaData is List) {
+      return metaData.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
+    }
+
+    // Try metaData
+    final nestedMeta = productMap['metaData'];
+    if (nestedMeta is List) {
+      return nestedMeta.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
+    }
+
+    return [];
+  }
+
   static double _toDouble(dynamic value) {
     if (value == null) return 0.0;
     if (value is num) return value.toDouble();
@@ -912,6 +992,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   //     }
   //   }
   // }
+
   Future<void> fetchOrderItems() async {
     final int requestId = ++_fetchOrderItemsRequestId;
     final activeId = orderHelper.activeOrderId;
@@ -1002,6 +1083,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
                   // Also update the price to match the stored product's price
                   displayItem['item_price'] = match['price'] ?? itemPrice;
+
+                  final loyalty = (displayItem['loyalty_points'] as num?)?.toInt() ??
+                      (displayItem['loyaltyPoints'] as num?)?.toInt() ?? 0;
+                  displayItem['loyalty_points'] = loyalty;
+                  displayItem['loyaltyPoints'] = loyalty; // for consistency
 
                   print('🟢 fetchOrderItems: Fixed weight for "$itemName" → weightQty=$weightQty, unitPrice=$unitPrice');
                 } else {
@@ -2205,11 +2291,59 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       });
 
       // 🔥 ONLY AUTO-INCREMENT NON-VARIANT PRODUCTS
+      // if (exists &&
+      //     (product.variations ?? []).isEmpty &&
+      //     !shouldOpenVariantFlow &&
+      //     !hasProduceTag) {
+      //   print("🔁 NON-VARIANT → Auto increment");
+      //
+      //
+      //
+      //   await orderHelper.addItemToOrder(
+      //     productId,
+      //     productName,
+      //     image,
+      //     productPrice,
+      //     1,
+      //     productSku,
+      //     activeOrderId,
+      //     type: isCustomItem ? 'custom' : ItemType.product.value,
+      //     productId: productId,
+      //     isEbtEligible: isEbtEligible,
+      //     loyaltyPoints: resolvedProductMap?['loyalty_points'] as int? ??
+      //         resolvedProductMap?['loyaltyPoints'] as int? ?? 0,
+      //     variationId: 0,
+      //     taxStatus: taxStatus,
+      //     taxClass: taxClass,
+      //     taxRate: taxRate,
+      //
+      //
+      //
+      //   );
+      //
+      //   await fetchOrderItems();
+      //   await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+      //
+      //   _isLoading = false;
+      //   if (mounted) setState(() {});
+      //   return; // 🚫 STOP HERE — POPUP NEVER OPENS
+      // }
+
+      // 🔥 ONLY AUTO-INCREMENT NON-VARIANT PRODUCTS
+
+      // 🔥 ONLY AUTO-INCREMENT NON-VARIANT PRODUCTS
       if (exists &&
           (product.variations ?? []).isEmpty &&
           !shouldOpenVariantFlow &&
           !hasProduceTag) {
         print("🔁 NON-VARIANT → Auto increment");
+
+        // ✅ Extract meta_data and loyalty points
+        final List<Map<String, dynamic>> autoMetaData = _extractMetaData(resolvedProductMap ?? {});
+        final int autoLoyaltyPoints = _extractLoyaltyPoints(resolvedProductMap ?? {});
+
+        // 🔍 DEBUG: Print auto-increment loyalty points
+        print('🔄 [SCANNER] Auto-increment - Loyalty Points: $autoLoyaltyPoints');
 
         await orderHelper.addItemToOrder(
           productId,
@@ -2226,6 +2360,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           taxStatus: taxStatus,
           taxClass: taxClass,
           taxRate: taxRate,
+          loyaltyPoints: autoLoyaltyPoints,        // ✅ ADD THIS
+          metaData: autoMetaData,                  // ✅ ADD THIS
         );
 
         await fetchOrderItems();
@@ -2233,7 +2369,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
         _isLoading = false;
         if (mounted) setState(() {});
-        return; // 🚫 STOP HERE — POPUP NEVER OPENS
+        return;
       }
 
       // VARIABLE PRICE PRODUCT CHECK
@@ -2251,8 +2387,15 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // ------------------------------------------------------------
 // ⭐ SHOW VARIABLE PRICE POPUP (ONLY FIRST TIME)
 // ------------------------------------------------------------
+// ------------------------------------------------------------
+// ⭐ SHOW VARIABLE PRICE POPUP (ONLY FIRST TIME)
+// ------------------------------------------------------------
       if (hasVariablePriceTag) {
         print("💡 Triggering ManualPriceDialog for variable product");
+
+        // ✅ Extract loyalty points BEFORE dialog
+        final List<Map<String, dynamic>> varMetaData = _extractMetaData(resolvedProductMap ?? {});
+        final int varLoyaltyPoints = _extractLoyaltyPoints(resolvedProductMap ?? {});
 
         try {
           final double? enteredPrice = await ManualPriceDialog.show(
@@ -2286,6 +2429,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             taxStatus: taxStatus,
             taxClass: taxClass,
             taxRate: taxRate,
+            loyaltyPoints: varLoyaltyPoints,      // ✅ ADD THIS
+            metaData: varMetaData,                // ✅ ADD THIS
           );
 
           print("🛒 Product added to order");
@@ -2685,6 +2830,24 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             title: product?.name ?? "",
             variations: variants,
             onAddVariant: (selected, qty) async {
+              // ✅ NEW: extract loyalty points meta from the selected variant
+              final List<Map<String, dynamic>> variantMetaData =
+              selected["meta_data"] is List
+                  ? List<Map<String, dynamic>>.from(selected["meta_data"])
+                  : <Map<String, dynamic>>[];
+
+              final int variantLoyaltyPoints = variantMetaData.any(
+                      (m) => m['key'] == '_product_loyalty_points')
+                  ? int.tryParse(variantMetaData
+                  .firstWhere((m) => m['key'] == '_product_loyalty_points')['value']
+                  .toString()) ??
+                  0
+                  : 0;
+
+              // ✅ NEW: print for debugging, same as your product-level log
+              print(
+                  '🛒 [Scanner] Added variant with loyalty points: ${selected["name"]} → $variantLoyaltyPoints');
+
               await orderHelper.addItemToOrder(
                 selected["id"],
                 selected["name"],
@@ -2697,6 +2860,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                 productId: product?.id,
                 variationId: selected["id"],
                 isEbtEligible: isEbtEligible,
+                metaData: variantMetaData,           // ✅ NEW
+                loyaltyPoints: variantLoyaltyPoints, // ✅ NEW
               );
               await fetchOrderItems();
               await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
@@ -2714,8 +2879,40 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
 
       // ---------------------------------------------------------------------------
-      // 9️⃣ ADD ITEM TO ORDER
-      // ---------------------------------------------------------------------------
+// 9️⃣ ADD ITEM TO ORDER
+// ---------------------------------------------------------------------------
+
+// ✅ EXTRACT loyalty points and meta_data BEFORE adding
+      final List<Map<String, dynamic>> regularMetaData = _extractMetaData(resolvedProductMap ?? {});
+      final int regularLoyaltyPoints = _extractLoyaltyPoints(resolvedProductMap ?? {});
+
+// 🔍 DEBUG: Print loyalty points extraction details
+      print('🔄 [SCANNER] Regular product flow - Loyalty Points Check:');
+      print('  → Product Name: $productName');
+      print('  → Product ID: $productId');
+      print('  → resolvedProductMap keys: ${resolvedProductMap?.keys ?? "null"}');
+      print('  → regularLoyaltyPoints: $regularLoyaltyPoints');
+      print('  → regularMetaData length: ${regularMetaData.length}');
+      if (regularMetaData.isNotEmpty) {
+        print('  → Meta Data: $regularMetaData');
+      }
+
+// 🔍 ALSO check if loyalty points exist in the product object directly
+      int productLoyaltyPoints = 0;
+      if (product.metaData != null) {
+        for (final meta in product.metaData!) {
+          if (meta.key == '_product_loyalty_points') {
+            productLoyaltyPoints = int.tryParse(meta.value?.toString() ?? '0') ?? 0;
+            print('  → Product.metaData loyalty points: $productLoyaltyPoints');
+            break;
+          }
+        }
+      }
+
+// Use the extracted points (or fallback to product object)
+      final int finalLoyaltyPoints = regularLoyaltyPoints > 0 ? regularLoyaltyPoints : productLoyaltyPoints;
+      print('  → FINAL loyalty points to add: $finalLoyaltyPoints');
+
       await orderHelper.addItemToOrder(
         productId,
         productName,
@@ -2731,7 +2928,12 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         taxStatus: taxStatus,
         taxClass: taxClass,
         taxRate: taxRate,
+        // 🔥 CRITICAL: Add these two lines!
+        loyaltyPoints: finalLoyaltyPoints,      // ✅ ADD THIS
+        metaData: regularMetaData,              // ✅ ADD THIS
       );
+
+      print('✅ [SCANNER] Product added with loyalty points: $finalLoyaltyPoints');
 
       await fetchOrderItems();
       await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);

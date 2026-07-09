@@ -62,6 +62,10 @@ class NestedGridWidget extends StatelessWidget {
 
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
 
+  static void clearProductMetaCache() {
+    _productMetaCache.clear();
+  }
+
   static int? _nestedProductMetaIdFromCacheMap(dynamic raw) {
     if (raw is! Map) return null;
     final m = Map<String, dynamic>.from(raw);
@@ -544,7 +548,20 @@ class NestedGridWidget extends StatelessWidget {
                               print("🔞 Age detection → hasAgeRestriction=$hasAgeRestriction, minAge=$minAge");
                             }
 
+                            int loyaltyPoints = 0;
+// Read from item meta_data
+                            if (item['meta_data'] is List) {
+                              for (var m in item['meta_data']) {
+                                if (m is Map && m['key'] == '_product_loyalty_points') {
+                                  loyaltyPoints = int.tryParse(m['value'].toString()) ?? 0;
+                                  break;
+                                }
+                              }
+                            }
 
+                            print("🎯 LOYALTY POINTS forrrrrrrr ${productName}: $loyaltyPoints");
+
+                            // ==================== END LOYALTY ====================
                             print(
                                 "🔍 Product details: id=$productId, name=$productName, price=$productPrice, hasVariants=$hasVariants, hasAgeRestriction=$hasAgeRestriction, minAge=$minAge");
 
@@ -721,8 +738,13 @@ class NestedGridWidget extends StatelessWidget {
                                 regularPrice: productPrice,
                                 unitPrice: productPrice,
                                 isEbtEligible: isEbtEligible,
+                                metaData: item['meta_data'] is List
+                                    ? List<Map<String, dynamic>>.from(item['meta_data'])
+                                    : null,
+                                loyaltyPoints: loyaltyPoints,
                                   onItemAdded: () async {
                                           print(" Weighted product added successfully!");
+                                          print("$item['loyalty_points']");
                                           onItemTapped(index, variantAdded: false);
                                         },
                               );
@@ -786,6 +808,10 @@ class NestedGridWidget extends StatelessWidget {
                                   regularPrice: finalPrice,
                                   unitPrice: finalPrice,
                                   isEbtEligible: isEbtEligible,
+                                  metaData: item['meta_data'] is List
+                                      ? List<Map<String, dynamic>>.from(item['meta_data'])
+                                      : null,
+                                  loyaltyPoints: loyaltyPoints,
                                   onItemAdded: () async {
                                     //await orderHelper.loadData();
                                   },
@@ -924,12 +950,32 @@ class NestedGridWidget extends StatelessWidget {
                                         ? variantData["image"]["src"] ?? productImage
                                         : (variantData?["image"] ?? productImage);
 
+                                    // ✅ Extract meta_data from variantData
+                                    List<Map<String, dynamic>> metaData = [];
+                                    if (variantData?["meta_data"] is List) {
+                                      metaData = (variantData["meta_data"] as List)
+                                          .whereType<Map>()
+                                          .map((m) => Map<String, dynamic>.from(m))
+                                          .toList();
+                                    }
+
+                                    // ✅ Extract loyalty points
+                                    final loyaltyEntry = metaData.firstWhere(
+                                          (m) => m['key'] == '_product_loyalty_points',
+                                      orElse: () => <String, dynamic>{},
+                                    );
+                                    final int loyaltyPoints = loyaltyEntry.isNotEmpty
+                                        ? int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0
+                                        : 0;
+
                                     rawVariations.add({
                                       "id": id,
                                       "name": name,
                                       "price": price,
                                       "sku": variantData?["sku"] ?? "",
                                       "image": image,
+                                      "meta_data": metaData,  // ✅ Preserve meta_data
+                                      "loyalty_points": loyaltyPoints,  // ✅ Store loyalty points
                                     });
                                   }
 
@@ -938,7 +984,7 @@ class NestedGridWidget extends StatelessWidget {
                                   }
                                 }
 
-                                // 🧠 Normalize all variants
+// 🧠 Normalize all variants with meta_data preservation
                                 offlineVariations = rawVariations.map<Map<String, dynamic>>((v) {
                                   if (v is String) {
                                     try {
@@ -946,8 +992,7 @@ class NestedGridWidget extends StatelessWidget {
                                     } catch (_) {}
                                   }
                                   if (v is Map) {
-                                    final map =
-                                    v.map((key, value) => MapEntry(key.toString(), value));
+                                    final map = v.map((key, value) => MapEntry(key.toString(), value));
 
                                     map["image"] = (map["image"] is Map && map["image"]["src"] != null)
                                         ? map["image"]["src"]
@@ -959,6 +1004,26 @@ class NestedGridWidget extends StatelessWidget {
                                         ? map["name"]
                                         : "Unnamed Variant");
                                     map["price"] = map["price"]?.toString() ?? "0";
+
+                                    // ✅ Preserve meta_data
+                                    if (map["meta_data"] is! List) {
+                                      map["meta_data"] = <Map<String, dynamic>>[];
+                                    }
+
+                                    // ✅ Ensure loyalty_points is set
+                                    if (map["loyalty_points"] == null || map["loyalty_points"] == 0) {
+                                      final metaData = map["meta_data"] as List<Map<String, dynamic>>;
+                                      final loyaltyEntry = metaData.firstWhere(
+                                            (m) => m['key'] == '_product_loyalty_points',
+                                        orElse: () => <String, dynamic>{},
+                                      );
+                                      if (loyaltyEntry.isNotEmpty) {
+                                        map["loyalty_points"] = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+                                      } else {
+                                        map["loyalty_points"] = 0;
+                                      }
+                                    }
+
                                     return map;
                                   }
                                   return <String, dynamic>{};
@@ -1038,6 +1103,10 @@ class NestedGridWidget extends StatelessWidget {
                               if (kDebugMode) {
                                 print("🪟 Showing VariantsDialog for $productName...");
                               }
+                              // 🪟 Show VariantsDialog
+                              if (kDebugMode) {
+                                print("🪟 Showing VariantsDialog for $productName...");
+                              }
                               await showDialog(
                                 context: context,
                                 builder: (ctx) => VariantsDialog(
@@ -1056,9 +1125,54 @@ class NestedGridWidget extends StatelessWidget {
                                     final variantImage =
                                         selectedVariant["image"] ?? productImage;
 
-                                    print(
-                                        "🧾 Adding variant → id:$variantId, name:$variantName, price:$variantPrice, qty:$qty");
+                                    // ✅ CRITICAL: Extract meta_data from selected variant
+                                    List<Map<String, dynamic>> variantMetaData = [];
+                                    int variantLoyaltyPoints = 0;
 
+                                    // Try to get meta_data from selectedVariant
+                                    if (selectedVariant["meta_data"] is List) {
+                                      variantMetaData = (selectedVariant["meta_data"] as List)
+                                          .whereType<Map>()
+                                          .map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m))
+                                          .toList();
+
+                                      // Extract loyalty from meta_data
+                                      final loyaltyEntry = variantMetaData.firstWhere(
+                                            (m) => m['key'] == '_product_loyalty_points',
+                                        orElse: () => <String, dynamic>{},
+                                      );
+                                      if (loyaltyEntry.isNotEmpty) {
+                                        variantLoyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+                                      }
+                                    }
+
+                                    // If no loyalty from meta_data, try direct field
+                                    if (variantLoyaltyPoints == 0 && selectedVariant["loyalty_points"] != null) {
+                                      variantLoyaltyPoints = int.tryParse(selectedVariant["loyalty_points"].toString()) ?? 0;
+                                    }
+
+                                    // If still 0, try parent product's loyalty points (fallback)
+                                    if (variantLoyaltyPoints == 0) {
+                                      final parentMeta = item['meta_data'];
+                                      if (parentMeta is List) {
+                                        final parentLoyalty = parentMeta.firstWhere(
+                                              (m) => m['key'] == '_product_loyalty_points',
+                                          orElse: () => <String, dynamic>{},
+                                        );
+                                        if (parentLoyalty.isNotEmpty) {
+                                          variantLoyaltyPoints = int.tryParse(parentLoyalty['value']?.toString() ?? '0') ?? 0;
+                                          print('🔄 [NestedGrid] Using parent loyalty points: $variantLoyaltyPoints');
+                                        }
+                                      }
+                                    }
+
+                                    print('🛒 [NestedGrid] Added variant: $variantName');
+                                    print('  → Variant ID: $variantId');
+                                    print('  → Variant Price: $variantPrice');
+                                    print('  → MetaData count: ${variantMetaData.length}');
+                                    print('  → Loyalty Points: $variantLoyaltyPoints');
+
+                                    // ✅ Pass variant loyalty points to order
                                     await orderHelper.addItemToOrder(
                                       0,
                                       "$variantName",
@@ -1074,17 +1188,14 @@ class NestedGridWidget extends StatelessWidget {
                                       salesPrice: variantPrice,
                                       regularPrice: variantPrice,
                                       unitPrice: variantPrice,
-
-                                      /// 🔥 ADD THIS
                                       isEbtEligible: isEbtEligible,
-
+                                      metaData: variantMetaData,  // ✅ Pass variant's meta_data
+                                      loyaltyPoints: variantLoyaltyPoints,  // ✅ Pass variant's loyalty points
                                       onItemAdded: () async {
                                         print("✅ Variant item added successfully!");
                                         onItemTapped(index, variantAdded: true);
-                                        //await orderHelper.loadData();
                                       },
                                     );
-
                                   },
                                 ),
                               );
@@ -1092,14 +1203,27 @@ class NestedGridWidget extends StatelessWidget {
                             } else {
                               // 🟩 Simple Product
                               print("🟩 Simple product, adding directly...");
+
+
+// ✅ Extract loyalty points from item
+                              int simpleLoyaltyPoints = 0;
+                              if (item['meta_data'] is List) {
+                                final loyaltyEntry = (item['meta_data'] as List).firstWhere(
+                                      (m) => m['key'] == '_product_loyalty_points',
+                                  orElse: () => <String, dynamic>{},
+                                );
+                                if (loyaltyEntry.isNotEmpty) {
+                                  simpleLoyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+                                }
+                              }
                               await orderHelper.addItemToOrder(
-                                null,               // ✅ serverItemId
-                                productName,        // ✅ name
-                                productImage,       // ✅ image
-                                finalPrice,         // ✅ price (manual or default)
-                                1,                  // ✅ quantity
-                                productSku,         // ✅ sku
-                                activeOrderId,      // ✅ orderId
+                                null,
+                                productName,
+                                productImage,
+                                finalPrice,
+                                1,
+                                productSku,
+                                activeOrderId,
                                 type: 'product',
                                 productId: productId,
                                 variationId: -1,
@@ -1107,10 +1231,14 @@ class NestedGridWidget extends StatelessWidget {
                                 regularPrice: finalPrice,
                                 unitPrice: finalPrice,
                                 isEbtEligible: isEbtEligible,
+                                metaData: item['meta_data'] is List
+                                    ? List<Map<String, dynamic>>.from(item['meta_data'])
+                                    : null,
+                                loyaltyPoints: simpleLoyaltyPoints,
                                 onItemAdded: () async {
                                   print("✅ Simple product added successfully!");
+                                  print("print : $loyaltyPoints");
                                   onItemTapped(index, variantAdded: false);
-                                  //await orderHelper.loadData();
                                 },
                               );
                             }
@@ -1414,7 +1542,7 @@ Future<List<Map<String, dynamic>>> _fetchVariationsFromApiNestedGrid(
       "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations",
     );
     final response =
-        await http.get(url, headers: {"Authorization": "Bearer $token"});
+    await http.get(url, headers: {"Authorization": "Bearer $token"});
     if (response.statusCode != 200) return <Map<String, dynamic>>[];
     final decoded = jsonDecode(response.body);
     if (decoded is! List) return <Map<String, dynamic>>[];
@@ -1422,30 +1550,54 @@ Future<List<Map<String, dynamic>>> _fetchVariationsFromApiNestedGrid(
     return decoded
         .whereType<Map>()
         .map<Map<String, dynamic>>((v) {
-          final map = v.map((key, value) => MapEntry(key.toString(), value));
-          final attrs = map["attributes"];
-          final String fallbackName = attrs is List
-              ? attrs
-                  .whereType<Map>()
-                  .map((a) => (a["option"] ?? "").toString())
-                  .where((x) => x.isNotEmpty)
-                  .join(" - ")
-              : "";
-          return {
-            "id": map["id"],
-            "name": (map["name"] ?? "").toString().isNotEmpty
-                ? map["name"]
-                : (fallbackName.isNotEmpty
-                    ? fallbackName
-                    : "Unnamed Variant"),
-            "price":
-                (map["price"] ?? map["regular_price"] ?? "0").toString(),
-            "sku": map["sku"] ?? "",
-            "image": (map["image"] is Map && map["image"]["src"] != null)
-                ? map["image"]["src"]
-                : (map["image"] is String ? map["image"] : ""),
-          };
-        })
+      final map = v.map((key, value) => MapEntry(key.toString(), value));
+      final attrs = map["attributes"];
+      final String fallbackName = attrs is List
+          ? attrs
+          .whereType<Map>()
+          .map((a) => (a["option"] ?? "").toString())
+          .where((x) => x.isNotEmpty)
+          .join(" - ")
+          : "";
+
+      // ✅ Extract meta_data from variant
+      final List<Map<String, dynamic>> metaData = (map["meta_data"] is List)
+          ? (map["meta_data"] as List)
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList()
+          : <Map<String, dynamic>>[];
+
+      // ✅ Extract loyalty points from meta_data
+      final loyaltyEntry = metaData.firstWhere(
+            (m) => m['key'] == '_product_loyalty_points',
+        orElse: () => <String, dynamic>{},
+      );
+      final int loyaltyPoints = loyaltyEntry.isNotEmpty
+          ? int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0
+          : 0;
+
+      if (kDebugMode) {
+        print("🔹 [NestedGrid Variations API] id=${map['id']} loyalty=$loyaltyPoints metaCount=${metaData.length}");
+      }
+
+      return {
+        "id": map["id"],
+        "name": (map["name"] ?? "").toString().isNotEmpty
+            ? map["name"]
+            : (fallbackName.isNotEmpty
+            ? fallbackName
+            : "Unnamed Variant"),
+        "price":
+        (map["price"] ?? map["regular_price"] ?? "0").toString(),
+        "sku": map["sku"] ?? "",
+        "image": (map["image"] is Map && map["image"]["src"] != null)
+            ? map["image"]["src"]
+            : (map["image"] is String ? map["image"] : ""),
+        "meta_data": metaData,  // ✅ Store meta_data
+        "loyalty_points": loyaltyPoints,  // ✅ Store loyalty points
+      };
+    })
         .where((v) => v["id"] != null)
         .toList();
   } catch (e) {

@@ -189,6 +189,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
         // Clear all in-memory caches
         _productMetaCache.clear();
+        NestedGridWidget.clearProductMetaCache();
         _clearFastKeyCache(); // Clear ALL tab caches
 
         // Re-ingest product meta from updated Isar/Hive
@@ -342,6 +343,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
       _clearFastKeyCache(tabId: _fastKeyTabId);
       _productMetaCache.clear();
+      NestedGridWidget.clearProductMetaCache();
 
       // Remove the redundant calls and keep only one clean refresh
       await _loadFastKeyTabItems();
@@ -422,6 +424,207 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       }
     }
   }
+
+  // Add this method to _FastKeyScreenState (mirrors TopBar's version)
+  // Future<List<Map<String, dynamic>>> _fetchVariationsFromApi(int productId) async {
+  //   try {
+  //     final db = await DBHelper.instance.database;
+  //     final result = await db.query(
+  //       AppDBConst.userTable,
+  //       where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+  //       orderBy: '${AppDBConst.userId} DESC',
+  //       limit: 1,
+  //     );
+  //     if (result.isEmpty) return <Map<String, dynamic>>[];
+  //     final token = result.first[AppDBConst.userToken] as String;
+  //
+  //     final url = Uri.parse(
+  //         "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations");
+  //     final response = await http.get(url, headers: {"Authorization": "Bearer $token"});
+  //
+  //     if (kDebugMode) {
+  //       print("🌍 [FastKey Variations API] status: ${response.statusCode}");
+  //     }
+  //     if (response.statusCode != 200) return <Map<String, dynamic>>[];
+  //
+  //     final decoded = jsonDecode(response.body);
+  //     if (decoded is! List) return <Map<String, dynamic>>[];
+  //
+  //     return decoded.whereType<Map>().map<Map<String, dynamic>>((v) {
+  //       final map = v.map((key, value) => MapEntry(key.toString(), value));
+  //       final attrs = map["attributes"];
+  //       final String fallbackName = attrs is List
+  //           ? attrs.whereType<Map>().map((a) => (a["option"] ?? "").toString())
+  //           .where((x) => x.isNotEmpty).join(" - ")
+  //           : "";
+  //       final List<Map<String, dynamic>> metaData = (map["meta_data"] is List)
+  //           ? (map["meta_data"] as List).whereType<Map>()
+  //           .map((m) => Map<String, dynamic>.from(m)).toList()
+  //           : <Map<String, dynamic>>[];
+  //
+  //       if (kDebugMode) {
+  //         final loyalty = metaData.firstWhere(
+  //               (m) => m['key'] == '_product_loyalty_points',
+  //           orElse: () => <String, dynamic>{},
+  //         );
+  //         print("🔹 [FastKey Variations] id=${map['id']} loyalty=${loyalty['value']}");
+  //       }
+  //
+  //       return {
+  //         "id": map["id"],
+  //         "name": (map["name"] ?? "").toString().isNotEmpty
+  //             ? map["name"] : (fallbackName.isNotEmpty ? fallbackName : "Unnamed Variant"),
+  //         "price": (map["price"] ?? map["regular_price"] ?? "0").toString(),
+  //         "sku": map["sku"] ?? "",
+  //         "image": (map["image"] is Map && map["image"]["src"] != null)
+  //             ? map["image"]["src"] : (map["image"] is String ? map["image"] : ""),
+  //         "meta_data": metaData,
+  //       };
+  //     }).where((v) => v["id"] != null).toList();
+  //   } catch (e) {
+  //     if (kDebugMode) print("❌ [FastKey Variations API] error: $e");
+  //     return <Map<String, dynamic>>[];
+  //   }
+  // }
+
+  // Future<List<Map<String, dynamic>>> _fetchVariationsFromApi(int productId) async {
+  //   try {
+  //     final db = await DBHelper.instance.database;
+  //     final result = await db.query(
+  //       AppDBConst.userTable,
+  //       where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+  //       orderBy: '${AppDBConst.userId} DESC',
+  //       limit: 1,
+  //     );
+  //     if (result.isEmpty) return <Map<String, dynamic>>[];
+  //     final token = result.first[AppDBConst.userToken] as String;
+  //
+  //     final url = Uri.parse(
+  //         "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations");
+  //     final response = await http.get(url, headers: {"Authorization": "Bearer $token"});
+  //
+  //     if (kDebugMode) {
+  //       print("🌍 [FastKey Variations API] status: ${response.statusCode}");
+  //     }
+  //     if (response.statusCode != 200) return <Map<String, dynamic>>[];
+  //
+  //     final decoded = jsonDecode(response.body);
+  //     if (decoded is! List) return <Map<String, dynamic>>[];
+  //
+  //     return decoded.whereType<Map>().map<Map<String, dynamic>>((v) {
+  //       final map = v.map((key, value) => MapEntry(key.toString(), value));
+  //       final attrs = map["attributes"];
+  //       final String fallbackName = attrs is List
+  //           ? attrs.whereType<Map>().map((a) => (a["option"] ?? "").toString())
+  //           .where((x) => x.isNotEmpty).join(" - ")
+  //           : "";
+  //
+  //       // ✅ CRITICAL: Extract meta_data from the variant
+  //       final List<Map<String, dynamic>> metaData = (map["meta_data"] is List)
+  //           ? (map["meta_data"] as List).whereType<Map>()
+  //           .map((m) => Map<String, dynamic>.from(m)).toList()
+  //           : <Map<String, dynamic>>[];
+  //
+  //       // ✅ Extract loyalty points from meta_data
+  //       final loyaltyEntry = metaData.firstWhere(
+  //             (m) => m['key'] == '_product_loyalty_points',
+  //         orElse: () => <String, dynamic>{},
+  //       );
+  //       final int loyaltyPoints = loyaltyEntry.isNotEmpty
+  //           ? int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0
+  //           : 0;
+  //
+  //       if (kDebugMode) {
+  //         print("🔹 [FastKey Variations API] id=${map['id']} loyalty=$loyaltyPoints metaCount=${metaData.length}");
+  //       }
+  //
+  //       return {
+  //         "id": map["id"],
+  //         "name": (map["name"] ?? "").toString().isNotEmpty
+  //             ? map["name"] : (fallbackName.isNotEmpty ? fallbackName : "Unnamed Variant"),
+  //         "price": (map["price"] ?? map["regular_price"] ?? "0").toString(),
+  //         "sku": map["sku"] ?? "",
+  //         "image": (map["image"] is Map && map["image"]["src"] != null)
+  //             ? map["image"]["src"] : (map["image"] is String ? map["image"] : ""),
+  //         "meta_data": metaData,  // ✅ Store meta_data in cached variant
+  //         "loyalty_points": loyaltyPoints,  // ✅ Store loyalty points directly for quick access
+  //       };
+  //     }).where((v) => v["id"] != null).toList();
+  //   } catch (e) {
+  //     if (kDebugMode) print(" [FastKey Variations API] error: $e");
+  //     return <Map<String, dynamic>>[];
+  //   }
+  // }
+
+  Future<List<Map<String, dynamic>>> _fetchVariationsFromApi(int productId) async {
+    try {
+      final db = await DBHelper.instance.database;
+      final result = await db.query(
+        AppDBConst.userTable,
+        where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+        orderBy: '${AppDBConst.userId} DESC',
+        limit: 1,
+      );
+      if (result.isEmpty) return <Map<String, dynamic>>[];
+      final token = result.first[AppDBConst.userToken] as String;
+
+      final url = Uri.parse(
+          "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations");
+      final response = await http.get(url, headers: {"Authorization": "Bearer $token"});
+
+      if (kDebugMode) {
+        print("🌍 [FastKey Variations API] status: ${response.statusCode}");
+      }
+      if (response.statusCode != 200) return <Map<String, dynamic>>[];
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) return <Map<String, dynamic>>[];
+
+      return decoded.whereType<Map>().map<Map<String, dynamic>>((v) {
+        final map = v.map((key, value) => MapEntry(key.toString(), value));
+        final attrs = map["attributes"];
+        final String fallbackName = attrs is List
+            ? attrs.whereType<Map>().map((a) => (a["option"] ?? "").toString())
+            .where((x) => x.isNotEmpty).join(" - ")
+            : "";
+
+        // ✅ CRITICAL: Extract meta_data from the variant
+        final List<Map<String, dynamic>> metaData = (map["meta_data"] is List)
+            ? (map["meta_data"] as List).whereType<Map>()
+            .map((m) => Map<String, dynamic>.from(m)).toList()
+            : <Map<String, dynamic>>[];
+
+        // ✅ Extract loyalty points from meta_data
+        final loyaltyEntry = metaData.firstWhere(
+              (m) => m['key'] == '_product_loyalty_points',
+          orElse: () => <String, dynamic>{},
+        );
+        final int loyaltyPoints = loyaltyEntry.isNotEmpty
+            ? int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0
+            : 0;
+
+        if (kDebugMode) {
+          print("🔹 [FastKey Variations API] id=${map['id']} loyalty=$loyaltyPoints metaCount=${metaData.length}");
+        }
+
+        return {
+          "id": map["id"],
+          "name": (map["name"] ?? "").toString().isNotEmpty
+              ? map["name"] : (fallbackName.isNotEmpty ? fallbackName : "Unnamed Variant"),
+          "price": (map["price"] ?? map["regular_price"] ?? "0").toString(),
+          "sku": map["sku"] ?? "",
+          "image": (map["image"] is Map && map["image"]["src"] != null)
+              ? map["image"]["src"] : (map["image"] is String ? map["image"] : ""),
+          "meta_data": metaData,  // ✅ Store meta_data in cached variant
+          "loyalty_points": loyaltyPoints,  // ✅ Store loyalty points directly for quick access
+        };
+      }).where((v) => v["id"] != null).toList();
+    } catch (e) {
+      if (kDebugMode) print(" [FastKey Variations API] error: $e");
+      return <Map<String, dynamic>>[];
+    }
+  }
+
 
   Future<void> loadTabs() async {
     if (kDebugMode) {
@@ -790,6 +993,51 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
   }
 
+  // Future<List<Map<String, dynamic>>> _prepareFastKeyItemsForInitialUi(
+  //     List<Map<String, dynamic>> items) async {
+  //   await _ingestProductMetaFromMerged();
+  //   final List<Map<String, dynamic>> prepared = [];
+  //
+  //   for (final raw in items) {
+  //     final item = Map<String, dynamic>.from(raw);
+  //     final tagsCol = item["fast_key_item_tags"];
+  //     if (tagsCol is String && tagsCol.isNotEmpty) {
+  //       try {
+  //         final decoded = jsonDecode(tagsCol);
+  //         if (decoded is List) {
+  //           item["fast_key_item_tags"] = decoded;
+  //         }
+  //       } catch (_) {}
+  //     }
+  //     final int? productId =
+  //     int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
+  //
+  //     await _enrichFastKeyItemFromSkuHive(item);
+  //
+  //     final cached =
+  //     productId != null ? await _getCachedProductFromIsar(productId) : null;
+  //
+  //     item["has_variants"] = await _fastKeyHasVariants(item);
+  //
+  //     final isEbt = _isProductEbtEligible({
+  //       "is_ebt_eligible": item["is_ebt_eligible"] ?? cached?["is_ebt_eligible"],
+  //       "meta_data": item["meta_data"] ?? cached?["meta_data"],
+  //       "fast_key_item_tags": item["fast_key_item_tags"] ?? cached?["tags"],
+  //       "tags": cached?["tags"],
+  //     });
+  //     item["is_ebt_eligible"] = isEbt;
+  //     if (item["meta_data"] == null &&
+  //         cached != null &&
+  //         cached["meta_data"] != null) {
+  //       item["meta_data"] = cached["meta_data"];
+  //     }
+  //
+  //     prepared.add(item);
+  //   }
+  //
+  //   return prepared;
+  // }
+
   Future<List<Map<String, dynamic>>> _prepareFastKeyItemsForInitialUi(
       List<Map<String, dynamic>> items) async {
     await _ingestProductMetaFromMerged();
@@ -811,11 +1059,69 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
       await _enrichFastKeyItemFromSkuHive(item);
 
-      final cached =
-      productId != null ? await _getCachedProductFromIsar(productId) : null;
+      // ✅ FIX: Check if meta_data is already in the FastKey item (from API)
+      // The FastKey API already returns meta_data for each product
+      List<Map<String, dynamic>> fastKeyMetaData = [];
+      int fastKeyLoyaltyPoints = 0;
 
+      // Check if item already has meta_data (from FastKey API)
+      if (item["meta_data"] is List) {
+        fastKeyMetaData = (item["meta_data"] as List)
+            .whereType<Map>()
+            .map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m))
+            .toList();
+
+        // Extract loyalty points from FastKey API meta_data
+        final loyaltyEntry = fastKeyMetaData.firstWhere(
+              (m) => m['key'] == '_product_loyalty_points',
+          orElse: () => <String, dynamic>{},
+        );
+        if (loyaltyEntry.isNotEmpty) {
+          fastKeyLoyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+        }
+      }
+
+      // Also check if loyalty_points is directly on the item from FastKey API
+      if (fastKeyLoyaltyPoints == 0 && item["loyalty_points"] != null) {
+        fastKeyLoyaltyPoints = int.tryParse(item["loyalty_points"].toString()) ?? 0;
+      }
+
+      // ✅ PRIORITIZE: Use FastKey API data FIRST (it's the source of truth for FastKey)
+      if (fastKeyLoyaltyPoints > 0) {
+        // Store loyalty points directly on the item
+        item["loyalty_points"] = fastKeyLoyaltyPoints;
+
+        // Ensure meta_data is preserved
+        if (fastKeyMetaData.isNotEmpty) {
+          item["meta_data"] = fastKeyMetaData;
+        } else {
+          // Create meta_data if not present
+          item["meta_data"] = [
+            {"key": "_product_loyalty_points", "value": fastKeyLoyaltyPoints.toString()}
+          ];
+        }
+        print("✅ [FastKey] Using loyalty points from FastKey API: $fastKeyLoyaltyPoints for ${item["fast_key_item_name"]}");
+      } else {
+        // Fallback: Try to get from product cache only if FastKey API doesn't have it
+        final cached = productId != null ? await _getCachedProductFromIsar(productId) : null;
+
+        if (cached != null && cached["meta_data"] != null) {
+          item["meta_data"] = cached["meta_data"];
+          final loyaltyEntry = (cached["meta_data"] as List).firstWhere(
+                (m) => m['key'] == '_product_loyalty_points',
+            orElse: () => <String, dynamic>{},
+          );
+          if (loyaltyEntry.isNotEmpty) {
+            item["loyalty_points"] = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+          }
+        }
+      }
+
+      // Check variants
+      final cached = productId != null ? await _getCachedProductFromIsar(productId) : null;
       item["has_variants"] = await _fastKeyHasVariants(item);
 
+      // Check EBT
       final isEbt = _isProductEbtEligible({
         "is_ebt_eligible": item["is_ebt_eligible"] ?? cached?["is_ebt_eligible"],
         "meta_data": item["meta_data"] ?? cached?["meta_data"],
@@ -823,18 +1129,12 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         "tags": cached?["tags"],
       });
       item["is_ebt_eligible"] = isEbt;
-      if (item["meta_data"] == null &&
-          cached != null &&
-          cached["meta_data"] != null) {
-        item["meta_data"] = cached["meta_data"];
-      }
 
       prepared.add(item);
     }
 
     return prepared;
   }
-
 
   Future<void> _enrichFastKeyItemFromSkuHive(Map<String, dynamic> item) async {
     final sku = (item['fast_key_item_sku'] ?? '').toString().trim();
@@ -1279,6 +1579,332 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   }
 
   Stopwatch? refreshUIStopwatch; // Build #1.0.256
+
+  // Future<void> _onItemSelected(
+  //     int index, bool showAddButton, bool variantAdded) async {
+  //   try {
+  //     if (variantAdded) {
+  //       if (!Misc.enableUILogMessages) {
+  //         if (Navigator.canPop(context)) {
+  //           Navigator.pop(context);
+  //         }
+  //       }
+  //       _refreshOrderList();
+  //       return;
+  //     }
+  //
+  //     if (kDebugMode) print("⚡ Fast Key _onItemSelected");
+  //
+  //     final adjustedIndex = index - (showAddButton ? 1 : 0);
+  //     if (adjustedIndex < 0 || adjustedIndex >= fastKeyProductItems.length) return;
+  //
+  //     final item = fastKeyProductItems[adjustedIndex];
+  //
+  //     // 🧩 Extract product info
+  //     final productId =
+  //         int.tryParse(item["fast_key_product_id"].toString()) ?? -1;
+  //     final productName = (item["fast_key_item_name"] is String)
+  //         ? item["fast_key_item_name"]
+  //         : item["fast_key_item_name"]?["rendered"] ?? "Unnamed Product";
+  //     final productPrice =
+  //         double.tryParse(item["fast_key_item_price"].toString()) ?? 0.0;
+  //     final productSku = item["fast_key_item_sku"] ?? "SKU-$productId";
+  //     final productImage = (item["fast_key_item_image"] is String)
+  //         ? item["fast_key_item_image"]
+  //         : item["fast_key_item_image"]?["src"] ?? "";
+  //
+  //     final minAge =
+  //         int.tryParse(item["fast_key_item_min_age"]?.toString() ?? "0") ?? 0;
+  //     final hasAgeRestriction = minAge > 0;
+  //
+  //     bool isEbtEligible = item["is_ebt_eligible"] == true;
+  //     if (!isEbtEligible) {
+  //       isEbtEligible = _isProductEbtEligible(item);
+  //     }
+  //
+  //     List<Map<String, dynamic>> metaDataList = [];
+  //     int loyaltyPoints = 0;
+  //
+  //     final rawMeta = item["meta_data"] ?? item["metaData"];
+  //     if (rawMeta is List) {
+  //       metaDataList = rawMeta
+  //           .whereType<Map>()
+  //           .map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m))
+  //           .toList();
+  //
+  //       final loyaltyEntry = metaDataList.firstWhere(
+  //             (m) => m['key'] == '_product_loyalty_points',
+  //         orElse: () => <String, dynamic>{},
+  //       );
+  //
+  //       if (loyaltyEntry.isNotEmpty) {
+  //         loyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+  //       }
+  //     }
+  //     print("🧾 Selected → idddddddd:$productId | name:$productName | price:$productPrice | loyalty:$loyaltyPoints");
+  //
+  //     print(
+  //         "🧾 Selected → id:$productId | name:$productName | price:$productPrice | age:$minAge");
+  //
+  //     final box = StorageProvider.offlineOrders;
+  //     final isOfflineOrder =
+  //     box.containsKey(orderHelper.activeOrderId.toString());
+  //     final activeOrderId =
+  //         orderHelper.activeOrderId ?? (await box.get('lastOrderId')) ?? 1000;
+  //
+  //     if (orderHelper.activeOrderId == null) {
+  //       orderHelper.activeOrderId = activeOrderId;
+  //       await box.put('lastOrderId', activeOrderId);
+  //     }
+  //
+  //     // ─────────────────────────────────────────────────────────────
+  //     // NEW: PRODUCE / WEIGHTED ITEM HANDLING
+  //     // ─────────────────────────────────────────────────────────────
+  //     final tagsRaw = item["fast_key_item_tags"] ?? item["tags"];
+  //     final bool hasProduceTag = (tagsRaw is List)
+  //         ? tagsRaw.any((t) {
+  //       if (t is! Map) return false;
+  //       final slug = (t["slug"] ?? "").toString().toLowerCase();
+  //       final name = (t["name"] ?? "").toString().toLowerCase();
+  //       return slug.contains("produce") || name.contains("produce");
+  //     })
+  //         : false;
+  //
+  //     if (hasProduceTag) {
+  //       final weightProvider = Provider.of<WeightProvider>(context, listen: false);
+  //       double liveWeight = 0.0;
+  //
+  //       try {
+  //         final parts = weightProvider.weightText.trim().split(' ');
+  //         if (parts.isNotEmpty) {
+  //           liveWeight = double.tryParse(parts[0]) ?? 0.0;
+  //         }
+  //       } catch (_) {}
+  //
+  //       // Convert lb to kg (adjust multiplier if your scale uses different unit)
+  //       final double weightKg = liveWeight > 0 ? liveWeight * 0.453592 : 0.0;
+  //       final double weightToUse = weightKg > 0.00001 ? weightKg : 0.0001;
+  //
+  //       final double finalPrice = productPrice * weightToUse;
+  //
+  //       if (weightKg <= 0.0001 && mounted) {
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //           const SnackBar(
+  //             content: Text('Scale not detected — using 100g default'),
+  //             duration: Duration(seconds: 2),
+  //           ),
+  //         );
+  //       }
+  //
+  //       await orderHelper.addItemToOrder(
+  //         null,
+  //         productName,
+  //         productImage,
+  //         finalPrice,
+  //         1,
+  //         productSku,
+  //         activeOrderId,
+  //         type: 'weighted',
+  //         weightQty: weightToUse,
+  //         productId: productId,
+  //         variationId: -1,
+  //         salesPrice: finalPrice,
+  //         regularPrice: productPrice,
+  //         unitPrice: productPrice,
+  //         isEbtEligible: isEbtEligible,
+  //         metaData: metaDataList,        // ← NEW
+  //         loyaltyPoints: loyaltyPoints,
+  //         onItemAdded: () async {
+  //           print("✅ Weighted item added locally");
+  //           weightProvider.updateWeight(0.0);
+  //         },
+  //       );
+  //       return; // Important: Exit early after weighted item
+  //     }
+  //
+  //     // ─────────────────────────────────────────────────────────────
+  //     // ORIGINAL LOGIC FOR NORMAL + VARIABLE PRODUCTS
+  //     // ─────────────────────────────────────────────────────────────
+  //     final hasVariants = (item["type"] == "variable" ||
+  //         (item["variations"] != null && item["variations"].isNotEmpty));
+  //
+  //     if (hasVariants) {
+  //       List<Map<String, dynamic>> offlineVariations = [];
+  //
+  //       try {
+  //         final productBox = StorageProvider.productCache;
+  //         final cacheKey = "product_${productId}_variations";
+  //         final cachedData = await productBox.get(cacheKey);
+  //         List rawVariations = [];
+  //
+  //         if (cachedData != null) {
+  //           if (cachedData is Map && cachedData["variations"] is List) {
+  //             rawVariations = cachedData["variations"];
+  //           } else if (cachedData is List) {
+  //             rawVariations = cachedData;
+  //           } else if (cachedData is String) {
+  //             try {
+  //               final decoded = jsonDecode(cachedData);
+  //               rawVariations =
+  //               decoded is Map ? decoded["variations"] ?? [] : decoded;
+  //             } catch (_) {}
+  //           }
+  //         }
+  //
+  //         if (rawVariations.isEmpty && item["variations"] != null) {
+  //           for (var id in item["variations"]) {
+  //             var variantData = await productBox.get("product_$id");
+  //             if (variantData is String) {
+  //               try {
+  //                 variantData = jsonDecode(variantData);
+  //               } catch (_) {}
+  //             }
+  //             final name = variantData?["name"] ?? "Variant $id";
+  //             final price = (variantData?["price"] ??
+  //                 variantData?["regular_price"] ??
+  //                 productPrice)
+  //                 .toString();
+  //             final image = (variantData?["image"] is Map)
+  //                 ? variantData["image"]["src"]
+  //                 : (variantData?["image"] ?? productImage);
+  //             rawVariations.add({
+  //               "id": id,
+  //               "name": name,
+  //               "price": price,
+  //               "sku": variantData?["sku"] ?? "",
+  //               "image": image,
+  //             });
+  //           }
+  //         }
+  //
+  //         offlineVariations = rawVariations.map<Map<String, dynamic>>((v) {
+  //           if (v is String) v = jsonDecode(v);
+  //           final map = Map<String, dynamic>.from(v);
+  //           map["price"] = map["price"]?.toString() ?? "0";
+  //           if (map["meta_data"] is! List) map["meta_data"] = <Map<String, dynamic>>[];
+  //           return map;
+  //         }).toList();
+  //
+  //     // ✅ NEW: force a fresh fetch if cache has no meta_data yet
+  //         final bool needsFreshFetch = offlineVariations.isEmpty ||
+  //             offlineVariations.every((v) => (v["meta_data"] as List).isEmpty);
+  //
+  //         if (needsFreshFetch && productId > 0) {
+  //           final fetched = await _fetchVariationsFromApi(productId);
+  //           if (fetched.isNotEmpty) {
+  //             offlineVariations = fetched;
+  //             await StorageProvider.productCache.put(
+  //               "product_${productId}_variations_v2",  // bumped key
+  //               {"variations": fetched, "timestamp": DateTime.now().toIso8601String()},
+  //             );
+  //           }
+  //         }
+  //       } catch (e) {
+  //         print("⚠️ Error loading variants: $e");
+  //       }
+  //
+  //       await showDialog(
+  //         context: context,
+  //         builder: (ctx) => VariantsDialog(
+  //           title: productName,
+  //           variations: offlineVariations,
+  //           onAddVariant: (selectedVariant, qty) async {
+  //             final variantId =
+  //                 int.tryParse(selectedVariant["id"].toString()) ?? -1;
+  //             final variantName = selectedVariant["name"] ?? "Variant";
+  //             final variantPrice =
+  //                 double.tryParse(selectedVariant["price"].toString()) ??
+  //                     productPrice;
+  //             final variantImage = selectedVariant["image"] ?? productImage;
+  //
+  //             // ✅ NEW: read meta_data from the selected VARIANT, not the parent item
+  //             final List<Map<String, dynamic>> variantMetaData =
+  //             selectedVariant["meta_data"] is List
+  //                 ? List<Map<String, dynamic>>.from(selectedVariant["meta_data"])
+  //                 : <Map<String, dynamic>>[];
+  //
+  //             final int variantLoyaltyPoints = variantMetaData.any(
+  //                     (m) => m['key'] == '_product_loyalty_points')
+  //                 ? int.tryParse(variantMetaData
+  //                 .firstWhere((m) => m['key'] == '_product_loyalty_points')['value']
+  //                 .toString()) ??
+  //                 0
+  //                 : 0;
+  //
+  //             print(
+  //                 '🛒 [FastKey] Added variant with loyalty points: $variantName → $variantLoyaltyPoints');
+  //
+  //             await orderHelper.addItemToOrder(
+  //               0,
+  //               "$productName - $variantName",
+  //               variantImage,
+  //               variantPrice,
+  //               qty,
+  //               productSku,
+  //               activeOrderId,
+  //               type: 'variant',
+  //               productId: productId,
+  //               variationId: variantId,
+  //               variationName: variantName,
+  //               salesPrice: variantPrice,
+  //               regularPrice: variantPrice,
+  //               unitPrice: variantPrice,
+  //               isEbtEligible: isEbtEligible,
+  //               metaData: variantMetaData,           // ✅ per-variant, not parent's
+  //               loyaltyPoints: variantLoyaltyPoints, // ✅ per-variant, not parent's
+  //               onItemAdded: () async {
+  //                 print("✅ Variant added locally");
+  //                 await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+  //                 await _refreshOrderList();
+  //               },
+  //             );
+  //           },
+  //         ),
+  //       );
+  //     } else {
+  //       // 🟩 Simple product - Fast path
+  //       await orderHelper.addItemToOrder(
+  //         0,
+  //         productName,
+  //         productImage,
+  //         productPrice,
+  //         1,
+  //         productSku,
+  //         activeOrderId,
+  //         type: 'product',
+  //         productId: productId,
+  //         variationId: -1,
+  //         salesPrice: productPrice,
+  //         regularPrice: productPrice,
+  //         unitPrice: productPrice,
+  //         isEbtEligible: isEbtEligible,
+  //         metaData: metaDataList,        // ← NEW
+  //         loyaltyPoints: loyaltyPoints,
+  //         onItemAdded: () async {
+  //           print("✅ Product added locally");
+  //           await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+  //           await _refreshOrderList();
+  //         },
+  //       );
+  //     }
+  //
+  //     print("🎉 Product flow completed for → $productName");
+  //   } catch (e, s) {
+  //     print("❌ ERROR in _onItemSelected: $e");
+  //     print(s);
+  //     if (mounted) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(
+  //           content: Text("Failed to add product"),
+  //           backgroundColor: Colors.red,
+  //           duration: Duration(seconds: 2),
+  //         ),
+  //       );
+  //     }
+  //   }
+  // }
+
+
   Future<void> _onItemSelected(
       int index, bool showAddButton, bool variantAdded) async {
     try {
@@ -1321,8 +1947,52 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         isEbtEligible = _isProductEbtEligible(item);
       }
 
-      print(
-          "🧾 Selected → id:$productId | name:$productName | price:$productPrice | age:$minAge");
+      // ✅ FIX: Extract meta_data and loyalty points - USE WHAT'S IN THE FASTKEY ITEM
+      List<Map<String, dynamic>> metaDataList = [];
+      int loyaltyPoints = 0;
+
+      // FIRST: Check if loyalty_points is directly stored on the FastKey item
+      if (item["loyalty_points"] != null) {
+        loyaltyPoints = int.tryParse(item["loyalty_points"].toString()) ?? 0;
+        print("✅ [FastKey] Using loyalty points from FastKey item: $loyaltyPoints");
+      }
+
+      // SECOND: Check meta_data from FastKey item
+      final rawMeta = item["meta_data"] ?? item["metaData"];
+      if (rawMeta is List) {
+        metaDataList = rawMeta
+            .whereType<Map>()
+            .map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m))
+            .toList();
+
+        // If loyalty not found directly, try from meta_data
+        if (loyaltyPoints == 0) {
+          final loyaltyEntry = metaDataList.firstWhere(
+                (m) => m['key'] == '_product_loyalty_points',
+            orElse: () => <String, dynamic>{},
+          );
+          if (loyaltyEntry.isNotEmpty) {
+            loyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+          }
+        }
+      }
+
+      // THIRD: Try to get from product cache ONLY if FastKey item doesn't have it
+      if (loyaltyPoints == 0 && productId > 0) {
+        final cached = await _getCachedProductFromIsar(productId);
+        if (cached != null && cached["meta_data"] is List) {
+          final loyaltyEntry = (cached["meta_data"] as List).firstWhere(
+                (m) => m['key'] == '_product_loyalty_points',
+            orElse: () => <String, dynamic>{},
+          );
+          if (loyaltyEntry.isNotEmpty) {
+            loyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+            print("⚠️ [FastKey] Using product cache loyalty points (fallback): $loyaltyPoints");
+          }
+        }
+      }
+
+      print("🎯 [FastKey] Final loyalty points for $productName: $loyaltyPoints");
 
       final box = StorageProvider.offlineOrders;
       final isOfflineOrder =
@@ -1336,7 +2006,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       }
 
       // ─────────────────────────────────────────────────────────────
-      // NEW: PRODUCE / WEIGHTED ITEM HANDLING
+      // PRODUCE / WEIGHTED ITEM HANDLING
       // ─────────────────────────────────────────────────────────────
       final tagsRaw = item["fast_key_item_tags"] ?? item["tags"];
       final bool hasProduceTag = (tagsRaw is List)
@@ -1359,10 +2029,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           }
         } catch (_) {}
 
-        // Convert lb to kg (adjust multiplier if your scale uses different unit)
         final double weightKg = liveWeight > 0 ? liveWeight * 0.453592 : 0.0;
         final double weightToUse = weightKg > 0.00001 ? weightKg : 0.0001;
-
         final double finalPrice = productPrice * weightToUse;
 
         if (weightKg <= 0.0001 && mounted) {
@@ -1374,6 +2042,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           );
         }
 
+        // ✅ Pass loyalty points to order
         await orderHelper.addItemToOrder(
           null,
           productName,
@@ -1390,12 +2059,14 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           regularPrice: productPrice,
           unitPrice: productPrice,
           isEbtEligible: isEbtEligible,
+          metaData: metaDataList,
+          loyaltyPoints: loyaltyPoints,
           onItemAdded: () async {
             print("✅ Weighted item added locally");
             weightProvider.updateWeight(0.0);
           },
         );
-        return; // Important: Exit early after weighted item
+        return;
       }
 
       // ─────────────────────────────────────────────────────────────
@@ -1421,8 +2092,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             } else if (cachedData is String) {
               try {
                 final decoded = jsonDecode(cachedData);
-                rawVariations =
-                decoded is Map ? decoded["variations"] ?? [] : decoded;
+                rawVariations = decoded is Map ? decoded["variations"] ?? [] : decoded;
               } catch (_) {}
             }
           }
@@ -1443,47 +2113,151 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               final image = (variantData?["image"] is Map)
                   ? variantData["image"]["src"]
                   : (variantData?["image"] ?? productImage);
+
+              // ✅ Extract meta_data if available
+              List<Map<String, dynamic>> metaData = [];
+              if (variantData?["meta_data"] is List) {
+                metaData = (variantData["meta_data"] as List)
+                    .whereType<Map>()
+                    .map((m) => Map<String, dynamic>.from(m))
+                    .toList();
+              }
+
+              final loyaltyEntry = metaData.firstWhere(
+                    (m) => m['key'] == '_product_loyalty_points',
+                orElse: () => <String, dynamic>{},
+              );
+              final int loyaltyPoints = loyaltyEntry.isNotEmpty
+                  ? int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0
+                  : 0;
+
               rawVariations.add({
                 "id": id,
                 "name": name,
                 "price": price,
                 "sku": variantData?["sku"] ?? "",
                 "image": image,
+                "meta_data": metaData,  // ✅ Preserve meta_data
+                "loyalty_points": loyaltyPoints,  // ✅ Store loyalty points
               });
             }
           }
 
+          // ✅ CRITICAL: Preserve meta_data when parsing variations
           offlineVariations = rawVariations.map<Map<String, dynamic>>((v) {
             if (v is String) v = jsonDecode(v);
             final map = Map<String, dynamic>.from(v);
             map["price"] = map["price"]?.toString() ?? "0";
+
+            // ✅ Preserve meta_data
+            if (map["meta_data"] is! List) {
+              map["meta_data"] = <Map<String, dynamic>>[];
+            }
+
+            // ✅ Ensure loyalty_points is set from meta_data
+            if (map["loyalty_points"] == null || map["loyalty_points"] == 0) {
+              final metaData = map["meta_data"] as List<Map<String, dynamic>>;
+              final loyaltyEntry = metaData.firstWhere(
+                    (m) => m['key'] == '_product_loyalty_points',
+                orElse: () => <String, dynamic>{},
+              );
+              if (loyaltyEntry.isNotEmpty) {
+                map["loyalty_points"] = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+              } else {
+                map["loyalty_points"] = 0;
+              }
+            }
+
             return map;
           }).toList();
+
+          // ✅ Only fetch fresh if cache is empty OR lacks meta_data
+          final bool needsFreshFetch = offlineVariations.isEmpty ||
+              offlineVariations.every((v) {
+                final meta = v["meta_data"] as List?;
+                return meta == null || meta.isEmpty;
+              });
+
+          if (needsFreshFetch && productId > 0) {
+            print("🔄 [FastKey] Fetching fresh variants for product $productId (cache missing meta_data)");
+            final fetched = await _fetchVariationsFromApi(productId);
+            if (fetched.isNotEmpty) {
+              offlineVariations = fetched;
+              await StorageProvider.productCache.put(
+                "product_${productId}_variations",
+                {"variations": fetched, "timestamp": DateTime.now().toIso8601String()},
+              );
+            }
+          }
         } catch (e) {
           print("⚠️ Error loading variants: $e");
         }
 
+        // ✅ Show dialog with variations
         await showDialog(
           context: context,
           builder: (ctx) => VariantsDialog(
             title: productName,
             variations: offlineVariations,
             onAddVariant: (selectedVariant, qty) async {
-              final variantId =
-                  int.tryParse(selectedVariant["id"].toString()) ?? -1;
+              final variantId = int.tryParse(selectedVariant["id"].toString()) ?? -1;
               final variantName = selectedVariant["name"] ?? "Variant";
-              final variantPrice =
-                  double.tryParse(selectedVariant["price"].toString()) ??
-                      productPrice;
+              final variantPrice = double.tryParse(selectedVariant["price"].toString()) ?? productPrice;
               final variantImage = selectedVariant["image"] ?? productImage;
+              final variantSku = selectedVariant["sku"] ?? productSku;
 
+              // ✅ CRITICAL: Extract meta_data from selected variant
+              List<Map<String, dynamic>> variantMetaData = [];
+              int variantLoyaltyPoints = 0;
+
+              // Try to get meta_data from selectedVariant
+              if (selectedVariant["meta_data"] is List) {
+                variantMetaData = (selectedVariant["meta_data"] as List)
+                    .whereType<Map>()
+                    .map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m))
+                    .toList();
+
+                // Extract loyalty from meta_data
+                final loyaltyEntry = variantMetaData.firstWhere(
+                      (m) => m['key'] == '_product_loyalty_points',
+                  orElse: () => <String, dynamic>{},
+                );
+                if (loyaltyEntry.isNotEmpty) {
+                  variantLoyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+                }
+              }
+
+              // If no loyalty from meta_data, try direct field
+              if (variantLoyaltyPoints == 0 && selectedVariant["loyalty_points"] != null) {
+                variantLoyaltyPoints = int.tryParse(selectedVariant["loyalty_points"].toString()) ?? 0;
+              }
+
+              // If still 0, try parent product's loyalty points (fallback)
+              if (variantLoyaltyPoints == 0 && metaDataList.isNotEmpty) {
+                final parentLoyalty = metaDataList.firstWhere(
+                      (m) => m['key'] == '_product_loyalty_points',
+                  orElse: () => <String, dynamic>{},
+                );
+                if (parentLoyalty.isNotEmpty) {
+                  variantLoyaltyPoints = int.tryParse(parentLoyalty['value']?.toString() ?? '0') ?? 0;
+                  print('🔄 [FastKey] Using parent loyalty points: $variantLoyaltyPoints');
+                }
+              }
+
+              print('🛒 [FastKey] Added variant: $variantName');
+              print('  → Variant ID: $variantId');
+              print('  → Variant Price: $variantPrice');
+              print('  → MetaData count: ${variantMetaData.length}');
+              print('  → Loyalty Points: $variantLoyaltyPoints');
+
+              // ✅ Pass variant loyalty points to order
               await orderHelper.addItemToOrder(
                 0,
                 "$productName - $variantName",
                 variantImage,
                 variantPrice,
                 qty,
-                productSku,
+                variantSku,
                 activeOrderId,
                 type: 'variant',
                 productId: productId,
@@ -1493,10 +2267,11 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                 regularPrice: variantPrice,
                 unitPrice: variantPrice,
                 isEbtEligible: isEbtEligible,
+                metaData: variantMetaData,  // ✅ Pass variant's meta_data
+                loyaltyPoints: variantLoyaltyPoints,  // ✅ Pass variant's loyalty points
                 onItemAdded: () async {
                   print("✅ Variant added locally");
-                  await CustomerDisplayHelper.updateCustomerDisplay(
-                      activeOrderId);
+                  await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
                   await _refreshOrderList();
                 },
               );
@@ -1504,7 +2279,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           ),
         );
       } else {
-        // 🟩 Simple product - Fast path
+        // ✅ Pass loyalty points from FastKey item to order
         await orderHelper.addItemToOrder(
           0,
           productName,
@@ -1520,6 +2295,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           regularPrice: productPrice,
           unitPrice: productPrice,
           isEbtEligible: isEbtEligible,
+          metaData: metaDataList,
+          loyaltyPoints: loyaltyPoints,
           onItemAdded: () async {
             print("✅ Product added locally");
             await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
@@ -2847,8 +3624,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       final item = Map<String, dynamic>.from(fastKeyProductItems[i]);
       fastKeyProductItems[i] = item;
 
-      final productId =
-      int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
+      final productId = int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
 
       if (productId == null) {
         debugPrint("⛔ Skipping item without productId");
@@ -2859,9 +3635,74 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
       await _enrichFastKeyItemFromSkuHive(item);
 
+      // ✅ PRESERVE FastKey's own loyalty points (don't override from cache)
+      int fastKeyLoyaltyPoints = 0;
+
+      // Check if item already has loyalty_points from FastKey API
+      if (item["loyalty_points"] != null) {
+        fastKeyLoyaltyPoints = int.tryParse(item["loyalty_points"].toString()) ?? 0;
+      }
+
+      // Check meta_data from FastKey
+      if (fastKeyLoyaltyPoints == 0 && item["meta_data"] is List) {
+        final loyaltyEntry = (item["meta_data"] as List).firstWhere(
+              (m) => m['key'] == '_product_loyalty_points',
+          orElse: () => <String, dynamic>{},
+        );
+        if (loyaltyEntry.isNotEmpty) {
+          fastKeyLoyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+        }
+      }
+
+      // Get cached product data for other attributes (EBT, variants)
       final cached = await _getCachedProductFromIsar(productId);
 
-      // -------- VARIANTS --------
+      if (cached != null) {
+        // ✅ ONLY update meta_data if FastKey doesn't have its own loyalty points
+        if (fastKeyLoyaltyPoints == 0 && cached['meta_data'] != null) {
+          item['meta_data'] = cached['meta_data'];
+
+          // Extract loyalty from cache as fallback
+          final loyaltyEntry = (cached['meta_data'] as List).firstWhere(
+                (m) => m['key'] == '_product_loyalty_points',
+            orElse: () => <String, dynamic>{},
+          );
+          if (loyaltyEntry.isNotEmpty) {
+            item['loyalty_points'] = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+          }
+        } else if (fastKeyLoyaltyPoints > 0) {
+          // ✅ Keep FastKey's own loyalty points
+          item['loyalty_points'] = fastKeyLoyaltyPoints;
+
+          // Ensure meta_data has the loyalty points
+          if (item['meta_data'] is! List) {
+            item['meta_data'] = [
+              {"key": "_product_loyalty_points", "value": fastKeyLoyaltyPoints.toString()}
+            ];
+          } else {
+            // Check if meta_data already has loyalty entry
+            final hasLoyalty = (item['meta_data'] as List).any(
+                    (m) => m['key'] == '_product_loyalty_points'
+            );
+            if (!hasLoyalty) {
+              (item['meta_data'] as List).add(
+                  {"key": "_product_loyalty_points", "value": fastKeyLoyaltyPoints.toString()}
+              );
+            }
+          }
+        }
+
+        // Update EBT status from fresh data (but preserve loyalty)
+        final isEbt = _isProductEbtEligible({
+          "is_ebt_eligible": item['is_ebt_eligible'] ?? cached['is_ebt_eligible'],
+          "meta_data": item['meta_data'] ?? cached['meta_data'],
+          "fast_key_item_tags": item['fast_key_item_tags'] ?? cached['tags'],
+          "tags": cached['tags'],
+        });
+        item['is_ebt_eligible'] = isEbt;
+      }
+
+      // Update variants
       final hasVariants = await _fastKeyHasVariants(item);
       item['has_variants'] = hasVariants;
 
@@ -2869,23 +3710,12 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         "🧩 VARIANT → productId=$productId | hasVariants=$hasVariants",
       );
 
-      // -------- EBT --------
-      final isEbt = _isProductEbtEligible({
-        "is_ebt_eligible": item['is_ebt_eligible'] ?? cached?['is_ebt_eligible'],
-        "meta_data": item['meta_data'] ?? cached?['meta_data'],
-        "fast_key_item_tags": item['fast_key_item_tags'] ?? cached?['tags'],
-        "tags": cached?['tags'],
-      });
-
-      item['is_ebt_eligible'] = isEbt;
-      if (item['meta_data'] == null &&
-          cached != null &&
-          cached['meta_data'] != null) {
-        item['meta_data'] = cached['meta_data'];
-      }
+      debugPrint(
+        "🥗 EBT → productId=$productId | isEbt=${item['is_ebt_eligible']}",
+      );
 
       debugPrint(
-        "🥗 EBT → productId=$productId | isEbt=$isEbt",
+        "⭐ LOYALTY → productId=$productId | points=${item['loyalty_points'] ?? 0} (from FastKey API)",
       );
     }
 

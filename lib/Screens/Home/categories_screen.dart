@@ -57,10 +57,6 @@ import 'isar_payments/local_payments_db_helper.dart';
 
 const _indigoBgRefreshThreshold = Duration(minutes: 30);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CategoryBarWithAllButton
-// ─────────────────────────────────────────────────────────────────────────────
-
 class CategoryBarWithAllButton extends StatelessWidget {
   final bool isLoading;
   final List<Map<String, dynamic>> categoryListItems;
@@ -184,9 +180,6 @@ class CategoryBarWithAllButton extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CategoryGridOverlay
-// ─────────────────────────────────────────────────────────────────────────────
 
 class CategoryGridOverlay extends StatelessWidget {
   final List<Map<String, dynamic>> categoryListItems;
@@ -249,10 +242,6 @@ class CategoryGridOverlay extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SubCategoryCardRow / SubCategoryPillBar
-// ─────────────────────────────────────────────────────────────────────────────
 
 class SubCategoryCardRow extends StatelessWidget {
   final List<Map<String, dynamic>> subCategoryListItems;
@@ -458,9 +447,6 @@ class SubCategoryPillBar extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _AllChip
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _AllChip extends StatelessWidget {
   final bool isDark;
@@ -520,9 +506,6 @@ class _AllChip extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _RecentCategoryChip
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _RecentCategoryChip extends StatelessWidget {
   final CategoryModel category;
@@ -622,9 +605,7 @@ class _RecentCategoryChip extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _CategoryGridCard
-// ─────────────────────────────────────────────────────────────────────────────
+
 
 class _CategoryGridCard extends StatelessWidget {
   final String title;
@@ -719,9 +700,6 @@ class _CategoryGridCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Indigo Models
-// ─────────────────────────────────────────────────────────────────────────────
 
 class IndigoCategoryModel {
   final int id;
@@ -935,9 +913,6 @@ class IndigoTaxRate {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Indigo Repositories
-// ─────────────────────────────────────────────────────────────────────────────
 
 class IndigoCategoryRepository {
   Future<List<IndigoCategoryModel>> indigoFetchCategories(
@@ -1013,16 +988,10 @@ class IndigoCategoryBasedProductsRepository {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Isar cache key helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 String _indigoSubCatKey(int parentId) => "indigo_subcategories_$parentId";
 String _indigoProductKey(int categoryId) => "indigo_products_$categoryId";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _IndigoCategoryRepositoryWithCache
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _IndigoCategoryRepositoryWithCache {
   final IndigoCategoryRepository _remote;
@@ -1137,10 +1106,6 @@ class _IndigoCategoryRepositoryWithCache {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _IndigoProductRepositoryWithCache
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _IndigoProductRepositoryWithCache {
   final IndigoCategoryBasedProductsRepository _remote;
   _IndigoProductRepositoryWithCache(this._remote);
@@ -1251,9 +1216,7 @@ class _IndigoProductRepositoryWithCache {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CategoriesScreen
-// ─────────────────────────────────────────────────────────────────────────────
+
 
 class CategoriesScreen extends StatefulWidget {
   final int? lastSelectedIndex;
@@ -2424,6 +2387,32 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                     ? map["name"]
                     : "Unnamed Variant");
                 map["price"] = map["price"]?.toString() ?? "0";
+
+                // ✅ FIX: Preserve meta_data from cache
+                if (map["meta_data"] is List) {
+                  map["meta_data"] = (map["meta_data"] as List)
+                      .whereType<Map>()
+                      .map((m) => Map<String, dynamic>.from(m))
+                      .toList();
+                } else {
+                  // ⚠️ If meta_data is missing, try to fetch it from the raw variation
+                  // This happens when the cache was created before meta_data was supported
+                  map["meta_data"] = <Map<String, dynamic>>[];
+                }
+
+                // ✅ Extract loyalty points from meta_data
+                final metaData = map["meta_data"] as List<Map<String, dynamic>>;
+                final loyaltyMeta = metaData.firstWhere(
+                      (m) => m['key'] == '_product_loyalty_points',
+                  orElse: () => <String, dynamic>{},
+                );
+                map["loyalty_points"] = loyaltyMeta.isNotEmpty
+                    ? int.tryParse(loyaltyMeta['value']?.toString() ?? '0') ?? 0
+                    : 0;
+
+                // 🔍 DEBUG: Log variant data
+                print('📦 [Variant Cache] Variant ID: ${map["id"]}, Name: ${map["name"]}, Loyalty: ${map["loyalty_points"]}, MetaCount: ${(map["meta_data"] as List).length}');
+
                 return map;
               }
               return <String, dynamic>{};
@@ -2432,6 +2421,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                 .toList();
 
             if (offlineVariations.isEmpty && productId > 0) {
+              await _clearVariantCacheForProduct(productId);
+
               final fetched = await _fetchVariationsFromApi(productId);
               if (fetched.isNotEmpty) {
                 offlineVariations = fetched;
@@ -2472,13 +2463,69 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                 final variantId =
                     int.tryParse(selectedVariant["id"].toString()) ?? -1;
                 final variantName = selectedVariant["name"] ?? "Variant";
+
+                // ✅ Use variant price
                 final variantPrice =
                     double.tryParse(selectedVariant["price"].toString()) ??
                         productPrice;
+
                 final variantSku = selectedVariant["sku"] ?? productSku;
                 final variantImage = selectedVariant["image"] ?? productImage;
-                await orderHelper.addItemToOrder(0, variantName, variantImage,
-                    variantPrice, qty, variantSku, activeOrderId,
+
+                // ✅ Extract meta_data from selected variant
+                final List<Map<String, dynamic>> variantMetaData =
+                selectedVariant["meta_data"] is List
+                    ? List<Map<String, dynamic>>.from(selectedVariant["meta_data"])
+                    : <Map<String, dynamic>>[];
+
+                // ✅ Extract loyalty points - try multiple sources
+                int variantLoyaltyPoints = 0;
+
+                // Source 1: From meta_data
+                final loyaltyMeta = variantMetaData.firstWhere(
+                      (m) => m['key'] == '_product_loyalty_points',
+                  orElse: () => <String, dynamic>{},
+                );
+                if (loyaltyMeta.isNotEmpty) {
+                  variantLoyaltyPoints = int.tryParse(loyaltyMeta['value']?.toString() ?? '0') ?? 0;
+                }
+
+                // Source 2: Direct loyalty_points field
+                if (variantLoyaltyPoints == 0) {
+                  variantLoyaltyPoints = int.tryParse(
+                      selectedVariant["loyalty_points"]?.toString() ?? '0') ?? 0;
+                }
+
+                // Source 3: If still 0 and there's a parent product meta_data, use that
+                if (variantLoyaltyPoints == 0 && product.metaData.isNotEmpty) {
+                  final parentLoyalty = product.metaData.firstWhere(
+                        (m) => m['key'] == '_product_loyalty_points',
+                    orElse: () => <String, dynamic>{},
+                  );
+                  if (parentLoyalty.isNotEmpty) {
+                    variantLoyaltyPoints = int.tryParse(parentLoyalty['value']?.toString() ?? '0') ?? 0;
+                    print('🔄 [Variant] Using parent loyalty points: $variantLoyaltyPoints');
+                  }
+                }
+
+                final int finalLoyaltyPoints = variantLoyaltyPoints;
+
+                // 🔍 DEBUG: Print loyalty points for the selected variant
+                print('🛒 [Categories] Added variant: $variantName');
+                print('  → Variant ID: $variantId');
+                print('  → Variant Price: $variantPrice');
+                print('  → Variant SKU: $variantSku');
+                print('  → MetaData count: ${variantMetaData.length}');
+                print('  → Loyalty Points (final): $finalLoyaltyPoints');
+
+                await orderHelper.addItemToOrder(
+                    0,
+                    variantName,
+                    variantImage,
+                    variantPrice,
+                    qty,
+                    variantSku,
+                    activeOrderId,
                     type: 'variant',
                     productId: productId,
                     variationId: variantId,
@@ -2487,7 +2534,10 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                     regularPrice: variantPrice,
                     unitPrice: variantPrice,
                     isEbtEligible: isEbtEligible,
-                    onItemAdded: () async => _refreshOrderList());
+                    metaData: variantMetaData,
+                    loyaltyPoints: finalLoyaltyPoints,
+                    onItemAdded: () async => _refreshOrderList()
+                );
               },
             ),
           );
@@ -2574,6 +2624,54 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     }
   }
 
+  // Future<List<Map<String, dynamic>>> _fetchVariationsFromApi(
+  //     int productId) async {
+  //   try {
+  //     final token = await _getAuthTokenFromDb();
+  //     final url = Uri.parse(
+  //         "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations");
+  //     final response =
+  //     await http.get(url, headers: {"Authorization": "Bearer $token"});
+  //     if (response.statusCode != 200) return <Map<String, dynamic>>[];
+  //     final decoded = jsonDecode(response.body);
+  //     if (decoded is! List) return <Map<String, dynamic>>[];
+  //
+  //     return decoded
+  //         .whereType<Map>()
+  //         .map<Map<String, dynamic>>((v) {
+  //       final map =
+  //       v.map((key, value) => MapEntry(key.toString(), value));
+  //       final attrs = map["attributes"];
+  //       final String fallbackName = attrs is List
+  //           ? attrs
+  //           .whereType<Map>()
+  //           .map((a) => (a["option"] ?? "").toString())
+  //           .where((x) => x.isNotEmpty)
+  //           .join(" - ")
+  //           : "";
+  //       return {
+  //         "id": map["id"],
+  //         "name": (map["name"] ?? "").toString().isNotEmpty
+  //             ? map["name"]
+  //             : (fallbackName.isNotEmpty
+  //             ? fallbackName
+  //             : "Unnamed Variant"),
+  //         "price":
+  //         (map["price"] ?? map["regular_price"] ?? "0").toString(),
+  //         "sku": map["sku"] ?? "",
+  //         "image":
+  //         (map["image"] is Map && map["image"]["src"] != null)
+  //             ? map["image"]["src"]
+  //             : (map["image"] is String ? map["image"] : ""),
+  //       };
+  //     })
+  //         .where((v) => v["id"] != null)
+  //         .toList();
+  //   } catch (_) {
+  //     return <Map<String, dynamic>>[];
+  //   }
+  // }
+
   Future<List<Map<String, dynamic>>> _fetchVariationsFromApi(
       int productId) async {
     try {
@@ -2582,15 +2680,18 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations");
       final response =
       await http.get(url, headers: {"Authorization": "Bearer $token"});
+
+      if (kDebugMode) {
+        print("🌍 [Variations API] GET $url");
+        print("🌍 [Variations API] status: ${response.statusCode}");
+      }
+
       if (response.statusCode != 200) return <Map<String, dynamic>>[];
       final decoded = jsonDecode(response.body);
       if (decoded is! List) return <Map<String, dynamic>>[];
 
-      return decoded
-          .whereType<Map>()
-          .map<Map<String, dynamic>>((v) {
-        final map =
-        v.map((key, value) => MapEntry(key.toString(), value));
+      final result = decoded.whereType<Map>().map<Map<String, dynamic>>((v) {
+        final map = v.map((key, value) => MapEntry(key.toString(), value));
         final attrs = map["attributes"];
         final String fallbackName = attrs is List
             ? attrs
@@ -2599,25 +2700,50 @@ class _CategoriesScreenState extends State<CategoriesScreen>
             .where((x) => x.isNotEmpty)
             .join(" - ")
             : "";
+
+        // ✅ CRITICAL FIX: Extract meta_data properly
+        List<Map<String, dynamic>> metaData = [];
+        if (map["meta_data"] is List) {
+          metaData = (map["meta_data"] as List)
+              .whereType<Map>()
+              .map((m) => Map<String, dynamic>.from(m))
+              .toList();
+        }
+
+        // ✅ Extract loyalty points from meta_data
+        final loyaltyEntry = metaData.firstWhere(
+              (m) => m['key']?.toString() == '_product_loyalty_points',
+          orElse: () => <String, dynamic>{},
+        );
+        final int loyaltyPoints = loyaltyEntry.isNotEmpty
+            ? int.tryParse(loyaltyEntry['value']?.toString() ?? '') ?? 0
+            : 0;
+
+        if (kDebugMode) {
+          print("  📦 [Variations API] Variant ID=${map['id']}, Name=${fallbackName.isNotEmpty ? fallbackName : map['name']}, Loyalty=$loyaltyPoints, MetaCount=${metaData.length}");
+        }
+
         return {
           "id": map["id"],
           "name": (map["name"] ?? "").toString().isNotEmpty
               ? map["name"]
-              : (fallbackName.isNotEmpty
-              ? fallbackName
-              : "Unnamed Variant"),
-          "price":
-          (map["price"] ?? map["regular_price"] ?? "0").toString(),
+              : (fallbackName.isNotEmpty ? fallbackName : "Unnamed Variant"),
+          "price": (map["price"] ?? map["regular_price"] ?? "0").toString(),
           "sku": map["sku"] ?? "",
-          "image":
-          (map["image"] is Map && map["image"]["src"] != null)
+          "image": (map["image"] is Map && map["image"]["src"] != null)
               ? map["image"]["src"]
               : (map["image"] is String ? map["image"] : ""),
+          "meta_data": metaData,  // ✅ CRITICAL: Store meta_data in cached variant
+          "loyalty_points": loyaltyPoints,  // ✅ Also store directly for quick access
         };
-      })
-          .where((v) => v["id"] != null)
-          .toList();
-    } catch (_) {
+      }).where((v) => v["id"] != null).toList();
+
+      return result;
+    } catch (e, s) {
+      if (kDebugMode) {
+        print("❌ [Variations API] error: $e");
+        print(s);
+      }
       return <Map<String, dynamic>>[];
     }
   }
@@ -3002,7 +3128,20 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     });
     _loadSubCategories(selectedSubCategory.id);
   }
-
+  Future<void> _clearVariantCacheForProduct(int productId) async {
+    try {
+      final productBox = StorageProvider.productCache;
+      final cacheKey = "product_${productId}_variations";
+      await productBox.delete(cacheKey);
+      if (kDebugMode) {
+        print('🗑️ [Cache] Cleared variant cache for product $productId');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ [Cache] Failed to clear variant cache: $e');
+      }
+    }
+  }
   void _onBackToCategories() {
     if (currentCategoryLevel > 0) {
       setState(() {
@@ -3596,10 +3735,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Card widgets
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _IndigoSubCategoryCard extends StatelessWidget {
   final IndigoCategoryModel category;

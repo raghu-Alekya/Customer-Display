@@ -127,6 +127,10 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String fastKeyItemHasVariant = 'fast_key_item_has_variant';
   /// JSON array of Woo tags from Fast Keys API (EBT, age restriction, etc.)
   static const String fastKeyItemTags = 'fast_key_item_tags';
+  // Add these to AppDBConst class
+  static const String fastKeyItemMetaData = 'meta_data';
+  static const String fastKeyItemLoyaltyPoints = 'loyalty_points';
+  static const String fastKeyItemType = 'type';
 // In AppDBConst class, add:
   static const String updatedAt = 'updated_at';
   /// Printer Table Added
@@ -228,7 +232,7 @@ class DBHelper {
       return await databaseFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 3, // 🔥 CHANGE THIS FROM 2 TO 3
+          version: 4, // 🔥 CHANGE THIS FROM 2 TO 3
           onCreate: _createTables,
           onUpgrade: _upgradeTables,
         ),
@@ -253,13 +257,53 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 3, // 🔥 CHANGE THIS FROM 2 TO 3
+      version: 4, // 🔥 CHANGE THIS FROM 2 TO 3
       onCreate: _createTables,
       onUpgrade: _upgradeTables,
     );
   }
 
+  // Future<void> _upgradeTables(Database db, int oldVersion, int newVersion) async {
+  //   // Upgrade to version 2
+  //   if (oldVersion < 2) {
+  //     try {
+  //       await db.execute(
+  //         'ALTER TABLE ${AppDBConst.fastKeyItemsTable} ADD COLUMN ${AppDBConst.fastKeyItemTags} TEXT',
+  //       );
+  //       if (kDebugMode) print('✅ Upgraded to v2: fast_key_item_tags added');
+  //     } catch (e) {
+  //       if (kDebugMode) print('v2 upgrade (may already exist): $e');
+  //     }
+  //   }
+  //
+  //   // Upgrade to version 3
+  //   if (oldVersion < 3) {
+  //     try {
+  //       // First check if column exists
+  //       final columns = await db.rawQuery(
+  //           "PRAGMA table_info(${AppDBConst.fastKeyItemsTable})"
+  //       );
+  //       final hasUpdatedAt = columns.any((col) => col['name'] == AppDBConst.updatedAt);
+  //
+  //       if (!hasUpdatedAt) {
+  //         await db.execute(
+  //           'ALTER TABLE ${AppDBConst.fastKeyItemsTable} ADD COLUMN ${AppDBConst.updatedAt} TEXT',
+  //         );
+  //         if (kDebugMode) print('✅ Upgraded to v3: updated_at column added');
+  //       } else {
+  //         if (kDebugMode) print('✅ v3: updated_at column already exists');
+  //       }
+  //     } catch (e) {
+  //       if (kDebugMode) print('v3 upgrade error: $e');
+  //     }
+  //   }
+  // }
+
   Future<void> _upgradeTables(Database db, int oldVersion, int newVersion) async {
+    if (kDebugMode) {
+      print("🔄 Upgrading database from version $oldVersion to $newVersion");
+    }
+
     // Upgrade to version 2
     if (oldVersion < 2) {
       try {
@@ -272,10 +316,9 @@ class DBHelper {
       }
     }
 
-    // Upgrade to version 3
+    // Upgrade to version 3 (add updated_at)
     if (oldVersion < 3) {
       try {
-        // First check if column exists
         final columns = await db.rawQuery(
             "PRAGMA table_info(${AppDBConst.fastKeyItemsTable})"
         );
@@ -285,12 +328,54 @@ class DBHelper {
           await db.execute(
             'ALTER TABLE ${AppDBConst.fastKeyItemsTable} ADD COLUMN ${AppDBConst.updatedAt} TEXT',
           );
-          if (kDebugMode) print('✅ Upgraded to v3: updated_at column added');
-        } else {
-          if (kDebugMode) print('✅ v3: updated_at column already exists');
+          if (kDebugMode) print('✅ Upgraded to v3: updated_at added');
         }
       } catch (e) {
         if (kDebugMode) print('v3 upgrade error: $e');
+      }
+    }
+
+    // Upgrade to version 4 (add meta_data, loyalty_points, type)
+    if (oldVersion < 4) {
+      try {
+        final columns = await db.rawQuery(
+            "PRAGMA table_info(${AppDBConst.fastKeyItemsTable})"
+        );
+        final columnNames = columns.map((col) => col['name'] as String).toList();
+
+        if (kDebugMode) {
+          print("📋 Existing columns: $columnNames");
+        }
+
+        // Add meta_data column
+        if (!columnNames.contains('meta_data')) {
+          await db.execute(
+            'ALTER TABLE ${AppDBConst.fastKeyItemsTable} ADD COLUMN meta_data TEXT',
+          );
+          if (kDebugMode) print('✅ Added meta_data column');
+        }
+
+        // Add loyalty_points column
+        if (!columnNames.contains('loyalty_points')) {
+          await db.execute(
+            'ALTER TABLE ${AppDBConst.fastKeyItemsTable} ADD COLUMN loyalty_points INTEGER DEFAULT 0',
+          );
+          if (kDebugMode) print('✅ Added loyalty_points column');
+        }
+
+        // Add type column
+        if (!columnNames.contains('type')) {
+          await db.execute(
+            'ALTER TABLE ${AppDBConst.fastKeyItemsTable} ADD COLUMN type TEXT DEFAULT "simple"',
+          );
+          if (kDebugMode) print('✅ Added type column');
+        }
+
+        if (kDebugMode) print('✅ Upgraded to v4: meta_data, loyalty_points, type added');
+
+      } catch (e) {
+        if (kDebugMode) print('❌ v4 upgrade error: $e');
+        rethrow;
       }
     }
   }
@@ -406,24 +491,29 @@ CREATE TABLE ${AppDBConst.orderTable} (
     ''');
 
     // Build #1.0.11 : FastKey Product Items Table
+    // Build #1.0.11 : FastKey Product Items Table
     await db.execute('''
-    CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
-      ${AppDBConst.fastKeyItemId} INTEGER PRIMARY KEY AUTOINCREMENT,
-      ${AppDBConst.fastKeyIdForeignKey} INTEGER NOT NULL,
-      ${AppDBConst.fastKeyItemName} TEXT NOT NULL,
-      ${AppDBConst.fastKeyProductId} TEXT NOT NULL,
-      ${AppDBConst.fastKeySlNumber} TEXT NOT NULL,
-      ${AppDBConst.fastKeyItemImage} TEXT NOT NULL,
-      ${AppDBConst.fastKeyItemPrice} REAL NOT NULL,
-      ${AppDBConst.fastKeyItemSKU} TEXT NOT NULL,
-      ${AppDBConst.fastKeyItemMinAge} INTEGER,
-      ${AppDBConst.fastKeyItemIsVariant} INTEGER,
-      ${AppDBConst.fastKeyItemHasVariant} INTEGER,
-      ${AppDBConst.fastKeyItemVariantId} TEXT NOT NULL,
-      ${AppDBConst.fastKeyItemTags} TEXT,
-      FOREIGN KEY(${AppDBConst.fastKeyIdForeignKey}) REFERENCES ${AppDBConst.fastKeyTable}(${AppDBConst.fastKeyId}) ON DELETE CASCADE
-    )
-    ''');
+CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
+  ${AppDBConst.fastKeyItemId} INTEGER PRIMARY KEY AUTOINCREMENT,
+  ${AppDBConst.fastKeyIdForeignKey} INTEGER NOT NULL,
+  ${AppDBConst.fastKeyItemName} TEXT NOT NULL,
+  ${AppDBConst.fastKeyProductId} TEXT NOT NULL,
+  ${AppDBConst.fastKeySlNumber} TEXT NOT NULL,
+  ${AppDBConst.fastKeyItemImage} TEXT NOT NULL,
+  ${AppDBConst.fastKeyItemPrice} REAL NOT NULL,
+  ${AppDBConst.fastKeyItemSKU} TEXT NOT NULL,
+  ${AppDBConst.fastKeyItemMinAge} INTEGER,
+  ${AppDBConst.fastKeyItemIsVariant} INTEGER,
+  ${AppDBConst.fastKeyItemHasVariant} INTEGER,
+  ${AppDBConst.fastKeyItemVariantId} TEXT NOT NULL,
+  ${AppDBConst.fastKeyItemTags} TEXT,
+  ${AppDBConst.updatedAt} TEXT,
+  ${AppDBConst.fastKeyItemMetaData} TEXT,
+  ${AppDBConst.fastKeyItemLoyaltyPoints} INTEGER DEFAULT 0,
+  ${AppDBConst.fastKeyItemType} TEXT DEFAULT 'simple',
+  FOREIGN KEY(${AppDBConst.fastKeyIdForeignKey}) REFERENCES ${AppDBConst.fastKeyTable}(${AppDBConst.fastKeyId}) ON DELETE CASCADE
+)
+''');
 
     /// Printer Table
     await db.execute('''
