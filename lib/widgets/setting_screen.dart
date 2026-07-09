@@ -445,6 +445,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text("Test print sent successfully"),
+        duration: Duration(seconds: 2),
+        backgroundColor: Colors.green,
       ),
     );
   }

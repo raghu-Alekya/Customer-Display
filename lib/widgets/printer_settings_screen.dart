@@ -93,7 +93,11 @@ class _PrinterSettingsAndTestScreenState
     await _saveLastPrinterDevice(device);
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Printer added successfully")),
+      const SnackBar(
+        content: Text("Printer added successfully"),
+        duration: Duration(seconds: 2),
+        backgroundColor: Colors.green,
+      ),
     );
   }
 
@@ -331,7 +335,9 @@ class _PrinterSettingsAndTestScreenState
       if (!sent) throw Exception("Print failed");
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Print successful')),
+        const SnackBar(content: Text('Print successful'),
+            duration: Duration(seconds: 2),
+        backgroundColor: Colors.green,),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

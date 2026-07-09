@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:kiosk/widgets/kiosk_header_widgets.dart';
 import '../repository/card_payment_repository.dart';
+import '../utils/printer_helper.dart';
 import 'cash_receipt.dart';
 
 class CardMethodScreen extends StatefulWidget {
@@ -10,6 +11,7 @@ class CardMethodScreen extends StatefulWidget {
   final double tax;
   final double total;
   final int orderId;
+  final String token;
 
   const CardMethodScreen({
     super.key,
@@ -18,6 +20,7 @@ class CardMethodScreen extends StatefulWidget {
     required this.subtotal,
     required this.tax,
     required this.total,
+    required this.token,
   });
 
   @override
@@ -77,13 +80,31 @@ class _CardMethodScreenState extends State<CardMethodScreen> {
           });
 
           _timer?.cancel();
+          final int orderId =
+              (response['order_id'] as num?)?.toInt() ?? widget.orderId;
+          debugPrint("widget.orderId = ${widget.orderId}");
+          debugPrint("response.order_id = ${response['order_id']}");
 
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
               builder: (_) => PrintReceiptScreen(
                 total: widget.total,
-                orderId: widget.orderId,
+                orderId: orderId,
+                isCardPayment: true,
+                onPrintReceipt: (ctx) async {
+                  final bytes = await buildCashReceiptBytes(
+                    orderType: widget.orderType,
+                    subtotal: widget.subtotal,
+                    tax: widget.tax,
+                    total: widget.total,
+                    orderId: widget.orderId,
+                    token: widget.token,
+                  );
+
+                  // ✅ Use the PrintReceiptScreen context, not CardMethodScreen context
+                  await printReceiptForSelectedType(bytes, ctx);
+                },
               ),
             ),
           );

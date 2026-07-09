@@ -117,157 +117,208 @@ class _UserLoginState extends State<UserLogin> {
             );
           }
         },
-        child: Stack(
-          children: [
-            /// 🔵 Curved Header
-            ClipPath(
-              clipper: TopCurveClipper(),
-              child: Container(
-                height: 420,
-                color: AppColors.primaryBlue,
-              ),
-            ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isPortrait = constraints.maxHeight > constraints.maxWidth;
 
-            /// Content
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const SizedBox(height: 40),
+            final headerHeight = isPortrait
+                ? constraints.maxHeight * 0.42
+                : constraints.maxHeight * 0.75;
 
-                  const Text(
-                    "Welcome Back !",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w600,
-                    ),
+            final cardWidth = isPortrait
+                ? constraints.maxWidth * 0.70
+                : constraints.maxWidth * 0.42;
+
+            return Stack(
+              children: [
+                /// Curved Header
+                ClipPath(
+                  clipper: TopCurveClipper(),
+                  child: Container(
+                    height: headerHeight,
+                    width: double.infinity,
+                    color: AppColors.primaryBlue,
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    "Admin",
-                    style: TextStyle(color: Colors.white, fontSize: 18),
-                  ),
+                ),
 
-                  const SizedBox(height: 30),
-
-                  /// Login Card
-                  Container(
-                    width: 350,
-                    height: 500,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black12, blurRadius: 10)
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          "User Login",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textDark,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          "Please input your PIN to validate your self",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textLight,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        /// PIN Boxes
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children:
-                          List.generate(6, (index) => buildPinBox(index)),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        /// Keypad
-                        Column(
+                SafeArea(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 20,
+                      ),
+                      child: SizedBox(
+                        width: cardWidth,
+                        child: Column(
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                buildKey("1", onTap: () => addDigit("1")),
-                                buildKey("2", onTap: () => addDigit("2")),
-                                buildKey("3", onTap: () => addDigit("3")),
-                              ],
+                            SizedBox(height: isPortrait ? 20 : 10),
+
+                            Text(
+                              "Welcome Back !",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: isPortrait ? 30 : 24,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                buildKey("4", onTap: () => addDigit("4")),
-                                buildKey("5", onTap: () => addDigit("5")),
-                                buildKey("6", onTap: () => addDigit("6")),
-                              ],
+
+                            const SizedBox(height: 8),
+
+                            Text(
+                              "Admin",
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: isPortrait ? 20 : 18,
+                              ),
                             ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                buildKey("7", onTap: () => addDigit("7")),
-                                buildKey("8", onTap: () => addDigit("8")),
-                                buildKey("9", onTap: () => addDigit("9")),
-                              ],
-                            ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                buildKey("C", onTap: clearPin),
-                                buildKey("0", onTap: () => addDigit("0")),
-                                buildKey("⌫", onTap: removeDigit),
-                              ],
+
+                            SizedBox(height: isPortrait ? 35 : 20),
+
+                            /// Login Card
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: AppColors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black12,
+                                    blurRadius: 10,
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text(
+                                    "User Login",
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textDark,
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 8),
+
+                                  const Text(
+                                    "Please input your PIN to validate yourself",
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: AppColors.textLight,
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 20),
+
+                                  /// PIN Boxes
+                                  Wrap(
+                                    alignment: WrapAlignment.center,
+                                    spacing: 8,
+                                    children: List.generate(
+                                      6,
+                                          (index) => buildPinBox(index),
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 20),
+
+                                  /// Keypad
+                                  Column(
+                                    children: [
+                                      for (int row = 0; row < 4; row++)
+                                        Padding(
+                                          padding: const EdgeInsets.only(bottom: 8),
+                                          child: Row(
+                                            mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                            children: [
+                                              if (row == 0) ...[
+                                                buildKey("1",
+                                                    onTap: () => addDigit("1")),
+                                                buildKey("2",
+                                                    onTap: () => addDigit("2")),
+                                                buildKey("3",
+                                                    onTap: () => addDigit("3")),
+                                              ],
+                                              if (row == 1) ...[
+                                                buildKey("4",
+                                                    onTap: () => addDigit("4")),
+                                                buildKey("5",
+                                                    onTap: () => addDigit("5")),
+                                                buildKey("6",
+                                                    onTap: () => addDigit("6")),
+                                              ],
+                                              if (row == 2) ...[
+                                                buildKey("7",
+                                                    onTap: () => addDigit("7")),
+                                                buildKey("8",
+                                                    onTap: () => addDigit("8")),
+                                                buildKey("9",
+                                                    onTap: () => addDigit("9")),
+                                              ],
+                                              if (row == 3) ...[
+                                                buildKey("C", onTap: clearPin),
+                                                buildKey("0",
+                                                    onTap: () => addDigit("0")),
+                                                buildKey("⌫",
+                                                    onTap: removeDigit),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 20),
+
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 48,
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.primaryBlue,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      onPressed: () {
+                                        if (pin.length == 6) {
+                                          context
+                                              .read<AuthBloc>()
+                                              .add(LoginWithPinEvent(pin));
+                                        } else {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            const SnackBar(
+                                              content:
+                                              Text("Enter 6 digit PIN"),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                      child: const Text(
+                                        "Login",
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 22),
-
-                        /// 🔥 LOGIN BUTTON (UPDATED)
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primaryBlue,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            onPressed: () {
-                              if (pin.length == 6) {
-                                context
-                                    .read<AuthBloc>()
-                                    .add(LoginWithPinEvent(pin));
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text("Enter 6 digit PIN")),
-                                );
-                              }
-                            },
-                            child: const Text(
-                              "Login",
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          ),
-                        )
-                      ],
+                      ),
                     ),
-                  )
-                ],
-              ),
-            )
-          ],
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );

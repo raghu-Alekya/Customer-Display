@@ -98,197 +98,214 @@ class _LoginScreenState extends State<LoginScreen> {
                 },
 
                 child: Scaffold(
-                  body: Stack(
-                    children: [
-                      // 🔵 Background
-                      Container(
-                        height: 420,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF24467A),
-                          borderRadius: BorderRadius.only(
-                            bottomLeft: Radius.circular(80),
-                            bottomRight: Radius.circular(80),
+                  body: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final isPortrait = constraints.maxHeight > constraints.maxWidth;
+
+                      final backgroundHeight =
+                      isPortrait ? constraints.maxHeight * 0.42 : constraints.maxHeight * 0.72;
+
+                      final cardWidth = isPortrait
+                          ? constraints.maxWidth * 0.7
+                          : constraints.maxWidth * 0.45;
+
+                      return Stack(
+                        children: [
+                          // 🔵 Background
+                          Container(
+                            height: backgroundHeight,
+                            width: double.infinity,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF24467A),
+                              borderRadius: BorderRadius.only(
+                                bottomLeft: Radius.circular(80),
+                                bottomRight: Radius.circular(80),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
 
-                      Center(
-                        child: SingleChildScrollView(
-                          child: Column(
-                            children: [
-                              const SizedBox(height: 60),
-
-                              const Text(
-                                "Welcome Back !",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
+                          SafeArea(
+                            child: Center(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 20,
                                 ),
-                              ),
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: cardWidth,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      SizedBox(height: isPortrait ? 20 : 10),
 
-                              const Text(
-                                "Admin",
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 20,
-                                ),
-                              ),
-
-                              const SizedBox(height: 40),
-
-                              // 🔹 Login Card
-                              Container(
-                                width: 420,
-                                padding: const EdgeInsets.all(20),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                        color: Colors.black12, blurRadius: 10),
-                                  ],
-                                ),
-                                child: Column(
-                                  children: [
-                                    const Text(
-                                      "Sign In",
-                                      style: TextStyle(
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-
-                                    const SizedBox(height: 5),
-
-                                    const Text(
-                                      "Login into your Account",
-                                      style: TextStyle(color: Colors.grey),
-                                    ),
-
-                                    const SizedBox(height: 20),
-
-                                    // 🔹 Username
-                                    TextField(
-                                      controller: usernameController,
-                                      decoration: InputDecoration(
-                                        hintText: "Username / Email",
-                                        filled: true,
-                                        fillColor: Colors.grey[100],
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                              8),
-                                          borderSide: BorderSide.none,
+                                      Text(
+                                        "Welcome Back !",
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: isPortrait ? 30 : 26,
+                                          fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                    ),
 
-                                    const SizedBox(height: 15),
+                                      const SizedBox(height: 8),
 
-                                    // 🔹 Password
-                                    TextField(
-                                      controller: passwordController,
-                                      obscureText: !isPasswordVisible, // ✅ toggle
-                                      decoration: InputDecoration(
-                                        hintText: "Password",
-                                        filled: true,
-                                        fillColor: Colors.grey[100],
-
-                                        // 👇 Clickable icon
-                                        suffixIcon: IconButton(
-                                          icon: Icon(
-                                            isPasswordVisible
-                                                ? Icons.visibility_off
-                                                : Icons.visibility,
-                                          ),
-                                          onPressed: () {
-                                            setState(() {
-                                              isPasswordVisible = !isPasswordVisible;
-                                            });
-                                          },
-                                        ),
-
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                          borderSide: BorderSide.none,
+                                      Text(
+                                        "Admin",
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: isPortrait ? 20 : 18,
                                         ),
                                       ),
-                                    ),
 
-                                    const SizedBox(height: 15),
+                                      SizedBox(height: isPortrait ? 35 : 20),
 
-                                    // 🔹 Store ID
-                                    TextField(
-                                      controller: storeIdController,
-                                      decoration: InputDecoration(
-                                        hintText: "Store ID",
-                                        filled: true,
-                                        fillColor: Colors.grey[100],
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                              8),
-                                          borderSide: BorderSide.none,
+                                      // Login Card
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.all(20),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(16),
+                                          boxShadow: const [
+                                            BoxShadow(
+                                              color: Colors.black12,
+                                              blurRadius: 10,
+                                            ),
+                                          ],
                                         ),
-                                      ),
-                                    ),
-
-                                    const SizedBox(height: 30),
-
-                                    // 🔹 Sign In Button
-                                    SizedBox(
-                                      width: double.infinity,
-                                      height: 50,
-                                      child: ElevatedButton(
-                                        onPressed: () {
-                                          if (isButtonEnabled) {
-                                            context.read<LoginBloc>().add(
-                                              LoginSubmitted(
-                                                username:
-                                                usernameController.text.trim(),
-                                                password:
-                                                passwordController.text.trim(),
-                                                storeId:
-                                                storeIdController.text.trim(),
+                                        child: Column(
+                                          children: [
+                                            const Text(
+                                              "Sign In",
+                                              style: TextStyle(
+                                                fontSize: 22,
+                                                fontWeight: FontWeight.bold,
                                               ),
-                                            );
-                                          } else {
-                                            ScaffoldMessenger
-                                                .of(context)
-                                                .showSnackBar(
-                                              const SnackBar(
-                                                content: Text(
-                                                  "Please enter Store ID, Username & Password",
+                                            ),
+
+                                            const SizedBox(height: 5),
+
+                                            const Text(
+                                              "Login into your Account",
+                                              style: TextStyle(
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+
+                                            const SizedBox(height: 20),
+
+                                            TextField(
+                                              controller: usernameController,
+                                              decoration: InputDecoration(
+                                                hintText: "Username / Email",
+                                                filled: true,
+                                                fillColor: Colors.grey.shade100,
+                                                border: OutlineInputBorder(
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  borderSide: BorderSide.none,
                                                 ),
                                               ),
-                                            );
-                                          }
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(
-                                              0xFF24467A),
-                                          foregroundColor: Colors.white,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                                6),
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          "Sign In",
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
+                                            ),
+
+                                            const SizedBox(height: 15),
+
+                                            TextField(
+                                              controller: passwordController,
+                                              obscureText: !isPasswordVisible,
+                                              decoration: InputDecoration(
+                                                hintText: "Password",
+                                                filled: true,
+                                                fillColor: Colors.grey.shade100,
+                                                suffixIcon: IconButton(
+                                                  icon: Icon(
+                                                    isPasswordVisible
+                                                        ? Icons.visibility_off
+                                                        : Icons.visibility,
+                                                  ),
+                                                  onPressed: () {
+                                                    setState(() {
+                                                      isPasswordVisible =
+                                                      !isPasswordVisible;
+                                                    });
+                                                  },
+                                                ),
+                                                border: OutlineInputBorder(
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  borderSide: BorderSide.none,
+                                                ),
+                                              ),
+                                            ),
+
+                                            const SizedBox(height: 15),
+
+                                            TextField(
+                                              controller: storeIdController,
+                                              decoration: InputDecoration(
+                                                hintText: "Store ID",
+                                                filled: true,
+                                                fillColor: Colors.grey.shade100,
+                                                border: OutlineInputBorder(
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  borderSide: BorderSide.none,
+                                                ),
+                                              ),
+                                            ),
+
+                                            const SizedBox(height: 30),
+
+                                            SizedBox(
+                                              width: double.infinity,
+                                              height: 50,
+                                              child: ElevatedButton(
+                                                onPressed: () {
+                                                  FocusScope.of(context).unfocus();
+                                                  if (isButtonEnabled) {
+                                                    context.read<LoginBloc>().add(
+                                                      LoginSubmitted(
+                                                        username: usernameController.text.trim(),
+                                                        password: passwordController.text.trim(),
+                                                        storeId: storeIdController.text.trim(),
+                                                      ),
+                                                    );
+                                                  } else {
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text(
+                                                          "Please enter Store ID, Username & Password",
+                                                        ),
+                                                      ),
+                                                    );
+                                                  }
+                                                },
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: const Color(0xFF24467A),
+                                                  foregroundColor: Colors.white,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                ),
+                                                child: const Text(
+                                                  "Sign In",
+                                                  style: TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
-                    ],
+                        ],
+                      );
+                    },
                   ),
                 ),
               );
