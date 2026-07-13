@@ -40,21 +40,21 @@ class FastKeyProductRepository {  // Build #1.0.15
   }
 
   // GET: Fetch products by FastKey ID
-  Future<FastKeyProductsResponse> getProductsByFastKeyId(int fastKeyId) async {
+  Future<FastKeyProductsResponse> getProductsByFastKeyId(
+      int fastKeyId, {
+        bool forceRefresh = false,
+      }) async {
     final cacheKey = "fastkey_products_$fastKeyId";
 
-    final cachedData = await CacheHelper.getData(cacheKey);
-
-    if (cachedData != null) {
-      if (kDebugMode) {
-        print("✅ Loaded FastKey $fastKeyId from CACHE");
+    if (!forceRefresh) {
+      final cachedData = await CacheHelper.getData(cacheKey);
+      if (cachedData != null) {
+        if (kDebugMode) print("✅ Loaded FastKey $fastKeyId from CACHE");
+        return FastKeyProductsResponse.fromJson(cachedData);
       }
-      return FastKeyProductsResponse.fromJson(cachedData);
     }
 
-    if (kDebugMode) {
-      print("🌐 Cache miss → Calling API for FastKey $fastKeyId");
-    }
+    if (kDebugMode) print("🌐 Fetching FastKey $fastKeyId from API");
 
     final url =
         "${UrlHelper.componentVersionUrl}"

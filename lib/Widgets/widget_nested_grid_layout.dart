@@ -16,7 +16,6 @@ import '../Blocs/Orders/order_bloc.dart';
 import '../Blocs/Search/product_search_bloc.dart';
 import '../Constants/misc_features.dart';
 import '../Constants/text.dart';
-import '../Database/db_helper.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/api_response.dart';
@@ -57,11 +56,13 @@ class NestedGridWidget extends StatelessWidget {
   final bool isPaginating;
 
 
+
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
   static bool _productMetaInitialized = false;
   // Avoid repeated variant API refresh calls for the same product
   // when users switch categories and tap the same item again.
   static final Set<int> _variantRefreshAttempted = <int>{};
+  static bool _productTapInFlight = false;
 
   const NestedGridWidget({
     super.key,
@@ -86,8 +87,48 @@ class NestedGridWidget extends StatelessWidget {
     required this.orderHelper,
     required this.isPaginating,
   });
+
+  // Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
+  //   if (_productMetaCache.isNotEmpty) {
+  //     return _productMetaCache[productId];
+  //   }
+  //
+  //   try {
+  //     final isar = await IsarService.instance;
+  //     final entries = await isar.isarCacheEntrys.where().findAll();
+  //
+  //     for (final entry in entries) {
+  //       if (!entry.key.startsWith("products_")) continue;
+  //
+  //       final List<dynamic> products = jsonDecode(entry.json);
+  //
+  //       for (final raw in products) {
+  //         if (raw is! Map) continue;
+  //         final map = Map<String, dynamic>.from(raw);
+  //         final idStr =
+  //         (map["fast_key_product_id"] ?? map["id"])?.toString();
+  //         final pid = int.tryParse(idStr ?? "");
+  //         if (pid != null) {
+  //           _productMetaCache[pid] = map;
+  //         }
+  //       }
+  //     }
+  //
+  //     return _productMetaCache[productId];
+  //   } catch (e) {
+  //     if (kDebugMode) {
+  //       print("⚠️ Isar cache lookup failed → $e");
+  //     }
+  //   }
+  //   return null;
+  // }
+
+  static void clearProductMetaCache() {
+    _productMetaCache.clear();
+  }
+
   Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
-    if (_productMetaCache.isNotEmpty) {
+    if (_productMetaCache.containsKey(productId)) {   // was: isNotEmpty
       return _productMetaCache[productId];
     }
 
@@ -97,29 +138,24 @@ class NestedGridWidget extends StatelessWidget {
 
       for (final entry in entries) {
         if (!entry.key.startsWith("products_")) continue;
-
         final List<dynamic> products = jsonDecode(entry.json);
-
         for (final raw in products) {
           if (raw is! Map) continue;
           final map = Map<String, dynamic>.from(raw);
-          final idStr =
-          (map["fast_key_product_id"] ?? map["id"])?.toString();
+          final idStr = (map["fast_key_product_id"] ?? map["id"])?.toString();
           final pid = int.tryParse(idStr ?? "");
           if (pid != null) {
             _productMetaCache[pid] = map;
           }
         }
       }
-
       return _productMetaCache[productId];
     } catch (e) {
-      if (kDebugMode) {
-        print("⚠️ Isar cache lookup failed → $e");
-      }
+      if (kDebugMode) print("⚠️ Isar cache lookup failed → $e");
     }
     return null;
   }
+
   Future<bool> _fastKeyHasVariants(Map<String, dynamic> item) async {
     final int? productId =
     int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
@@ -358,6 +394,8 @@ class NestedGridWidget extends StatelessWidget {
                           //
                           //   return; // 🚫 STOP item adding
                           // }
+                          if (_productTapInFlight) return;
+                          _productTapInFlight = true;
 
                           try {
                             final orderId = await orderHelper.ensureOrderExists();
@@ -491,7 +529,54 @@ class NestedGridWidget extends StatelessWidget {
                               print("🔞 Age detection → hasAgeRestriction=$hasAgeRestriction, minAge=$minAge");
                             }
 
+                            int loyaltyPoints = 0;
+                            List<Map<String, dynamic>> resolvedMetaData = [];
 
+// ✅ 1️⃣ PRIMARY SOURCE: Isar cache (products_<categoryId>) — matches your dump
+                            if (cachedProduct?['meta_data'] is List) {
+                              resolvedMetaData = (cachedProduct!['meta_data'] as List)
+                                  .whereType<Map>()
+                                  .map((m) => Map<String, dynamic>.from(m))
+                                  .toList();
+
+                              for (final m in resolvedMetaData) {
+                                if (m['key'] == '_product_loyalty_points') {
+                                  loyaltyPoints = int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+                                  break;
+                                }
+                              }
+
+                              if (loyaltyPoints > 0) {
+                                print("🎯 LOYALTY POINTS [ISAR CACHE] → $productName (id:$productId) = $loyaltyPoints pts");
+                              }
+                            }
+
+// ✅ 2️⃣ FALLBACK: item's own meta_data (only if Isar had nothing)
+                            if (loyaltyPoints == 0 && item['meta_data'] is List) {
+                              final itemMeta = (item['meta_data'] as List)
+                                  .whereType<Map>()
+                                  .map((m) => Map<String, dynamic>.from(m))
+                                  .toList();
+
+                              for (final m in itemMeta) {
+                                if (m['key'] == '_product_loyalty_points') {
+                                  loyaltyPoints = int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+                                  break;
+                                }
+                              }
+
+                              if (resolvedMetaData.isEmpty) resolvedMetaData = itemMeta;
+
+                              if (loyaltyPoints > 0) {
+                                print("🎯 LOYALTY POINTS [ITEM FALLBACK] → $productName (id:$productId) = $loyaltyPoints pts");
+                              }
+                            }
+
+                            if (loyaltyPoints == 0) {
+                              print("⚠️ LOYALTY POINTS NOT FOUND for $productName (id:$productId) — cachedProduct meta_data: ${cachedProduct?['meta_data']}, item meta_data: ${item['meta_data']}");
+                            }
+
+                            print("🎯 FINAL LOYALTY POINTS → $productName: $loyaltyPoints pts | metaEntries: ${resolvedMetaData.length}");
                             print(
                                 "🔍 Product details: id=$productId, name=$productName, price=$productPrice, hasVariants=$hasVariants, hasAgeRestriction=$hasAgeRestriction, minAge=$minAge");
 
@@ -559,57 +644,64 @@ class NestedGridWidget extends StatelessWidget {
                               return slug.contains("produce") || name.contains("produce");
                             });
 
-                            if (hasProduceTag) {
-                              print(" Produce product detected → Showing AutoWeightPriceDialog");
-
-                              // Show AutoWeightPriceDialog
-                              final result = await showDialog(
-                                context: context,
-                                barrierDismissible: false,
-                                builder: (_) => AutoWeightPriceDialog(
-                                  productName: productName,
-                                  unitPrice: productPrice,
-                                ),
-                              );
-
-                              if (result == null) {
-                                print(" Auto weight cancelled");
-                                return;
-                              }
-
-                              final double finalPrice = result["finalPrice"];
-                              final double weight = result["weight"];
-
-                              print(" Weight: ${weight}kg, Final Price: ₹$finalPrice");
-
-                              await orderHelper.addItemToOrder(
-                                null,
-                                productName,
-                                productImage,
-                                finalPrice,
-                                1, // quantity is 1 since weight determines the amount
-                                productSku,
-                                activeOrderId,
-                                type: 'weighted', // Use a special type for weighed items
-                                productId: productId,
-                                variationId: -1,
-                                salesPrice: finalPrice,
-                                regularPrice: productPrice,
-                                unitPrice: productPrice,
-                                isEbtEligible: isEbtEligible,
-                                // You might want to store weight info in metadata
-                                // metaData: {
-                                //   'weight': weight,
-                                //   'unit': 'kg',
-                                // },
-                                onItemAdded: () async {
-                                  print(" Weighted product added successfully!");
-                                  onItemTapped(index, variantAdded: false);
-                                },
-                              );
-
-                              return; //  IMPORTANT: Stop further processing
-                            }
+                            // if (hasProduceTag) {
+                            //   print(" Produce product detected → Showing AutoWeightPriceDialog");
+                            //
+                            //   // Show AutoWeightPriceDialog
+                            //   final result = await showDialog(
+                            //     context: context,
+                            //     barrierDismissible: false,
+                            //     builder: (_) => AutoWeightPriceDialog(
+                            //       productName: productName,
+                            //       unitPrice: productPrice,
+                            //     ),
+                            //   );
+                            //
+                            //   if (result == null) {
+                            //     print(" Auto weight cancelled");
+                            //     return;
+                            //   }
+                            //
+                            //   final double finalPrice = result["finalPrice"];
+                            //   final double weight = result["weight"];
+                            //
+                            //   print(" Weight: ${weight}kg, Final Price: ₹$finalPrice");
+                            //
+                            //   await orderHelper.addItemToOrder(
+                            //     null,
+                            //     productName,
+                            //     productImage,
+                            //     finalPrice,
+                            //     1, // quantity is 1 since weight determines the amount
+                            //     productSku,
+                            //     activeOrderId,
+                            //     type: 'weighted', // Use a special type for weighed items
+                            //     productId: productId,
+                            //     variationId: -1,
+                            //     salesPrice: finalPrice,
+                            //     regularPrice: productPrice,
+                            //     unitPrice: productPrice,
+                            //     isEbtEligible: isEbtEligible,
+                            //     // You might want to store weight info in metadata
+                            //     // metaData: {
+                            //     //   'weight': weight,
+                            //     //   'unit': 'kg',
+                            //     // },
+                            //     // metaData: item['meta_data'] is List
+                            //     //     ? List<Map<String, dynamic>>.from(item['meta_data'])
+                            //     //     : null,
+                            //     metaData: resolvedMetaData.isNotEmpty ? resolvedMetaData : null,
+                            //     loyaltyPoints: loyaltyPoints,
+                            //     onItemAdded: () async {
+                            //       print(" Weighted product added successfully!");
+                            //       print("$item['loyalty_points']");
+                            //       onItemTapped(index, variantAdded: false);
+                            //     },
+                            //   );
+                            //
+                            //
+                            //   return; //  IMPORTANT: Stop further processing
+                            // }
 
 
 
@@ -668,10 +760,17 @@ class NestedGridWidget extends StatelessWidget {
                                   regularPrice: finalPrice,
                                   unitPrice: finalPrice,
                                   isEbtEligible: isEbtEligible,
+                                  // metaData: item['meta_data'] is List
+                                  //     ? List<Map<String, dynamic>>.from(item['meta_data'])
+                                  //     : null,
+                                  // loyaltyPoints: loyaltyPoints,
+                                  metaData: resolvedMetaData.isNotEmpty ? resolvedMetaData : null,
+                                  loyaltyPoints: loyaltyPoints,
                                   onItemAdded: () async {
                                     //await orderHelper.loadData();
                                   },
                                 );
+
 
                                 onItemTapped(index, variantAdded: false);
                                 return; // ⛔ VERY IMPORTANT — stop popup here
@@ -926,6 +1025,12 @@ class NestedGridWidget extends StatelessWidget {
 
                                       /// 🔥 ADD THIS
                                       isEbtEligible: isEbtEligible,
+                                      // metaData: item['meta_data'] is List
+                                      //     ? List<Map<String, dynamic>>.from(item['meta_data'])
+                                      //     : null,
+                                      // loyaltyPoints: loyaltyPoints,
+                                      metaData: resolvedMetaData.isNotEmpty ? resolvedMetaData : null,
+                                      loyaltyPoints: loyaltyPoints,
 
                                       onItemAdded: () async {
                                         print("✅ Variant item added successfully!");
@@ -956,8 +1061,15 @@ class NestedGridWidget extends StatelessWidget {
                                 regularPrice: finalPrice,
                                 unitPrice: finalPrice,
                                 isEbtEligible: isEbtEligible,
+                                // metaData: item['meta_data'] is List
+                                //     ? List<Map<String, dynamic>>.from(item['meta_data'])
+                                //     : null,
+                                // loyaltyPoints: loyaltyPoints,
+                                metaData: resolvedMetaData.isNotEmpty ? resolvedMetaData : null,
+                                loyaltyPoints: loyaltyPoints,
                                 onItemAdded: () async {
                                   print("✅ Simple product added successfully!");
+                                  print("print : $loyaltyPoints");
                                   onItemTapped(index, variantAdded: false);
                                   //await orderHelper.loadData();
                                 },
@@ -968,6 +1080,8 @@ class NestedGridWidget extends StatelessWidget {
                           } catch (e, s) {
                             print("❌ ERROR in offline onTap: $e");
                             print(s);
+                          } finally {
+                            _productTapInFlight = false;
                           }
                         },
                         onLongPress: () {

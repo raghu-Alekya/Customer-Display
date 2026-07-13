@@ -100,6 +100,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   List<Map<String, dynamic>> _categoriesList = [];
   String _selectedCategoryName = "Custom Product"; // default
   bool _isCategoriesLoading = false;
+  // 🟢 NEW: Cache keys for custom items & categories
+  static const String _customItemsCacheKey = "custom_items_template_cache";
+  static const String _categoriesCacheKey = "categories_with_tax_cache";
+
 
   // Text editing controllers
   final TextEditingController _customItemNameController =
@@ -164,6 +168,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
 // ==================== FINAL FIXED: FETCH CUSTOM ITEM TEMPLATE ====================
   Future<void> _fetchCustomItemTemplate() async {
+    await _loadCustomItemsFromCache();
     try {
       // Initialize dynamic base URL
       await UrlHelper.initializeBaseUrl();
@@ -215,6 +220,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
             print(
                 "   → ${item['name']} (ID: ${item['id']}) | Tax: ${item['tax_percent']}%");
           }
+          await _saveCustomItemsToCache(data);
         }
       } else {
         print(
@@ -228,6 +234,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   // ==================== FETCH CATEGORIES WITH TAX ====================
 
   Future<void> _fetchCategoriesWithTax() async {
+    await _loadCategoriesFromCache();
     try {
       await UrlHelper.initializeBaseUrl();
 
@@ -300,6 +307,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
                 "pos_tax_class: ${cat['pos_tax_class']} | "
                 "pos_tax_percent: ${cat['pos_tax_percent']}");
           }
+          await _saveCategoriesToCache(filteredCategories);
         }
       } else {
         print(" Failed to load categories: ${response.statusCode}");
@@ -308,7 +316,94 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       print(" Error fetching categories: $e");
     }
   }
+// ==================== 🟢 NEW: CACHE HELPERS (CUSTOM ITEMS) ====================
+  Future<void> _loadCustomItemsFromCache() async {
+    try {
+      final cached = await StorageProvider.productCache.get(_customItemsCacheKey);
+      if (cached == null || !mounted) return;
 
+      List<dynamic>? cachedList;
+      if (cached is List) {
+        cachedList = cached;
+      } else if (cached is Map && cached['items'] is List) {
+        cachedList = cached['items'] as List;
+      } else if (cached is String) {
+        try {
+          final decoded = jsonDecode(cached);
+          if (decoded is List) cachedList = decoded;
+          if (decoded is Map && decoded['items'] is List) cachedList = decoded['items'] as List;
+        } catch (_) {}
+      }
+
+      if (cachedList == null || cachedList.isEmpty) return;
+
+      setState(() {
+        _customItemTemplate = Map<String, dynamic>.from(cachedList!.first as Map);
+        _customItemsList = cachedList!.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+
+        if (_customItemsList.isNotEmpty) {
+          _selectedCustomItemName = _customItemsList.first['name']?.toString() ?? "Custom Item";
+          _customItemNameController.text = _selectedCustomItemName;
+        }
+      });
+
+      if (kDebugMode) print("⚡ Loaded ${_customItemsList.length} Custom Items from CACHE");
+    } catch (e) {
+      if (kDebugMode) print("⚠️ Failed to load custom items cache: $e");
+    }
+  }
+
+  Future<void> _saveCustomItemsToCache(List<dynamic> data) async {
+    try {
+      await StorageProvider.productCache.put(_customItemsCacheKey, {"items": data});
+      if (kDebugMode) print("💾 Custom Items cached (${data.length} items)");
+    } catch (e) {
+      if (kDebugMode) print("⚠️ Failed to save custom items cache: $e");
+    }
+  }
+// ==================== END CACHE HELPERS (CUSTOM ITEMS) ====================
+
+// ==================== 🟢 NEW: CACHE HELPERS (CATEGORIES) ====================
+  Future<void> _loadCategoriesFromCache() async {
+    try {
+      final cached = await StorageProvider.productCache.get(_categoriesCacheKey);
+      if (cached == null || !mounted) return;
+
+      List<dynamic>? cachedList;
+      if (cached is List) {
+        cachedList = cached;
+      } else if (cached is Map && cached['categories'] is List) {
+        cachedList = cached['categories'] as List;
+      } else if (cached is String) {
+        try {
+          final decoded = jsonDecode(cached);
+          if (decoded is List) cachedList = decoded;
+          if (decoded is Map && decoded['categories'] is List) cachedList = decoded['categories'] as List;
+        } catch (_) {}
+      }
+
+      if (cachedList == null || cachedList.isEmpty) return;
+
+      setState(() {
+        _categoriesList = cachedList!.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        _selectedCategoryName = "Select Category";
+      });
+
+      if (kDebugMode) print("⚡ Loaded ${_categoriesList.length} Categories from CACHE");
+    } catch (e) {
+      if (kDebugMode) print("⚠️ Failed to load categories cache: $e");
+    }
+  }
+
+  Future<void> _saveCategoriesToCache(List<Map<String, dynamic>> categories) async {
+    try {
+      await StorageProvider.productCache.put(_categoriesCacheKey, {"categories": categories});
+      if (kDebugMode) print("💾 Categories cached (${categories.length} categories)");
+    } catch (e) {
+      if (kDebugMode) print("⚠️ Failed to save categories cache: $e");
+    }
+  }
+// ==================== END CACHE HELPERS (CATEGORIES) ====================
   @override
   void initState() {
     _orderRepository = OrderRepository();

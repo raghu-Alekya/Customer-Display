@@ -220,7 +220,7 @@ void main() async {
         // Add Product Bloc
         BlocProvider<AddProductInventoryTaxBloc>(create: (_) => addProductBloc),
         //ChangeNotifierProvider(create: (_) => WeightProvider())
-        ChangeNotifierProvider(create: (_) => WeightProvider())
+        // ChangeNotifierProvider(create: (_) => WeightProvider())
 
 
       ],

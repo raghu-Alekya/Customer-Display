@@ -748,9 +748,472 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   }
 
   // Build #1.0.10: Fetches order items for the active order
+  // Future<void> fetchOrderItems() async {
+  //   final int requestId = ++_fetchOrderItemsRequestId;
+  //
+  //   final activeId = orderHelper.activeOrderId;
+  //
+  //   // FIX: Immediately clear orderItems when there is no active order
+  //   if (orderHelper.activeOrderId == null) {
+  //     if (mounted) {
+  //       setState(() {
+  //         orderItems = [];
+  //         _listVersion++;
+  //         _currentOrderVersion++;
+  //       });
+  //     }
+  //     return;
+  //   }
+  //
+  //   // #region agent log
+  //   unawaited(_agentDebugLog(
+  //     hypothesisId: "H3",
+  //     location: "widget_order_panel.dart:fetchOrderItems:start",
+  //     message: "fetchOrderItems entry",
+  //     data: {
+  //       "activeOrderId": activeId,
+  //       "tabCount": tabs.length,
+  //       "hasActiveTab":
+  //           activeId != null && tabs.any((t) => t['orderId'] == activeId),
+  //     },
+  //   ));
+  //   // #endregion
+  //
+  //   // Tabs can lag behind activeOrderId (e.g. while _getOrderTabs runs, or offline-only).
+  //   // Never clear the cart just because the tab bar has not caught up yet.
+  //   if (!_tabsContainActiveOrder(activeId)) {
+  //     if (kDebugMode) {
+  //       print(
+  //         "⚠️ fetchOrderItems — active order not in tab bar; still loading by id: $activeId",
+  //       );
+  //     }
+  //   }
+  //
+  //   if (kDebugMode) {
+  //     print("##### DEBUG: fetchOrderItems 112233");
+  //   }
+  //   if (orderHelper.activeOrderId != null) {
+  //     if (kDebugMode) {
+  //       print(
+  //           "##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
+  //     }
+  //     try {
+  //       final int oid = orderHelper.activeOrderId!;
+  //       // 1️⃣ Prefer offline storage; 2️⃣ SQLite — run both reads in parallel when offline may be empty.
+  //       final Future<List<Map<String, dynamic>>> offlineFuture =
+  //           orderHelper.getOrderItemsFromOffline(oid);
+  //       final Future<List<Map<String, dynamic>>> ordersFuture =
+  //           orderHelper.getOrderById(oid);
+  //       final offlineItems = await offlineFuture;
+  //       if (requestId != _fetchOrderItemsRequestId) return;
+  //       // #region agent log
+  //       unawaited(_agentDebugLog(
+  //         hypothesisId: "H3",
+  //         location: "widget_order_panel.dart:fetchOrderItems:offlineRead",
+  //         message: "offline items read",
+  //         data: {
+  //           "activeOrderId": orderHelper.activeOrderId,
+  //           "offlineItemCount": offlineItems.length,
+  //           "firstItemKeys": offlineItems.isNotEmpty
+  //               ? offlineItems.first.keys.take(8).toList()
+  //               : <String>[],
+  //         },
+  //       ));
+  //       // #endregion
+  //
+  //       // FIX: Verify that active order hasn't changed while fetching
+  //       if (orderHelper.activeOrderId != oid) {
+  //         if (kDebugMode)
+  //           print("⚠️ Active order changed during fetch, discarding results");
+  //         return;
+  //       }
+  //
+  //       if (offlineItems.isNotEmpty) {
+  //         // ── Re-seed tax fields for custom items so buildCurrentOrder
+  //         // displays correct tax without needing to re-derive from Hive ──
+  //         final offlineBox = StorageProvider.offlineOrders;
+  //         final rawOrder = await offlineBox.get(oid.toString());
+  //         if (rawOrder != null) {
+  //           final orderMap = Map<String, dynamic>.from(rawOrder);
+  //           final storedProducts = (orderMap['products'] as List? ?? [])
+  //               .map((e) => Map<String, dynamic>.from(e))
+  //               .toList();
+  //
+  //           for (int i = 0; i < offlineItems.length; i++) {
+  //             final displayItem = Map<String, dynamic>.from(offlineItems[i]);
+  //             final itemType =
+  //                 (displayItem['item_type'] ?? '').toString().toLowerCase();
+  //             if (itemType.contains('custom')) {
+  //               // Find matching product in Hive to get tax fields
+  //               final itemName =
+  //                   (displayItem['item_name'] ?? '').toString().toLowerCase();
+  //               final itemPrice = double.tryParse(
+  //                       displayItem['item_price']?.toString() ?? '0') ??
+  //                   0.0;
+  //               final match = storedProducts.firstWhere((p) {
+  //                 final pName = (p['name'] ?? '').toString().toLowerCase();
+  //                 final pPrice =
+  //                     double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+  //                 return pName == itemName && (pPrice - itemPrice).abs() < 0.01;
+  //               }, orElse: () => {});
+  //
+  //               if (match.isNotEmpty) {
+  //                 final taxRate = double.tryParse(
+  //                         match['tax_rate']?.toString() ??
+  //                             match['tax_percent']?.toString() ??
+  //                             '0') ??
+  //                     0.0;
+  //                 final qty = int.tryParse(
+  //                         displayItem['items_count']?.toString() ?? '1') ??
+  //                     1;
+  //                 final itemTax = taxRate > 0
+  //                     ? roundTaxHalfUp(((itemPrice * taxRate) / 100) * qty)
+  //                     : 0.0;
+  //                 displayItem['tax_rate'] = taxRate;
+  //                 displayItem['tax_class'] = match['tax_class'] ??
+  //                     match['selected_category_tax_slug'] ??
+  //                     '';
+  //                 displayItem['item_tax'] = itemTax;
+  //                 offlineItems[i] = displayItem;
+  //               }
+  //             }
+  //           }
+  //         }
+  //
+  //         await orderHelper.loadData();
+  //         if (requestId != _fetchOrderItemsRequestId) return;
+  //         if (orderHelper.activeOrderId != oid) return;
+  //
+  //         if (mounted) {
+  //           setState(() {
+  //             if (requestId != _fetchOrderItemsRequestId) return;
+  //             orderItems = List<Map<String, dynamic>>.from(offlineItems);
+  //             _listVersion++;
+  //             _currentOrderVersion++;
+  //           });
+  //         }
+  //         return;
+  //       }
+  //       // 2️⃣ Fallback to SQLite (synced/API orders)
+  //       var orders = await ordersFuture;
+  //       if (requestId != _fetchOrderItemsRequestId) return;
+  //       // FIX: Double-check active order ID again after await
+  //       if (orderHelper.activeOrderId != oid) return;
+  //
+  //       if (orders.isEmpty) {
+  //         if (kDebugMode) {
+  //           print(
+  //               "##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
+  //         }
+  //         await orderHelper.clearPersistedCartSelection();
+  //         if (mounted) {
+  //           setState(() {
+  //             orderItems = []; // Clear items if no order exists
+  //           });
+  //         }
+  //         await _getOrderTabs(); // Refresh tabs to reflect no active order
+  //         return;
+  //       }
+  //
+  //       var order = orders.first;
+  //       if (kDebugMode) {
+  //         print("##### DEBUG: fetchOrderItems - Retrieved ${order.length}");
+  //         print(
+  //             "##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
+  //         print(
+  //             "##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
+  //       }
+  //       List<Map<String, dynamic>> items =
+  //           await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
+  //       if (requestId != _fetchOrderItemsRequestId) return;
+  //       if (orderHelper.activeOrderId != oid) return;
+  //
+  //       if (kDebugMode) {
+  //         print(
+  //             "##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
+  //       }
+  //
+  //       if (mounted) {
+  //         setState(() {
+  //           if (requestId != _fetchOrderItemsRequestId) return;
+  //           orderItems =
+  //               List<Map<String, dynamic>>.from(items); // Create mutable copy
+  //           _listVersion++; // Build 1.0.214: Increment version when items change
+  //         });
+  //       }
+  //     } catch (e, s) {
+  //       if (kDebugMode) {
+  //         print("##### ERROR: fetchOrderItems failed - $e, Stack: $s");
+  //       }
+  //       if (mounted) {
+  //         setState(() {
+  //           orderItems = []; // Clear items on error
+  //         });
+  //       }
+  //     }
+  //   } else {
+  //     if (kDebugMode) {
+  //       print("##### DEBUG: fetchOrderItems - No active order, clearing items");
+  //     }
+  //     setState(() => _isLoading = false); // Build #1.0.104: Hide loader
+  //     if (mounted) {
+  //       setState(() {
+  //         orderItems = []; // Clear items if no active order
+  //         _listVersion++; // Build 1.0.214: Increment version when items change
+  //       });
+  //     }
+  //   }
+  // }
+
+  ///////////////working start
+
+  // Future<void> fetchOrderItems() async {
+  //   final int requestId = ++_fetchOrderItemsRequestId;
+  //   final activeId = orderHelper.activeOrderId;
+  //
+  //   // FIX: Immediately clear orderItems when there is no active order
+  //   if (orderHelper.activeOrderId == null) {
+  //     if (mounted) {
+  //       setState(() {
+  //         orderItems = [];
+  //         _listVersion++;
+  //         _currentOrderVersion++;
+  //       });
+  //     }
+  //     return;
+  //   }
+  //
+  //   if (kDebugMode) {
+  //     print("##### DEBUG: fetchOrderItems 112233");
+  //   }
+  //   if (orderHelper.activeOrderId != null) {
+  //     if (kDebugMode) {
+  //       print("##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
+  //     }
+  //     try {
+  //       final int oid = orderHelper.activeOrderId!;
+  //       // 1️⃣ Prefer offline storage
+  //       final Future<List<Map<String, dynamic>>> offlineFuture =
+  //       orderHelper.getOrderItemsFromOffline(oid);
+  //       final offlineItems = await offlineFuture;
+  //
+  //       if (requestId != _fetchOrderItemsRequestId) return;
+  //
+  //       // FIX: Verify that active order hasn't changed while fetching
+  //       if (orderHelper.activeOrderId != oid) {
+  //         if (kDebugMode) print("⚠️ Active order changed during fetch, discarding results");
+  //         return;
+  //       }
+  //
+  //       if (offlineItems.isNotEmpty) {
+  //         // ── Re-seed tax fields for custom items so buildCurrentOrder
+  //         // displays correct tax without needing to re-derive from Hive ──
+  //         final offlineBox = StorageProvider.offlineOrders;
+  //         final rawOrder = await offlineBox.get(oid.toString());
+  //         if (rawOrder != null) {
+  //           final orderMap = Map<String, dynamic>.from(rawOrder);
+  //           final storedProducts = (orderMap['products'] as List? ?? [])
+  //               .map((e) => Map<String, dynamic>.from(e))
+  //               .toList();
+  //
+  //           // ✅ FIX: Map offline items with proper weight fields
+  //           final List<Map<String, dynamic>> mappedItems = [];
+  //
+  //           for (int i = 0; i < offlineItems.length; i++) {
+  //             final displayItem = Map<String, dynamic>.from(offlineItems[i]);
+  //             final itemType = (displayItem['item_type'] ?? '').toString().toLowerCase();
+  //
+  //             // ✅ FIX: For weighted items, ensure weight fields are copied from stored products
+  //             if (itemType.contains('weighted')) {
+  //               // Find matching product in Hive to get weight fields
+  //               final itemName = (displayItem['item_name'] ?? '').toString();
+  //               final itemPrice = double.tryParse(displayItem['item_price']?.toString() ?? '0') ?? 0.0;
+  //
+  //               // Try to match by name and price
+  //               final match = storedProducts.firstWhere((p) {
+  //                 final pName = (p['name'] ?? '').toString();
+  //                 final pPrice = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+  //                 return pName == itemName && (pPrice - itemPrice).abs() < 0.01;
+  //               }, orElse: () => {});
+  //
+  //               if (match.isNotEmpty) {
+  //
+  //                 // ✅ CRITICAL FIX: Copy weight fields from stored product
+  //                 final weightQty = (match['weight_qty'] as num?)?.toDouble() ??
+  //                     (match['weightQty'] as num?)?.toDouble() ??
+  //                     (match['weight'] as num?)?.toDouble() ??
+  //                     0.0;
+  //
+  //                 // Get unit price from stored product or calculate
+  //                 final unitPrice = (match['unit_price'] as num?)?.toDouble() ??
+  //                     (match['regular_price'] as num?)?.toDouble() ??
+  //                     (match['sales_price'] as num?)?.toDouble() ??
+  //                     itemPrice;
+  //
+  //                 displayItem['weight_qty'] = weightQty;
+  //                 displayItem['weightQty'] = weightQty;
+  //                 displayItem['weight'] = weightQty;
+  //                 displayItem['unit_price'] = unitPrice;
+  //                 displayItem['regular_price'] = unitPrice;
+  //
+  //                 // Also update the price to match the stored product's price
+  //                 displayItem['item_price'] = match['price'] ?? itemPrice;
+  //
+  //                 final loyalty = (displayItem['loyalty_points'] as num?)?.toInt() ??
+  //                     (displayItem['loyaltyPoints'] as num?)?.toInt() ?? 0;
+  //                 displayItem['loyalty_points'] = loyalty;
+  //                 displayItem['loyaltyPoints'] = loyalty; // for consistency
+  //
+  //                 print(' fetchOrderItems: Fixed weight for "$itemName" → weightQty=$weightQty, unitPrice=$unitPrice');
+  //               } else {
+  //                 // Fallback: try to find by SKU
+  //                 final itemSku = (displayItem['sku'] ?? '').toString();
+  //                 if (itemSku.isNotEmpty) {
+  //                   final skuMatch = storedProducts.firstWhere((p) {
+  //                     final pSku = (p['sku'] ?? '').toString();
+  //                     return pSku == itemSku;
+  //                   }, orElse: () => {});
+  //
+  //                   if (skuMatch.isNotEmpty) {
+  //                     final weightQty = (skuMatch['weight_qty'] as num?)?.toDouble() ??
+  //                         (skuMatch['weightQty'] as num?)?.toDouble() ??
+  //                         (skuMatch['weight'] as num?)?.toDouble() ??
+  //                         0.0;
+  //
+  //                     final unitPrice = (skuMatch['unit_price'] as num?)?.toDouble() ??
+  //                         (skuMatch['regular_price'] as num?)?.toDouble() ??
+  //                         (skuMatch['sales_price'] as num?)?.toDouble() ??
+  //                         itemPrice;
+  //
+  //                     displayItem['weight_qty'] = weightQty;
+  //                     displayItem['weightQty'] = weightQty;
+  //                     displayItem['weight'] = weightQty;
+  //                     displayItem['unit_price'] = unitPrice;
+  //                     displayItem['regular_price'] = unitPrice;
+  //                     displayItem['item_price'] = skuMatch['price'] ?? itemPrice;
+  //
+  //                     print('🟢 fetchOrderItems: Fixed weight via SKU for "$itemName" → weightQty=$weightQty');
+  //                   }
+  //                 }
+  //               }
+  //             }
+  //
+  //             // Handle custom item tax fields
+  //             if (itemType.contains('custom')) {
+  //               final itemName = (displayItem['item_name'] ?? '').toString().toLowerCase();
+  //               final itemPrice = double.tryParse(displayItem['item_price']?.toString() ?? '0') ?? 0.0;
+  //               final match = storedProducts.firstWhere((p) {
+  //                 final pName = (p['name'] ?? '').toString().toLowerCase();
+  //                 final pPrice = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+  //                 return pName == itemName && (pPrice - itemPrice).abs() < 0.01;
+  //               }, orElse: () => {});
+  //
+  //               if (match.isNotEmpty) {
+  //                 final taxRate = double.tryParse(
+  //                     match['tax_rate']?.toString() ??
+  //                         match['tax_percent']?.toString() ?? '0') ?? 0.0;
+  //                 final qty = int.tryParse(displayItem['items_count']?.toString() ?? '1') ?? 1;
+  //                 final itemTax = taxRate > 0
+  //                     ? roundTaxHalfUp(((itemPrice * taxRate) / 100) * qty)
+  //                     : 0.0;
+  //                 displayItem['tax_rate'] = taxRate;
+  //                 displayItem['tax_class'] = match['tax_class'] ?? match['selected_category_tax_slug'] ?? '';
+  //                 displayItem['item_tax'] = itemTax;
+  //               }
+  //             }
+  //
+  //             mappedItems.add(displayItem);
+  //           }
+  //
+  //           await orderHelper.loadData();
+  //           if (requestId != _fetchOrderItemsRequestId) return;
+  //           if (orderHelper.activeOrderId != oid) return;
+  //
+  //           if (mounted) {
+  //             setState(() {
+  //               if (requestId != _fetchOrderItemsRequestId) return;
+  //               orderItems = List<Map<String, dynamic>>.from(mappedItems);
+  //               _listVersion++;
+  //               _currentOrderVersion++;
+  //             });
+  //           }
+  //           return;
+  //         }
+  //       }
+  //
+  //       // 2️⃣ Fallback to SQLite (synced/API orders)
+  //       final ordersFuture = orderHelper.getOrderById(oid);
+  //       var orders = await ordersFuture;
+  //       if (requestId != _fetchOrderItemsRequestId) return;
+  //       // FIX: Double-check active order ID again after await
+  //       if (orderHelper.activeOrderId != oid) return;
+  //
+  //       if (orders.isEmpty) {
+  //         if (kDebugMode) {
+  //           print("##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
+  //         }
+  //         await orderHelper.clearPersistedCartSelection();
+  //         if (mounted) {
+  //           setState(() {
+  //             orderItems = []; // Clear items if no order exists
+  //           });
+  //         }
+  //         await _getOrderTabs(); // Refresh tabs to reflect no active order
+  //         return;
+  //       }
+  //
+  //       var order = orders.first;
+  //       if (kDebugMode) {
+  //         print("##### DEBUG: fetchOrderItems - Retrieved ${order.length}");
+  //         print("##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
+  //         print("##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
+  //       }
+  //       List<Map<String, dynamic>> items =
+  //       await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
+  //       if (requestId != _fetchOrderItemsRequestId) return;
+  //       if (orderHelper.activeOrderId != oid) return;
+  //
+  //       if (kDebugMode) {
+  //         print("##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
+  //       }
+  //
+  //       if (mounted) {
+  //         setState(() {
+  //           if (requestId != _fetchOrderItemsRequestId) return;
+  //           orderItems = List<Map<String, dynamic>>.from(items); // Create mutable copy
+  //           _listVersion++; // Build 1.0.214: Increment version when items change
+  //         });
+  //       }
+  //     } catch (e, s) {
+  //       if (kDebugMode) {
+  //         print("##### ERROR: fetchOrderItems failed - $e, Stack: $s");
+  //       }
+  //       if (mounted) {
+  //         setState(() {
+  //           orderItems = []; // Clear items on error
+  //         });
+  //       }
+  //     }
+  //   } else {
+  //     if (kDebugMode) {
+  //       print("##### DEBUG: fetchOrderItems - No active order, clearing items");
+  //     }
+  //     setState(() => _isLoading = false); // Build #1.0.104: Hide loader
+  //     if (mounted) {
+  //       setState(() {
+  //         orderItems = []; // Clear items if no active order
+  //         _listVersion++; // Build 1.0.214: Increment version when items change
+  //       });
+  //     }
+  //   }
+  // }
+
+
+  ////////working end
+
+
   Future<void> fetchOrderItems() async {
     final int requestId = ++_fetchOrderItemsRequestId;
-
     final activeId = orderHelper.activeOrderId;
 
     // FIX: Immediately clear orderItems when there is no active order
@@ -765,66 +1228,25 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       return;
     }
 
-    // #region agent log
-    unawaited(_agentDebugLog(
-      hypothesisId: "H3",
-      location: "widget_order_panel.dart:fetchOrderItems:start",
-      message: "fetchOrderItems entry",
-      data: {
-        "activeOrderId": activeId,
-        "tabCount": tabs.length,
-        "hasActiveTab":
-            activeId != null && tabs.any((t) => t['orderId'] == activeId),
-      },
-    ));
-    // #endregion
-
-    // Tabs can lag behind activeOrderId (e.g. while _getOrderTabs runs, or offline-only).
-    // Never clear the cart just because the tab bar has not caught up yet.
-    if (!_tabsContainActiveOrder(activeId)) {
-      if (kDebugMode) {
-        print(
-          "⚠️ fetchOrderItems — active order not in tab bar; still loading by id: $activeId",
-        );
-      }
-    }
-
     if (kDebugMode) {
       print("##### DEBUG: fetchOrderItems 112233");
     }
     if (orderHelper.activeOrderId != null) {
       if (kDebugMode) {
-        print(
-            "##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
+        print("##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
       }
       try {
         final int oid = orderHelper.activeOrderId!;
-        // 1️⃣ Prefer offline storage; 2️⃣ SQLite — run both reads in parallel when offline may be empty.
+        // 1️⃣ Prefer offline storage
         final Future<List<Map<String, dynamic>>> offlineFuture =
-            orderHelper.getOrderItemsFromOffline(oid);
-        final Future<List<Map<String, dynamic>>> ordersFuture =
-            orderHelper.getOrderById(oid);
+        orderHelper.getOrderItemsFromOffline(oid);
         final offlineItems = await offlineFuture;
+
         if (requestId != _fetchOrderItemsRequestId) return;
-        // #region agent log
-        unawaited(_agentDebugLog(
-          hypothesisId: "H3",
-          location: "widget_order_panel.dart:fetchOrderItems:offlineRead",
-          message: "offline items read",
-          data: {
-            "activeOrderId": orderHelper.activeOrderId,
-            "offlineItemCount": offlineItems.length,
-            "firstItemKeys": offlineItems.isNotEmpty
-                ? offlineItems.first.keys.take(8).toList()
-                : <String>[],
-          },
-        ));
-        // #endregion
 
         // FIX: Verify that active order hasn't changed while fetching
         if (orderHelper.activeOrderId != oid) {
-          if (kDebugMode)
-            print("⚠️ Active order changed during fetch, discarding results");
+          if (kDebugMode) print("⚠️ Active order changed during fetch, discarding results");
           return;
         }
 
@@ -839,106 +1261,249 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                 .map((e) => Map<String, dynamic>.from(e))
                 .toList();
 
+            // ✅ FIX: Map offline items with proper weight fields
+            final List<Map<String, dynamic>> mappedItems = [];
+
             for (int i = 0; i < offlineItems.length; i++) {
               final displayItem = Map<String, dynamic>.from(offlineItems[i]);
-              final itemType =
-                  (displayItem['item_type'] ?? '').toString().toLowerCase();
-              if (itemType.contains('custom')) {
-                // Find matching product in Hive to get tax fields
-                final itemName =
-                    (displayItem['item_name'] ?? '').toString().toLowerCase();
-                final itemPrice = double.tryParse(
-                        displayItem['item_price']?.toString() ?? '0') ??
-                    0.0;
+              final itemType = (displayItem['item_type'] ?? '').toString().toLowerCase();
+              final productId = int.tryParse(displayItem['product_id']?.toString() ?? '0') ?? 0;
+              final itemName = (displayItem['item_name'] ?? '').toString();
+
+              // ✅ FIX: For weighted items, ensure weight fields are copied from stored products
+              if (itemType.contains('weighted')) {
+                // Find matching product in Hive to get weight fields
+                final itemPrice = double.tryParse(displayItem['item_price']?.toString() ?? '0') ?? 0.0;
+
+                // Try to match by name and price
                 final match = storedProducts.firstWhere((p) {
-                  final pName = (p['name'] ?? '').toString().toLowerCase();
-                  final pPrice =
-                      double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+                  final pName = (p['name'] ?? '').toString();
+                  final pPrice = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
                   return pName == itemName && (pPrice - itemPrice).abs() < 0.01;
                 }, orElse: () => {});
 
                 if (match.isNotEmpty) {
-                  final taxRate = double.tryParse(
-                          match['tax_rate']?.toString() ??
-                              match['tax_percent']?.toString() ??
-                              '0') ??
+                  // ✅ CRITICAL FIX: Copy weight fields from stored product
+                  final weightQty = (match['weight_qty'] as num?)?.toDouble() ??
+                      (match['weightQty'] as num?)?.toDouble() ??
+                      (match['weight'] as num?)?.toDouble() ??
                       0.0;
-                  final qty = int.tryParse(
-                          displayItem['items_count']?.toString() ?? '1') ??
-                      1;
+
+                  // Get unit price from stored product or calculate
+                  final unitPrice = (match['unit_price'] as num?)?.toDouble() ??
+                      (match['regular_price'] as num?)?.toDouble() ??
+                      (match['sales_price'] as num?)?.toDouble() ??
+                      itemPrice;
+
+                  displayItem['weight_qty'] = weightQty;
+                  displayItem['weightQty'] = weightQty;
+                  displayItem['weight'] = weightQty;
+                  displayItem['unit_price'] = unitPrice;
+                  displayItem['regular_price'] = unitPrice;
+
+                  // Also update the price to match the stored product's price
+                  displayItem['item_price'] = match['price'] ?? itemPrice;
+
+                  final loyalty = (displayItem['loyalty_points'] as num?)?.toInt() ??
+                      (displayItem['loyaltyPoints'] as num?)?.toInt() ?? 0;
+                  displayItem['loyalty_points'] = loyalty;
+                  displayItem['loyaltyPoints'] = loyalty; // for consistency
+
+                  print(' fetchOrderItems: Fixed weight for "$itemName" → weightQty=$weightQty, unitPrice=$unitPrice');
+                } else {
+                  // Fallback: try to find by SKU
+                  final itemSku = (displayItem['sku'] ?? '').toString();
+                  if (itemSku.isNotEmpty) {
+                    final skuMatch = storedProducts.firstWhere((p) {
+                      final pSku = (p['sku'] ?? '').toString();
+                      return pSku == itemSku;
+                    }, orElse: () => {});
+
+                    if (skuMatch.isNotEmpty) {
+                      final weightQty = (skuMatch['weight_qty'] as num?)?.toDouble() ??
+                          (skuMatch['weightQty'] as num?)?.toDouble() ??
+                          (skuMatch['weight'] as num?)?.toDouble() ??
+                          0.0;
+
+                      final unitPrice = (skuMatch['unit_price'] as num?)?.toDouble() ??
+                          (skuMatch['regular_price'] as num?)?.toDouble() ??
+                          (skuMatch['sales_price'] as num?)?.toDouble() ??
+                          itemPrice;
+
+                      displayItem['weight_qty'] = weightQty;
+                      displayItem['weightQty'] = weightQty;
+                      displayItem['weight'] = weightQty;
+                      displayItem['unit_price'] = unitPrice;
+                      displayItem['regular_price'] = unitPrice;
+                      displayItem['item_price'] = skuMatch['price'] ?? itemPrice;
+
+                      print('🟢 fetchOrderItems: Fixed weight via SKU for "$itemName" → weightQty=$weightQty');
+                    }
+                  }
+                }
+              }
+
+              // ==================== LOYALTY POINTS RESOLUTION ====================
+              int loyaltyPoints = 0;
+              List<Map<String, dynamic>> resolvedMetaData = [];
+
+              // Try to get cached product from Isar
+              dynamic cachedProduct;
+              try {
+                final isar = await IsarService.instance;
+                final entries = await isar.isarCacheEntrys
+                    .where()
+                    .filter()
+                    .keyStartsWith("products_")
+                    .findAll();
+
+                for (final entry in entries) {
+                  final List<dynamic> products = jsonDecode(entry.json);
+                  final match = products.firstWhere(
+                        (p) => (p["fast_key_product_id"] ?? p["id"] ?? p["product_id"])
+                        ?.toString() == productId.toString(),
+                    orElse: () => null,
+                  );
+                  if (match != null) {
+                    cachedProduct = match;
+                    break;
+                  }
+                }
+              } catch (e) {
+                debugPrint("Loyalty Isar lookup failed: $e");
+              }
+
+              // ✅ 1️⃣ PRIMARY SOURCE: Isar cache
+              if (cachedProduct?['meta_data'] is List) {
+                resolvedMetaData = (cachedProduct!['meta_data'] as List)
+                    .whereType<Map>()
+                    .map((m) => Map<String, dynamic>.from(m))
+                    .toList();
+
+                for (final m in resolvedMetaData) {
+                  if (m['key'] == '_product_loyalty_points') {
+                    loyaltyPoints = int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+                    break;
+                  }
+                }
+              }
+
+              // ✅ 2️⃣ FALLBACK: From stored product in order
+              if (loyaltyPoints == 0) {
+                final storedMatch = storedProducts.firstWhere(
+                      (p) => (p['product_id'] ?? p['id'] ?? p['fast_key_product_id'])
+                      ?.toString() == productId.toString(),
+                  orElse: () => <String, dynamic>{},
+                );
+
+                if (storedMatch.isNotEmpty && storedMatch['meta_data'] is List) {
+                  final itemMeta = (storedMatch['meta_data'] as List)
+                      .whereType<Map>()
+                      .map((m) => Map<String, dynamic>.from(m))
+                      .toList();
+
+                  for (final m in itemMeta) {
+                    if (m['key'] == '_product_loyalty_points') {
+                      loyaltyPoints = int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+                      break;
+                    }
+                  }
+                  if (resolvedMetaData.isEmpty) resolvedMetaData = itemMeta;
+                }
+              }
+
+              // Attach loyalty data to item
+              displayItem['loyalty_points'] = loyaltyPoints;
+              displayItem['loyaltyPoints'] = loyaltyPoints;
+
+              if (loyaltyPoints > 0) {
+                print("🎯 LOYALTY POINTS [ORDER PANEL] → $itemName (id:$productId) = $loyaltyPoints pts");
+              }
+              // =================================================================
+
+              // Handle custom item tax fields (existing code)
+              if (itemType.contains('custom')) {
+                final itemNameForTax = (displayItem['item_name'] ?? '').toString().toLowerCase();
+                final itemPrice = double.tryParse(displayItem['item_price']?.toString() ?? '0') ?? 0.0;
+                final match = storedProducts.firstWhere((p) {
+                  final pName = (p['name'] ?? '').toString().toLowerCase();
+                  final pPrice = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+                  return pName == itemNameForTax && (pPrice - itemPrice).abs() < 0.01;
+                }, orElse: () => {});
+
+                if (match.isNotEmpty) {
+                  final taxRate = double.tryParse(
+                      match['tax_rate']?.toString() ??
+                          match['tax_percent']?.toString() ?? '0') ?? 0.0;
+                  final qty = int.tryParse(displayItem['items_count']?.toString() ?? '1') ?? 1;
                   final itemTax = taxRate > 0
                       ? roundTaxHalfUp(((itemPrice * taxRate) / 100) * qty)
                       : 0.0;
                   displayItem['tax_rate'] = taxRate;
-                  displayItem['tax_class'] = match['tax_class'] ??
-                      match['selected_category_tax_slug'] ??
-                      '';
+                  displayItem['tax_class'] = match['tax_class'] ?? match['selected_category_tax_slug'] ?? '';
                   displayItem['item_tax'] = itemTax;
-                  offlineItems[i] = displayItem;
                 }
               }
+
+              mappedItems.add(displayItem);
             }
-          }
 
-          await orderHelper.loadData();
-          if (requestId != _fetchOrderItemsRequestId) return;
-          if (orderHelper.activeOrderId != oid) return;
+            await orderHelper.loadData();
+            if (requestId != _fetchOrderItemsRequestId) return;
+            if (orderHelper.activeOrderId != oid) return;
 
-          if (mounted) {
-            setState(() {
-              if (requestId != _fetchOrderItemsRequestId) return;
-              orderItems = List<Map<String, dynamic>>.from(offlineItems);
-              _listVersion++;
-              _currentOrderVersion++;
-            });
+            if (mounted) {
+              setState(() {
+                if (requestId != _fetchOrderItemsRequestId) return;
+                orderItems = List<Map<String, dynamic>>.from(mappedItems);
+                _listVersion++;
+                _currentOrderVersion++;
+              });
+            }
+            return;
           }
-          return;
         }
-        // 2️⃣ Fallback to SQLite (synced/API orders)
+
+        // 2️⃣ Fallback to SQLite (synced/API orders) — unchanged
+        final ordersFuture = orderHelper.getOrderById(oid);
         var orders = await ordersFuture;
         if (requestId != _fetchOrderItemsRequestId) return;
-        // FIX: Double-check active order ID again after await
         if (orderHelper.activeOrderId != oid) return;
 
         if (orders.isEmpty) {
           if (kDebugMode) {
-            print(
-                "##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
+            print("##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
           }
           await orderHelper.clearPersistedCartSelection();
           if (mounted) {
             setState(() {
-              orderItems = []; // Clear items if no order exists
+              orderItems = [];
             });
           }
-          await _getOrderTabs(); // Refresh tabs to reflect no active order
+          await _getOrderTabs();
           return;
         }
 
         var order = orders.first;
         if (kDebugMode) {
           print("##### DEBUG: fetchOrderItems - Retrieved ${order.length}");
-          print(
-              "##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
-          print(
-              "##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
+          print("##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
+          print("##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
         }
         List<Map<String, dynamic>> items =
-            await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
+        await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
         if (requestId != _fetchOrderItemsRequestId) return;
         if (orderHelper.activeOrderId != oid) return;
 
         if (kDebugMode) {
-          print(
-              "##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
+          print("##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
         }
 
         if (mounted) {
           setState(() {
             if (requestId != _fetchOrderItemsRequestId) return;
-            orderItems =
-                List<Map<String, dynamic>>.from(items); // Create mutable copy
-            _listVersion++; // Build 1.0.214: Increment version when items change
+            orderItems = List<Map<String, dynamic>>.from(items);
+            _listVersion++;
           });
         }
       } catch (e, s) {
@@ -947,7 +1512,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         }
         if (mounted) {
           setState(() {
-            orderItems = []; // Clear items on error
+            orderItems = [];
           });
         }
       }
@@ -955,11 +1520,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       if (kDebugMode) {
         print("##### DEBUG: fetchOrderItems - No active order, clearing items");
       }
-      setState(() => _isLoading = false); // Build #1.0.104: Hide loader
+      setState(() => _isLoading = false);
       if (mounted) {
         setState(() {
-          orderItems = []; // Clear items if no active order
-          _listVersion++; // Build 1.0.214: Increment version when items change
+          orderItems = [];
+          _listVersion++;
         });
       }
     }
@@ -1004,7 +1569,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       return;
     }
 
-    // 1️⃣ Calculate Default Index BEFORE creating controller
+    // Calculate Default Index BEFORE creating controller
     int defaultIndex = 0;
     if (orderHelper.activeOrderId != null) {
       final idx = tabs.indexWhere(
@@ -1996,7 +2561,26 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       } catch (e) {
         print("⚠ EBT eligibility error → $e");
       }
+// ⭐ EXTRACT LOYALTY POINTS FROM SCANNED PRODUCT
+      int scannedLoyaltyPoints = 0;
+      List<Map<String, dynamic>>? scannedLoyaltyMetaData;
+      try {
+        final metaList = product.metaData ?? [];
+        scannedLoyaltyMetaData = metaList
+            .map((m) => {"key": m.key, "value": m.value})
+            .toList();
 
+        for (final m in metaList) {
+          if (m.key == '_product_loyalty_points') {
+            scannedLoyaltyPoints =
+                int.tryParse(m.value?.toString() ?? '0') ?? 0;
+            break;
+          }
+        }
+        print("🎯 SCAN LOYALTY POINTS → $scannedLoyaltyPoints for ${product.name}");
+      } catch (e) {
+        print("⚠ loyalty points extraction error (scan): $e");
+      }
       // Detect variant intent early so barcode flow does not auto-increment
       // and return before reaching the variants popup/API logic.
       final bool hasVariantTag = (product.tags ?? []).any((t) {
@@ -2040,6 +2624,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           taxStatus: taxStatus,
           taxClass: taxClass,
           taxRate: taxRate,
+          metaData: scannedLoyaltyMetaData,          // ✅ ADD
+          loyaltyPoints: scannedLoyaltyPoints,        // ✅ ADD
         );
 
         await fetchOrderItems();
@@ -2100,6 +2686,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             taxStatus: taxStatus,
             taxClass: taxClass,
             taxRate: taxRate,
+            metaData: scannedLoyaltyMetaData,          // ✅ ADD
+            loyaltyPoints: scannedLoyaltyPoints,
           );
 
           print("🛒 Product added to order");
@@ -2154,73 +2742,73 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
 
       //PRODUCE (WEIGHED ITEMS) HANDLING
-      if (hasProduceTag) {
-        if (_isWeightDialogOpen) {
-          print("🚫 Weight dialog already open, ignoring duplicate scan");
-          return;
-        }
-        print(
-            "🏷 Produce tag detected on product → Showing AutoWeightPriceDialog");
-
-        // Stop loader before showing dialog
-        _isLoading = false;
-        if (mounted) setState(() {});
-
-        _isWeightDialogOpen = true;
-        final result = await showDialog<Map<String, dynamic>>(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => AutoWeightPriceDialog(
-            productName: productName,
-            unitPrice: productPrice,
-          ),
-        ).whenComplete(() {
-          _isWeightDialogOpen = false;
-        });
-
-        if (result == null) {
-          print("Auto weight cancelled by user");
-          return;
-        }
-
-        final double finalPrice = result["finalPrice"] as double;
-        final double weight = result["weight"] as double;
-
-        print(
-            "Weight: ${weight}kg, Final Price: ₹${finalPrice.toStringAsFixed(2)}");
-
-        await orderHelper.addItemToOrder(
-          null, // or productId if you want to keep reference
-          productName,
-          image,
-          finalPrice,
-          1, // quantity = 1 (weight-based item)
-          productSku,
-          activeOrderId,
-          type: 'weighted',
-          weightQty: weight,
-          productId: productId,
-          variationId: -1,
-          salesPrice: finalPrice,
-          regularPrice: productPrice,
-          unitPrice: productPrice,
-          isEbtEligible: isEbtEligible,
-          // Optional: store weight in meta_data
-          // metaData: [
-          //   {"key": "weight",   "value": weight.toString()},
-          //   {"key": "unit",     "value": "kg"},
-          //   {"key": "_weighed", "value": "true"},
-          // ],
-          onItemAdded: () async {
-            print("Weighted produce item added successfully!");
-          },
-        );
-
-        await fetchOrderItems();
-        await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
-
-        return; // critical: prevent normal quantity=1 addition below
-      }
+      // if (hasProduceTag) {
+      //   if (_isWeightDialogOpen) {
+      //     print("🚫 Weight dialog already open, ignoring duplicate scan");
+      //     return;
+      //   }
+      //   print(
+      //       "🏷 Produce tag detected on product → Showing AutoWeightPriceDialog");
+      //
+      //   // Stop loader before showing dialog
+      //   _isLoading = false;
+      //   if (mounted) setState(() {});
+      //
+      //   _isWeightDialogOpen = true;
+      //   final result = await showDialog<Map<String, dynamic>>(
+      //     context: context,
+      //     barrierDismissible: false,
+      //     builder: (_) => AutoWeightPriceDialog(
+      //       productName: productName,
+      //       unitPrice: productPrice,
+      //     ),
+      //   ).whenComplete(() {
+      //     _isWeightDialogOpen = false;
+      //   });
+      //
+      //   if (result == null) {
+      //     print("Auto weight cancelled by user");
+      //     return;
+      //   }
+      //
+      //   final double finalPrice = result["finalPrice"] as double;
+      //   final double weight = result["weight"] as double;
+      //
+      //   print(
+      //       "Weight: ${weight}kg, Final Price: ₹${finalPrice.toStringAsFixed(2)}");
+      //
+      //   await orderHelper.addItemToOrder(
+      //     null, // or productId if you want to keep reference
+      //     productName,
+      //     image,
+      //     finalPrice,
+      //     1, // quantity = 1 (weight-based item)
+      //     productSku,
+      //     activeOrderId,
+      //     type: 'weighted',
+      //     weightQty: weight,
+      //     productId: productId,
+      //     variationId: -1,
+      //     salesPrice: finalPrice,
+      //     regularPrice: productPrice,
+      //     unitPrice: productPrice,
+      //     isEbtEligible: isEbtEligible,
+      //     // Optional: store weight in meta_data
+      //     // metaData: [
+      //     //   {"key": "weight",   "value": weight.toString()},
+      //     //   {"key": "unit",     "value": "kg"},
+      //     //   {"key": "_weighed", "value": "true"},
+      //     // ],
+      //     onItemAdded: () async {
+      //       print("Weighted produce item added successfully!");
+      //     },
+      //   );
+      //
+      //   await fetchOrderItems();
+      //   await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+      //
+      //   return; // critical: prevent normal quantity=1 addition below
+      // }
 //
 
 // ------------------------------------------------------
@@ -2446,6 +3034,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                 productId: product?.id,
                 variationId: selected["id"],
                 isEbtEligible: isEbtEligible,
+                metaData: scannedLoyaltyMetaData,
+                loyaltyPoints: scannedLoyaltyPoints,
               );
               await fetchOrderItems();
               await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
@@ -2480,6 +3070,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         taxStatus: taxStatus,
         taxClass: taxClass,
         taxRate: taxRate,
+        metaData: scannedLoyaltyMetaData,
+        loyaltyPoints: scannedLoyaltyPoints,
       );
 
       await fetchOrderItems();

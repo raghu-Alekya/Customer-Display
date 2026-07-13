@@ -17,13 +17,13 @@ import '../Blocs/Orders/order_bloc.dart';
 import '../Blocs/Search/product_search_bloc.dart';
 import '../Constants/text.dart';
 import '../Database/db_helper.dart';
+import '../Database/fast_key_db_helper.dart';
 import '../Database/isar_cache_entry.dart';
 import '../Database/isar_service.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/url_helper.dart';
-import '../Helper/api_response.dart';
 import '../Models/Search/product_search_model.dart';
 import '../Preferences/pinaka_preferences.dart';
 import '../Providers/Age/age_verification_provider.dart';
@@ -321,6 +321,8 @@ class TopBar extends StatefulWidget {
     return unique.values.toList();
   }
 
+  static VoidCallback? onRefreshCompleted;
+
   @override
   State<TopBar> createState() => _TopBarState();
 }
@@ -362,12 +364,15 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
   bool _isConnecting = false;
   String _scaleStatus = 'Disconnected';
 
-  WeightProvider? _weightProvider;
+  // WeightProvider? _weightProvider;
 
   // ── CACHED USER DATA ────────────────────────────────────────────────────────
   static Map<String, dynamic>? _cachedUserData;
   static bool _isUserDataLoaded = false;
   static Future<Map<String, dynamic>?>? _initialUserFuture;
+
+  static VoidCallback? onRefreshCompleted;
+
 
   static void clearUserDataCache() {
     _cachedUserData = null;
@@ -604,6 +609,11 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
             ),
           );
         }
+        TopBar.notifyMergedProductCacheMayHaveChanged();
+        await _reloadAllProductsFromIsar();
+        await _syncFastKeysFromApi();
+
+        TopBar.onRefreshCompleted?.call();
         return;
       }
 
@@ -1167,6 +1177,41 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
     return uniqueProducts;
   }
 
+  // Add this method to _TopBarState
+  Future<void> _syncFastKeysFromApi() async {
+    try {
+      if (kDebugMode) print("🔄 Syncing FastKeys from API...");
+
+      final db = await DBHelper.instance.database;
+      final result = await db.query(
+        AppDBConst.userTable,
+        where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+        orderBy: '${AppDBConst.userId} DESC',
+        limit: 1,
+      );
+
+      if (result.isEmpty) {
+        if (kDebugMode) print('⚠️ No user found for FastKey sync');
+        return;
+      }
+
+      final token = result.first[AppDBConst.userToken] as String;
+      final userId = result.first[AppDBConst.userId] as int;
+
+      // Sync FastKeys from API
+      final fastKeyDBHelper = FastKeyDBHelper();
+      await fastKeyDBHelper.syncFastKeysFromApi(token, userId);
+
+      // Clear FastKeyScreen cache
+      // FastKeyScreen.clearFastKeyCache();
+
+      if (kDebugMode) print("✅ FastKey sync completed");
+
+    } catch (e) {
+      if (kDebugMode) print('❌ FastKey sync error: $e');
+    }
+  }
+
   Future<void> _reloadAllProductsFromIsar() async {
     try {
       final uniqueProducts = await _uniqueProductsFromAllCaches();
@@ -1329,6 +1374,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
     String _resolveSku(dynamic p) {
       return (p["sku"] ?? p["fast_key_item_sku"] ?? "").toString();
     }
+
+
 
     final Map<int, dynamic> uniqueById = {};
     for (final p in _cachedProducts) {
@@ -1763,68 +1810,152 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
           ? (product.price as num).toDouble()
           : double.tryParse(product.price?.toString() ?? "0") ?? 0.0;
 
+      // ==================== LOYALTY + METADATA RESOLUTION ====================
+      int loyaltyPoints = 0;
+      List<Map<String, dynamic>> resolvedMetaData = [];
+
+      // Try to get full cached product from Isar
+      dynamic cachedProduct;
+      try {
+        final isar = await IsarService.instance;
+        final entries = await isar.isarCacheEntrys
+            .where()
+            .filter()
+            .keyStartsWith("products_")
+            .findAll();
+
+        for (final entry in entries) {
+          final List<dynamic> products = jsonDecode(entry.json);
+          final match = products.firstWhere(
+                (p) => (p["fast_key_product_id"] ?? p["id"] ?? p["product_id"])
+                ?.toString() == product.id.toString(),
+            orElse: () => null,
+          );
+          if (match != null) {
+            cachedProduct = match;
+            break;
+          }
+        }
+      } catch (e) {
+        debugPrint("Failed to load cached product for loyalty: $e");
+      }
+
+      final String productName = product.name ?? "Unknown";
+      final int productId = product.id ?? 0;
+
+      // ✅ 1️⃣ PRIMARY SOURCE: Isar cache (products_<category>)
+      if (cachedProduct?['meta_data'] is List) {
+        resolvedMetaData = (cachedProduct!['meta_data'] as List)
+            .whereType<Map>()
+            .map((m) => Map<String, dynamic>.from(m))
+            .toList();
+
+        for (final m in resolvedMetaData) {
+          if (m['key'] == '_product_loyalty_points') {
+            loyaltyPoints = int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+            break;
+          }
+        }
+
+        if (loyaltyPoints > 0) {
+          print("🎯 LOYALTY POINTS [ISAR CACHE] → $productName (id:$productId) = $loyaltyPoints pts");
+        }
+      }
+
+      // ✅ 2️⃣ FALLBACK: Try to get meta_data from other sources if available
+      if (loyaltyPoints == 0) {
+        // Check if ProductResponse has metaData field (if it exists)
+        try {
+          // If your ProductResponse model has a metaData property:
+          if (product.metaData != null && product.metaData is List) {
+            final itemMeta = (product.metaData as List)
+                .whereType<Map>()
+                .map((m) => Map<String, dynamic>.from(m))
+                .toList();
+
+            for (final m in itemMeta) {
+              if (m['key'] == '_product_loyalty_points') {
+                loyaltyPoints = int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+                break;
+              }
+            }
+
+            if (resolvedMetaData.isEmpty) resolvedMetaData = itemMeta;
+          }
+        } catch (_) {}
+      }
+
+      if (loyaltyPoints == 0) {
+        print("⚠️ LOYALTY POINTS NOT FOUND for $productName (id:$productId)");
+      } else {
+        print("🎯 FINAL LOYALTY POINTS → $productName: $loyaltyPoints pts | metaEntries: ${resolvedMetaData.length}");
+      }
+      // =====================================================================
+
       // Produce
       final bool hasProduceTag = tags.any((t) =>
       t.slug?.toLowerCase() == "produce" ||
           t.name?.toLowerCase() == "produce");
 
-      if (hasProduceTag) {
-        await WidgetsBinding.instance.endOfFrame;
-        if (!mounted) return;
-
-        _dialogOpen = true;
-        Map<String, dynamic>? result;
-        try {
-          result = await showDialog<Map<String, dynamic>>(
-            context: context,
-            barrierDismissible: false,
-            useRootNavigator: true,
-            builder: (dialogCtx) => ChangeNotifierProvider.value(
-              value: Provider.of<WeightProvider>(context, listen: false),
-              child: AutoWeightPriceDialog(
-                productName: product.name ?? "Product",
-                unitPrice: unitPrice,
-              ),
-            ),
-          );
-        } finally {
-          _dialogOpen = false;
-        }
-
-        if (!mounted) return;
-        if (result == null) return;
-
-        final double finalPrice = (result["finalPrice"] as num).toDouble();
-        final double weightValue = (result["weight"] as num).toDouble();
-
-        setState(() => isAddingItemLoading = true);
-
-        await orderHelper.addItemToOrder(
-          product.id!,
-          product.name ?? 'Unknown',
-          product.images?.isNotEmpty == true ? product.images!.first : '',
-          finalPrice,
-          1,
-          product.sku ?? '',
-          int.parse(activeOrderId),
-          type: "weighted",
-          weightQty: weightValue,
-          productId: product.id,
-          variationId: -1,
-          unitPrice: unitPrice,
-          salesPrice: finalPrice,
-          regularPrice: unitPrice,
-          combo: null,
-          isEbtEligible: isEbtEligible,
-          onItemAdded: () {
-            _removeOverlay();
-            _clearSearch();
-            if (mounted) setState(() => isAddingItemLoading = false);
-            widget.onProductSelected?.call(product);
-          },
-        );
-        return;
-      }
+      // if (hasProduceTag) {
+      //   await WidgetsBinding.instance.endOfFrame;
+      //   if (!mounted) return;
+      //
+      //   _dialogOpen = true;
+      //   Map<String, dynamic>? result;
+      //   try {
+      //     result = await showDialog<Map<String, dynamic>>(
+      //       context: context,
+      //       barrierDismissible: false,
+      //       useRootNavigator: true,
+      //       builder: (dialogCtx) => ChangeNotifierProvider.value(
+      //         value: Provider.of<WeightProvider>(context, listen: false),
+      //         child: AutoWeightPriceDialog(
+      //           productName: product.name ?? "Product",
+      //           unitPrice: unitPrice,
+      //         ),
+      //       ),
+      //     );
+      //   } finally {
+      //     _dialogOpen = false;
+      //   }
+      //
+      //   if (!mounted) return;
+      //   if (result == null) return;
+      //
+      //   final double finalPrice = (result["finalPrice"] as num).toDouble();
+      //   final double weightValue = (result["weight"] as num).toDouble();
+      //
+      //   setState(() => isAddingItemLoading = true);
+      //
+      //   await orderHelper.addItemToOrder(
+      //     product.id!,
+      //     product.name ?? 'Unknown',
+      //     product.images?.isNotEmpty == true ? product.images!.first : '',
+      //     finalPrice,
+      //     1,
+      //     product.sku ?? '',
+      //     int.parse(activeOrderId),
+      //     type: "weighted",
+      //     weightQty: weightValue,
+      //     productId: product.id,
+      //     variationId: -1,
+      //     unitPrice: unitPrice,
+      //     salesPrice: finalPrice,
+      //     regularPrice: unitPrice,
+      //     combo: null,
+      //     isEbtEligible: isEbtEligible,
+      //     metaData: resolvedMetaData.isNotEmpty ? resolvedMetaData : null,
+      //     loyaltyPoints: loyaltyPoints,
+      //     onItemAdded: () {
+      //       _removeOverlay();
+      //       _clearSearch();
+      //       if (mounted) setState(() => isAddingItemLoading = false);
+      //       widget.onProductSelected?.call(product);
+      //     },
+      //   );
+      //   return;
+      // }
 
       // Variants
       List<Map<String, dynamic>> variants =
@@ -1877,6 +2008,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
                   salesPrice: varPrice,
                   regularPrice: varPrice,
                   isEbtEligible: isEbtEligible,
+                  metaData: resolvedMetaData.isNotEmpty ? resolvedMetaData : null,
+                  loyaltyPoints: loyaltyPoints,
                   onItemAdded: () {
                     _removeOverlay();
                     _clearSearch();
@@ -1974,6 +2107,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
         regularPrice: finalPrice,
         unitPrice: finalPrice,
         isEbtEligible: isEbtEligible,
+        metaData: resolvedMetaData.isNotEmpty ? resolvedMetaData : null,
+        loyaltyPoints: loyaltyPoints,
         onItemAdded: () {
           _removeOverlay();
           _clearSearch();

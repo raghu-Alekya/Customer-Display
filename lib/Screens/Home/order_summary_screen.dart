@@ -2461,6 +2461,205 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     await _mergeOrderSummaryLineItemsFromProductCache(orderItems);
   }
 
+  // === LOYALTY POINTS CALCULATION (FIXED + DEBUG) ===
+// FIX: Added Hive fallback so meta_data missing from orderItems is recovered
+//      from the offline order's products array. All other code unchanged.
+  void _calculateAndPrintLoyaltyPoints() async {
+    if (orderItems.isEmpty) {
+      print("⚠️ [Loyalty] No order items found");
+      return;
+    }
+
+    // --- FIX: Pre-load Hive products so we can recover meta_data ---
+    Map<String, List<Map<String, dynamic>>> _hiveMetaByName = {};
+    Map<String, List<Map<String, dynamic>>> _hiveMetaBySku  = {};
+
+    try {
+      final box = StorageProvider.offlineOrders;
+      final String orderKey = widget.offlineOrderId?.toString() ??
+          widget.orderId?.toString() ??
+          orderId?.toString() ??
+          "";
+
+      if (orderKey.isNotEmpty) {
+        final rawOrder = await box.get(orderKey);
+        if (rawOrder is Map) {
+          final hiveOrder = Map<String, dynamic>.from(rawOrder);
+          final hiveProducts = (hiveOrder['products'] as List?) ?? [];
+
+          for (final p in hiveProducts) {
+            if (p is! Map) continue;
+            final product = Map<String, dynamic>.from(p);
+            final metaRaw = product['meta_data'] ?? product['metaData'];
+            if (metaRaw == null) continue;
+
+            List<Map<String, dynamic>> metaList = [];
+            if (metaRaw is List) {
+              for (final m in metaRaw) {
+                if (m is Map) metaList.add(Map<String, dynamic>.from(m));
+              }
+            }
+            if (metaList.isEmpty) continue;
+
+            // Index by name (lowercase)
+            final name = (product['name'] ?? product['product_name'] ?? '')
+                .toString().toLowerCase().trim();
+            if (name.isNotEmpty) {
+              _hiveMetaByName[name] = metaList;
+            }
+
+            // Index by sku (lowercase)
+            final sku = (product['sku'] ?? product['item_sku'] ?? '')
+                .toString().toLowerCase().trim();
+            if (sku.isNotEmpty) {
+              _hiveMetaBySku[sku] = metaList;
+            }
+          }
+          print('🔍 [Loyalty] Hive fallback loaded: '
+              '${_hiveMetaByName.length} by name, '
+              '${_hiveMetaBySku.length} by sku');
+        }
+      }
+    } catch (e) {
+      print('⚠️ [Loyalty] Hive pre-load error (non-fatal): $e');
+    }
+    // --- END FIX ---
+
+    int totalLoyaltyPoints = 0;
+
+    for (var item in orderItems) {
+      final int qty =
+      (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+
+      int itemPoints = 0;
+
+      // Step 1: try meta_data already on the item (original logic, unchanged)
+      final meta = item['meta_data'];
+      if (meta is List) {
+        for (var m in meta) {
+          if (m is Map && m['key'] == '_product_loyalty_points') {
+            itemPoints = int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+            break;
+          }
+        }
+      } else if (meta is Map && meta['key'] == '_product_loyalty_points') {
+        itemPoints = int.tryParse(meta['value']?.toString() ?? '0') ?? 0;
+      }
+
+      // --- FIX: Step 2 – fall back to Hive when item has no meta_data ---
+      if (itemPoints == 0 && (_hiveMetaByName.isNotEmpty || _hiveMetaBySku.isNotEmpty)) {
+        final itemName = (item['item_name'] ?? item['fast_key_item_name'] ?? '')
+            .toString().toLowerCase().trim();
+        final itemSku  = (item['sku'] ?? item['item_sku'] ?? '')
+            .toString().toLowerCase().trim();
+
+        List<Map<String, dynamic>>? fallbackMeta;
+        if (itemName.isNotEmpty) fallbackMeta = _hiveMetaByName[itemName];
+        if (fallbackMeta == null && itemSku.isNotEmpty) {
+          fallbackMeta = _hiveMetaBySku[itemSku];
+        }
+
+        if (fallbackMeta != null) {
+          for (final m in fallbackMeta) {
+            if (m['key'] == '_product_loyalty_points') {
+              itemPoints =
+                  int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+              print('🔄 [Loyalty] Recovered meta from Hive for "$itemName" '
+                  '→ $itemPoints pts');
+              break;
+            }
+          }
+        }
+      }
+      // --- END FIX ---
+
+      final linePoints = qty * itemPoints;
+      item['loyalty_points'] = linePoints; // save per item (unchanged)
+
+      if (linePoints > 0) {
+        final itemName = (item['item_name'] ??
+            item['fast_key_item_name'] ??
+            'Unknown')
+            .toString();
+        print(
+            '🔹 [Loyalty] $itemName × $qty = $linePoints pts (per item: $itemPoints)');
+      }
+
+      totalLoyaltyPoints += linePoints;
+    }
+
+    // Store total on order level (unchanged)
+    _order['total_loyalty_points'] = totalLoyaltyPoints;
+
+    if (totalLoyaltyPoints > 0) {
+      print(
+          '🛒 [Loyalty] ORDER TOTAL LOYALTY POINTS = $totalLoyaltyPoints pts');
+    } else {
+      print('ℹ️ [Loyalty] No loyalty points found in this order');
+    }
+
+    // Refresh UI so the points row shows the new total
+    if (mounted) setState(() {});
+  }
+
+
+  // DEBUG ONLY - call this to find where loyalty data actually lives
+  Future<void> _debugPrintHiveOrderStructure() async {
+    try {
+      final box = StorageProvider.offlineOrders;
+      final String orderKey = widget.offlineOrderId?.toString() ??
+          widget.orderId?.toString() ??
+          orderId?.toString() ??
+          "";
+
+      print('🔎 [DEBUG] Looking for orderKey: $orderKey');
+
+      if (orderKey.isEmpty) {
+        print('🔎 [DEBUG] orderKey is EMPTY');
+        return;
+      }
+
+      final rawOrder = await box.get(orderKey);
+      if (rawOrder == null) {
+        print('🔎 [DEBUG] Hive entry is NULL for key: $orderKey');
+        // Print ALL keys in box to find correct one
+        final allKeys = await box.getKeys();
+        print('🔎 [DEBUG] All Hive keys: $allKeys');
+        return;
+      }
+
+      final hiveOrder = Map<String, dynamic>.from(rawOrder as Map);
+      print('🔎 [DEBUG] Hive order top-level keys: ${hiveOrder.keys.toList()}');
+
+      // Check products array
+      final products = (hiveOrder['products'] as List?) ?? [];
+      print('🔎 [DEBUG] products[] count: ${products.length}');
+
+      for (int i = 0; i < products.length; i++) {
+        if (products[i] is! Map) continue;
+        final p = Map<String, dynamic>.from(products[i] as Map);
+        print('🔎 [DEBUG] products[$i] keys: ${p.keys.toList()}');
+        print('🔎 [DEBUG] products[$i] name: ${p['name'] ?? p['product_name']}');
+        print('🔎 [DEBUG] products[$i] meta_data: ${p['meta_data']}');
+        print('🔎 [DEBUG] products[$i] loyalty_points: ${p['loyalty_points']}');
+      }
+
+      // Also check orderItems (what fetchOrderItems returns)
+      print('🔎 [DEBUG] orderItems count: ${orderItems.length}');
+      for (int i = 0; i < orderItems.length; i++) {
+        final item = orderItems[i];
+        print('🔎 [DEBUG] orderItems[$i] keys: ${item.keys.toList()}');
+        print('🔎 [DEBUG] orderItems[$i] name: ${item['item_name']}');
+        print('🔎 [DEBUG] orderItems[$i] meta_data: ${item['meta_data']}');
+        print('🔎 [DEBUG] orderItems[$i] loyalty_points: ${item['loyalty_points']}');
+        print('🔎 [DEBUG] orderItems[$i] product_id: ${item['product_id']}');
+      }
+
+    } catch (e, st) {
+      print('🔎 [DEBUG] Error: $e\n$st');
+    }
+  }
+
   static const MethodChannel customerDisplayChannel = MethodChannel(
     'com.example.flutter_customer_display/sunmi_display',
   );
@@ -3286,6 +3485,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // remaining initState code...
 
     ScannerGuard.isCouponPopupOpen = true;
+    // IMPORTANT: Call after merges
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _mergeOrderSummaryLineItemsFromProductCache(orderItems);
+      _mergeOrderSummaryLineItemsFromHive(orderItems, offlineOrder); // if exists
+
+      _calculateAndPrintLoyaltyPoints();   // ← ADD THIS
+      if (mounted) setState(() {});
+    });
 
     orderItems =
         widget.orderItems.map((e) => Map<String, dynamic>.from(e)).toList();
@@ -3371,6 +3578,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
 
       await _enrichOrderItemsFromHiveProducts();
+      await _debugPrintHiveOrderStructure();
+
+      _calculateAndPrintLoyaltyPoints();
       await _recalculateTaxOnDiscountedItems();
       if (!widget.itemPricesAlreadyAdjusted) {
         await _recalculateGrossAndNetFromLineItemDiscounts();
@@ -4189,6 +4399,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       if (kDebugMode) {
         print("🔄 Voiding card via kickback API");
+
+        print("   uriiiiiiiiiii: $uri");
+
         print("   order_id: $wooOrderId");
         print("   payment_id: $paymentId");
         print("   transaction_id: $transactionId");
@@ -4208,7 +4421,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       );
 
       if (kDebugMode) {
-        print("Kickback void response: ${response.statusCode}");
+        print("card void response: ${response.statusCode}");
         print("Body: ${response.body}");
       }
 
@@ -4216,10 +4429,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       jsonDecode(response.body) as Map<String, dynamic>;
 
       if (body["success"] == true) {
-        if (kDebugMode) print("✅ Kickback card void successful");
+        if (kDebugMode) print("✅ card void successful");
       } else {
         if (kDebugMode) {
-          print("Kickback card void failed: ${body["message"]}");
+          print(" card void failed: ${body["message"]}");
         }
       }
     } catch (e, st) {
@@ -4655,6 +4868,421 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
+  // Future<void> _handleCardPaymentViaAPI() async {
+  //   _isCardPaymentCancelled = false;
+  //
+  //   final double enteredAmount = double.tryParse(
+  //     amountController.text
+  //         .replaceAll(TextConstants.currencySymbol, '')
+  //         .trim(),
+  //   ) ??
+  //       0.0;
+  //
+  //   if (enteredAmount <= 0) {
+  //     setState(() => _amountErrorText = TextConstants.amountValidation);
+  //     return;
+  //   }
+  //
+  //   _recalculateGrossAndNetFromLineItemDiscounts();
+  //   await _recalculateTaxOnDiscountedItems();
+  //   await _calculateBalanceFromPaymentHistory();
+  //
+  //   final double effectiveBalance =
+  //       _currentPaymentRemainingBalance ?? balanceAmount;
+  //   final double amount = enteredAmount.clamp(0.0, effectiveBalance + 0.01);
+  //
+  //   if ((enteredAmount - amount).abs() > 0.01) {
+  //     setState(() {
+  //       _rawAmount = (amount * 100).round();
+  //       amountController.text =
+  //       '${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}';
+  //       _isAmountEntered = true;
+  //     });
+  //
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text(
+  //             'Amount adjusted to available balance (\$${amount.toStringAsFixed(2)})'),
+  //         backgroundColor: Colors.orange,
+  //         duration: const Duration(seconds: 2),
+  //       ),
+  //     );
+  //   }
+  //
+  //   _amountErrorText = null;
+  //
+  //   final double balanceBeforePayment = effectiveBalance;
+  //   final bool willBeFullPayment = amount >= (balanceBeforePayment - 0.01);
+  //
+  //   if (kDebugMode) {
+  //     print(
+  //         '💰 CARD PAYMENT → Amount: \$$amount | Balance before: \$$balanceBeforePayment');
+  //   }
+  //
+  //   setState(() {
+  //     isLoading = true;
+  //     _processingPaymentMethod = TextConstants.card;
+  //   });
+  //   _showPaymentProgressDialog(context);
+  //
+  //   try {
+  //     // ── Detect void and clear cached wooOrderId if needed ──────────────
+  //     try {
+  //       final String orderKey = widget.offlineOrderId?.toString() ??
+  //           widget.orderId?.toString() ??
+  //           orderId?.toString() ??
+  //           '';
+  //       if (orderKey.isNotEmpty) {
+  //         final box = StorageProvider.offlineOrders;
+  //         final rawHive = await box.get(orderKey);
+  //         if (rawHive is Map) {
+  //           final hiveMap = Map<String, dynamic>.from(rawHive);
+  //           final int localOrderId = int.tryParse(orderKey) ?? 0;
+  //           if (localOrderId > 0) {
+  //             final payments = await LocalPaymentDBHelper.instance
+  //                 .getPaymentsByOrderId(localOrderId);
+  //             final bool hasVoidedPayment = payments
+  //                 .any((p) => p.status == PaymentDbStatus.voided || p.amount < 0);
+  //             if (hasVoidedPayment) {
+  //               hiveMap['synced'] = false;
+  //               await box.put(orderKey, hiveMap);
+  //               if (kDebugMode) {
+  //                 print(
+  //                     '🔄 Void detected → cleared cached wooOrderId for fresh sync');
+  //               }
+  //             }
+  //           }
+  //         }
+  //       }
+  //     } catch (e) {
+  //       if (kDebugMode) {
+  //         print('⚠️ Void-detection pre-check failed (non-fatal): $e');
+  //       }
+  //     }
+  //
+  //     int wooOrderId =
+  //     await _resolveWooOrderIdForPayment(forceSync: false);
+  //     if (wooOrderId == 0) {
+  //       _hidePaymentProgressDialog();
+  //       setState(() {
+  //         isLoading = false;
+  //         _processingPaymentMethod = null;
+  //       });
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(
+  //             content: Text('Could not resolve order'),
+  //             backgroundColor: Colors.red),
+  //       );
+  //       return;
+  //     }
+  //
+  //     if (_isCardPaymentCancelled) return;
+  //
+  //     final String token = await _getTokenFromDb();
+  //     if (_isCardPaymentCancelled) return;
+  //
+  //     final requestBody = {
+  //       'order_id': wooOrderId,
+  //       'amount': amount ,
+  //       'payment_method': 'card',
+  //       'shift_id': shiftId,
+  //     };
+  //
+  //     if (kDebugMode) {
+  //       print('========== CARD PAYMENT REQUEST ==========');
+  //       print('Body: ${jsonEncode(requestBody)}');
+  //       print('==========================================');
+  //     }
+  //
+  //     final uri = Uri.parse(
+  //         '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment');
+  //     //
+  //     // final http.Response response = await http.post(
+  //     //   uri,
+  //     //   headers: {
+  //     //     'Content-Type': 'application/json',
+  //     //     'Authorization': 'Bearer $token',
+  //     //   },
+  //     //   body: jsonEncode(requestBody),
+  //     // );
+  //
+  //     final http.Response response = await _postWithRedirect(
+  //       uri,
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //         'Authorization': 'Bearer $token',
+  //       },
+  //       body: jsonEncode(requestBody),
+  //     );
+  //
+  //     _hidePaymentProgressDialog();
+  //     setState(() {
+  //       isLoading = false;
+  //       _processingPaymentMethod = null;
+  //     });
+  //
+  //     if (kDebugMode) {
+  //       print('URL: $uri');
+  //       print('Response Status Code: ${response.statusCode}');
+  //       print('Response Body: ${response.body}');
+  //     }
+  //
+  //     // final Map<String, dynamic> body =
+  //     // jsonDecode(response.body) as Map<String, dynamic>;
+  //
+  //     Map<String, dynamic> body;
+  //     try {
+  //       body = jsonDecode(response.body) as Map<String, dynamic>;
+  //     } catch (e) {
+  //       _hidePaymentProgressDialog();
+  //       setState(() {
+  //         isLoading = false;
+  //         _processingPaymentMethod = null;
+  //       });
+  //       if (mounted) {
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //           SnackBar(
+  //             content: const Text("Payment failed. Please try again."),
+  //             backgroundColor: Colors.red,
+  //             duration: const Duration(seconds: 3),
+  //             action: SnackBarAction(
+  //               label: 'Retry',
+  //               textColor: Colors.white,
+  //               onPressed: () {
+  //                 _handleCardPaymentViaAPI();
+  //               },
+  //             ),
+  //           ),
+  //         );
+  //       }
+  //       return;
+  //     }
+  //
+  //     if (body['success'] != true) {
+  //       final String msg =
+  //           body['message']?.toString() ?? 'Card payment failed';
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //           SnackBar(content: Text(msg), backgroundColor: Colors.red));
+  //       _resetAmountAfterPay();
+  //       return;
+  //     }
+  //
+  //     final String? serverPaymentId = _extractServerPaymentId(body);
+  //
+  //     // ── KEY FIX: use helper that reads both top-level and nested fields ──
+  //     final String? cardTransactionId = _extractCardTransactionId(body);
+  //
+  //     if (kDebugMode) {
+  //       print(
+  //           'cardTransactionId extracted → $cardTransactionId (serverPaymentId: $serverPaymentId)');
+  //     }
+  //
+  //     // ── Cache wooOrderId from response ──────────────────────────────────
+  //     final int responseWooOrderId =
+  //         (body['order_id'] as num?)?.toInt() ?? wooOrderId;
+  //     if (responseWooOrderId > 0) {
+  //       try {
+  //         final box = StorageProvider.offlineOrders;
+  //         final String orderKey = widget.offlineOrderId?.toString() ??
+  //             widget.orderId?.toString() ??
+  //             orderId?.toString() ??
+  //             '';
+  //         if (orderKey.isNotEmpty) {
+  //           final rawHive = await box.get(orderKey);
+  //           if (rawHive is Map) {
+  //             final hiveMap = Map<String, dynamic>.from(rawHive);
+  //             hiveMap['wooOrderId'] = responseWooOrderId;
+  //             hiveMap['synced'] = true;
+  //             hiveMap['sync_at'] = DateTime.now().toIso8601String();
+  //             await box.put(orderKey, hiveMap);
+  //             if (kDebugMode) {
+  //               print(
+  //                   '✅ wooOrderId cached from payment response → $responseWooOrderId');
+  //             }
+  //           }
+  //         }
+  //       } catch (e) {
+  //         if (kDebugMode) {
+  //           print('⚠️ Failed to cache wooOrderId from response: $e');
+  //         }
+  //       }
+  //     }
+  //
+  //     // ── Build _lastPayment with transactionId populated ─────────────────
+  //     _lastPayment = LastPaymentInfo(
+  //       method: TextConstants.card,
+  //       amount: amount,
+  //       paymentId: serverPaymentId,
+  //       transactionId: cardTransactionId, // ← now correctly set
+  //     );
+  //
+  //     if (kDebugMode) {
+  //       print('💾 _lastPayment built:');
+  //       print('   method        : ${_lastPayment!.method}');
+  //       print('   amount        : ${_lastPayment!.amount}');
+  //       print('   paymentId     : ${_lastPayment!.paymentId}');
+  //       print('   transactionId : ${_lastPayment!.transactionId}');
+  //     }
+  //
+  //     // ── Persist lastPayment (including transactionId) to Hive ───────────
+  //     try {
+  //       final box = StorageProvider.offlineOrders;
+  //       final String orderKey = widget.offlineOrderId?.toString() ??
+  //           widget.orderId?.toString() ??
+  //           orderId?.toString() ??
+  //           '';
+  //       if (orderKey.isNotEmpty) {
+  //         final rawHive = await box.get(orderKey);
+  //         if (rawHive is Map) {
+  //           final hiveMap = Map<String, dynamic>.from(rawHive);
+  //           hiveMap['lastPayment'] = _lastPayment!.toJson();
+  //           await box.put(orderKey, hiveMap);
+  //           if (kDebugMode) {
+  //             print(
+  //                 '✅ lastPayment persisted to Hive → transactionId: $cardTransactionId');
+  //           }
+  //         }
+  //       }
+  //     } catch (e) {
+  //       if (kDebugMode) {
+  //         print('⚠️ Failed to persist lastPayment to Hive: $e');
+  //       }
+  //     }
+  //
+  //     // ── Save locally ─────────────────────────────────────────────────────
+  //     final String datetimeStr =
+  //     DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+  //     final localPayment = LocalPayment(
+  //       orderId: orderId ?? 0,
+  //       title: TextConstants.card,
+  //       amount: amount,
+  //       paymentMethod: TextConstants.card,
+  //       shiftId: shiftId,
+  //       vendorId: vendorId,
+  //       userId: userId ?? 0,
+  //       serviceType: serviceType,
+  //       datetime: datetimeStr,
+  //       notes: 'Card payment via API',
+  //       isSynced: true,
+  //       createdAt: DateTime.now(),
+  //       remainingBalance:
+  //       (balanceBeforePayment - amount).clamp(0.0, double.infinity),
+  //       status: PaymentDbStatus.pending,
+  //     );
+  //
+  //     final savedPayment =
+  //     await LocalPaymentDBHelper.instance.savePayment(localPayment);
+  //
+  //     if (serverPaymentId != null) {
+  //       await LocalPaymentDBHelper.instance
+  //           .markAsSynced(savedPayment.id, int.tryParse(serverPaymentId) ?? 0);
+  //     }
+  //
+  //     await _savePaymentToHive(
+  //       amount: amount,
+  //       paymentMethod: TextConstants.card,
+  //       transactionId: 'card_api_${savedPayment.id}',
+  //       localPayment: savedPayment,
+  //     );
+  //     await _saveLocalPaymentToHive(savedPayment);
+  //
+  //     // ── Refresh balance ──────────────────────────────────────────────────
+  //     await _calculateBalanceFromPaymentHistory();
+  //
+  //     final double finalRemaining =
+  //         _currentPaymentRemainingBalance ?? balanceAmount;
+  //     final bool isActuallyFull = finalRemaining <= 0.01;
+  //
+  //     final double newTenderAmount = payByCard;
+  //     final double newChangeAmount = amount > balanceBeforePayment
+  //         ? (amount - balanceBeforePayment)
+  //         : 0.0;
+  //
+  //     // ── EBT recalculation ────────────────────────────────────────────────
+  //     final double originalEbt = ebtTotal;
+  //     final double nonEbtOrderValue =
+  //     (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
+  //     final double totalNonEbtPaid = payByCash + payByOther + newTenderAmount;
+  //     final double overflowToEbt =
+  //     totalNonEbtPaid > nonEbtOrderValue
+  //         ? (totalNonEbtPaid - nonEbtOrderValue)
+  //         : 0.0;
+  //     final double newEbtTotal =
+  //     (originalEbt - overflowToEbt).clamp(0.0, double.infinity);
+  //
+  //     Future.microtask(() => _recalculateEbtAfterNonEbtPayment?.call());
+  //
+  //     setState(() {
+  //       balanceAmount = finalRemaining;
+  //       payByCard = newTenderAmount;
+  //       ebtTotal = newEbtTotal;
+  //       _currentPaymentRemainingBalance =
+  //       isActuallyFull ? null : finalRemaining;
+  //       _lastPaymentDetails = {
+  //         'amount': amount,
+  //         'method': TextConstants.card,
+  //         'remainingBalance': finalRemaining,
+  //         'previousBalance': balanceBeforePayment,
+  //         'datetime': DateTime.now().toIso8601String(),
+  //         'paymentNumber':
+  //         (_lastPaymentDetails?['paymentNumber'] ?? 0) + 1,
+  //       };
+  //     });
+  //
+  //     _resetAmountAfterPay();
+  //
+  //     // ── Show success or partial dialog ───────────────────────────────────
+  //     if (isActuallyFull) {
+  //       _successPopupShown = true;
+  //       final box = StorageProvider.offlineOrders;
+  //       final key =
+  //       (orderId ?? widget.offlineOrderId ?? 0).toString();
+  //       final raw = await box.get(key);
+  //       final couponResponse =
+  //       (raw is Map && raw['coupon_response'] is Map)
+  //           ? Map<String, dynamic>.from(raw['coupon_response'])
+  //           : <String, dynamic>{};
+  //
+  //       if (mounted) {
+  //         await CustomerDisplayService.showThankYou();
+  //         _showPaymentDialog(
+  //           context,
+  //           newTenderAmount,
+  //           changeAmount: newChangeAmount,
+  //           showChange: newChangeAmount > 0,
+  //           couponResponse: couponResponse,
+  //         );
+  //       }
+  //     } else {
+  //       if (mounted) {
+  //         _showPartialPaymentDialog(context, amount);
+  //       }
+  //     }
+  //   } catch (e, st) {
+  //     _hidePaymentProgressDialog();
+  //     setState(() {
+  //       isLoading = false;
+  //       _processingPaymentMethod = null;
+  //       selectedPaymentMethod = TextConstants.cash;
+  //     });
+  //     _resetAmountAfterPay();
+  //
+  //     if (kDebugMode) {
+  //       print('❌ _handleCardPaymentViaAPI error: $e');
+  //       print(st);
+  //     }
+  //
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //           content: Text('Card payment error: $e'),
+  //           backgroundColor: Colors.red),
+  //     );
+  //   }
+  // }
+
+  //// Above coe was working fine
+
+
   Future<void> _handleCardPaymentViaAPI() async {
     _isCardPaymentCancelled = false;
 
@@ -4783,15 +5411,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final uri = Uri.parse(
           '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment');
-      //
-      // final http.Response response = await http.post(
-      //   uri,
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //     'Authorization': 'Bearer $token',
-      //   },
-      //   body: jsonEncode(requestBody),
-      // );
 
       final http.Response response = await _postWithRedirect(
         uri,
@@ -4813,9 +5432,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         print('Response Status Code: ${response.statusCode}');
         print('Response Body: ${response.body}');
       }
-
-      // final Map<String, dynamic> body =
-      // jsonDecode(response.body) as Map<String, dynamic>;
 
       Map<String, dynamic> body;
       try {
@@ -4845,23 +5461,77 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return;
       }
 
-      if (body['success'] != true) {
-        final String msg =
-            body['message']?.toString() ?? 'Card payment failed';
+      // ── FIX: Check if payment was actually approved ──
+      final String? paymentStatus = body['status']?.toString().toLowerCase();
+      final bool isPaymentApproved = paymentStatus == 'ready' ||
+          paymentStatus == 'approved' ||
+          paymentStatus == 'approval';
+
+      if (body['success'] != true || !isPaymentApproved) {
+        // Payment was declined or failed
+        // Get the status message from response or use a generic one
+        String statusMessage = body['message']?.toString() ?? 'Transaction declined';
+
+        // Map specific status codes to user-friendly messages
+        final String? responseCode = body['transaction_details']?['transactionResult']?['responseCode']?.toString();
+        final String? responseMessage = body['transaction_details']?['transactionResult']?['responseMessage']?.toString();
+
+        // Build a user-friendly decline message
+        String displayMessage = 'Card payment declined';
+
+        // If we have a specific decline reason, use it
+        if (responseMessage != null && responseMessage.isNotEmpty) {
+          // Clean up the message - remove technical terms
+          if (responseMessage.toLowerCase().contains('time-out')) {
+            displayMessage = 'Transaction timeout - Transaction declined';
+          } else if (responseMessage.toLowerCase().contains('decline')) {
+            displayMessage = 'Transaction declined - please use another card';
+          } else if (responseCode != null && responseCode.isNotEmpty) {
+            displayMessage = 'Transaction declined (Code: $responseCode)';
+          } else {
+            displayMessage = responseMessage;
+          }
+        } else if (statusMessage.toLowerCase().contains('time-out')) {
+          displayMessage = 'Transaction timeout - please try again';
+        } else if (statusMessage.toLowerCase().contains('decline')) {
+          displayMessage = 'Transaction declined - please use another card';
+        }
+
+        if (kDebugMode) {
+          print('❌ Card payment declined: $displayMessage');
+          print('   Status: $paymentStatus');
+          print('   Original message: ${body['message']}');
+          print('   Response message: $responseMessage');
+          print('   Response code: $responseCode');
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(msg), backgroundColor: Colors.red));
+          SnackBar(
+            content: Text(displayMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+            // action: SnackBarAction(
+            //   label: 'Retry',
+            //   textColor: Colors.white,
+            //   onPressed: () {
+            //     _handleCardPaymentViaAPI();
+            //   },
+            // ),
+          ),
+        );
         _resetAmountAfterPay();
         return;
       }
 
+      // ── Payment was APPROVED - continue with success flow ──
       final String? serverPaymentId = _extractServerPaymentId(body);
 
-      // ── KEY FIX: use helper that reads both top-level and nested fields ──
       final String? cardTransactionId = _extractCardTransactionId(body);
 
       if (kDebugMode) {
         print(
             'cardTransactionId extracted → $cardTransactionId (serverPaymentId: $serverPaymentId)');
+        print('✅ Payment APPROVED with status: $paymentStatus');
       }
 
       // ── Cache wooOrderId from response ──────────────────────────────────
@@ -4900,7 +5570,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         method: TextConstants.card,
         amount: amount,
         paymentId: serverPaymentId,
-        transactionId: cardTransactionId, // ← now correctly set
+        transactionId: cardTransactionId,
       );
 
       if (kDebugMode) {
@@ -7282,6 +7952,29 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                         _buildOrderCalculation(
                                             TextConstants.change,
                                             '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
+
+                                        const SizedBox(height: 6),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              "Order Earned Points",
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.amber[800],
+                                              ),
+                                            ),
+                                            Text(
+                                              "${_order['total_loyalty_points'] ?? 0} pts",
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.amber[700],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -13215,6 +13908,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
+
+    // ── NEW: Only print "Order Earned Points" when redeem/loyalty was active for this order ──
+    final bool _shouldPrintEarnedPoints =
+        isRedeemActive || redeemedValue > 0 || availablePoints > 0;
+
+    if (_shouldPrintEarnedPoints) {
+      final int earnedPoints =
+          (_order['total_loyalty_points'] as num?)?.toInt() ?? 0;
+
+      bytes += ticket.row([
+        PosColumn(text: "Order Earned Points", width: 8),
+        PosColumn(
+          text: "$earnedPoints pts",
+          width: 4,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
+
 
     bytes += ticket.row([
       PosColumn(

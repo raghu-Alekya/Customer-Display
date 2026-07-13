@@ -90,6 +90,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   bool _isPaginating = false;
   int? userId;
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
+// 🔥 NEW: in-memory cache of already-loaded tab items, keyed by fastKeyTabId
+  final Map<int, List<Map<String, dynamic>>> _tabItemsMemoryCache = {};
 
   static int? _productMetaIdFromCacheMap(dynamic raw) {
     if (raw is! Map) return null;
@@ -146,6 +148,10 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   final ScrollController _scrollController = ScrollController();
   int _refreshCounter =
   0; //Build #1.0.170: Added: Counter to trigger RightOrderPanel refresh only when needed
+  bool _isRefreshing = false;
+
+
+
 
   @override
   void initState() {
@@ -169,6 +175,34 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     fastKeyTabIdNotifier.addListener(_onTabChanged);
     TopBar.mergedProductCacheRevision
         .addListener(_onMergedProductCacheRevision);
+    TopBar.onRefreshCompleted = () async {
+      if (!mounted) return;
+      debugPrint("🔄 FastKeyScreen: Refreshing after TopBar sync");
+      if (_isRefreshing) return;
+      _isRefreshing = true;
+      try {
+        setState(() => isItemsLoading = true);
+
+        // Drop stale in-memory product meta so the next lookup re-reads Isar/Hive
+        _productMetaCache.clear();
+        NestedGridWidget.clearProductMetaCache();
+
+        await _ingestProductMetaFromMerged();
+
+        if (_fastKeyTabId != null) {
+          await fastKeyDBHelper.refreshFastKeyItemMetadata(_fastKeyTabId!);
+          await _loadFastKeyTabItems();
+        }
+
+        await _loadFastKeysTabs();
+        await _resolveFastKeyMeta();
+
+        setState(() => isItemsLoading = false);
+        debugPrint("✅ FastKeyScreen: Refresh complete");
+      } finally {
+        _isRefreshing = false;
+      }
+    };
   }
 
   Future<void> _initializeData() async {
@@ -231,26 +265,38 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   Future<void> _onTabChanged() async {
     if (kDebugMode) {
-      print(
-          "### FastKeyScreen: _onTabChanged: New Tab ID: ${fastKeyTabIdNotifier.value}");
+      print("### FastKeyScreen: _onTabChanged: New Tab ID: ${fastKeyTabIdNotifier.value}");
     }
+
+    final newTabId = fastKeyTabIdNotifier.value;
+    final bool hasCache =
+        newTabId != null && _tabItemsMemoryCache.containsKey(newTabId);
+
     setState(() {
-      _fastKeyTabId = fastKeyTabIdNotifier.value;
-      fastKeyProductItems.clear();
-      isItemsLoading =
-      true; //Build #1.0.92: Fixed Issue: Loader is not working at fast key grid for selected tab
+      _fastKeyTabId = newTabId;
+      if (hasCache) {
+        // 🔥 NEW: instantly show cached items, no clear + no shimmer
+        fastKeyProductItems =
+        List<Map<String, dynamic>>.from(_tabItemsMemoryCache[newTabId]!);
+        reorderedIndices = List.filled(fastKeyProductItems.length, null);
+        isItemsLoading = false;
+      } else {
+        fastKeyProductItems.clear();
+        isItemsLoading = true; //Build #1.0.92
+      }
     });
+
     if (_fastKeyTabId != null) {
-      //Build #1.0.84
       await fastKeyDBHelper.saveActiveFastKeyTab(_fastKeyTabId!);
       if (kDebugMode) {
-        print(
-            "### FastKeyScreen: Saved active tab ID in _onTabChanged: $_fastKeyTabId");
+        print("### FastKeyScreen: Saved active tab ID in _onTabChanged: $_fastKeyTabId");
       }
-      await _loadFastKeyTabItems();
+      // 🔥 NEW: if we already had cache, refresh silently (no loader flicker)
+      await _loadFastKeyTabItems(silent: hasCache);
       await _resolveFastKeyMeta();
     }
   }
+
 
   /// Align Fast Keys with TopBar’s merged Isar/Hive read so EBT resolves on first paint.
   Future<void> _awaitMergedProductCacheReadyForFastKeys() async {
@@ -631,15 +677,17 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
   }
 
-  Future<void> _loadFastKeyTabItems() async {
+  Future<void> _loadFastKeyTabItems({bool silent = false}) async {
     if (kDebugMode) {
       print("FastKey Screen _loadFastKeyTabItems $_fastKeyTabId");
     }
 
     if (_fastKeyTabId == null) {
-      setState(() {
-        isItemsLoading = false;
-      });
+      if (!silent && mounted) {
+        setState(() {
+          isItemsLoading = false;
+        });
+      }
       return;
     }
 
@@ -653,8 +701,10 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         print("✅ Loading FastKey items from LOCAL DB CACHE");
       }
 
-      final preparedItems =
-      await _prepareFastKeyItemsForInitialUi(cachedItems);
+      final preparedItems = await _prepareFastKeyItemsForInitialUi(cachedItems);
+
+      // 🔥 NEW: keep in-memory cache for this tab up to date
+      _tabItemsMemoryCache[_fastKeyTabId!] = preparedItems;
 
       if (mounted) {
         setState(() {
@@ -668,8 +718,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
 
     // CACHE MISS → API
-    final tabs =
-    await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId!);
+    final tabs = await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId!);
 
     if (tabs.isEmpty) {
       if (mounted) {
@@ -698,8 +747,10 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     );
 
     final apiItems = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
-    final preparedItems =
-    await _prepareFastKeyItemsForInitialUi(apiItems);
+    final preparedItems = await _prepareFastKeyItemsForInitialUi(apiItems);
+
+    // 🔥 NEW
+    _tabItemsMemoryCache[_fastKeyTabId!] = preparedItems;
 
     if (mounted) {
       setState(() {
@@ -710,7 +761,9 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
   }
 
+
   Future<List<Map<String, dynamic>>> _prepareFastKeyItemsForInitialUi(
+
       List<Map<String, dynamic>> items) async {
     await _ingestProductMetaFromMerged();
     final List<Map<String, dynamic>> prepared = [];
@@ -880,6 +933,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   }
 
   // Build #1.0.87 : Reload fastKey tab products after adding new item into fastKey
+// Build #1.0.87 : Reload fastKey tab products after adding new item into fastKey
   Future<void> _refreshFastKeyTabItems() async {
     if (_fastKeyTabId == null) {
       if (kDebugMode) {
@@ -902,6 +956,10 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         }
         final items = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId ?? 1);
         final preparedItems = await _prepareFastKeyItemsForInitialUi(items);
+
+        // 🔥 NEW: keep in-memory cache for this tab up to date
+        _tabItemsMemoryCache[_fastKeyTabId!] = preparedItems;
+
         if (kDebugMode) {
           print(
               "#### Retrieved ${items.length} FastKey Items for Tab ID: $_fastKeyTabId");
@@ -1018,92 +1076,6 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         .addProducts(fastKeyId: fastKeyServerId, products: [item]);
   }
 
-  Future<void> _deleteFastKeyTabItem(int fastKeyTabItemServerId) async {
-    // Build #1.0.104
-    if (_fastKeyTabId == null) return;
-
-    // Build #1.0.89: delete FastKey product API integrated
-    var tabs =
-    await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
-    if (tabs.isEmpty) return;
-
-    var fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
-
-    /// Build #1.0.104: No need to check again we already doing in _showDeleteConfirmationDialog
-    // var item = fastKeyProductItems.firstWhere((item) => item[AppDBConst.fastKeyIdForeignKey] == fastKeyTabItemId);
-    // String productId = item[AppDBConst.fastKeyProductId];
-
-    StreamSubscription? subscription;
-    subscription =
-        _fastKeyProductBloc.deleteProductStream.listen((response) async {
-          if (!mounted) {
-            subscription?.cancel();
-            return;
-          }
-          if (response.status == Status.COMPLETED) {
-            if (kDebugMode) {
-              print(
-                  "### FastKeyScreen: Product deleted successfully from FastKey: ${response.data!.fastkeyId}");
-            }
-            await _refreshFastKeyTabItems(); // refresh UI
-            if (Misc.showDebugSnackBar) {
-              // Build #1.0.254
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                      response.data?.message ?? "Product deleted from Fast Key"),
-                  backgroundColor: Colors.green,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            }
-            subscription?.cancel();
-          } else if (response.status == Status.ERROR) {
-            if (response.message!.contains('Unauthorised')) {
-              if (kDebugMode) {
-                print("Fast key 5---- Unauthorised : ${response.message!}");
-              }
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) {
-                  Navigator.pushReplacement(context,
-                      MaterialPageRoute(builder: (context) => LoginScreen()));
-
-                  if (kDebugMode) {
-                    print("message --- ${response.message}");
-                  }
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content:
-                      Text("Unauthorised. Session is expired on this device."),
-                      backgroundColor: Colors.red,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                }
-              });
-            } else {
-              if (kDebugMode) {
-                print(
-                    "### FastKeyScreen: Failed to delete product: ${response.message}");
-              }
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(TextConstants.failedToDeleteProductFromFastKey),
-                  // Build #1.0.144
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            }
-            subscription?.cancel();
-          }
-        });
-
-    /// delete FastKey product API call
-    // await _fastKeyProductBloc.deleteProduct(fastKeyServerId, fastKeyTabItemId);
-    await _fastKeyProductBloc.deleteProduct(
-        fastKeyServerId, fastKeyTabItemServerId); // Build #1.0.104
-  }
 
   Future<void> _pickImage() async {
     final XFile? imageFile =
@@ -2850,7 +2822,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           } else if (itemIndex != null) {
             final fastKeyTabItemServerId =
             fastKeyProductItems[itemIndex][AppDBConst.fastKeyProductId];
-            await _deleteFastKeyTabItem(int.parse(fastKeyTabItemServerId));
+            // await _deleteFastKeyTabItem(int.parse(fastKeyTabItemServerId)); //Bala
             setState(() {
               enableIcons = false; // Build #1.0.204: Hide icons after deletion
               selectedItemIndex = null; // Clear selection
@@ -2965,9 +2937,14 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     debugPrint("✅ END _resolveFastKeyMeta");
 
+    // 🔥 NEW: keep in-memory cache in sync with resolved meta (variants/EBT)
+    if (_fastKeyTabId != null) {
+      _tabItemsMemoryCache[_fastKeyTabId!] =
+      List<Map<String, dynamic>>.from(fastKeyProductItems);
+    }
+
     if (mounted) setState(() {});
   }
-
   bool _isProductEbtEligible(Map<String, dynamic> item) {
     if (_truthyEbtValue(item["is_ebt_eligible"])) return true;
     if (_ebtEligibleFromMetaData(item["meta_data"])) return true;
@@ -2996,6 +2973,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     _fastKeyProductBloc.dispose();
     _productSearchController.dispose();
     fastKeyTabIdNotifier.dispose();
+    TopBar.onRefreshCompleted = null;
     super.dispose();
   }
 

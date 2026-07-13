@@ -133,11 +133,20 @@ class CashbackHelper {
 
     // --------------------------
     // 2️⃣ Refresh if > 24 hours old
-    // --------------------------
-    if (lastFetch == null ||
-        now.difference(DateTime.parse(lastFetch)).inSeconds  >= 2) {
-      print("🔄 2 seconds passed → refreshing cashback config...");
-      await fetchCashbackConfig(); // ⭐ token auto-loaded inside
+    DateTime? lastFetchTime;
+
+    if (lastFetch is String) {
+      try {
+        lastFetchTime = DateTime.parse(lastFetch);
+      } catch (_) {
+        lastFetchTime = null;
+      }
+    }
+
+    if (lastFetchTime == null ||
+        now.difference(lastFetchTime).inSeconds >= 2) {
+      print("🔄 Refreshing cashback config...");
+      await fetchCashbackConfig();
       await box.put("lastFetchTime", now.toIso8601String());
       return;
     }

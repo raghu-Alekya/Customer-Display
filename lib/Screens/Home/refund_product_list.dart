@@ -1381,6 +1381,142 @@ class _RefundScreenState extends State<RefundScreen> {
                                       }
 
                                       // ==================== HANDLE CARD PAYMENT ====================
+                                      // if (selectedPayment == "Card") {
+                                      //   if (widget.payments.isEmpty) {
+                                      //     ScaffoldMessenger.of(context).showSnackBar(
+                                      //       const SnackBar(
+                                      //         content: Text("No payment record found"),
+                                      //         backgroundColor: Colors.red,
+                                      //       ),
+                                      //     );
+                                      //     return;
+                                      //   }
+                                      //
+                                      //   final cardPayment = widget.payments.firstWhere(
+                                      //         (p) => p.paymentMethod.toLowerCase().contains("card"),
+                                      //     orElse: () => widget.payments.first,
+                                      //   );
+                                      //
+                                      //   final refundAmount = (editedRefundAmount ?? totalRefund).toStringAsFixed(2);
+                                      //
+                                      //   showDialog(
+                                      //     context: context,
+                                      //     barrierDismissible: false,
+                                      //     builder: (_) => const Center(child: CircularProgressIndicator()),
+                                      //   );
+                                      //
+                                      //   try {
+                                      //     // ==================== SEND DATA TO REFUND REPOSITORIES ====================
+                                      //     final fullRepo = RefundOrderRepository(
+                                      //       baseUrl: UrlHelper.pinakaBaseUrl,
+                                      //     );
+                                      //
+                                      //     final partialRepo = PartialRefundRepository(
+                                      //       baseUrl: UrlHelper.pinakaBaseUrl,
+                                      //     );
+                                      //
+                                      //     final isFullRefund = selectedItems.length == selectedOrder.items.length;
+                                      //     final itemsReusableValue = "yes";
+                                      //     final reason = selectedReason ?? "refund";
+                                      //
+                                      //     bool refundSuccess = false;
+                                      //
+                                      //     if (isFullRefund) {
+                                      //       refundSuccess = await fullRepo.fullOrderRefund(
+                                      //         orderId: selectedOrder.orderId,
+                                      //         amount: selectedOrder.total.toDouble(),
+                                      //         reason: reason,
+                                      //         itemsReusable: itemsReusableValue,
+                                      //       );
+                                      //     } else {
+                                      //       final itemsToRefund = selectedItems.map((item) {
+                                      //         final rawAmount = item['amount']?.toString() ?? "0";
+                                      //         final amount = double.tryParse(rawAmount.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
+                                      //
+                                      //         return {
+                                      //           "order_item_id": item['order_item_id'],
+                                      //           "qty": item['qty'],
+                                      //           "refundable_amount": amount,
+                                      //         };
+                                      //       }).toList();
+                                      //
+                                      //       refundSuccess = await partialRepo.partialOrderRefund(
+                                      //         orderId: selectedOrder.orderId,
+                                      //         reason: reason,
+                                      //         itemsReusable: itemsReusableValue,
+                                      //         items: itemsToRefund,
+                                      //       );
+                                      //     }
+                                      //
+                                      //     if (!mounted) return;
+                                      //
+                                      //     if (!refundSuccess) {
+                                      //       Navigator.of(context, rootNavigator: true).pop();
+                                      //       ScaffoldMessenger.of(context).showSnackBar(
+                                      //         const SnackBar(
+                                      //           content: Text("Refund failed"),
+                                      //           backgroundColor: Colors.red,
+                                      //         ),
+                                      //       );
+                                      //       return;
+                                      //     }
+                                      //
+                                      //     // ==================== PROCESS CARD PAYMENT REFUND ====================
+                                      //     final cardRepo = RefundOrderRepository(
+                                      //       baseUrl: UrlHelper.pinakaBaseUrl,
+                                      //     );
+                                      //
+                                      //     // ✅ Updated to handle (bool, String?) tuple
+                                      //     final (cardSuccess, errorMessage) = await cardRepo.refundCardTransaction(
+                                      //       paymentId: cardPayment.id.toString(),
+                                      //       amount: refundAmount,
+                                      //       transactionId: cardPayment.paymentId,
+                                      //     );
+                                      //
+                                      //     Navigator.of(context, rootNavigator: true).pop();
+                                      //
+                                      //     if (cardSuccess) {
+                                      //       setState(() {
+                                      //         _disabledPaymentType = "Card";
+                                      //         editedRefundAmount = totalRefund;
+                                      //         isConfirmEnabled = true;
+                                      //         _isRefundCompleted = true;
+                                      //       });
+                                      //
+                                      //       await showDialog<void>(
+                                      //         context: context,
+                                      //         barrierDismissible: false,
+                                      //         builder: (_) => PaymentSuccessDialog(amount: totalRefund),
+                                      //       );
+                                      //
+                                      //       // ✅ NAVIGATE TO TOTAL ORDERS SCREEN (SAME AS CASH)
+                                      //       Navigator.pushAndRemoveUntil(
+                                      //         context,
+                                      //         MaterialPageRoute(builder: (_) => const TotalOrdersScreen()),
+                                      //             (route) => false,
+                                      //       );
+                                      //     } else {
+                                      //       // ✅ Show real error message from API
+                                      //       ScaffoldMessenger.of(context).showSnackBar(
+                                      //         SnackBar(
+                                      //           content: Text(errorMessage ?? "Card refund failed"),
+                                      //           backgroundColor: Colors.red,
+                                      //         ),
+                                      //       );
+                                      //     }
+                                      //   } catch (e) {
+                                      //     Navigator.of(context, rootNavigator: true).pop();
+                                      //     ScaffoldMessenger.of(context).showSnackBar(
+                                      //       SnackBar(
+                                      //         content: Text("Card refund error: ${e.toString()}"),
+                                      //         backgroundColor: Colors.red,
+                                      //       ),
+                                      //     );
+                                      //   }
+                                      //   return; // Important: Stop further execution
+                                      // }
+
+                                      // ==================== HANDLE CARD PAYMENT ====================
                                       if (selectedPayment == "Card") {
                                         if (widget.payments.isEmpty) {
                                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1406,14 +1542,29 @@ class _RefundScreenState extends State<RefundScreen> {
                                         );
 
                                         try {
-                                          // ==================== SEND DATA TO REFUND REPOSITORIES ====================
-                                          final fullRepo = RefundOrderRepository(
-                                            baseUrl: UrlHelper.pinakaBaseUrl,
+                                          // ==================== 1. FIRST: Call Payment Gateway ====================
+                                          final cardRepo = RefundOrderRepository(baseUrl: UrlHelper.pinakaBaseUrl);
+
+                                          final (cardSuccess, errorMessage) = await cardRepo.refundCardTransaction(
+                                            paymentId: cardPayment.id.toString(),
+                                            amount: refundAmount,
+                                            transactionId: cardPayment.paymentId,
                                           );
 
-                                          final partialRepo = PartialRefundRepository(
-                                            baseUrl: UrlHelper.pinakaBaseUrl,
-                                          );
+                                          if (!cardSuccess) {
+                                            Navigator.of(context, rootNavigator: true).pop();
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text(errorMessage ?? "Card refund failed"),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
+                                            return;
+                                          }
+
+                                          // ==================== 2. ONLY IF GATEWAY SUCCESS: Register in Backend ====================
+                                          final fullRepo = RefundOrderRepository(baseUrl: UrlHelper.pinakaBaseUrl);
+                                          final partialRepo = PartialRefundRepository(baseUrl: UrlHelper.pinakaBaseUrl);
 
                                           final isFullRefund = selectedItems.length == selectedOrder.items.length;
                                           final itemsReusableValue = "yes";
@@ -1448,34 +1599,9 @@ class _RefundScreenState extends State<RefundScreen> {
                                             );
                                           }
 
-                                          if (!mounted) return;
-
-                                          if (!refundSuccess) {
-                                            Navigator.of(context, rootNavigator: true).pop();
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(
-                                                content: Text("Refund failed"),
-                                                backgroundColor: Colors.red,
-                                              ),
-                                            );
-                                            return;
-                                          }
-
-                                          // ==================== PROCESS CARD PAYMENT REFUND ====================
-                                          final cardRepo = RefundOrderRepository(
-                                            baseUrl: UrlHelper.pinakaBaseUrl,
-                                          );
-
-                                          // ✅ Updated to handle (bool, String?) tuple
-                                          final (cardSuccess, errorMessage) = await cardRepo.refundCardTransaction(
-                                            paymentId: cardPayment.id.toString(),
-                                            amount: refundAmount,
-                                            transactionId: cardPayment.paymentId,
-                                          );
-
                                           Navigator.of(context, rootNavigator: true).pop();
 
-                                          if (cardSuccess) {
+                                          if (refundSuccess) {
                                             setState(() {
                                               _disabledPaymentType = "Card";
                                               editedRefundAmount = totalRefund;
@@ -1489,23 +1615,23 @@ class _RefundScreenState extends State<RefundScreen> {
                                               builder: (_) => PaymentSuccessDialog(amount: totalRefund),
                                             );
 
-                                            // ✅ NAVIGATE TO TOTAL ORDERS SCREEN (SAME AS CASH)
                                             Navigator.pushAndRemoveUntil(
                                               context,
                                               MaterialPageRoute(builder: (_) => const TotalOrdersScreen()),
                                                   (route) => false,
                                             );
                                           } else {
-                                            // ✅ Show real error message from API
                                             ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(
-                                                content: Text(errorMessage ?? "Card refund failed"),
-                                                backgroundColor: Colors.red,
+                                              const SnackBar(
+                                                content: Text("Refund registered failed after payment gateway success"),
+                                                backgroundColor: Colors.orange,
                                               ),
                                             );
                                           }
                                         } catch (e) {
-                                          Navigator.of(context, rootNavigator: true).pop();
+                                          if (Navigator.canPop(context)) {
+                                            Navigator.of(context, rootNavigator: true).pop();
+                                          }
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             SnackBar(
                                               content: Text("Card refund error: ${e.toString()}"),
