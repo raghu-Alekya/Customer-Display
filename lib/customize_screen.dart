@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:kiosk/widgets/kiosk_header_widgets.dart';
 
 import 'cart_manger.dart';
+import 'helper.dart';
 import 'model/addon_model.dart';
 import 'model/product model.dart';
 import 'repository/addon_repository.dart';
@@ -106,45 +107,155 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const horizontalInset = 16.0;
-    const cardPadding = 12.0;
+    final isDesktop = Responsive.isDesktop(context);
+    final isTablet = Responsive.isTablet(context);
+
+    final horizontalInset = isDesktop ? 20.0 : isTablet ? 16.0 : 12.0;
+    final cardPadding = isDesktop ? 18.0 : isTablet ? 14.0 : 10.0;
+
+    final imageSize = isDesktop ? 50.0 : isTablet ? 45.0 : 40.0;
+    final iconSize = isDesktop ? 22.0 : isTablet ? 20.0 : 20.0;
+
+    final titleFont = isDesktop ? 14.0 : isTablet ? 14.0 : 14.0;
+    final textFont = isDesktop ? 14.0 : isTablet ? 14.0 : 14.0;
+
+    final addonCardWidth = isDesktop ? 130.0 : isTablet ? 120.0 : 110.0;
+    final addonImageSize = isDesktop ? 60.0 : isTablet ? 55.0 : 50.0;
+
+    final qtyButtonSize = isDesktop ? 30.0 : isTablet ? 35.0 : 38.0;
+    final buttonHeight = Responsive.isDesktop(context)
+        ? 56.0
+        : Responsive.isTablet(context)
+        ? 52.0
+        : 48.0;
+
+    final buttonFont = Responsive.isDesktop(context)
+        ? 18.0
+        : Responsive.isTablet(context)
+        ? 16.0
+        : 14.0;
+
+    final buttonPadding = Responsive.isDesktop(context)
+        ? 20.0
+        : Responsive.isTablet(context)
+        ? 16.0
+        : 12.0;
+
+    final buttonSpacing = Responsive.isDesktop(context)
+        ? 24.0
+        : Responsive.isTablet(context)
+        ? 26.0
+        : 26.0;
+
+    final buttonRadius = Responsive.isDesktop(context)
+        ? 12.0
+        : Responsive.isTablet(context)
+        ? 10.0
+        : 8.0;
+    // const horizontalInset = 16.0;
+    // const cardPadding = 12.0;
     /// Same as item row: 40 (thumb) + 8 (gap).
     const tableLeadWidth = 48.0;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F5F7),
-      body: Column(
+
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
         children: [
           const SizedBox(height: 20),
 
           /// 🔶 TOP BAR (same horizontal inset as card content area)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: horizontalInset),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                KioskMenuBackButton(
-                  label: 'Menu',
-                  onPressed: () => Navigator.pop(context),
-                ),
-                const Text(
-                  "Customize",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+            padding: EdgeInsets.symmetric(
+              horizontal: Responsive.isDesktop(context)
+                  ? 20
+                  : Responsive.isTablet(context)
+                  ? 16
+                  : 12,
+              vertical: Responsive.isDesktop(context)
+                  ? 16
+                  : Responsive.isTablet(context)
+                  ? 12
+                  : 10,
+            ),
+            child: SizedBox(
+              height: Responsive.isDesktop(context)
+                  ? 50
+                  : Responsive.isTablet(context)
+                  ? 45
+                  : 40,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  /// Center Title
+                  Center(
+                    child: Text(
+                      "Customize",
+                      style: TextStyle(
+                        fontSize: Responsive.isDesktop(context)
+                            ? 24
+                            : Responsive.isTablet(context)
+                            ? 20
+                            : 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
-                ),
-                KioskOrderTypeChip(orderType: widget.orderType),
-              ],
+
+                  /// Close Button
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Container(
+                      width: Responsive.isDesktop(context)
+                          ? 42
+                          : Responsive.isTablet(context)
+                          ? 34
+                          : 30,
+                      height: Responsive.isDesktop(context)
+                          ? 42
+                          : Responsive.isTablet(context)
+                          ? 38
+                          : 34,
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        splashRadius: Responsive.isDesktop(context)
+                            ? 22
+                            : Responsive.isTablet(context)
+                            ? 20
+                            : 18,
+                        icon: Icon(
+                          Icons.close,
+                          size: Responsive.isDesktop(context)
+                              ? 24
+                              : Responsive.isTablet(context)
+                              ? 22
+                              : 20,
+                          color: Colors.white,
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
 
-          const SizedBox(height: 10),
+          // const SizedBox(height: 30),/
 
           /// 🔹 MAIN CARD — horizontal margin matches top bar; inner [cardPadding] aligns list with header grid
           Expanded(
             child: Container(
-              margin: const EdgeInsets.fromLTRB(
+              margin:  EdgeInsets.fromLTRB(
                 horizontalInset,
                 0,
                 horizontalInset,
@@ -160,7 +271,10 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                 children: [
                   /// 🔹 HEADER — spacer + flex match item row below (4+3+2+2)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: cardPadding,
+                      vertical: cardPadding * .6,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF3E2CC), // ✅ SAME AS ITEM CARD
                       borderRadius: BorderRadius.circular(5),
@@ -242,8 +356,8 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: Container(
-                            width: 40,
-                            height: 40,
+                            width: imageSize,
+                            height: imageSize,
                             color: Colors.orange.shade100,
                             child: (widget.product.imageUrl != null &&
                                 widget.product.imageUrl!.trim().isNotEmpty)
@@ -274,7 +388,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                                 GestureDetector(
                                   onTap: qty > minQty ? () => setState(() => qty--) : null,
                                   child: Container(
-                                    padding: const EdgeInsets.all(4),
+                                    padding: EdgeInsets.all(qtyButtonSize * .18),
                                     decoration: BoxDecoration(
                                       color: qty > minQty
                                           ? const Color(0xFFFF7A00) // same as add button
@@ -283,7 +397,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                                     ),
                                     child: Icon(
                                       Icons.remove,
-                                      size: 18,
+                                      size: iconSize,
                                       color: qty > minQty
                                           ? Colors.white
                                           : Colors.grey,
@@ -296,14 +410,15 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                                 GestureDetector(
                                   onTap: qty < maxQty ? () => setState(() => qty++) : null,
                                   child: Container(
-                                    padding: const EdgeInsets.all(4),
+                                    width: qtyButtonSize,
+                                    height: qtyButtonSize,
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFFF7A00),
-                                      borderRadius: BorderRadius.circular(5),
+                                      borderRadius: BorderRadius.circular(qtyButtonSize * 0.2),
                                     ),
                                     child: Icon(
                                       Icons.add,
-                                      size: 18,
+                                      size: iconSize,
                                       color: qty < maxQty
                                           ? Colors.white
                                           : Colors.white70,
@@ -368,8 +483,14 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
 
                       const SizedBox(height: 10),
 
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
+    SizedBox(
+    height: isDesktop
+    ? 180
+        : isTablet
+    ? 170
+        : 160,
+    child: SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
                         child: Row(
                           children: List.generate(addons.length, (index) {
                             final addon = addons[index];
@@ -384,7 +505,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                               child: Container(
                                 margin: const EdgeInsets.only(right: 12),
                                 padding: const EdgeInsets.all(10),
-                                width: 110,
+                                width: addonCardWidth,
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(12),
@@ -402,8 +523,8 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                                         ClipRRect(
                                           borderRadius: BorderRadius.circular(10),
                                           child: Container(
-                                            height: 50,
-                                            width: 50,
+                                            height: addonImageSize,
+                                            width: addonImageSize,
                                             color: Colors.orange.shade100,
                                             child: (addon.imageUrl != null &&
                                                 addon.imageUrl!.trim().isNotEmpty)
@@ -439,7 +560,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                                     Text(
                                       addon.name,
                                       style: TextStyle(
-                                        fontSize: 13,
+                                        fontSize: textFont,
                                         color: isSelected
                                             ? const Color(0xFFFF7A00)
                                             : Colors.black,
@@ -447,9 +568,9 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                                     ),
                                     Text(
                                       "\$${addon.price.toStringAsFixed(2)}",
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         color: Colors.green,
-                                        fontSize: 12,
+                                        fontSize: textFont - 1,
                                       ),
                                     ),
                                   ],
@@ -459,7 +580,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                           }),
                         ),
                       ),
-                    ]
+    )]
                 ],
               ),
             ),
@@ -467,93 +588,120 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
 
           /// 🔻 BOTTOM BUTTONS
           Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(color: Colors.white),
+            padding: EdgeInsets.all(buttonPadding),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+            ),
             child: Row(
               children: [
                 Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {},
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFFF7A00)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10), // ✅ ADD THIS
+                  child: SizedBox(
+                    height: buttonHeight,
+                    child: OutlinedButton(
+                      onPressed: () {},
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(
+                          color: Color(0xFFFF7A00),
+                          width: 1.5,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius:
+                          BorderRadius.circular(buttonRadius),
+                        ),
                       ),
-                    ),
-                    child: const Text(
-                      "Check Out",
-                      style: TextStyle(color: Color(0xFFFF7A00)),
+                      child: Text(
+                        "Check Out",
+                        style: TextStyle(
+                          color: const Color(0xFFFF7A00),
+                          fontSize: buttonFont,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
                 ),
 
-                const SizedBox(width: 20),
+                SizedBox(width: buttonSpacing),
 
                 Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF8A00),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    height: buttonHeight,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF8A00),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(buttonRadius),
+                        ),
                       ),
-                    ),
-                    onPressed: isLoading
-                        ? null
-                        : () {
-                      final selectedAddons =
-                      addons.where((a) => a.isSelected).toList();
+                      onPressed: isLoading
+                          ? null
+                          : () {
+                        final selectedAddons =
+                        addons.where((a) => a.isSelected).toList();
 
-                      // EDIT MODE
-                      if (widget.isEditFromCart) {
-                        Navigator.pop(context, {
-                          "qty": qty,
-                          "addons": selectedAddons,
-                        });
-                        return;
-                      }
-
-                      // ADD MODE
-                      final existingIndex =
-                      CartManager.cartItems.indexWhere((item) {
-                        final product = item["product"];
-                        if (product.id != widget.product.id) return false;
-
-                        final List existingAddons = item["addons"] as List;
-
-                        if (existingAddons.length != selectedAddons.length) {
-                          return false;
+                        // EDIT MODE
+                        if (widget.isEditFromCart) {
+                          Navigator.pop(context, {
+                            "qty": qty,
+                            "addons": selectedAddons,
+                          });
+                          return;
                         }
 
-                        final existingIds =
-                        existingAddons.map((a) => a.id).toSet();
+                        // ADD MODE
+                        final existingIndex =
+                        CartManager.cartItems.indexWhere((item) {
+                          final product = item["product"];
 
-                        final newIds =
-                        selectedAddons.map((a) => a.id).toSet();
+                          if (product.id != widget.product.id) {
+                            return false;
+                          }
 
-                        return existingIds.length == newIds.length &&
-                            existingIds.containsAll(newIds);
-                      });
+                          final List existingAddons =
+                          item["addons"] as List;
 
-                      if (existingIndex >= 0) {
-                        CartManager.cartItems[existingIndex]["qty"] += qty;
-                      } else {
-                        CartManager.addItem(
-                          product: widget.product,
-                          addons: selectedAddons,
-                          qty: qty,
-                        );
-                      }
+                          if (existingAddons.length !=
+                              selectedAddons.length) {
+                            return false;
+                          }
 
-                      if (widget.openedFromSearch) {
-                        Navigator.pop(context, true); // close customize
-                        Navigator.pop(context);       // close search -> category
-                      } else {
-                        Navigator.pop(context, true); // category -> back to category only
-                      }
-                    },
-                    child: const Text(
-                      "Add to Cart",
-                      style: TextStyle(color: Colors.white),
+                          final existingIds =
+                          existingAddons.map((a) => a.id).toSet();
+
+                          final newIds =
+                          selectedAddons.map((a) => a.id).toSet();
+
+                          return existingIds.length == newIds.length &&
+                              existingIds.containsAll(newIds);
+                        });
+
+                        if (existingIndex >= 0) {
+                          CartManager.cartItems[existingIndex]["qty"] +=
+                              qty;
+                        } else {
+                          CartManager.addItem(
+                            product: widget.product,
+                            addons: selectedAddons,
+                            qty: qty,
+                          );
+                        }
+
+                        if (widget.openedFromSearch) {
+                          Navigator.pop(context, true); // Close customize
+                          Navigator.pop(context); // Close search
+                        } else {
+                          Navigator.pop(context, true); // Back to category
+                        }
+                      },
+                      child: Text(
+                        "Add to Cart",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: buttonFont,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
                 ),

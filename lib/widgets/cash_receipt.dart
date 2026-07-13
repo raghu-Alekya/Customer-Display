@@ -4,6 +4,7 @@ import 'package:kiosk/cart_manger.dart';
 import 'package:kiosk/Homescreen.dart';
 
 import '../bloc/product_bloc.dart';
+import '../helper.dart';
 
 class PrintReceiptScreen extends StatefulWidget {
   final double total;
@@ -44,24 +45,50 @@ class _PrintReceiptScreenState extends State<PrintReceiptScreen> {
   }
   @override
   Widget build(BuildContext context) {
+    final isDesktop = Responsive.isDesktop(context);
+    final isTablet = Responsive.isTablet(context);
+
+    final horizontalPadding = isDesktop ? 30.0 : isTablet ? 24.0 : 16.0;
+    final verticalPadding = isDesktop ? 16.0 : isTablet ? 44.0 : 30.0;
+
+    final titleFont = isDesktop ? 34.0 : isTablet ? 30.0 : 24.0;
+    final orderFont = isDesktop ? 30.0 : isTablet ? 30.0 : 28.0;
+    final amountFont = isDesktop ? 34.0 : isTablet ? 34.0 : 28.0;
+    final normalFont = isDesktop ? 18.0 : isTablet ? 20.0 : 18.0;
+    final smallFont = isDesktop ? 16.0 : isTablet ? 14.0 : 12.0;
+
+    final circleOuter = isDesktop ? 600.0 : isTablet ? 300.0 : 320.0;
+    final circleInner = isDesktop ? 530.0 : isTablet ? 315.0 : 410.0;
+    final checkIcon = isDesktop ? 72.0 : isTablet ? 90.0 : 78.0;
+
+    final buttonHeight = isDesktop ? 58.0 : isTablet ? 54.0 : 50.0;
+
+    final radius = isDesktop ? 24.0 : isTablet ? 20.0 : 16.0;
+
+    final spacingXS = isDesktop ? 10.0 : isTablet ? 8.0 : 6.0;
+    final spacingS = isDesktop ? 18.0 : isTablet ? 14.0 : 10.0;
+    final spacingM = isDesktop ? 30.0 : isTablet ? 104.0 : 58.0;
     return Scaffold(
       backgroundColor: const Color(0xFFFFFFFF),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: verticalPadding,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
+              Text(
                 'Receipt Printed',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 35 / 1.2,
+                  fontSize: titleFont,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF303236),
+                  color: const Color(0xFF303236),
                 ),
               ),
-              const SizedBox(height: 24),
+          SizedBox(height: spacingM),
               Expanded(
                 child: SingleChildScrollView(
                   child: Column(
@@ -69,8 +96,8 @@ class _PrintReceiptScreenState extends State<PrintReceiptScreen> {
                     children: [
                       Center(
                         child: SizedBox(
-                          width: 140,
-                          height: 140,
+                          width: circleOuter,
+                          height: circleOuter,
                           child: Stack(
                             alignment: Alignment.center,
                             children: [
@@ -83,16 +110,16 @@ class _PrintReceiptScreenState extends State<PrintReceiptScreen> {
                                 ),
                               ),
                               Container(
-                                width: 112,
-                                height: 112,
+                                width: circleInner,
+                                height: circleInner,
                                 decoration: const BoxDecoration(
                                   color: Color(0xFF22C55E),
                                   shape: BoxShape.circle,
                                 ),
                                 alignment: Alignment.center,
-                                child: const Icon(
+                                child: Icon(
                                   Icons.check_rounded,
-                                  size: 64,
+                                  size: checkIcon,
                                   color: Colors.white,
                                 ),
                               ),
@@ -100,12 +127,12 @@ class _PrintReceiptScreenState extends State<PrintReceiptScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 28),
+                SizedBox(height: spacingM),
                       RichText(
                         textAlign: TextAlign.center,
                         text: TextSpan(
-                          style: const TextStyle(
-                            fontSize: 28,
+                          style: TextStyle(
+                            fontSize: orderFont,
                             fontWeight: FontWeight.bold,
                           ),
                           children: [
@@ -124,12 +151,12 @@ class _PrintReceiptScreenState extends State<PrintReceiptScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 8),
+                SizedBox(height: spacingS),
                       RichText(
                         textAlign: TextAlign.center,
                         text: TextSpan(
-                          style: const TextStyle(
-                            fontSize: 35 / 1.2,
+                          style: TextStyle(
+                            fontSize: amountFont,
                             fontWeight: FontWeight.w700,
                           ),
                           children: [
@@ -144,45 +171,45 @@ class _PrintReceiptScreenState extends State<PrintReceiptScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 22),
+                  SizedBox(height: spacingM),
                       if (!widget.isCardPayment)
                         Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isDesktop ? 20 : isTablet ? 16 : 12,
+                            vertical: isDesktop ? 16 : isTablet ? 14 : 10,
                           ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFEAF0F8),
-                            borderRadius: BorderRadius.circular(22),
+                            borderRadius: BorderRadius.circular(radius),
                             border: Border.all(color: const Color(0xFFBAC7DB)),
                           ),
-                          child: const Text(
+                          child: Text(
                             'Please proceed to the cash counter to\ncomplete your payment & Collect your Food.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 15 / 1.2,
-                              color: Color(0xFF36507D),
+                              fontSize: normalFont,
+                              color: const Color(0xFF36507D),
                               fontWeight: FontWeight.w500,
                               height: 1.35,
                             ),
                           ),
                         ),
-                      const SizedBox(height: 18),
-                      const Center(
+        SizedBox(height: spacingM),
+                      Center(
                         child: Icon(
                           Icons.receipt_long_rounded,
-                          size: 40,
-                          color: Color(0xFF5B5B5B),
+                          size: isDesktop ? 54 : isTablet ? 46 : 38,
+                          color: const Color(0xFF5B5B5B),
                         ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         'Note: Please collect your receipt',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Color(0xFF5C5C5C),
-                          fontSize: 14,
+                          color: const Color(0xFF5C5C5C),
+                          fontSize: smallFont,
                         ),
                       ),
                     ],
@@ -207,18 +234,19 @@ class _PrintReceiptScreenState extends State<PrintReceiptScreen> {
                                 (route) => false,
                           );
                         },
-                        child: const Text(
+                        child: Text(
                           "Start New Order",
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 18,
+                            fontSize: normalFont,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFFFF9900),
+                            color: const Color(0xFFFF9900),
                             decoration: TextDecoration.underline,
                           ),
                         ),
                       ),
                     ),
+                  SizedBox(height: spacingS),
 
                   SizedBox(
                     width: double.infinity,
@@ -245,9 +273,9 @@ class _PrintReceiptScreenState extends State<PrintReceiptScreen> {
                         backgroundColor: const Color(0xFFFF9900),
                         foregroundColor: Colors.white,
                         elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        minimumSize: Size(double.infinity, buttonHeight),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(radius),
                         ),
                       ),
                       child: _isPrinting
@@ -263,16 +291,16 @@ class _PrintReceiptScreenState extends State<PrintReceiptScreen> {
                         widget.isCardPayment
                             ? "Print Receipt"
                             : "Start New Order",
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w700,
-                          fontSize: 18,
+                          fontSize: normalFont,
                         ),
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+          SizedBox(height: spacingM),
             ],
           ),
         ),

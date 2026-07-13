@@ -4,6 +4,7 @@ import 'package:kiosk/widgets/kiosk_header_widgets.dart';
 import 'package:kiosk/widgets/payment_method.dart';
 import 'cart_manger.dart';
 import 'customize_screen.dart';
+import 'helper.dart';
 import 'model/addon_model.dart';
 
 class CartScreen extends StatefulWidget {
@@ -39,6 +40,88 @@ class _CartScreenState extends State<CartScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = Responsive.isDesktop(context);
+    final isTablet = Responsive.isTablet(context);
+
+    final containerPadding = isDesktop ? 20.0 : isTablet ? 16.0 : 12.0;
+    final itemPadding = isDesktop ? 16.0 : isTablet ? 14.0 : 10.0;
+
+    final titleFont = isDesktop ? 18.0 : isTablet ? 16.0 : 14.0;
+    final normalFont = isDesktop ? 15.0 : isTablet ? 14.0 : 12.0;
+    final smallFont = isDesktop ? 13.0 : isTablet ? 12.0 : 11.0;
+
+    final iconSize = isDesktop ? 24.0 : isTablet ? 22.0 : 20.0;
+    final deleteIconSize = isDesktop ? 26.0 : isTablet ? 22.0 : 20.0;
+
+    final spacing = isDesktop ? 16.0 : isTablet ? 12.0 : 8.0;
+    final actionSpacing = isDesktop ? 30.0 : isTablet ? 24.0 : 18.0;
+
+    final borderRadius = isDesktop ? 16.0 : isTablet ? 14.0 : 12.0;
+
+
+    final headerHeight = Responsive.isDesktop(context)
+        ? 55.0
+        : Responsive.isTablet(context)
+        ? 50.0
+        : 45.0;
+
+    final horizontalPadding = Responsive.isDesktop(context)
+        ? 20.0
+        : Responsive.isTablet(context)
+        ? 16.0
+        : 12.0;
+    final billRadius = Responsive.isDesktop(context)
+        ? 16.0
+        : Responsive.isTablet(context)
+        ? 14.0
+        : 12.0;
+
+    final billPadding = Responsive.isDesktop(context)
+        ? 20.0
+        : Responsive.isTablet(context)
+        ? 16.0
+        : 12.0;
+
+    final billSpacing = Responsive.isDesktop(context)
+        ? 10.0
+        : Responsive.isTablet(context)
+        ? 8.0
+        : 6.0;
+
+    final blurRadius = Responsive.isDesktop(context)
+        ? 12.0
+        : Responsive.isTablet(context)
+        ? 10.0
+        : 8.0;
+    final itemImageSize = Responsive.isDesktop(context)
+        ? 70.0
+        : Responsive.isTablet(context)
+        ? 60.0
+        : 50.0;
+
+    final itemNameFont = Responsive.isDesktop(context)
+        ? 18.0
+        : Responsive.isTablet(context)
+        ? 16.0
+        : 14.0;
+
+    final priceFont = Responsive.isDesktop(context)
+        ? 18.0
+        : Responsive.isTablet(context)
+        ? 16.0
+        : 14.0;
+
+    final addonFont = Responsive.isDesktop(context)
+        ? 14.0
+        : Responsive.isTablet(context)
+        ? 13.0
+        : 12.0;
+
+    final qtyFont = Responsive.isDesktop(context)
+        ? 18.0
+        : Responsive.isTablet(context)
+        ? 16.0
+        : 14.0;
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F7),
       body: Padding(
@@ -47,36 +130,121 @@ class _CartScreenState extends State<CartScreen> {
           children: [
 
             /// 🔷 HEADER
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+              child: SizedBox(
+                height: headerHeight,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    /// Left - Menu Button
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: KioskMenuBackButton(
+                        label: 'Menu',
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ),
 
-                KioskMenuBackButton(
-                  label: 'Menu',
-                  onPressed: () => Navigator.pop(context),
+                    /// Center - Title
+                    Center(
+                      child: Text(
+                        "Your Cart",
+                        style: TextStyle(
+                          fontSize: titleFont,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+
+                    /// Right - Order Type
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: KioskOrderTypeChip(
+                        orderType: widget.orderType,
+                      ),
+                    ),
+                  ],
                 ),
-
-                const Text(
-                  "Your Cart",
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                KioskOrderTypeChip(orderType: widget.orderType),
-              ],
+              ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 26),
+            //
+            /// Header OUTSIDE
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: containerPadding,
+                vertical: spacing,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Cart Summary",
+                    style: TextStyle(
+                      fontSize: titleFont,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        CartManager.cartItems.clear();
+                      });
+                    },
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: Responsive.isDesktop(context)
+                            ? 16
+                            : Responsive.isTablet(context)
+                            ? 14
+                            : 12,
+                        vertical: Responsive.isDesktop(context)
+                            ? 10
+                            : Responsive.isTablet(context)
+                            ? 8
+                            : 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDF2626),
+                        borderRadius: BorderRadius.circular(
+                          Responsive.isDesktop(context)
+                              ? 8
+                              : Responsive.isTablet(context)
+                              ? 7
+                              : 6,
+                        ),
+                      ),
+                      child: Text(
+                        "Clear Cart",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: Responsive.isDesktop(context)
+                              ? 15
+                              : Responsive.isTablet(context)
+                              ? 14
+                              : 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 22),
+
 
             /// 🔷 CART CARD
             Expanded(
               child: Container(
-                padding: const EdgeInsets.all(14),
+                padding: EdgeInsets.all(containerPadding),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(borderRadius),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.05),
@@ -87,43 +255,42 @@ class _CartScreenState extends State<CartScreen> {
                 child: Column(
                   children: [
 
-                    /// HEADER
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-
-                        /// 🧾 CART SUMMARY
-                        const Text(
-                          "Cart Summary",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16, // 👈 increased size
-                          ),
-                        ),
-
-                        /// 🗑 CLEAR CART
-                        GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              CartManager.cartItems.clear();
-                            });
-                          },
-                          child: const Text(
-                            "Clear Cart",
-                            style: TextStyle(
-                              color: Color(0xFFDF2626),
-                              fontSize: 14,
-                              decoration: TextDecoration.underline,
-                              decorationColor: Color(0xFFDF2626), // underline color
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 8),
-
+                    // /// HEADER
+                    // Row(
+                    //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    //   children: [
+                    //
+                    //     /// 🧾 CART SUMMARY
+                    //     Text(
+                    //       "Cart Summary",
+                    //       style: TextStyle(
+                    //         fontWeight: FontWeight.bold,
+                    //         fontSize: titleFont,// 👈 increased size
+                    //       ),
+                    //     ),
+                    //
+                    //     /// 🗑 CLEAR CART
+                    //     GestureDetector(
+                    //       onTap: () {
+                    //         setState(() {
+                    //           CartManager.cartItems.clear();
+                    //         });
+                    //       },
+                    //       child: Text(
+                    //         "Clear Cart",
+                    //         style: TextStyle(
+                    //           color: const Color(0xFFDF2626),
+                    //           fontSize: normalFont,
+                    //           decoration: TextDecoration.underline,
+                    //           decorationColor: const Color(0xFFDF2626), // underline color
+                    //           fontWeight: FontWeight.w500,
+                    //         ),
+                    //       ),
+                    //     ),
+                    //   ],
+                    // ),
+                    //
+                    // SizedBox(height: spacing),
                     /// COLUMN HEADERS
                     Row(
                       children: const [
@@ -147,7 +314,7 @@ class _CartScreenState extends State<CartScreen> {
                       ],
                     ),
 
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 25),
 
                     /// ITEMS
                     Expanded(
@@ -169,8 +336,8 @@ class _CartScreenState extends State<CartScreen> {
                           double finalPrice = (price + addonTotal) * qty;
 
                           return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.all(12),
+                            margin: EdgeInsets.only(bottom: spacing),
+                            padding: EdgeInsets.all(itemPadding),
                             decoration: BoxDecoration(
                               color: const Color(0xFFF9F9F9),
                               borderRadius: BorderRadius.circular(12),
@@ -186,12 +353,18 @@ class _CartScreenState extends State<CartScreen> {
                                     children: [
                                       Row(
                                         children: [
-                                          _cartItemImage(product.imageUrl),
+                                          _cartItemImage(
+                                            product.imageUrl,
+                                            size: itemImageSize,
+                                          ),
                                           const SizedBox(width: 8),
                                           Expanded(
                                             child: Text(
                                               product.name,
-                                              style: const TextStyle(fontWeight: FontWeight.bold),
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: normalFont,
+                                              ),
                                               maxLines: 2,
                                               overflow: TextOverflow.ellipsis,
                                             ),
@@ -218,7 +391,7 @@ class _CartScreenState extends State<CartScreen> {
                                                   children: [
                                                     Text(
                                                       addon.name,
-                                                      style: const TextStyle(fontSize: 11, color: Colors.black87),
+                                                      style: TextStyle(fontSize: smallFont, color: Colors.black87),
                                                     ),
                                                     const SizedBox(width: 6),
                                                     GestureDetector(
@@ -263,17 +436,45 @@ class _CartScreenState extends State<CartScreen> {
                                       if (addons.isNotEmpty)
                                         GestureDetector(
                                           onTap: () async {
-                                            final result = await Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (_) => CustomizeScreen(
-                                                  product: product,
-                                                  addons: List<AddonModel>.from(addons),
-                                                  orderType: widget.orderType,
-                                                  initialQty: qty,
-                                                  isEditFromCart: true,
-                                                ),
-                                              ),
+                                            final result = await showDialog(
+                                              context: context,
+                                              barrierDismissible: false,
+                                              builder: (dialogContext) {
+                                                return Dialog(
+                                                  backgroundColor: Colors.transparent,
+                                                  insetPadding: EdgeInsets.symmetric(
+                                                    horizontal: Responsive.isDesktop(context)
+                                                        ? 120
+                                                        : Responsive.isTablet(context)
+                                                        ? 70
+                                                        : 20,
+                                                    vertical: Responsive.isDesktop(context)
+                                                        ? 40
+                                                        : Responsive.isTablet(context)
+                                                        ? 30
+                                                        : 20,
+                                                  ),
+                                                  child: SizedBox(
+                                                    width: Responsive.isDesktop(context)
+                                                        ? MediaQuery.of(context).size.width * 0.85
+                                                        : Responsive.isTablet(context)
+                                                        ? MediaQuery.of(context).size.width * 0.70
+                                                        : MediaQuery.of(context).size.width * 0.65,
+                                                    height: Responsive.isDesktop(context)
+                                                        ? MediaQuery.of(context).size.height * 0.65
+                                                        : Responsive.isTablet(context)
+                                                        ? MediaQuery.of(context).size.height * 0.60
+                                                        : MediaQuery.of(context).size.height * 0.60,
+                                                    child: CustomizeScreen(
+                                                      product: product,
+                                                      addons: List<AddonModel>.from(addons),
+                                                      orderType: widget.orderType,
+                                                      initialQty: qty,
+                                                      isEditFromCart: true,
+                                                    ),
+                                                  ),
+                                                );
+                                              },
                                             );
 
                                             if (result != null && result is Map<String, dynamic>) {
@@ -283,12 +484,12 @@ class _CartScreenState extends State<CartScreen> {
                                               });
                                             }
                                           },
-                                          child: const Padding(
-                                            padding: EdgeInsets.only(top: 4),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6),
                                             child: Text(
                                               "Customize",
                                               style: TextStyle(
-                                                fontSize: 10,
+                                                fontSize: smallFont,
                                                 color: Colors.orange,
                                                 decoration: TextDecoration.underline,
                                                 decorationColor: Colors.orange,
@@ -317,7 +518,9 @@ class _CartScreenState extends State<CartScreen> {
                                         enabled: qty > 1,
                                       ),
                                       Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: spacing * .6,
+                                        ),
                                         child: Text("$qty"),
                                       ),
                                       _qty("+", () {
@@ -344,8 +547,8 @@ class _CartScreenState extends State<CartScreen> {
                                         ...addons.map((addon) {
                                           return Text(
                                             "\$${addon.price}",
-                                            style: const TextStyle(
-                                              fontSize: 11,
+                                            style: TextStyle(
+                                              fontSize: smallFont,
                                               color: Colors.grey,
                                             ),
                                           );
@@ -353,16 +556,16 @@ class _CartScreenState extends State<CartScreen> {
                                     ],
                                   ),
                                 ),
-                                const SizedBox(width: 28),
+                                SizedBox(width: actionSpacing),
 
                                 /// DELETE
                                 Expanded(
                                   flex: 1,
                                   child: IconButton(
-                                    icon: const Icon(
+                                    icon: Icon(
                                       Icons.delete,
-                                      size: 18,
-                                      color: Color(0xFFE01F1F), // red color
+                                      size: deleteIconSize,
+                                      color: const Color(0xFFE01F1F), // red color
                                     ),
                                     onPressed: () {
                                       setState(() {
@@ -379,35 +582,96 @@ class _CartScreenState extends State<CartScreen> {
                     ),
 
                     /// 🔷 BILL SECTION
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      margin: const EdgeInsets.only(top: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 10,
-                          )
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          _billRow("Sub Total", total),
-                          const SizedBox(height: 6),
-                          _billRow("Tax ", tax),
-                          const Divider(height: 20),
-                          _billRow("Net Payable", grandTotal, isTotal: true),
-                        ],
-                      ),
-                    )
+                    // Container(
+                    //   width: double.infinity,
+                    //   padding: EdgeInsets.all(billPadding),
+                    //   margin: EdgeInsets.only(top: billSpacing),
+                    //   decoration: BoxDecoration(
+                    //     color: Colors.white,
+                    //     borderRadius: BorderRadius.circular(billRadius),
+                    //     boxShadow: [
+                    //       BoxShadow(
+                    //         color: Colors.black.withOpacity(0.05),
+                    //         blurRadius: blurRadius,
+                    //         offset: const Offset(0, 3),
+                    //       ),
+                    //     ],
+                    //   ),
+                    //   child: Column(
+                    //     children: [
+                    //       _billRow("Sub Total", total),
+                    //
+                    //       SizedBox(height: billSpacing),
+                    //
+                    //       _billRow("Tax", tax),
+                    //
+                    //       Divider(
+                    //         height: billSpacing * 3,
+                    //         thickness: 1,
+                    //       ),
+                    //
+                    //       _billRow(
+                    //         "Net Payable",
+                    //         grandTotal,
+                    //         isTotal: true,
+                    //       ),
+                    //     ],
+                    //   ),
+                    // )
                   ],
                 ),
               ),
             ),
 
-            const SizedBox(height: 12),
+
+            const SizedBox(height: 152),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(
+                horizontal: billPadding,
+                vertical: Responsive.isDesktop(context)
+                    ? 28
+                    : Responsive.isTablet(context)
+                    ? 54
+                    : 40,
+              ),
+              margin: EdgeInsets.only(top: billSpacing),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(billRadius),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: blurRadius,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  _billRow("Sub Total", total),
+
+                  SizedBox(height: 20),
+
+                  _billRow("Tax", tax),
+
+                  Divider(
+                    height: 24,
+                    thickness: 1,
+                  ),
+
+                  _billRow(
+                    "Net Payable",
+                    grandTotal,
+                    isTotal: true,
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 78),
+
+
 
             /// 🔶 CONFIRM BUTTON
             GestureDetector(
@@ -451,33 +715,48 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  Widget _cartItemImage(String? imageUrl) {
+  Widget _cartItemImage(String? imageUrl, {required double size}) {
+    final borderRadius = Responsive.isDesktop(context)
+        ? 12.0
+        : Responsive.isTablet(context)
+        ? 10.0
+        : 8.0;
+
     if (imageUrl == null || imageUrl.isEmpty) {
       return Container(
-        width: 42,
-        height: 42,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           color: const Color(0xFFF2F4F7),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(borderRadius),
         ),
-        child: const Icon(Icons.fastfood_rounded, size: 20, color: Colors.black54),
+        child: Icon(
+          Icons.fastfood_rounded,
+          size: size * 0.5,
+          color: Colors.black54,
+        ),
       );
     }
+
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(borderRadius),
       child: Image.network(
         imageUrl,
-        width: 42,
-        height: 42,
+        width: size,
+        height: size,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => Container(
-          width: 42,
-          height: 42,
+          width: size,
+          height: size,
           decoration: BoxDecoration(
             color: const Color(0xFFF2F4F7),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(borderRadius),
           ),
-          child: const Icon(Icons.fastfood_rounded, size: 20, color: Colors.black54),
+          child: Icon(
+            Icons.fastfood_rounded,
+            size: size * 0.5,
+            color: Colors.black54,
+          ),
         ),
       ),
     );
@@ -516,24 +795,37 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   /// 🧾 BILL ROW
-  Widget _billRow(String title, double value, {bool isTotal = false}) {
+  Widget _billRow(
+      String title,
+      double value, {
+        bool isTotal = false,
+      }) {
+    final fontSize = Responsive.isDesktop(context)
+        ? (isTotal ? 28.0 : 15.0)
+        : Responsive.isTablet(context)
+        ? (isTotal ? 24.0 : 18.0)
+        : (isTotal ? 24.0 : 18.0);
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
           title,
           style: TextStyle(
-            fontSize: isTotal ? 15 : 13,
-            fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
-            color: isTotal ? Colors.orange : Colors.grey[700],
+            fontSize: fontSize,
+            fontWeight:
+            isTotal ? FontWeight.bold : FontWeight.w500,
           ),
         ),
         Text(
-        "\$${value.toStringAsFixed(2)}",
+          "₹${value.toStringAsFixed(2)}",
           style: TextStyle(
-            fontSize: isTotal ? 16 : 13,
-            fontWeight: FontWeight.bold,
-            color: isTotal ? Colors.orange : Colors.black,
+            fontSize: fontSize,
+            fontWeight:
+            isTotal ? FontWeight.bold : FontWeight.w600,
+            color: isTotal
+                ? const Color(0xFFFF7A00)
+                : Colors.black,
           ),
         ),
       ],

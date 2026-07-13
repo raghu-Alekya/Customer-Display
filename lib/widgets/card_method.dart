@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:kiosk/widgets/kiosk_header_widgets.dart';
+import '../helper.dart';
 import '../repository/card_payment_repository.dart';
 import '../utils/printer_helper.dart';
 import 'cash_receipt.dart';
@@ -166,11 +167,34 @@ class _CardMethodScreenState extends State<CardMethodScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = Responsive.isDesktop(context);
+    final isTablet = Responsive.isTablet(context);
+
+    final horizontalPadding = isDesktop ? 28.0 : isTablet ? 22.0 : 16.0;
+    final verticalPadding = isDesktop ? 16.0 : isTablet ? 14.0 : 10.0;
+
+    final amountFont = isDesktop ? 54.0 : isTablet ? 46.0 : 38.0;
+    final titleFont = isDesktop ? 24.0 : isTablet ? 20.0 : 18.0;
+    final bodyFont = isDesktop ? 18.0 : isTablet ? 16.0 : 14.0;
+
+    final cardImageWidth = isDesktop ? 360.0 : isTablet ? 420.0 : 370.0;
+    final cardImageHeight = isDesktop ? 180.0 : isTablet ? 560.0 : 420.0;
+
+    final timerFont = isDesktop ? 42.0 : isTablet ? 36.0 : 30.0;
+
+    final buttonRadius = isDesktop ? 14.0 : isTablet ? 12.0 : 10.0;
+
+    final spacingXS = isDesktop ? 8.0 : isTablet ? 6.0 : 4.0;
+    final spacingS = isDesktop ? 18.0 : isTablet ? 14.0 : 10.0;
+    final spacingM = isDesktop ? 28.0 : isTablet ? 22.0 : 16.0;
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: verticalPadding,
+          ),
           child: Column(
             children: [
               // Header with back button and order type
@@ -184,7 +208,7 @@ class _CardMethodScreenState extends State<CardMethodScreen> {
                 ],
               ),
 
-              const SizedBox(height: 16),
+              SizedBox(height: spacingS),
 
               // Main content
               Expanded(
@@ -194,61 +218,64 @@ class _CardMethodScreenState extends State<CardMethodScreen> {
                     // Payment Amount
                     Text(
                       _formatAmount(widget.total),
-                      style: const TextStyle(
-                        fontSize: 48,
+                      style: TextStyle(
+                        fontSize: amountFont,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF22262C),
+                        color: const Color(0xFF22262C),
                       ),
                     ),
 
                     const SizedBox(height: 16),
 
-                    const Text(
+                    Text(
                       'Tap or Insert your Card',
                       style: TextStyle(
-                        fontSize: 18,
+                        fontSize: titleFont,
                         fontWeight: FontWeight.w500,
-                        color: Color(0xFF7D8188),
+                        color: const Color(0xFF7D8188),
                       ),
                     ),
 
-                    const SizedBox(height: 48),
+                    SizedBox(height: spacingM),
 
                     // Card Image
                     SizedBox(
-                      width: 200,
-                      height: 140,
+                      width: cardImageWidth,
+                      height: cardImageHeight,
                       child: Image.asset(
                         'assets/card.png',
                         fit: BoxFit.contain,
                       ),
                     ),
 
-                    const SizedBox(height: 48),
+                    SizedBox(height: spacingM),
 
                     // Timer Section - Shows elapsed time
                     if (_isProcessing)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isDesktop ? 30 : isTablet ? 24 : 18,
+                          vertical: isDesktop ? 22 : isTablet ? 18 : 14,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFE9EEF5),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Column(
                           children: [
-                            const Text(
+                            Text(
                               'Processing Time:',
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: bodyFont,
                                 fontWeight: FontWeight.w500,
-                                color: Color(0xFF5F738F),
+                                color: const Color(0xFF5F738F),
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            SizedBox(height: spacingM),
                             Text(
                               '${_elapsedSeconds}s',
                               style: TextStyle(
-                                fontSize: 32,
+                                fontSize: timerFont,
                                 fontWeight: FontWeight.w700,
                                 color: _elapsedSeconds >= 30 ? Colors.orange : const Color(0xFF1E3E72),
                                 fontFeatures: const [FontFeature.tabularFigures()],
@@ -258,7 +285,7 @@ class _CardMethodScreenState extends State<CardMethodScreen> {
                         ),
                       ),
 
-                    const SizedBox(height: 24),
+                    SizedBox(height: spacingM),
 
                     // If not working message - only show when not processing
                     if (!_isProcessing)
@@ -266,12 +293,12 @@ class _CardMethodScreenState extends State<CardMethodScreen> {
                         onPressed: () {
                           _showPaymentOptions();
                         },
-                        child: const Text(
+                        child: Text(
                           'If not working, try again or choose another payment method',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF7D8188),
+                            fontSize: bodyFont,
+                            color: const Color(0xFF7D8188),
                             decoration: TextDecoration.underline,
                           ),
                         ),

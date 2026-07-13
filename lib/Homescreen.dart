@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'bloc/promotion_bloc.dart';
 import 'bloc/store_details_bloc.dart';
+import 'helper.dart';
 import 'model/store_details_model.dart';
 import 'category_screen.dart';
 import 'customize_screen.dart';
@@ -101,6 +102,106 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final height = MediaQuery.of(context).size.height;
+    final buttonSpacing = Responsive.isDesktop(context)
+        ? 40.0
+        : Responsive.isTablet(context)
+        ? 80.0
+        : 50.0;
+
+    final headerPadding = Responsive.isDesktop(context)
+        ? 20.0
+        : Responsive.isTablet(context)
+        ? 16.0
+        : 12.0;
+
+    final logoSize = Responsive.isDesktop(context)
+        ? 90.0
+        : Responsive.isTablet(context)
+        ? 62.0
+        : 52.0;
+
+    final logoRadius = Responsive.isDesktop(context)
+        ? 10.0
+        : Responsive.isTablet(context)
+        ? 8.0
+        : 6.0;
+
+    final titleFont = Responsive.isDesktop(context)
+        ? 18.0
+        : Responsive.isTablet(context)
+        ? 16.0
+        : 14.0;
+
+    final bodyFont = Responsive.isDesktop(context)
+        ? 14.0
+        : Responsive.isTablet(context)
+        ? 13.0
+        : 11.0;
+    final textFont = Responsive.isDesktop(context)
+        ? 14.0
+        : Responsive.isTablet(context)
+        ? 13.0
+        : 11.0;
+    final headerHeight = Responsive.isDesktop(context)
+        ? 130.0
+        : Responsive.isTablet(context)
+        ? 145.0
+        : 80.0;
+
+    final iconButtonSize = Responsive.isDesktop(context)
+        ? 60.0
+        : Responsive.isTablet(context)
+        ? 52.0
+        : 46.0;
+
+    final iconSize = Responsive.isDesktop(context)
+        ? 30.0
+        : Responsive.isTablet(context)
+        ? 26.0
+        : 22.0;
+
+    final buttonPadding = Responsive.isDesktop(context)
+        ? 18.0
+        : Responsive.isTablet(context)
+        ? 14.0
+        : 10.0;
+
+
+    final buttonHeight = Responsive.isDesktop(context)
+        ? 60.0
+        : Responsive.isTablet(context)
+        ? 54.0
+        : 48.0;
+
+    final buttonFont = Responsive.isDesktop(context)
+        ? 18.0
+        : Responsive.isTablet(context)
+        ? 16.0
+        : 13.0;
+
+    final imageSize = Responsive.isDesktop(context)
+        ? 28.0
+        : Responsive.isTablet(context)
+        ? 24.0
+        : 20.0;
+
+    final horizontalPadding = Responsive.isDesktop(context)
+        ? 32.0
+        : Responsive.isTablet(context)
+        ? 24.0
+        : 18.0;
+
+    final verticalPadding = Responsive.isDesktop(context)
+        ? 16.0
+        : Responsive.isTablet(context)
+        ? 14.0
+        : 12.0;
+
+    final spacing = Responsive.isDesktop(context)
+        ? 20.0
+        : Responsive.isTablet(context)
+        ? 16.0
+        : 12.0;
 
     return MultiBlocListener(
       listeners: [
@@ -140,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: Colors.black,
       body: Center(
         child: Container(
-          width: width * 0.9,
+          width: width * 0.95,
           height: height * 0.95,
           decoration: BoxDecoration(
             color: const Color(0xFF4A1D4F),
@@ -150,10 +251,10 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
 
               /// 🔹 TOP HEADER
-              Flexible(
-                flex: 1,
+              SizedBox(
+                height: headerHeight,
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.all(headerPadding),
                   decoration: const BoxDecoration(
                     color: Color(0xFFF4B544),
                     borderRadius: BorderRadius.vertical(
@@ -161,149 +262,95 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Expanded(
-                        child: BlocBuilder<StoreDetailsBloc, StoreDetailsState>(
-                          buildWhen: (prev, next) =>
-                              next is StoreDetailsInitial ||
-                              next is StoreDetailsLoading ||
-                              next is StoreDetailsLoaded ||
-                              next is StoreDetailsError,
-                          builder: (context, state) {
-                            if (state is StoreDetailsInitial ||
-                                state is StoreDetailsLoading) {
-                              return const SizedBox(
-                                height: 48,
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: KioskWaveDots(
-                                    dotSize: 7,
-                                    spacing: 4,
-                                    color: Color(0xFFFF9900),
-                                  ),
-                                ),
-                              );
-                            }
-                            if (state is StoreDetailsError) {
-                              return Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.storefront_outlined,
-                                    size: 40,
-                                    color: Color(0xFF222222),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      'Store',
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF222222),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }
-                            final details = (state as StoreDetailsLoaded).details;
-                            return Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                if (details.logo.isNotEmpty &&
-                                    (details.logo.startsWith('http://') ||
-                                        details.logo.startsWith('https://')))
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 10),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: CachedNetworkImage(
-                                        imageUrl: details.logo,
-                                        width: 48,
-                                        height: 48,
-                                        fit: BoxFit.cover,
-                                        placeholder: (_, __) => Container(
-                                          width: 48,
-                                          height: 48,
-                                          color: Colors.black12,
-                                          alignment: Alignment.center,
-                                          child: const KioskWaveDots(
-                                            dotSize: 5,
-                                            spacing: 3,
-                                            color: Color(0xFFFF9900),
-                                          ),
-                                        ),
-                                        errorWidget: (_, __, ___) =>
-                                            const SizedBox.shrink(),
-                                      ),
-                                    ),
-                                  ),
-                                // Expanded(
-                                //   child: Text(
-                                //     details.name,
-                                //     style: const TextStyle(
-                                //       fontSize: 18,
-                                //       fontWeight: FontWeight.w700,
-                                //       color: Color(0xFF222222),
-                                //     ),
-                                //   ),
-                                // ),
-                              ],
+                      // Logo
+                      BlocBuilder<StoreDetailsBloc, StoreDetailsState>(
+                        builder: (context, state) {
+                          if (state is! StoreDetailsLoaded) {
+                            return SizedBox(
+                              width: logoSize,
+                              height: logoSize,
                             );
-                          },
-                        ),
+                          }
+
+                          final details = state.details;
+
+                          return details.logo.isEmpty
+                              ? SizedBox(
+                            width: logoSize,
+                            height: logoSize,
+                          )
+                              : ClipRRect(
+                            borderRadius: BorderRadius.circular(logoRadius),
+                            child: CachedNetworkImage(
+                              imageUrl: details.logo,
+                              width: logoSize,
+                              height: logoSize,
+                              fit: BoxFit.cover,
+                            ),
+                          );
+                        },
                       ),
-                      const SizedBox(width: 8),
-                      Flexible(
+
+                      SizedBox(width: Responsive.w(context) * .02),
+
+                      Expanded(
                         child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             if (_storeDetails?.address.isNotEmpty == true)
                               Text(
                                 _storeDetails!.address,
-                                textAlign: TextAlign.end,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF333333),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: textFont,
+                                  color: const Color(0xFF333333),
                                 ),
                               ),
-                            if (_storeDetails != null &&
-                                _storeDetails!.cityLine.isNotEmpty)
+
+                            if (_storeDetails?.cityLine.isNotEmpty == true)
                               Text(
                                 _storeDetails!.cityLine,
-                                textAlign: TextAlign.end,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF333333),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: textFont,
+                                  color: const Color(0xFF333333),
                                 ),
                               ),
+
                             if (_storeDetails?.country.isNotEmpty == true)
                               Text(
                                 _storeDetails!.country,
-                                textAlign: TextAlign.end,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF333333),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: textFont,
+                                  color: const Color(0xFF333333),
                                 ),
                               ),
-                            const Text(
-                              'Open Everyday',
+
+                            Text(
+                              "Open Everyday",
                               style: TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF333333),
+                                fontSize: textFont,
+                                color: const Color(0xFF333333),
                               ),
                             ),
+
                             if (_storeDetails?.phoneNumber.isNotEmpty == true)
                               Text(
                                 _storeDetails!.phoneNumber,
-                                textAlign: TextAlign.end,
-                                style: const TextStyle(
-                                  fontSize: 12,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: textFont,
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFF333333),
+                                  color: const Color(0xFF333333),
                                 ),
                               ),
                           ],
@@ -318,58 +365,72 @@ class _HomeScreenState extends State<HomeScreen> {
               /// 🔹 BODY
               /// 🔹 BODY (ONLY AUTO SCROLLIMAGES)
               Flexible(
-                flex: 4, // 👈 control height here
-                child: Stack(
-                  children: [
-                    const Positioned.fill(child: ColoredBox(color: Colors.black)),
-                    Directionality(
-                      textDirection: TextDirection.ltr,
-                      child: PageView.builder(
-                        controller: _controller,
-                        physics: const NeverScrollableScrollPhysics(),
-                        reverse: false,
-                        itemCount:
-                            images.isEmpty ? 1 : kPromoVirtualPageCount,
-                        onPageChanged: (i) {
-                          if (images.isEmpty) return;
-                          setState(
-                            () => _currentPage = i % images.length,
-                          );
-                        },
-                        itemBuilder: (context, index) {
-                        if (images.isEmpty) {
-                          return const ColoredBox(color: Colors.black);
-                        }
-                        final src = images[index % images.length];
-                        final isNetwork = src.startsWith('http://') ||
-                            src.startsWith('https://');
+                flex: Responsive.isDesktop(context)
+                    ? 5
+                    : Responsive.isTablet(context)
+                    ? 4
+                    : 3,
+                child: Container(
 
-                        return isNetwork
-                            ? CachedNetworkImage(
-                          imageUrl: src,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          placeholder: (_, __) => const KioskPromoImageLoading(),
-                          errorWidget: (_, __, ___) => const ColoredBox(
-                            color: Colors.black,
-                            child: Center(
-                              child: Icon(Icons.broken_image, color: Colors.white70),
-                            ),
-                          ),
-                        )
-                            // : Image.asset(...);
-                            : Image.asset(
-                                src,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                  ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      const ColoredBox(color: Colors.black),
+
+                      Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: PageView.builder(
+                          controller: _controller,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: images.isEmpty ? 1 : kPromoVirtualPageCount,
+                          onPageChanged: (i) {
+                            if (images.isEmpty) return;
+
+                            setState(() {
+                              _currentPage = i % images.length;
+                            });
+                          },
+                          itemBuilder: (context, index) {
+                            if (images.isEmpty) {
+                              return const ColoredBox(color: Colors.black);
+                            }
+
+                            final src = images[index % images.length];
+                            final isNetwork = src.startsWith('http://') ||
+                                src.startsWith('https://');
+
+                            if (isNetwork) {
+                              return CachedNetworkImage(
+                                imageUrl: src,
                                 fit: BoxFit.cover,
                                 width: double.infinity,
                                 height: double.infinity,
-                                gaplessPlayback: true,
+                                placeholder: (_, __) =>
+                                const KioskPromoImageLoading(),
+                                errorWidget: (_, __, ___) => const Center(
+                                  child: Icon(
+                                    Icons.broken_image,
+                                    color: Colors.white70,
+                                  ),
+                                ),
                               );
-                      },
-                    ),
-                    ),
-                  ],
+                            }
+
+                            return Image.asset(
+                              src,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              gaplessPlayback: true,
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
@@ -377,124 +438,182 @@ class _HomeScreenState extends State<HomeScreen> {
               Flexible(
                 flex: 1,
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.all(
+                    Responsive.isDesktop(context)
+                        ? 12
+                        : Responsive.isTablet(context)
+                        ? 10
+                        : 8,
+                  ),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFF5E2A84), Color(0xFF3B1A5A)],
+                      colors: [
+                        Color(0xFF5E2A84),
+                        Color(0xFF3B1A5A),
+                      ],
                     ),
                     borderRadius: BorderRadius.vertical(
                       bottom: Radius.circular(30),
                     ),
                   ),
-
-                  // ✅ IMPORTANT: USE STACK
                   child: Stack(
                     children: [
-
-                      /// 🔽 MAIN CONTENT
-                      Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text(
-                            "Select your Preference",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18
+                      Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              "Select your Preference",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: titleFont,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 20),
 
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
+                            SizedBox(height: spacing),
 
-                              /// 🔹 Dine In
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.orange,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: buttonSpacing,
+                              runSpacing: buttonSpacing,
+                              children: [
+                                SizedBox(
+                                  height: buttonHeight,
+                                  child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.orange,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: horizontalPadding,
+                                        vertical: verticalPadding,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => const FoodUiScreen(
+                                            orderType: "Dine-In",
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Image.asset(
+                                          "assets/dinner.png",
+                                          width: imageSize,
+                                          height: imageSize,
+                                        ),
+                                        SizedBox(width: spacing / 2),
+                                        Text(
+                                          "Dine In",
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: buttonFont,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 35, vertical: 12),
                                 ),
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                      const FoodUiScreen(orderType: "Dine-In"),
-                                    ),
-                                  );
-                                },
-                                child: Row(
-                                  children: [
-                                    Image.asset("assets/dinner.png",
-                                        width: 20, height: 20),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      "Dine in",
-                                      style: TextStyle(color: Colors.white),
-                                    ),
-                                  ],
-                                ),
-                              ),
 
-                              /// 🔹 Take Away
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.pinkAccent,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
+
+                                SizedBox(
+                                  height: buttonHeight,
+                                  child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.pinkAccent,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: horizontalPadding,
+                                        vertical: verticalPadding,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => const FoodUiScreen(
+                                            orderType: "Take Away",
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Image.asset(
+                                          "assets/take-away.png",
+                                          width: imageSize,
+                                          height: imageSize,
+                                        ),
+                                        SizedBox(width: spacing / 2),
+                                        Text(
+                                          "Take Away",
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: buttonFont,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 20, vertical: 12),
                                 ),
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                      const FoodUiScreen(orderType: "Take Away"),
-                                    ),
-                                  );
-                                },
-                                child: Row(
-                                  children: [
-                                    Image.asset("assets/take-away.png",
-                                        width: 20, height: 20),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      "Take Away",
-                                      style: TextStyle(color: Colors.white),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
 
-                      /// 🔥 SETTINGS BUTTON (BOTTOM RIGHT)
                       Positioned(
-                        bottom: 10,
-                        right: 10,
+                        left: buttonPadding,
+                        bottom: buttonPadding,
                         child: Container(
+                          width: iconButtonSize,
+                          height: iconButtonSize,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withOpacity(.2),
                             shape: BoxShape.circle,
                           ),
                           child: IconButton(
-                            icon: const Icon(Icons.settings, color: Colors.white),
+                            icon: Icon(
+                              Icons.logout,
+                              size: iconSize,
+                              color: Colors.white,
+                            ),
+                            onPressed: () {},
+                          ),
+                        ),
+                      ),
+
+                      Positioned(
+                        right: buttonPadding,
+                        bottom: buttonPadding,
+                        child: Container(
+                          width: iconButtonSize,
+                          height: iconButtonSize,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: Icon(
+                              Icons.settings,
+                              size: iconSize,
+                              color: Colors.white,
+                            ),
                             onPressed: () {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) =>
-                                  // const PrinterSettingsAndTestScreen(),
-                                  const SettingsScreen(),
+                                  builder: (_) => const SettingsScreen(),
                                 ),
                               );
                             },
@@ -504,7 +623,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
-              ),
+              )
             ],
           ),
         ),

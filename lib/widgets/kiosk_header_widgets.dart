@@ -38,13 +38,13 @@ class KioskMenuBackButton extends StatelessWidget {
       label: Text(
         label,
         style: const TextStyle(
-          fontSize: 11, // reduced
+          fontSize: 14, // reduced
           color: KioskHeaderTokens.menuOrange,
           fontWeight: FontWeight.w600,
         ),
       ),
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size(80, 32), // reduced height
+        minimumSize: const Size(100, 52), // reduced height
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         side: const BorderSide(
           color: KioskHeaderTokens.menuBorder,
@@ -71,8 +71,8 @@ class KioskOrderTypeChip extends StatelessWidget {
     final text = orderType.trim().isEmpty ? 'Dine-In' : orderType;
 
     return Container(
-      width: 90,   // same as back button width
-      height: 32,  // same as back button height
+      width: 100,   // same as back button width
+      height: 52,  // same as back button height
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: KioskHeaderTokens.orderTypeBg,
@@ -95,7 +95,7 @@ class KioskOrderTypeChip extends StatelessWidget {
               text,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 11,
+                fontSize: 14,
                 color: KioskHeaderTokens.orderTypeText,
                 fontWeight: FontWeight.w900,
               ),
