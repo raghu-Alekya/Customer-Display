@@ -4479,6 +4479,33 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
         final List<dynamic> rawCategories = (p['categories'] as List?) ?? [];
 
+        // ✅ Extract meta_data properly
+        final List<Map<String, dynamic>> metaData = (p['meta_data'] as List?)
+            ?.whereType<Map>()
+            .map((m) => {
+          'id': m['id'],
+          'key': m['key']?.toString() ?? '',
+          'value': m['value'],
+        })
+            .toList() ?? [];
+
+        // ✅ Extract loyalty points for logging
+        int loyaltyPoints = 0;
+        if (metaData.isNotEmpty) {
+          final loyaltyEntry = metaData.firstWhere(
+                (m) => m['key'] == '_product_loyalty_points' || m['key'] == '_csv_loyalty_points',
+            orElse: () => {},
+          );
+          if (loyaltyEntry.isNotEmpty) {
+            loyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+          }
+        }
+
+        // ✅ Print loyalty points for this product
+        if (kDebugMode && loyaltyPoints > 0) {
+          print('⭐ Product "${p['name']}" (ID: ${p['id']}) has $loyaltyPoints loyalty points');
+        }
+
         return {
           'fast_key_product_id': p['id'],
           'fast_key_item_name': p['name'] ?? '',
@@ -4496,6 +4523,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           'variations': p['variations'] ?? [],
           'type': p['type'] ?? 'simple',
           'categories': rawCategories,
+          'meta_data': metaData, // ✅ Include meta_data
+          'loyalty_points': loyaltyPoints, // ✅ Store for quick access
           'is_ebt_eligible': tags.any((t) {
             final name = (t['name'] ?? '').toString().toLowerCase();
             final slug = (t['slug'] ?? '').toString().toLowerCase();
@@ -4509,8 +4538,17 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
       _apiSearchCache[query] = apiProducts;
 
+      // ✅ Log summary of loyalty points found
       if (kDebugMode) {
+        final productsWithPoints = apiProducts.where((p) => (p['loyalty_points'] ?? 0) > 0);
         print('✅ API returned ${apiProducts.length} products for "$query"');
+        print('⭐ ${productsWithPoints.length} products have loyalty points');
+        if (productsWithPoints.isNotEmpty) {
+          print('📊 Loyalty points details:');
+          for (final p in productsWithPoints) {
+            print('   • ${p['name']}: ${p['loyalty_points']} points');
+          }
+        }
       }
 
       _mergeApiResults(apiProducts);
@@ -4520,6 +4558,32 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       if (mounted) setState(() => _isApiSearchLoading = false);
     }
   }
+
+  // void _mergeApiResults(List<Map<String, dynamic>> apiProducts) {
+  //   if (apiProducts.isEmpty) return;
+  //
+  //   final Map<int, dynamic> existing = {};
+  //   for (final p in _cachedProducts) {
+  //     final int? pid = _productIdFromCacheMap(p);
+  //     if (pid != null) existing[pid] = p;
+  //   }
+  //
+  //   bool changed = false;
+  //   for (final ap in apiProducts) {
+  //     final int? pid = _productIdFromCacheMap(ap);
+  //     if (pid == null) continue;
+  //     if (!existing.containsKey(pid)) {
+  //       existing[pid] = ap;
+  //       changed = true;
+  //     }
+  //   }
+  //
+  //   if (changed && mounted) {
+  //     setState(() {
+  //       _cachedProducts = existing.values.toList();
+  //     });
+  //   }
+  // }
 
   void _mergeApiResults(List<Map<String, dynamic>> apiProducts) {
     if (apiProducts.isEmpty) return;
@@ -4534,9 +4598,28 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     for (final ap in apiProducts) {
       final int? pid = _productIdFromCacheMap(ap);
       if (pid == null) continue;
+
       if (!existing.containsKey(pid)) {
         existing[pid] = ap;
         changed = true;
+      } else {
+        // ✅ FIX: product already cached (e.g. from Isar, which never
+        // stores meta_data — see normaliseProduct()). Don't drop the
+        // API result's meta_data/loyalty_points on the floor.
+        final current = existing[pid];
+        if (current is Map) {
+          final bool currentHasMeta = current['meta_data'] is List &&
+              (current['meta_data'] as List).isNotEmpty;
+          final bool apiHasMeta = ap['meta_data'] is List &&
+              (ap['meta_data'] as List).isNotEmpty;
+          if (!currentHasMeta && apiHasMeta) {
+            final merged = Map<String, dynamic>.from(current);
+            merged['meta_data'] = ap['meta_data'];
+            merged['loyalty_points'] = ap['loyalty_points'];
+            existing[pid] = merged;
+            changed = true;
+          }
+        }
       }
     }
 
@@ -4546,6 +4629,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       });
     }
   }
+
 
   void _clearSearch() {
     _searchController.clear();
@@ -5459,11 +5543,65 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
       // ─────────────────────────────────────────────────────────────
       // Extract metaData + loyaltyPoints (works for both normal & Indigo products)
       // ─────────────────────────────────────────────────────────────
-      List<Map<String, dynamic>> metaDataList = [];
-      int loyaltyPoints = 0;
+      List<Map<String, dynamic>> metaDataList = product.getMetaDataAsMap();
+      int loyaltyPoints = product.getLoyaltyPoints();
 
       // Try multiple sources
-      dynamic rawMeta = null;
+      dynamic rawMeta;
+      if (product is IndigoCategoryBasedProducts) {
+        rawMeta = product.metaData;
+      } else {
+        final cached = _cachedProducts.firstWhere(
+              (p) => _productIdFromCacheMap(p) == product.id,
+          orElse: () => null,
+        );
+        if (cached is Map) {
+          rawMeta = cached['meta_data'] ?? cached['metaData'];
+        }
+      }
+
+      // ✅ FIX: fullProduct built from the search overlay never has metaData
+      // set on it (only tags), so getMetaDataAsMap()/getLoyaltyPoints() come
+      // back empty. Fall back to whatever meta_data we found in the caches.
+      if (metaDataList.isEmpty && rawMeta is List) {
+        metaDataList = rawMeta
+            .whereType<Map>()
+            .map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m))
+            .toList();
+      }
+
+      if (loyaltyPoints == 0 && metaDataList.isNotEmpty) {
+        final loyaltyEntry = metaDataList.firstWhere(
+              (m) =>
+          m['key'] == '_product_loyalty_points' ||
+              m['key'] == '_csv_loyalty_points',
+          orElse: () => {},
+        );
+        if (loyaltyEntry.isNotEmpty) {
+          loyaltyPoints =
+              int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+        }
+      }
+
+      // ✅ Log loyalty points when adding to cart
+      if (kDebugMode) {
+        print('🛒 Adding product to cart:');
+        print('   📦 Product: ${product.name} (ID: ${product.id})');
+        print('   💰 Price: \$${finalPrice.toStringAsFixed(2)}');
+        print('   ⭐ Loyalty Points: $loyaltyPoints');
+        if (metaDataList.isNotEmpty) {
+          print('   📋 Meta Data: ${metaDataList.length} items');
+          final loyaltyMeta = metaDataList.where((m) =>
+          m['key'] == '_product_loyalty_points' ||
+              m['key'] == '_csv_loyalty_points');
+          for (final m in loyaltyMeta) {
+            print('      • ${m['key']}: ${m['value']}');
+          }
+        }
+      }
+
+      // Try multiple sources
+
       if (product is IndigoCategoryBasedProducts) {
         rawMeta = product.metaData;
       } else {
@@ -5477,21 +5615,21 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         }
       }
 
-      if (rawMeta is List) {
-        metaDataList = rawMeta
-            .whereType<Map>()
-            .map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m))
-            .toList();
-
-        // Extract loyalty points
-        final loyaltyEntry = metaDataList.firstWhere(
-              (m) => m['key'] == '_product_loyalty_points',
-          orElse: () => {},
-        );
-        if (loyaltyEntry.isNotEmpty) {
-          loyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
-        }
-      }
+      // if (rawMeta is List) {
+      //   metaDataList = rawMeta
+      //       .whereType<Map>()
+      //       .map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m))
+      //       .toList();
+      //
+      //   // Extract loyalty points
+      //   final loyaltyEntry = metaDataList.firstWhere(
+      //         (m) => m['key'] == '_product_loyalty_points',
+      //     orElse: () => {},
+      //   );
+      //   if (loyaltyEntry.isNotEmpty) {
+      //     loyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+      //   }
+      // }
 
       await orderHelper.addItemToOrder(
         product.id!,

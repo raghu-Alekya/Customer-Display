@@ -635,7 +635,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final String m = (method ?? '').toString().trim().toLowerCase();
     if (m == TextConstants.ebtText.toLowerCase()) return PaymentMode.ebt;
     if (m == TextConstants.card.toLowerCase()) return PaymentMode.card;
-    if (m == TextConstants.wallet.toLowerCase()) return PaymentMode.wallet;
+    if (m == TextConstants.wallet.toLowerCase()) return PaymentMode.payLater;
+    if (m == 'pay later') return PaymentMode.payLater;   // ⭐ ADDED: route Pay Later to Wallet mode
     return PaymentMode.cash;
   }
 
@@ -4685,6 +4686,523 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     return token;
   }
 
+  /// Pay Later only supports paying the FULL balance — disable the button
+  /// whenever the user has typed a partial amount into the keypad.
+  bool _isPartialAmountEntered() {
+    final double enteredAmount = double.tryParse(
+      amountController.text
+          .replaceAll(TextConstants.currencySymbol, '')
+          .trim(),
+    ) ??
+        0.0;
+
+    final double effectiveBalance =
+        _currentPaymentRemainingBalance ?? balanceAmount;
+
+    return enteredAmount > 0 && enteredAmount < (effectiveBalance - 0.01);
+  }
+
+  // Future<void> _handlePayLaterPayment() async {
+  //   // Safety guard — button is already disabled for this case, but re-check.
+  //   setState(() => _amountErrorText = null);
+  //
+  //   // ⭐ NEW: Require an amount to be entered/selected first — same validation
+  //   // Cash and Card use. Without this, tapping Pay Later at $0.00 skipped
+  //   // straight to the popup + sync, which is wrong.
+  //   final double enteredAmount = double.tryParse(
+  //     amountController.text
+  //         .replaceAll(TextConstants.currencySymbol, '')
+  //         .trim(),
+  //   ) ??
+  //       0.0;
+  //
+  //   if (enteredAmount <= 0 && computedNetPayable > 0) {
+  //     setState(() => _amountErrorText = TextConstants.amountValidation);
+  //     return;
+  //   }
+  //
+  //   if (_isPartialAmountEntered()) {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(
+  //         content: Text("Pay Later cannot be used with a partial amount"),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //     return;
+  //   }
+  //
+  //   final double effectiveBalance =
+  //       _currentPaymentRemainingBalance ?? balanceAmount;
+  //
+  //   if (effectiveBalance <= 0) {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(
+  //         content: Text("Nothing to pay"),
+  //         backgroundColor: Colors.orange,
+  //       ),
+  //     );
+  //     return;
+  //   }
+  //
+  //   // ── Show the Pay Later customer-picker popup ───────────────────────────
+  //   final dynamic selectedUser = await showDialog<dynamic>(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (_) => Dialog(
+  //       backgroundColor: Colors.transparent,
+  //       elevation: 0,
+  //       insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+  //       child: PayLaterWidget(),
+  //     ),
+  //   );
+  //
+  //   // Cancel tapped (or dialog dismissed) → just stay on Order Summary.
+  //   if (selectedUser == null) {
+  //     if (kDebugMode) print(" Pay Later cancelled by user");
+  //     return;
+  //   }
+  //
+  //   setState(() {
+  //     _selectedPayLaterUser = Map<String, dynamic>.from(selectedUser as Map);
+  //     _isPayLaterSelected = true;
+  //     _processingPaymentMethod = "Pay Later";
+  //     isLoading = true;
+  //   });
+  //
+  //   _showPaymentProgressDialog(context);
+  //
+  //   try {
+  //     final box = StorageProvider.offlineOrders;
+  //     final String orderKey = widget.offlineOrderId?.toString() ??
+  //         widget.orderId?.toString() ??
+  //         orderId?.toString() ??
+  //         "";
+  //
+  //     if (orderKey.isEmpty) {
+  //       _hidePaymentProgressDialog();
+  //       setState(() {
+  //         isLoading = false;
+  //         _processingPaymentMethod = null;
+  //       });
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(
+  //           content: Text("Could not resolve order"),
+  //           backgroundColor: Colors.red,
+  //         ),
+  //       );
+  //       return;
+  //     }
+  //
+  //     final raw = await box.get(orderKey);
+  //     final Map<String, dynamic> order =
+  //     raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+  //
+  //     // ── Attach Pay Later customer to the offline order BEFORE syncing ────
+  //     order['selectedPayLaterUser'] =
+  //     Map<String, dynamic>.from(_selectedPayLaterUser!);
+  //     order['is_pay_later_order'] = true;
+  //     order['payment_method'] = "Pay Later";
+  //
+  //     await box.put(orderKey, order);
+  //
+  //     if (kDebugMode) {
+  //       print("✅ Pay Later user saved to Hive before sync: "
+  //           "${_selectedPayLaterUser!['name']} (ID: ${_selectedPayLaterUser!['user_id']})");
+  //     }
+  //
+  //     // ── Sync the order (with the Pay Later user attached) to the server ──
+  //     final result = await OrderRepository().syncSingleOfflineOrder(order);
+  //
+  //     if (result == null || result is! Map) {
+  //       _hidePaymentProgressDialog();
+  //       setState(() {
+  //         isLoading = false;
+  //         _processingPaymentMethod = null;
+  //       });
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(
+  //           content: Text("Failed to sync Pay Later order"),
+  //           backgroundColor: Colors.red,
+  //         ),
+  //       );
+  //       return;
+  //     }
+  //
+  //     _hidePaymentProgressDialog();
+  //
+  //     // ── Treat this as a full payment (Pay Later covers the whole balance)─
+  //     final double amount = effectiveBalance;
+  //     final double newTender = tenderAmount + amount;
+  //
+  //     _lastPayment = LastPaymentInfo(
+  //       method: "Pay Later",
+  //       amount: amount,
+  //       paymentId: "paylater_${DateTime.now().millisecondsSinceEpoch}",
+  //       sunmiTxnId: null,
+  //     );
+  //
+  //     final String datetimeStr =
+  //     DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+  //
+  //     final localPayment = LocalPayment(
+  //       orderId: orderId ?? 0,
+  //       title: "Pay Later",
+  //       amount: amount,
+  //       paymentMethod: "Pay Later",
+  //       shiftId: shiftId,
+  //       vendorId: vendorId,
+  //       userId: userId ?? 0,
+  //       serviceType: serviceType,
+  //       datetime: datetimeStr,
+  //       notes:
+  //       "Pay Later – assigned to ${_selectedPayLaterUser?['name'] ?? 'customer'} "
+  //           "(ID: ${_selectedPayLaterUser?['user_id']})",
+  //       isSynced: true,
+  //       createdAt: DateTime.now(),
+  //       remainingBalance: 0.0,
+  //       status: PaymentDbStatus.completed,
+  //     );
+  //
+  //     final savedPayment =
+  //     await LocalPaymentDBHelper.instance.savePayment(localPayment);
+  //
+  //     await _savePaymentToHive(
+  //       amount: amount,
+  //       paymentMethod: "Pay Later",
+  //       transactionId: "paylater_${savedPayment.id}",
+  //       localPayment: savedPayment,
+  //     );
+  //     await _saveLocalPaymentToHive(savedPayment);
+  //
+  //     setState(() {
+  //       isPaymentStarted = true;
+  //       isLoading = false;
+  //       _processingPaymentMethod = null;
+  //       paidAmount = amount;
+  //       tenderAmount = newTender;
+  //       balanceAmount = 0.0;
+  //       changeAmount = 0.0;
+  //       payByOther += amount; // Pay Later rolls up under "Other" totals
+  //       _currentPaymentRemainingBalance = null;
+  //       _lastPaymentDetails = null;
+  //       _successPopupShown = true;
+  //     });
+  //
+  //     _resetAmountAfterPay();
+  //
+  //     final cr = order["coupon_response"];
+  //     final couponResponse =
+  //     cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+  //
+  //     // ── Show the same full-payment success popup as cash/card/EBT ────────
+  //     _showPaymentDialog(
+  //       context,
+  //       newTender,
+  //       changeAmount: 0.0,
+  //       showChange: false,
+  //       couponResponse: couponResponse,
+  //     );
+  //   } catch (e, st) {
+  //     if (kDebugMode) {
+  //       print("❌ _handlePayLaterPayment error: $e");
+  //       print(st);
+  //     }
+  //     _hidePaymentProgressDialog();
+  //     setState(() {
+  //       isLoading = false;
+  //       _processingPaymentMethod = null;
+  //     });
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text("Pay Later error: $e"),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //   }
+  // }
+
+  ///// above code was old and working
+
+  Future<void> _handlePayLaterPayment() async {
+    // Safety guard — button is already disabled for this case, but re-check.
+    setState(() => _amountErrorText = null);
+
+    // ⭐ NEW: Require an amount to be entered/selected first — same validation
+    // Cash and Card use. Without this, tapping Pay Later at $0.00 skipped
+    // straight to the popup + sync, which is wrong.
+    final double enteredAmount = double.tryParse(
+      amountController.text
+          .replaceAll(TextConstants.currencySymbol, '')
+          .trim(),
+    ) ??
+        0.0;
+
+    if (enteredAmount <= 0 && computedNetPayable > 0) {
+      setState(() => _amountErrorText = TextConstants.amountValidation);
+      return;
+    }
+
+    if (_isPartialAmountEntered()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Pay Later cannot be used with a partial amount"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final double effectiveBalance =
+        _currentPaymentRemainingBalance ?? balanceAmount;
+
+    if (effectiveBalance <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Nothing to pay"),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // ⭐ FIX: Cap the entered amount to the effective balance (like Cash/Card)
+    // This prevents Pay Later from taking more than the remaining balance
+    double amountToUse = enteredAmount;
+
+    // If entered amount exceeds balance, cap it to the balance
+    if (enteredAmount > effectiveBalance) {
+      amountToUse = effectiveBalance;
+
+      // Update the UI to show the capped amount
+      _rawAmount = (amountToUse * 100).round();
+      amountController.text =
+      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+      setState(() {
+        _isAmountEntered = true;
+        _amountErrorText = null;
+      });
+
+      // Show a snackbar to inform the user
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Amount adjusted to remaining balance (${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)})'
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
+    if (amountToUse <= 0) {
+      setState(() => _amountErrorText = TextConstants.amountValidation);
+      return;
+    }
+
+    // ── Show the Pay Later customer-picker popup ───────────────────────────
+    final dynamic selectedUser = await showDialog<dynamic>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+        child: PayLaterWidget(),
+      ),
+    );
+
+    // Cancel tapped (or dialog dismissed) → just stay on Order Summary.
+    if (selectedUser == null) {
+      if (kDebugMode) print(" Pay Later cancelled by user");
+      return;
+    }
+
+    setState(() {
+      _selectedPayLaterUser = Map<String, dynamic>.from(selectedUser as Map);
+      _isPayLaterSelected = true;
+      _processingPaymentMethod = "Pay Later";
+      isLoading = true;
+    });
+
+    _showPaymentProgressDialog(context);
+
+    try {
+      final box = StorageProvider.offlineOrders;
+      final String orderKey = widget.offlineOrderId?.toString() ??
+          widget.orderId?.toString() ??
+          orderId?.toString() ??
+          "";
+
+      if (orderKey.isEmpty) {
+        _hidePaymentProgressDialog();
+        setState(() {
+          isLoading = false;
+          _processingPaymentMethod = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Could not resolve order"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final raw = await box.get(orderKey);
+      final Map<String, dynamic> order =
+      raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+
+      // ── Attach Pay Later customer to the offline order BEFORE syncing ────
+      order['selectedPayLaterUser'] =
+      Map<String, dynamic>.from(_selectedPayLaterUser!);
+      order['is_pay_later_order'] = true;
+      order['payment_method'] = "Pay Later";
+
+      await box.put(orderKey, order);
+
+      if (kDebugMode) {
+        print("✅ Pay Later user saved to Hive before sync: "
+            "${_selectedPayLaterUser!['name']} (ID: ${_selectedPayLaterUser!['user_id']})");
+      }
+
+      // ── Sync the order (with the Pay Later user attached) to the server ──
+      final result = await OrderRepository().syncSingleOfflineOrder(order);
+
+      if (result == null || result is! Map) {
+        _hidePaymentProgressDialog();
+        setState(() {
+          isLoading = false;
+          _processingPaymentMethod = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Failed to sync Pay Later order"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      _hidePaymentProgressDialog();
+
+      // ⭐ FIX: Use the capped amount (amountToUse) instead of effectiveBalance
+      // This ensures Pay Later only takes the exact amount entered (capped at balance)
+      final double amount = amountToUse;
+      final double newTender = tenderAmount + amount;
+
+      _lastPayment = LastPaymentInfo(
+        method: "Pay Later",
+        amount: amount,
+        paymentId: "paylater_${DateTime.now().millisecondsSinceEpoch}",
+        sunmiTxnId: null,
+      );
+
+      final String datetimeStr =
+      DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
+      final localPayment = LocalPayment(
+        orderId: orderId ?? 0,
+        title: "Pay Later",
+        amount: amount,
+        paymentMethod: "Pay Later",
+        shiftId: shiftId,
+        vendorId: vendorId,
+        userId: userId ?? 0,
+        serviceType: serviceType,
+        datetime: datetimeStr,
+        notes:
+        "Pay Later – assigned to ${_selectedPayLaterUser?['name'] ?? 'customer'} "
+            "(ID: ${_selectedPayLaterUser?['user_id']})",
+        isSynced: true,
+        createdAt: DateTime.now(),
+        remainingBalance: (effectiveBalance - amount).clamp(0.0, double.infinity),
+        status: PaymentDbStatus.completed,
+      );
+
+      final savedPayment =
+      await LocalPaymentDBHelper.instance.savePayment(localPayment);
+
+      await _savePaymentToHive(
+        amount: amount,
+        paymentMethod: "Pay Later",
+        transactionId: "paylater_${savedPayment.id}",
+        localPayment: savedPayment,
+      );
+      await _saveLocalPaymentToHive(savedPayment);
+
+      // Calculate new balance after this payment
+      final double newBalance = (effectiveBalance - amount).clamp(0.0, double.infinity);
+      final bool isFullPayment = newBalance <= 0.01;
+
+      setState(() {
+        isPaymentStarted = true;
+        isLoading = false;
+        _processingPaymentMethod = null;
+        paidAmount = amount;
+        tenderAmount = newTender;
+        balanceAmount = newBalance;
+        changeAmount = 0.0;
+        payByOther += amount; // Pay Later rolls up under "Other" totals
+
+        if (isFullPayment) {
+          _currentPaymentRemainingBalance = null;
+          _lastPaymentDetails = null;
+          _successPopupShown = true;
+        } else {
+          _currentPaymentRemainingBalance = newBalance;
+          _lastPaymentDetails = {
+            'amount': amount,
+            'method': "Pay Later",
+            'remainingBalance': newBalance,
+            'previousBalance': effectiveBalance,
+            'datetime': DateTime.now().toIso8601String(),
+            'paymentNumber': (_lastPaymentDetails?['paymentNumber'] ?? 0) + 1,
+          };
+        }
+      });
+
+      _resetAmountAfterPay();
+
+      final cr = order["coupon_response"];
+      final couponResponse =
+      cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+
+      // ── Show appropriate dialog based on payment status ──
+      if (isFullPayment) {
+        _successPopupShown = true;
+        await CustomerDisplayService.showThankYou();
+        await orderHelper.setActiveOrder(null);
+        await CustomerDisplayService.resetDisplay();
+
+        _showPaymentDialog(
+          context,
+          newTender,
+          changeAmount: 0.0,
+          showChange: false,
+          couponResponse: couponResponse,
+        );
+      } else {
+        _showPartialPaymentDialog(context, amount);
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        print("❌ _handlePayLaterPayment error: $e");
+        print(st);
+      }
+      _hidePaymentProgressDialog();
+      setState(() {
+        isLoading = false;
+        _processingPaymentMethod = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Pay Later error: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   Future<void> _handleEbtCardPaymentViaAPI() async {
     final double amount = double.tryParse(
       amountController.text
@@ -6109,7 +6627,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   },
                                 ),
                                 _buildPaymentModeButton(
-                                  TextConstants.wallet,
+                                  "Pay Later",
                                   Image.asset(
                                     'assets/wallet.png',
                                     width: ResponsiveLayout.getIconSize(24),
@@ -6117,27 +6635,22 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     fit: BoxFit.contain,
                                   ),
                                   gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFFCCB985),
-                                      Color(0xFFCCB985)
-                                    ],
+                                    colors: [Color(0xFFCCB985), Color(0xFFCCB985)],
                                   ),
                                   borderColor: const Color(0xFFCCB985),
-                                  iconColor: Color(0xFFCCB985),
-                                  // isLoading: _processingPaymentMethod == TextConstants.wallet && isLoading,
-                                  // isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.wallet,
-                                  // ❌ FORCE DISABLE
-                                  isLoading: false,
-                                  isDisabled: true,
-                                  onTap: () {
-                                    _selectPaymentMethod(
-                                      TextConstants.wallet,
-                                      //autoFillAmount: true,
-                                      maxAllowedAmount: balanceAmount,
-                                    );
-                                    _handlePay();
+                                  iconColor: const Color(0xFFCCB985),
+                                  isLoading: _processingPaymentMethod == "Pay Later" && isLoading,
+                                  isDisabled: _isPartialAmountEntered() ||
+                                      balanceAmount <= 0 ||
+                                      (_processingPaymentMethod != null &&
+                                          _processingPaymentMethod != "Pay Later"),
+                                  onTap: () async {
+                                    //  Pay Later ignores the keypad entirely — no _selectPaymentMethod(),
+                                    // no _handlePay(). This is the fix for the "please select payment" error.
+                                    await _handlePayLaterPayment();
                                   },
                                 ),
+
                                 // _buildPaymentModeButton(
                                 //   TextConstants.ebtText,
                                 //   Image.asset(
@@ -6915,46 +7428,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
           const SizedBox(width: 20),
 
-          Flexible(
-            child: PayLaterWidget(
-              onUserSelected: (user) {
-                print("✅ PayLater User Selected: ${user?['name'] ?? 'Unknown'} | ID: ${user?['id']}");
-
-                setState(() {
-                  if (user != null) {
-                    _selectedPayLaterUser = Map<String, dynamic>.from(user);
-                    _isPayLaterSelected = true;
-                    selectedPaymentMethod = "Pay Later";
-                    amountController.text = '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}';
-                    _isAmountEntered = true;
-
-                    // ✅ CRITICAL: Also save directly to offlineOrder when selected
-                    if (offlineOrder != null) {
-                      offlineOrder!['selectedPayLaterUser'] = Map<String, dynamic>.from(user);
-                      offlineOrder!['is_pay_later_order'] = true;
-
-                      // Save to Hive immediately
-                      final box = StorageProvider.offlineOrders;
-                      final String key = offlineOrder?['id']?.toString() ??
-                          offlineOrder?['order_id']?.toString() ??
-                          widget.offlineOrderId?.toString() ??
-                          "";
-                      if (key.isNotEmpty) {
-                        box.put(key, offlineOrder).then((_) {
-                          print("✅ Pay Later user saved to Hive immediately on selection: ${user['name']}");
-                        });
-                      }
-                    }
-                  } else {
-                    _selectedPayLaterUser = null;
-                    _isPayLaterSelected = false;
-                  }
-                });
-              },
-            ),
-          ),
-
-          const SizedBox(width: 20),
+          const SizedBox(width: 180),
           Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,

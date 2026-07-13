@@ -745,7 +745,7 @@ class NestedGridWidget extends StatelessWidget {
                                   onItemAdded: () async {
                                           print(" Weighted product added successfully!");
                                           print("$item['loyalty_points']");
-                                          onItemTapped(index, variantAdded: false);
+                                          onItemTapped(index, variantAdded: true);
                                         },
                               );
                               return;
@@ -817,8 +817,8 @@ class NestedGridWidget extends StatelessWidget {
                                   },
                                 );
 
-                                onItemTapped(index, variantAdded: false);
-                                return; // ⛔ VERY IMPORTANT — stop popup here
+                                onItemTapped(index, variantAdded: true);
+                                return; //  VERY IMPORTANT — stop popup here
                               }
 
                               // -------------------------------------------------------------
@@ -1236,9 +1236,9 @@ class NestedGridWidget extends StatelessWidget {
                                     : null,
                                 loyaltyPoints: simpleLoyaltyPoints,
                                 onItemAdded: () async {
-                                  print("✅ Simple product added successfully!");
+                                  print(" Simple product added successfully!");
                                   print("print : $loyaltyPoints");
-                                  onItemTapped(index, variantAdded: false);
+                                  onItemTapped(index, variantAdded: true);
                                 },
                               );
                             }

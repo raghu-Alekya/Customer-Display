@@ -1853,6 +1853,31 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   // Lifecycle
   // ─────────────────────────────────────────────────────────────────────────
 
+  // @override
+  // void initState() {
+  //   super.initState();
+  //   orderBloc = OrderBloc(OrderRepository());
+  //   _selectedSidebarIndex = widget.lastSelectedIndex ?? 1;
+  //   _categoryBloc = CategoryBloc(CategoryRepository());
+  //   reorderedIndices = List.filled(categoryProducts.length, null);
+  //   _loadTopLevelCategories();
+  //
+  //   WidgetsBinding.instance.addPostFrameCallback((_) async {
+  //     await Future.delayed(const Duration(milliseconds: 1200));
+  //     if (mounted) await _preserveSelectedOrder();
+  //   });
+  //
+  //   // ── FIX: Register the refresh callback so TopBar can trigger a UI reload.
+  //   // This MUST be in CategoriesScreen.initState, not in TopBar.initState,
+  //   // because _forceReloadCurrentView() is a method of _CategoriesScreenState.
+  //   TopBar.onRefreshCompleted = () async {
+  //     if (!mounted) return;
+  //     await _forceReloadCurrentView();
+  //   };
+  // }
+
+  //// above code was old code
+
   @override
   void initState() {
     super.initState();
@@ -1868,8 +1893,6 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     });
 
     // ── FIX: Register the refresh callback so TopBar can trigger a UI reload.
-    // This MUST be in CategoriesScreen.initState, not in TopBar.initState,
-    // because _forceReloadCurrentView() is a method of _CategoriesScreenState.
     TopBar.onRefreshCompleted = () async {
       if (!mounted) return;
       await _forceReloadCurrentView();
@@ -1931,9 +1954,17 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         _selectedIndigoSubCategoryIndex = null;
       });
 
-      final cats =
+      final rawCats =
       await _indigoCategoryRepo.indigoFetchCategories(parentCategoryId);
       if (!mounted) return;
+
+// Filter out hidden categories (e.g. "Uncategorized") using the same
+// rule already used for top-level categories — no other logic touched.
+      final cats = rawCats.where((c) {
+        final name = c.name.toLowerCase().trim();
+        final slug = c.slug.toLowerCase().trim();
+        return !_hiddenCategoryNames.contains(name) && slug != 'custom-product';
+      }).toList();
 
       setState(() {
         _indigoSubCategories = cats;
@@ -2773,6 +2804,86 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   // Original category methods
   // ─────────────────────────────────────────────────────────────────────────
 
+  // Future<void> _autoTapAllCategories() async {
+  //   if (categories.isEmpty || _hasAutoTappedOnce) return;
+  //   _hasAutoTappedOnce = true;
+  //   setState(() {
+  //     _isAutoLoading = true;
+  //     _autoLoadCompleted = false;
+  //   });
+  //   _showAutoLoadingDialog();
+  //   final prefs = await SharedPreferences.getInstance();
+  //   final int? saved = prefs.getInt('lastSelectedCategoryIndex');
+  //   final int tapIndex =
+  //   (saved != null && saved >= 0 && saved < categories.length) ? saved : 0;
+  //   if (!mounted) return;
+  //   _scrollToCategory(tapIndex);
+  //   await Future.delayed(const Duration(milliseconds: 250));
+  //   _onCategoryTapped(tapIndex);
+  //   await _waitForNestedLoadingOrTimeout();
+  //   await Future.delayed(const Duration(milliseconds: 300));
+  //   _preWarmAllIndigoData();
+  //   _hideAutoLoadingDialog();
+  //   if (!mounted) return;
+  //   setState(() {
+  //     _isAutoLoading = false;
+  //     _autoLoadCompleted = true;
+  //   });
+  //   if (_selectedCategoryIndex != null &&
+  //       _selectedCategoryIndex! >= 0 &&
+  //       _selectedCategoryIndex! < categories.length) {
+  //     final int parentCategoryId = categories[_selectedCategoryIndex!].id;
+  //     final int targetCategoryId = _indigoSubCategories.isNotEmpty
+  //         ? _indigoSubCategories.first.id
+  //         : parentCategoryId;
+  //     _loadIndigoProductsBySubCategory(targetCategoryId);
+  //   }
+  // }
+  // Future<void> _autoTapAllCategories() async {
+  //   if (categories.isEmpty || _hasAutoTappedOnce) return;
+  //   _hasAutoTappedOnce = true;
+  //   setState(() {
+  //     _isAutoLoading = true;
+  //     _autoLoadCompleted = false;
+  //   });
+  //   _showAutoLoadingDialog();
+  //   final prefs = await SharedPreferences.getInstance();
+  //   final int? saved = prefs.getInt('lastSelectedCategoryIndex');
+  //   final int tapIndex =
+  //   (saved != null && saved >= 0 && saved < categories.length) ? saved : 0;
+  //   if (!mounted) return;
+  //   _scrollToCategory(tapIndex);
+  //   await Future.delayed(const Duration(milliseconds: 250));
+  //   _onCategoryTapped(tapIndex);
+  //   await _waitForNestedLoadingOrTimeout();
+  //   await Future.delayed(const Duration(milliseconds: 300));
+  //   _preWarmAllIndigoData();
+  //   _hideAutoLoadingDialog();
+  //   if (!mounted) return;
+  //   setState(() {
+  //     _isAutoLoading = false;
+  //     _autoLoadCompleted = true;
+  //     // FIX: Always land back on the "All" tab after the background
+  //     // pre-warm/auto-tap finishes, instead of staying on whichever
+  //     // category _onCategoryTapped(tapIndex) opened internally above.
+  //     // The pre-warm itself (sub-categories + products fetch/cache) is
+  //     // untouched — this only affects what's shown once it's done.
+  //     _showCategoryGrid = true;
+  //   });
+  //   if (_selectedCategoryIndex != null &&
+  //       _selectedCategoryIndex! >= 0 &&
+  //       _selectedCategoryIndex! < categories.length) {
+  //     final int parentCategoryId = categories[_selectedCategoryIndex!].id;
+  //     final int targetCategoryId = _indigoSubCategories.isNotEmpty
+  //         ? _indigoSubCategories.first.id
+  //         : parentCategoryId;
+  //     _loadIndigoProductsBySubCategory(targetCategoryId);
+  //   }
+  // }
+
+  /////// above code old code
+
+
   Future<void> _autoTapAllCategories() async {
     if (categories.isEmpty || _hasAutoTappedOnce) return;
     _hasAutoTappedOnce = true;
@@ -2797,18 +2908,23 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     setState(() {
       _isAutoLoading = false;
       _autoLoadCompleted = true;
+      // FIX: Always land back on the "All" tab after the background
+      // pre-warm/auto-tap finishes, instead of staying on whichever
+      // category _onCategoryTapped(tapIndex) opened internally above.
+      _showCategoryGrid = true;
+      // Also clear the selected category index to show All
+      _selectedCategoryIndex = null;
+      _selectedSubCategoryIndex = null;
+      _indigoSubCategories = [];
+      _indigoProducts = [];
+      _selectedIndigoSubCategoryIndex = null;
     });
-    if (_selectedCategoryIndex != null &&
-        _selectedCategoryIndex! >= 0 &&
-        _selectedCategoryIndex! < categories.length) {
-      final int parentCategoryId = categories[_selectedCategoryIndex!].id;
-      final int targetCategoryId = _indigoSubCategories.isNotEmpty
-          ? _indigoSubCategories.first.id
-          : parentCategoryId;
-      _loadIndigoProductsBySubCategory(targetCategoryId);
-    }
+    // No need to load products for a specific category when showing "All"
+    // Just clear the recent categories or keep them as is
   }
 
+
+  
   Future<void> _loadLastSelectedCategory() async {
     if (categories.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
@@ -2877,6 +2993,79 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     }
   }
 
+  // Future<void> _loadTopLevelCategories() async {
+  //   if (categories.isEmpty) {
+  //     setState(() {
+  //       isLoading = true;
+  //       isLoadingNestedContent = true;
+  //     });
+  //   } else {
+  //     setState(() {
+  //       isLoadingNestedContent = true;
+  //     });
+  //   }
+  //   _categoryBloc.fetchCategories(0);
+  //   try {
+  //     await for (final response in _categoryBloc.categoriesStream
+  //         .timeout(const Duration(seconds: 25))) {
+  //       if (!mounted) break;
+  //       if (response.status == Status.COMPLETED && response.data != null) {
+  //         categories = response.data!.categories;
+  //
+  //         _preLoadDefaultCategoryProducts(categories);
+  //
+  //         setState(() {
+  //           isLoading = false;
+  //           isLoadingNestedContent = false;
+  //         });
+  //         final bool isProductCacheEmpty = await _isProductCacheEmpty();
+  //         if (isProductCacheEmpty) {
+  //           WidgetsBinding.instance
+  //               .addPostFrameCallback((_) => _autoTapAllCategories());
+  //         } else {
+  //           setState(() => _autoLoadCompleted = true);
+  //           _preWarmAllIndigoData();
+  //           await _loadLastSelectedCategory();
+  //         }
+  //         // final bool isProductCacheEmpty = await _isProductCacheEmpty();
+  //         // if (isProductCacheEmpty) {
+  //         //   WidgetsBinding.instance
+  //         //       .addPostFrameCallback((_) => _autoTapAllCategories());
+  //         // } else {
+  //         //   setState(() => _autoLoadCompleted = true);
+  //         //   _preWarmAllIndigoData();
+  //         //   // REMOVED: await _loadLastSelectedCategory();
+  //         //   // We no longer auto-jump into the last selected category on startup.
+  //         //   // The screen now always opens on the "All" categories grid
+  //         //   // (_showCategoryGrid defaults to true). Recent categories still get
+  //         //   // populated normally the moment the user taps any category, via
+  //         //   // _addToRecent() inside _onCategoryTapped().
+  //         // }
+  //         break;
+  //       }
+  //       if (response.status == Status.ERROR) {
+  //         setState(() {
+  //           isLoading = false;
+  //           isLoadingNestedContent = false;
+  //         });
+  //         if (response.message?.contains("Unauthorised") ?? false) {
+  //           Navigator.pushReplacement(
+  //               context, MaterialPageRoute(builder: (_) => LoginScreen()));
+  //         }
+  //         break;
+  //       }
+  //     }
+  //   } on TimeoutException {
+  //     if (!mounted) return;
+  //     setState(() {
+  //       isLoading = false;
+  //       isLoadingNestedContent = false;
+  //     });
+  //   }
+  // }
+
+  //// above code was to old code
+
   Future<void> _loadTopLevelCategories() async {
     if (categories.isEmpty) {
       setState(() {
@@ -2909,7 +3098,17 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           } else {
             setState(() => _autoLoadCompleted = true);
             _preWarmAllIndigoData();
-            await _loadLastSelectedCategory();
+            // REMOVED: await _loadLastSelectedCategory();
+            // We always want to show "All" by default
+            // Ensure the "All" tab is selected
+            setState(() {
+              _showCategoryGrid = true;
+              _selectedCategoryIndex = null;
+              _selectedSubCategoryIndex = null;
+              _indigoSubCategories = [];
+              _indigoProducts = [];
+              _selectedIndigoSubCategoryIndex = null;
+            });
           }
           break;
         }

@@ -131,71 +131,131 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen>
                     padding: const EdgeInsets.all(8.0),
                     child: isLoading
                         ? const Center(child: CircularProgressIndicator())
+                        // : GridView.count(
+                        //     crossAxisCount: 4,
+                        //     childAspectRatio: 1,
+                        //     children: [
+                        //       _buildCard(
+                        //         //title: TextConstants.cashier,
+                        //         icon: themeHelper.themeMode == ThemeMode.dark
+                        //             ? Image.asset(
+                        //                 "assets/cashier_dark.png",
+                        //               )
+                        //             : Image.asset(
+                        //                 "assets/cashier_lite.png",
+                        //               ),
+                        //         cardIndex: 0,
+                        //         onTap: () {
+                        //           Navigator.push(
+                        //             context,
+                        //             MaterialPageRoute(
+                        //                 builder: (context) =>
+                        //                     ShiftHistoryDashboardScreen() //Build #1.0.74
+                        //                 //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
+                        //                 ),
+                        //           );
+                        //         },
+                        //       ),
+                        //       if (_isSafeDropEnabled)
+                        //         _buildCard(
+                        //           icon: themeHelper.themeMode == ThemeMode.dark
+                        //               ? Image.asset("assets/safedrop_dark.png")
+                        //               : Image.asset("assets/safedrop_lite.png"),
+                        //           cardIndex: 1,
+                        //           onTap: () {
+                        //             Navigator.push(
+                        //               context,
+                        //               MaterialPageRoute(
+                        //                   builder: (_) => SafeDropScreen()),
+                        //             );
+                        //           },
+                        //         ),
+                        //
+                        //       _buildCard(
+                        //         //title: TextConstants.cashier,
+                        //         icon: themeHelper.themeMode == ThemeMode.dark
+                        //             ? Image.asset(
+                        //                 "assets/stock_inventory_dark.png",
+                        //               )
+                        //             : Image.asset("assets/img.png"),
+                        //         cardIndex: 0,
+                        //         onTap: () {
+                        //           Navigator.push(
+                        //             context,
+                        //             MaterialPageRoute(
+                        //                 builder: (context) =>
+                        //                     InventoryScreen() //Build #1.0.386
+                        //                 //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
+                        //                 ),
+                        //           );
+                        //         },
+                        //       ),
+                        //
+                        //       ///////
+                        //
+                        //
+                        //     ],
+                        //   ),
                         : GridView.count(
-                            crossAxisCount: 4,
-                            childAspectRatio: 1,
-                            children: [
-                              _buildCard(
-                                //title: TextConstants.cashier,
-                                icon: themeHelper.themeMode == ThemeMode.dark
-                                    ? Image.asset(
-                                        "assets/cashier_dark.png",
-                                      )
-                                    : Image.asset(
-                                        "assets/cashier_lite.png",
-                                      ),
-                                cardIndex: 0,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (context) =>
-                                            ShiftHistoryDashboardScreen() //Build #1.0.74
-                                        //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
-                                        ),
-                                  );
-                                },
-                              ),
-                              if (_isSafeDropEnabled)
-                                _buildCard(
-                                  icon: themeHelper.themeMode == ThemeMode.dark
-                                      ? Image.asset("assets/safedrop_dark.png")
-                                      : Image.asset("assets/safedrop_lite.png"),
-                                  cardIndex: 1,
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                          builder: (_) => SafeDropScreen()),
-                                    );
-                                  },
-                                ),
+                      crossAxisCount: 4,
+                      childAspectRatio: 1,
+                      children: (() {
+                        // Build cards into a list first, skip disabled ones,
+                        // so no empty slot is ever reserved in the grid.
+                        final List<Widget> dashboardCards = [];
 
-                              _buildCard(
-                                //title: TextConstants.cashier,
-                                icon: themeHelper.themeMode == ThemeMode.dark
-                                    ? Image.asset(
-                                        "assets/stock_inventory_dark.png",
-                                      )
-                                    : Image.asset("assets/img.png"),
-                                cardIndex: 0,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (context) =>
-                                            InventoryScreen() //Build #1.0.386
-                                        //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
-                                        ),
-                                  );
-                                },
-                              ),
-
-                              ///////
-
-
-                            ],
+                        dashboardCards.add(
+                          _buildCard(
+                            icon: themeHelper.themeMode == ThemeMode.dark
+                                ? Image.asset("assets/cashier_dark.png")
+                                : Image.asset("assets/cashier_lite.png"),
+                            cardIndex: 0,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => ShiftHistoryDashboardScreen()),
+                              );
+                            },
                           ),
+                        );
+
+                        if (_isSafeDropEnabled) {
+                          dashboardCards.add(
+                            _buildCard(
+                              icon: themeHelper.themeMode == ThemeMode.dark
+                                  ? Image.asset("assets/safedrop_dark.png")
+                                  : Image.asset("assets/safedrop_lite.png"),
+                              cardIndex: 1,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => SafeDropScreen()),
+                                );
+                              },
+                            ),
+                          );
+                        }
+
+                        dashboardCards.add(
+                          _buildCard(
+                            icon: themeHelper.themeMode == ThemeMode.dark
+                                ? Image.asset("assets/stock_inventory_dark.png")
+                                : Image.asset("assets/img.png"),
+                            cardIndex: 0,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => InventoryScreen()),
+                              );
+                            },
+                          ),
+                        );
+
+                        return dashboardCards;
+                      })(),
+                    ),
+
                   ),
                 ),
 

@@ -35,7 +35,7 @@ enum PaymentStatus {
 }
 
 // Enum for payment method types
-enum PaymentMode { cash, card, wallet, ebt }
+enum PaymentMode { cash, card, payLater, ebt }
 
 class PaymentDialog extends StatefulWidget {
   final PaymentStatus status; // Current payment status
