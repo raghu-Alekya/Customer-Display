@@ -1,3 +1,4 @@
+import 'package:dotted_line/dotted_line.dart';
 import 'package:flutter/material.dart';
 import 'package:kiosk/widgets/kiosk_header_widgets.dart';
 // import 'package:kiosk/_app/widgets/payment_method.dart';
@@ -46,7 +47,7 @@ class _CartScreenState extends State<CartScreen> {
     final containerPadding = isDesktop ? 20.0 : isTablet ? 16.0 : 12.0;
     final itemPadding = isDesktop ? 16.0 : isTablet ? 14.0 : 10.0;
 
-    final titleFont = isDesktop ? 18.0 : isTablet ? 16.0 : 14.0;
+    final titleFont = isDesktop ? 18.0 : isTablet ? 22.0 : 20.0;
     final normalFont = isDesktop ? 15.0 : isTablet ? 14.0 : 12.0;
     final smallFont = isDesktop ? 13.0 : isTablet ? 12.0 : 11.0;
 
@@ -152,7 +153,7 @@ class _CartScreenState extends State<CartScreen> {
                         "Your Cart",
                         style: TextStyle(
                           fontSize: titleFont,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w900
                         ),
                       ),
                     ),
@@ -294,28 +295,65 @@ class _CartScreenState extends State<CartScreen> {
                     /// COLUMN HEADERS
                     Row(
                       children: const [
-                        Expanded(flex: 3, child: Text("Item Name")),
+                        Expanded(
+                          flex: 3,
+                          child: Text(
+                            "Item Name",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
                         Expanded(
                           flex: 1,
-                          child: Center(child: Text("Qty")),
+                          child: Center(
+                            child: Text(
+                              "Qty",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
                         ),
                         Expanded(
                           flex: 1,
                           child: Align(
                             alignment: Alignment.centerRight,
-                            child: Text("Sub Total"),
+                            child: Text(
+                              "Sub Total",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ),
                         SizedBox(width: 20),
                         Expanded(
                           flex: 1,
-                          child: Center(child: Text("Action")),
+                          child: Center(
+                            child: Text(
+                              "Action",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),
 
-                    const SizedBox(height: 25),
-
+                    const SizedBox(height: 15),
+                    const DottedLine(
+                      dashLength: 6,
+                      dashGapLength: 4,
+                      lineThickness: 1,
+                      dashColor: Colors.grey,
+                    ),
+                    const SizedBox(height: 15),
                     /// ITEMS
                     Expanded(
                       child: ListView.builder(

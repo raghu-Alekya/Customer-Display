@@ -597,20 +597,21 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                 Expanded(
                   child: SizedBox(
                     height: buttonHeight,
-                    child: OutlinedButton(
-                      onPressed: () {},
+                    child:OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(context); // Closes the Customize dialog
+                      },
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(
                           color: Color(0xFFFF7A00),
                           width: 1.5,
                         ),
                         shape: RoundedRectangleBorder(
-                          borderRadius:
-                          BorderRadius.circular(buttonRadius),
+                          borderRadius: BorderRadius.circular(buttonRadius),
                         ),
                       ),
                       child: Text(
-                        "Check Out",
+                        "Cancel Order",
                         style: TextStyle(
                           color: const Color(0xFFFF7A00),
                           fontSize: buttonFont,

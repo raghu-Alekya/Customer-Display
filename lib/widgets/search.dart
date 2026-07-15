@@ -69,33 +69,40 @@ class _SearchScreenState extends State<SearchScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 10),
+            const SizedBox(height: 40),
 
             /// 🔶 TOP BAR
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 30),
               child: Row(
                 children: [
                   /// 🔙 BACK BUTTON
                   InkWell(
                     onTap: () {
                       context.read<ProductBloc>().add(const ResetProducts());
-                      Navigator.of(context).pop(); // safer
+                      Navigator.of(context).pop();
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      width: 100, // Increase width
+                      height: 50, // Increase height
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.orange),
-                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange, width: 1.5),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.arrow_back_ios, size: 12, color: Colors.orange),
-                          SizedBox(width: 4),
+                          Icon(
+                            Icons.arrow_back_ios,
+                            size: 18, // Larger icon
+                            color: Colors.orange,
+                          ),
+                          SizedBox(width: 8),
                           Text(
                             "Back",
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 16, // Larger text
                               color: Colors.orange,
                               fontWeight: FontWeight.w600,
                             ),
@@ -110,7 +117,9 @@ class _SearchScreenState extends State<SearchScreen> {
                   /// 🔍 SEARCH BAR
                   Expanded(
                     child: Container(
-                      height: 36,
+                        width: 50,
+
+                      height: 50,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
                         color: Colors.white,

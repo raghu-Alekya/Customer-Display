@@ -435,8 +435,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
 
               /// 🔹 BOTTOM BUTTONS
-              Flexible(
-                flex: 1,
+              SizedBox(
+                height: MediaQuery.of(context).size.height * 0.2,
                 child: Container(
                   padding: EdgeInsets.all(
                     Responsive.isDesktop(context)

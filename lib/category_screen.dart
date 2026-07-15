@@ -52,16 +52,28 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
   ];
   List<String> bannerImages = const [];
 
-  final List<String> orderTypes = ['Non Veg', 'Veg'];
+  final List<String> orderTypes = [
+    "All",
+    "Veg",
+    "Non Veg",
+  ];
+  // int selectedType = 0;
 
   bool _matchesSelectedType(ProductModel product) {
-    if (selectedType == null) return true;
-    // Null from API is treated as "all", so it is visible in both filters.
-    if (product.isVeg == null) return true;
-    if (selectedType == 0) return product.isVeg == false; // Non Veg
-    return product.isVeg == true; // Veg
-  }
+    switch (selectedType) {
+      case 0: // All
+        return true;
 
+      case 1: // Veg
+        return product.isVeg == true;
+
+      case 2: // Non Veg
+        return product.isVeg == false;
+
+      default:
+        return true;
+    }
+  }
 
   @override
   void initState() {
@@ -482,8 +494,8 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
     final searchWidth = Responsive.isDesktop(context)
         ? 420.0
         : Responsive.isTablet(context)
-        ? 360.0
-        : 300.0;
+        ? 300.0
+        : 250.0;
 
     final chipWidth = Responsive.isDesktop(context)
         ? 95.0
@@ -604,7 +616,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
               return GestureDetector(
                 onTap: () {
                   setState(() {
-                    selectedType = selected ? null : index;
+                    selectedType = index;
                   });
                 },
                 child: SizedBox(
@@ -619,18 +631,19 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.circle,
-                          size: fontSize,
-                          color: index == 0
-                              ? Colors.red
-                              : Colors.green,
-                        ),
-                        const SizedBox(width: 4),
+                        if (index != 0) ...[
+                          Icon(
+                            Icons.circle,
+                            size: fontSize,
+                            color: index == 1 ? Colors.green : Colors.red,
+                          ),
+                          const SizedBox(width: 4),
+                        ],
                         Flexible(
                           child: Text(
                             orderTypes[index],
                             overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: fontSize,
                               fontWeight: FontWeight.w600,
@@ -643,7 +656,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                 ),
               );
             }),
-          ),
+          )
         ],
       ),
     );
@@ -1533,10 +1546,10 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
 
   Widget _bottomBar() {
     final bottomHeight = Responsive.isDesktop(context)
-        ? 82.0
+        ? 92.0
         : Responsive.isTablet(context)
-        ? 76.0
-        : 68.0;
+        ? 86.0
+        : 78.0;
     final homeSize = Responsive.isDesktop(context)
         ? 64.0
         : Responsive.isTablet(context)
@@ -1750,16 +1763,16 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
     Color borderColor = const Color(0x22000000),
   }) {
     final horizontalPadding = Responsive.isDesktop(context)
-        ? 14.0
+        ? 6.0
         : Responsive.isTablet(context)
-        ? 12.0
-        : 10.0;
+        ? 6.0
+        : 8.0;
 
     final verticalPadding = Responsive.isDesktop(context)
         ? 9.0
         : Responsive.isTablet(context)
-        ? 8.0
-        : 7.0;
+        ? 6.0
+        : 5.0;
 
     final borderRadius = Responsive.isDesktop(context)
         ? 12.0
