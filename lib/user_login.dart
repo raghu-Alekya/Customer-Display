@@ -51,14 +51,17 @@ class _UserLoginState extends State<UserLogin> {
       height: 40,
       margin: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
-        border: Border.all(color: Color(0xFFE0E0E0)),
+        border: Border.all(color: const Color(0xFFE0E0E0)),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Center(
-        child: Text(
-          index < pin.length ? "●" : "",
-          style: const TextStyle(fontSize: 18),
-        ),
+        child: index < pin.length
+            ? const Icon(
+          Icons.star,
+          size: 18,
+          color: Colors.black,
+        )
+            : const SizedBox.shrink(),
       ),
     );
   }
@@ -67,9 +70,9 @@ class _UserLoginState extends State<UserLogin> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 50,
-        width: 60,
-        margin: const EdgeInsets.all(6),
+        height: 60,
+        width: 100,
+        margin: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: AppColors.keypadBg,
           borderRadius: BorderRadius.circular(8),
@@ -122,9 +125,8 @@ class _UserLoginState extends State<UserLogin> {
             final isPortrait = constraints.maxHeight > constraints.maxWidth;
 
             final headerHeight = isPortrait
-                ? constraints.maxHeight * 0.42
+                ? constraints.maxHeight * 0.60
                 : constraints.maxHeight * 0.75;
-
             final cardWidth = isPortrait
                 ? constraints.maxWidth * 0.70
                 : constraints.maxWidth * 0.42;
@@ -152,7 +154,7 @@ class _UserLoginState extends State<UserLogin> {
                         width: cardWidth,
                         child: Column(
                           children: [
-                            SizedBox(height: isPortrait ? 20 : 10),
+                            SizedBox(height: isPortrait ? 70 : 10),
 
                             Text(
                               "Welcome Back !",
@@ -173,10 +175,13 @@ class _UserLoginState extends State<UserLogin> {
                               ),
                             ),
 
-                            SizedBox(height: isPortrait ? 35 : 20),
+                            SizedBox(height: isPortrait ? 85 : 20),
 
                             /// Login Card
-                            Container(
+                        SizedBox(
+                          width: double.infinity,
+                          height: MediaQuery.of(context).size.height * 0.50, // Increase as needed
+                          child: Container(
                               width: double.infinity,
                               padding: const EdgeInsets.all(20),
                               decoration: BoxDecoration(
@@ -272,37 +277,37 @@ class _UserLoginState extends State<UserLogin> {
                                     ],
                                   ),
 
-                                  const SizedBox(height: 20),
+                                  const SizedBox(height: 30),
 
-                                  SizedBox(
-                                    width: double.infinity,
-                                    height: 48,
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppColors.primaryBlue,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8),
+                                  FractionallySizedBox(
+                                    widthFactor: 0.78, // Adjust to 0.7, 0.8, 0.9 as needed
+                                    child: SizedBox(
+                                      height: 48,
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: AppColors.primaryBlue,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
                                         ),
-                                      ),
-                                      onPressed: () {
-                                        if (pin.length == 6) {
-                                          context
-                                              .read<AuthBloc>()
-                                              .add(LoginWithPinEvent(pin));
-                                        } else {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                              content:
-                                              Text("Enter 6 digit PIN"),
-                                            ),
-                                          );
-                                        }
-                                      },
-                                      child: const Text(
-                                        "Login",
-                                        style: TextStyle(
-                                          color: Colors.white,
+                                        onPressed: () {
+                                          if (pin.length == 6) {
+                                            context.read<AuthBloc>().add(LoginWithPinEvent(pin));
+                                          } else {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(
+                                                content: Text("Enter 6 digit PIN"),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                        child: const Text(
+                                          "Login",
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -310,7 +315,7 @@ class _UserLoginState extends State<UserLogin> {
                                 ],
                               ),
                             ),
-                          ],
+                        )],
                         ),
                       ),
                     ),
@@ -329,15 +334,15 @@ class _UserLoginState extends State<UserLogin> {
 class TopCurveClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
-    Path path = Path();
+    final path = Path();
 
-    path.lineTo(0, size.height - 80);
+    path.lineTo(0, size.height - 220);
 
     path.quadraticBezierTo(
       size.width / 2,
       size.height,
       size.width,
-      size.height - 80,
+      size.height - 220,
     );
 
     path.lineTo(size.width, 0);

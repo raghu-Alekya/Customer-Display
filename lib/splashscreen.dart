@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'bloc/promotion_bloc.dart';
@@ -58,10 +59,21 @@ class _KioskScreenState extends State<KioskScreen> {
   }
 
   Future<void> _loadFullScreenPromotions() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-    if (!mounted || token == null || token.trim().isEmpty) return;
-    context.read<PromotionBloc>().add(FetchFullScreenPromotionImages(token));
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      if (!mounted || token == null || token.trim().isEmpty) {
+        return;
+      }
+
+      context.read<PromotionBloc>().add(
+        FetchFullScreenPromotionImages(token),
+      );
+    } catch (e) {
+      debugPrint("Failed to fetch promotions: $e");
+      // Keep displaying cached images
+    }
   }
 
   @override
@@ -78,23 +90,32 @@ class _KioskScreenState extends State<KioskScreen> {
     final height = MediaQuery.of(context).size.height;
 
     return BlocListener<PromotionBloc, PromotionState>(
-      listener: (context, state) {
-        if (!mounted) return;
-        if (state is PromotionLoaded &&
-            state.type == PromotionType.fullScreen &&
-            state.images.isNotEmpty)  {
-          setState(() {
-            images = state.images;
-            _currentPage = 0;
-          });
-          _controller.jumpToPage(promoVirtualBasePage(images.length));
-          for (final src in state.images) {
-            if (src.startsWith('http://') || src.startsWith('https://')) {
-              precacheImage(NetworkImage(src), context);
-            }
+        listener: (context, state) async {
+          if (!mounted) return;
+
+          if (state is PromotionLoaded &&
+              state.type == PromotionType.fullScreen &&
+              state.images.isNotEmpty) {
+
+            // Download all new images first
+            await Future.wait(
+              state.images
+                  .where((e) => e.startsWith("http"))
+                  .map((e) => DefaultCacheManager().downloadFile(e)),
+            );
+
+            if (!mounted) return;
+
+            setState(() {
+              images = List<String>.from(state.images);
+              _currentPage = 0;
+            });
+
+            _controller.jumpToPage(
+              promoVirtualBasePage(images.length),
+            );
           }
-        }
-      },
+        },
       child: GestureDetector(
         onTap: () {
           Navigator.pushReplacement(
@@ -127,7 +148,7 @@ class _KioskScreenState extends State<KioskScreen> {
                       src.startsWith('http://') || src.startsWith('https://');
 
                   return isNetwork
-                      ? CachedNetworkImage(
+                      ?CachedNetworkImage(
                     imageUrl: src,
                     fit: BoxFit.cover,
                     width: double.infinity,

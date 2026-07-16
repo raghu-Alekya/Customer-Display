@@ -72,7 +72,7 @@ class KioskOrderTypeChip extends StatelessWidget {
 
     return Container(
       width: 100,   // same as back button width
-      height: 52,  // same as back button height
+      height: 44,  // same as back button height
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: KioskHeaderTokens.orderTypeBg,

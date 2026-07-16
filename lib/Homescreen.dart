@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:kiosk/widgets/printer_settings_screen.dart';
 import 'package:kiosk/widgets/setting_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -129,7 +130,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final titleFont = Responsive.isDesktop(context)
         ? 18.0
         : Responsive.isTablet(context)
-        ? 16.0
+        ? 26.0
         : 14.0;
 
     final bodyFont = Responsive.isDesktop(context)
@@ -163,27 +164,27 @@ class _HomeScreenState extends State<HomeScreen> {
     final buttonPadding = Responsive.isDesktop(context)
         ? 18.0
         : Responsive.isTablet(context)
-        ? 14.0
+        ? 30.0
         : 10.0;
 
 
     final buttonHeight = Responsive.isDesktop(context)
         ? 60.0
         : Responsive.isTablet(context)
-        ? 54.0
-        : 48.0;
+        ? 58.0
+        : 58.0;
 
     final buttonFont = Responsive.isDesktop(context)
         ? 18.0
         : Responsive.isTablet(context)
-        ? 16.0
-        : 13.0;
+        ? 20.0
+        : 20.0;
 
     final imageSize = Responsive.isDesktop(context)
         ? 28.0
         : Responsive.isTablet(context)
-        ? 24.0
-        : 20.0;
+        ? 30.0
+        : 28.0;
 
     final horizontalPadding = Responsive.isDesktop(context)
         ? 32.0
@@ -200,26 +201,38 @@ class _HomeScreenState extends State<HomeScreen> {
     final spacing = Responsive.isDesktop(context)
         ? 20.0
         : Responsive.isTablet(context)
-        ? 16.0
-        : 12.0;
+        ? 18.0
+        : 22.0;
+    final buttonWidth = MediaQuery.of(context).size.width * 0.42;
 
     return MultiBlocListener(
       listeners: [
         BlocListener<PromotionBloc, PromotionState>(
-          listener: (context, state) {
+          listener: (context, state) async {
+            if (!mounted) return;
+
             if (state is PromotionLoaded &&
                 state.type == PromotionType.portrait &&
                 state.images.isNotEmpty) {
+
+              // Download all new images into cache first
+              await Future.wait(
+                state.images
+                    .where((url) => url.startsWith("http"))
+                    .map((url) => DefaultCacheManager().downloadFile(url)),
+              );
+
+              if (!mounted) return;
+
               setState(() {
-                images = state.images;
+                images = List<String>.from(state.images);
                 _currentPage = 0;
               });
-              _controller.jumpToPage(promoVirtualBasePage(images.length));
-              for (final src in state.images) {
-                if (src.startsWith('http://') || src.startsWith('https://')) {
-                  precacheImage(NetworkImage(src), context);
-                }
-              }
+
+              _controller.jumpToPage(
+                promoVirtualBasePage(images.length),
+              );
+
               _restartSlideTimer();
             }
           },
@@ -241,11 +254,11 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: Colors.black,
       body: Center(
         child: Container(
-          width: width * 0.95,
-          height: height * 0.95,
+          width: width * 0.99,
+          height: height * 0.99,
           decoration: BoxDecoration(
             color: const Color(0xFF4A1D4F),
-            borderRadius: BorderRadius.circular(30),
+            // borderRadius: BorderRadius.circular(30),
           ),
           child: Column(
             children: [
@@ -257,9 +270,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: EdgeInsets.all(headerPadding),
                   decoration: const BoxDecoration(
                     color: Color(0xFFF4B544),
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(30),
-                    ),
+                    // borderRadius: BorderRadius.vertical(
+                    //   top: Radius.circular(30),
+                    // ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -405,11 +418,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             if (isNetwork) {
                               return CachedNetworkImage(
                                 imageUrl: src,
+                                cacheManager: DefaultCacheManager(),
                                 fit: BoxFit.cover,
                                 width: double.infinity,
                                 height: double.infinity,
-                                placeholder: (_, __) =>
-                                const KioskPromoImageLoading(),
+                                placeholder: (_, __) => const KioskPromoImageLoading(),
                                 errorWidget: (_, __, ___) => const Center(
                                   child: Icon(
                                     Icons.broken_image,
@@ -452,129 +465,128 @@ class _HomeScreenState extends State<HomeScreen> {
                         Color(0xFF3B1A5A),
                       ],
                     ),
-                    borderRadius: BorderRadius.vertical(
-                      bottom: Radius.circular(30),
-                    ),
+                    // borderRadius: BorderRadius.vertical(
+                    //   bottom: Radius.circular(30),
+                    // ),
                   ),
                   child: Stack(
                     children: [
-                      Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              "Select your Preference",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: titleFont,
+                      Align(
+                        alignment: Alignment.topCenter,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                "Select your Preference",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: titleFont,
+                                ),
                               ),
+
+                              SizedBox(height: spacing),
+
+                            // final buttonWidth = MediaQuery.of(context).size.width * 0.30;
+
+                    Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: buttonWidth,
+                        height: buttonHeight,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
                             ),
-
-                            SizedBox(height: spacing),
-
-                            Wrap(
-                              alignment: WrapAlignment.center,
-                              spacing: buttonSpacing,
-                              runSpacing: buttonSpacing,
-                              children: [
-                                SizedBox(
-                                  height: buttonHeight,
-                                  child: ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.orange,
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: horizontalPadding,
-                                        vertical: verticalPadding,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                    onPressed: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => const FoodUiScreen(
-                                            orderType: "Dine-In",
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Image.asset(
-                                          "assets/dinner.png",
-                                          width: imageSize,
-                                          height: imageSize,
-                                        ),
-                                        SizedBox(width: spacing / 2),
-                                        Text(
-                                          "Dine In",
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: buttonFont,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const FoodUiScreen(
+                                  orderType: "Dine-In",
                                 ),
-
-
-                                SizedBox(
-                                  height: buttonHeight,
-                                  child: ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.pinkAccent,
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: horizontalPadding,
-                                        vertical: verticalPadding,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                    onPressed: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => const FoodUiScreen(
-                                            orderType: "Take Away",
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Image.asset(
-                                          "assets/take-away.png",
-                                          width: imageSize,
-                                          height: imageSize,
-                                        ),
-                                        SizedBox(width: spacing / 2),
-                                        Text(
-                                          "Take Away",
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: buttonFont,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                              ),
+                            );
+                          },
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Image.asset(
+                                "assets/dinner.png",
+                                width: imageSize,
+                                height: imageSize,
+                              ),
+                              SizedBox(width: spacing / 2),
+                              Text(
+                                "Dine In",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: buttonFont,
                                 ),
-                              ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 20),
+
+                      SizedBox(
+                        width: buttonWidth,
+                        height: buttonHeight,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.pinkAccent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                          ],
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const FoodUiScreen(
+                                  orderType: "Take Away",
+                                ),
+                              ),
+                            );
+                          },
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Image.asset(
+                                "assets/take-away.png",
+                                width: imageSize,
+                                height: imageSize,
+                              ),
+                              SizedBox(width: spacing / 2),
+                              Text(
+                                "Take Away",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: buttonFont,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    )
+                            ],
+                          ),
                         ),
                       ),
 
                       Positioned(
                         left: buttonPadding,
-                        bottom: buttonPadding,
+                        bottom: 20,
                         child: Container(
                           width: iconButtonSize,
                           height: iconButtonSize,
@@ -595,7 +607,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                       Positioned(
                         right: buttonPadding,
-                        bottom: buttonPadding,
+                        bottom: 20,
                         child: Container(
                           width: iconButtonSize,
                           height: iconButtonSize,

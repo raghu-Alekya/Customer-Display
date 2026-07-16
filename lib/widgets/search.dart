@@ -201,16 +201,28 @@ class _SearchScreenState extends State<SearchScreen> {
 
                         return InkWell(
                           onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>CustomizeScreen(
-                                  product: item,
-                                  addons: const [],
-                                  orderType: "Dine-In",
-                                  openedFromSearch: true,
-                                )
-                              ),
+                            showDialog(
+                              context: context,
+                              barrierDismissible: true,
+                              builder: (context) {
+                                return Dialog(
+                                  insetPadding: const EdgeInsets.all(20),
+                                  clipBehavior: Clip.antiAlias,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: SizedBox(
+                                    width: MediaQuery.of(context).size.width * 0.75,
+                                    height: MediaQuery.of(context).size.height * 0.60,
+                                    child: CustomizeScreen(
+                                      product: item,
+                                      addons: const [],
+                                      orderType: "Dine-In",
+                                      openedFromSearch: true,
+                                    ),
+                                  ),
+                                );
+                              },
                             );
                           },
                           child: Container(

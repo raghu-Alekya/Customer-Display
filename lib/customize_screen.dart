@@ -113,7 +113,7 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
     final horizontalInset = isDesktop ? 20.0 : isTablet ? 16.0 : 12.0;
     final cardPadding = isDesktop ? 18.0 : isTablet ? 14.0 : 10.0;
 
-    final imageSize = isDesktop ? 50.0 : isTablet ? 45.0 : 40.0;
+    final imageSize = isDesktop ? 50.0 : isTablet ? 65.0 : 50.0;
     final iconSize = isDesktop ? 22.0 : isTablet ? 20.0 : 20.0;
 
     final titleFont = isDesktop ? 14.0 : isTablet ? 14.0 : 14.0;
@@ -205,46 +205,46 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
                   ),
 
                   /// Close Button
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: Container(
-                      width: Responsive.isDesktop(context)
-                          ? 42
-                          : Responsive.isTablet(context)
-                          ? 34
-                          : 30,
-                      height: Responsive.isDesktop(context)
-                          ? 42
-                          : Responsive.isTablet(context)
-                          ? 38
-                          : 34,
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      child: IconButton(
-                        padding: EdgeInsets.zero,
-                        splashRadius: Responsive.isDesktop(context)
-                            ? 22
-                            : Responsive.isTablet(context)
-                            ? 20
-                            : 18,
-                        icon: Icon(
-                          Icons.close,
-                          size: Responsive.isDesktop(context)
-                              ? 24
-                              : Responsive.isTablet(context)
-                              ? 22
-                              : 20,
-                          color: Colors.white,
-                        ),
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                    ),
-                  ),
+                  // Positioned(
+                  //   top: 0,
+                  //   right: 0,
+                  //   child: Container(
+                  //     width: Responsive.isDesktop(context)
+                  //         ? 42
+                  //         : Responsive.isTablet(context)
+                  //         ? 34
+                  //         : 30,
+                  //     height: Responsive.isDesktop(context)
+                  //         ? 42
+                  //         : Responsive.isTablet(context)
+                  //         ? 38
+                  //         : 34,
+                  //     decoration: const BoxDecoration(
+                  //       color: Colors.red,
+                  //       shape: BoxShape.circle,
+                  //     ),
+                  //     child: IconButton(
+                  //       padding: EdgeInsets.zero,
+                  //       splashRadius: Responsive.isDesktop(context)
+                  //           ? 22
+                  //           : Responsive.isTablet(context)
+                  //           ? 20
+                  //           : 18,
+                  //       icon: Icon(
+                  //         Icons.close,
+                  //         size: Responsive.isDesktop(context)
+                  //             ? 24
+                  //             : Responsive.isTablet(context)
+                  //             ? 22
+                  //             : 20,
+                  //         color: Colors.white,
+                  //       ),
+                  //       onPressed: () {
+                  //         Navigator.of(context).pop();
+                  //       },
+                  //     ),
+                  //   ),
+                  // ),
                 ],
               ),
             ),

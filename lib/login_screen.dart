@@ -103,7 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       final isPortrait = constraints.maxHeight > constraints.maxWidth;
 
                       final backgroundHeight =
-                      isPortrait ? constraints.maxHeight * 0.42 : constraints.maxHeight * 0.72;
+                      isPortrait ? constraints.maxHeight * 0.52 : constraints.maxHeight * 0.72;
 
                       final cardWidth = isPortrait
                           ? constraints.maxWidth * 0.7
@@ -137,7 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   child: Column(
                                     children: [
-                                      SizedBox(height: isPortrait ? 20 : 10),
+                                      SizedBox(height: isPortrait ? 0 : 10),
 
                                       Text(
                                         "Welcome Back !",
@@ -148,20 +148,25 @@ class _LoginScreenState extends State<LoginScreen> {
                                         ),
                                       ),
 
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height:8),
 
                                       Text(
                                         "Admin",
                                         style: TextStyle(
-                                          color: Colors.white70,
+                                          color: Colors.white,
                                           fontSize: isPortrait ? 20 : 18,
+                                          fontWeight: FontWeight.bold,
                                         ),
                                       ),
 
-                                      SizedBox(height: isPortrait ? 35 : 20),
+                                      SizedBox(height: isPortrait ? 75 : 20),
 
                                       // Login Card
-                                      Container(
+                                      Center(
+                                      child: SizedBox(
+                                      // width: 450,
+                      height: MediaQuery.of(context).size.height * 0.45,
+                      child: Container(
                                         width: double.infinity,
                                         padding: const EdgeInsets.all(20),
                                         decoration: BoxDecoration(
@@ -190,114 +195,204 @@ class _LoginScreenState extends State<LoginScreen> {
                                               "Login into your Account",
                                               style: TextStyle(
                                                 color: Colors.grey,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w500,
                                               ),
                                             ),
 
-                                            const SizedBox(height: 20),
+                                            const SizedBox(height: 40),
 
-                                            TextField(
-                                              controller: usernameController,
-                                              decoration: InputDecoration(
-                                                hintText: "Username / Email",
-                                                filled: true,
-                                                fillColor: Colors.grey.shade100,
-                                                border: OutlineInputBorder(
-                                                  borderRadius: BorderRadius.circular(8),
-                                                  borderSide: BorderSide.none,
-                                                ),
-                                              ),
-                                            ),
-
-                                            const SizedBox(height: 15),
-
-                                            TextField(
-                                              controller: passwordController,
-                                              obscureText: !isPasswordVisible,
-                                              decoration: InputDecoration(
-                                                hintText: "Password",
-                                                filled: true,
-                                                fillColor: Colors.grey.shade100,
-                                                suffixIcon: IconButton(
-                                                  icon: Icon(
-                                                    isPasswordVisible
-                                                        ? Icons.visibility_off
-                                                        : Icons.visibility,
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                const Padding(
+                                                  padding: EdgeInsets.only(left: 4, bottom: 6),
+                                                  child: Text(
+                                                    "Username / Email :",
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: Colors.black87,
+                                                    ),
                                                   ),
-                                                  onPressed: () {
-                                                    setState(() {
-                                                      isPasswordVisible =
-                                                      !isPasswordVisible;
-                                                    });
-                                                  },
                                                 ),
-                                                border: OutlineInputBorder(
-                                                  borderRadius: BorderRadius.circular(8),
-                                                  borderSide: BorderSide.none,
+
+                                                FractionallySizedBox(
+                                                  widthFactor: 0.8,
+                                                  child: TextField(
+                                                    controller: usernameController,
+                                                    decoration: InputDecoration(
+                                                      hintText: "Enter your Username / Email",
+                                                      hintStyle: const TextStyle(
+                                                        color: Colors.grey,
+                                                        fontSize: 14,
+                                                        fontWeight: FontWeight.w400,
+                                                      ),
+                                                      filled: true,
+                                                      fillColor: Colors.grey.shade100,
+                                                      border: OutlineInputBorder(
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        borderSide: BorderSide.none,
+                                                      ),
+                                                    ),
+                                                  ),
                                                 ),
-                                              ),
+                                              ],
                                             ),
 
                                             const SizedBox(height: 15),
 
-                                            TextField(
-                                              controller: storeIdController,
-                                              decoration: InputDecoration(
-                                                hintText: "Store ID",
-                                                filled: true,
-                                                fillColor: Colors.grey.shade100,
-                                                border: OutlineInputBorder(
-                                                  borderRadius: BorderRadius.circular(8),
-                                                  borderSide: BorderSide.none,
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                const Padding(
+                                                  padding: EdgeInsets.only(left: 4, bottom: 6),
+                                                  child: Text(
+                                                    "Password :",
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: Colors.black87,
+                                                    ),
+                                                  ),
                                                 ),
-                                              ),
-                                            ),
-
-                                            const SizedBox(height: 30),
-
-                                            SizedBox(
-                                              width: double.infinity,
-                                              height: 50,
-                                              child: ElevatedButton(
-                                                onPressed: () {
-                                                  FocusScope.of(context).unfocus();
-                                                  if (isButtonEnabled) {
-                                                    context.read<LoginBloc>().add(
-                                                      LoginSubmitted(
-                                                        username: usernameController.text.trim(),
-                                                        password: passwordController.text.trim(),
-                                                        storeId: storeIdController.text.trim(),
+                                                FractionallySizedBox(
+                                                  widthFactor: 0.8,
+                                                  child: TextField(
+                                                    controller: passwordController,
+                                                    obscureText: !isPasswordVisible,
+                                                    decoration: InputDecoration(
+                                                      hintText: "Enter Password",
+                                                      hintStyle: const TextStyle(
+                                                        color: Colors.grey,
+                                                        fontSize: 14,
+                                                        fontWeight: FontWeight.w400,
                                                       ),
-                                                    );
-                                                  } else {
-                                                    ScaffoldMessenger.of(context).showSnackBar(
-                                                      const SnackBar(
-                                                        content: Text(
-                                                          "Please enter Store ID, Username & Password",
+                                                      filled: true,
+                                                      fillColor: Colors.grey.shade100,
+                                                      suffixIcon: IconButton(
+                                                        icon: Icon(
+                                                          isPasswordVisible
+                                                              ? Icons.visibility_off
+                                                              : Icons.visibility,
                                                         ),
+                                                        onPressed: () {
+                                                          setState(() {
+                                                            isPasswordVisible = !isPasswordVisible;
+                                                          });
+                                                        },
                                                       ),
-                                                    );
-                                                  }
-                                                },
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: const Color(0xFF24467A),
-                                                  foregroundColor: Colors.white,
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius: BorderRadius.circular(6),
+                                                      border: OutlineInputBorder(
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        borderSide: BorderSide.none,
+                                                      ),
+                                                    ),
                                                   ),
                                                 ),
-                                                child: const Text(
-                                                  "Sign In",
-                                                  style: TextStyle(
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.bold,
+                                              ],
+                                            ),
+
+                                            const SizedBox(height: 15),
+
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                const Padding(
+                                                  padding: EdgeInsets.only(left: 4, bottom: 6),
+                                                  child: Text(
+                                                    "Store ID :",
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: Colors.black87,
+                                                    ),
                                                   ),
                                                 ),
+                                                FractionallySizedBox(
+                                                  widthFactor: 0.8,
+                                                  child: TextField(
+                                                    controller: storeIdController,
+                                                    decoration: InputDecoration(
+                                                      hintText: "Enter Store ID",
+                                                      hintStyle: const TextStyle(
+                                                        color: Colors.grey,
+                                                        fontSize: 14,
+                                                        fontWeight: FontWeight.w400,
+                                                      ),
+                                                      filled: true,
+                                                      fillColor: Colors.grey.shade100,
+                                                      border: OutlineInputBorder(
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        borderSide: BorderSide.none,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+
+                                            const SizedBox(height: 75),
+
+                                            FractionallySizedBox(
+                                              widthFactor: 0.8,
+                                              child: SizedBox(
+                                                height: 50,
+                                                child: ElevatedButton(
+                                                  onPressed: () {
+                                                    FocusScope.of(context).unfocus();
+
+                                                    if (isButtonEnabled) {
+                                                      context.read<LoginBloc>().add(
+                                                        LoginSubmitted(
+                                                          username: usernameController.text.trim(),
+                                                          password: passwordController.text.trim(),
+                                                          storeId: storeIdController.text.trim(),
+                                                        ),
+                                                      );
+                                                    } else {
+                                                      ScaffoldMessenger.of(context).showSnackBar(
+                                                        const SnackBar(
+                                                          content: Text(
+                                                            "Please enter Store ID, Username & Password",
+                                                          ),
+                                                        ),
+                                                      );
+                                                    }
+                                                  },
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor: const Color(0xFF24467A),
+                                                    foregroundColor: Colors.white,
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius: BorderRadius.circular(6),
+                                                    ),
+                                                  ),
+                                                  child: const Text(
+                                                    "Sign In",
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+
+                                            const SizedBox(height: 12),
+
+                                            const Text(
+                                              "Secure login for authorized users only",
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontStyle: FontStyle.italic,
+                                                color: Colors.grey,
+                                                fontWeight: FontWeight.w400,
                                               ),
                                             ),
                                           ],
                                         ),
                                       ),
-                                    ],
+                                      ))],
                                   ),
                                 ),
                               ),
