@@ -14570,12 +14570,572 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 //   }
 
 
+  // Future _preparePrintTicket() async {
+  //   if (kDebugMode) {
+  //     print("OrderSummaryScreen _preparePrintTicket call print receipt");
+  //   }
+  //
+  //   var printerData = await loadPrinterData();
+  //   var header = printerData?[AppDBConst.receiptHeaderText] ?? "";
+  //   var footer = printerData?[AppDBConst.receiptFooterText] ?? "";
+  //   var logo = printerData?[AppDBConst.receiptIconPath] ?? "";
+  //
+  //   bytes = [];
+  //   final ticket = await _printerSettings.getTicket();
+  //
+  //   // -------------------------------
+  //   // LOGO (unchanged)
+  //   // -------------------------------
+  //   final ByteData data;
+  //   if (logo != "") {
+  //     data = await GlobalUtility.fileToByteData(File(logo)) ??
+  //         await rootBundle.load('assets/Bubbas_logo.png');
+  //   } else {
+  //     data = await rootBundle.load('assets/Bubbas_logo.png');
+  //   }
+  //
+  //   if (data.lengthInBytes > 0) {
+  //     final Uint8List imageBytes = data.buffer.asUint8List();
+  //     final decodedImage = img.decodeImage(imageBytes)!;
+  //     img.Image thumbnail = img.copyResize(decodedImage, height: 280);
+  //     img.Image originalImg =
+  //     img.copyResize(decodedImage, width: 470, height: 280);
+  //     img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
+  //     var padding = (originalImg.width - thumbnail.width) / 2;
+  //     drawImage(originalImg, thumbnail, dstX: padding.toInt());
+  //     var grayscaleImage = img.grayscale(originalImg);
+  //     // bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
+  //   }
+  //
+  //   // -------------------------------
+  //   // HEADER & STORE INFO (unchanged)
+  //   // -------------------------------
+  //   var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
+  //   var storeId = "${merchantDetails?[AppDBConst.storeId]}";
+  //   var storePhone = "${merchantDetails?[AppDBConst.storePhone]}";
+  //
+  //   var storeDetails = await AssetDBHelper.instance.getStoreDetails();
+  //   var storeName = "${storeDetails?.name}";
+  //   var address = "${storeDetails?.address},";
+  //   var cityStateZip =
+  //       "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
+  //   var orderIdToPrint = '$orderId';
+  //
+  //   final userData = await UserDbHelper().getUserData();
+  //   var cashierName =
+  //       "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
+  //   var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
+  //
+  //   if (header != "") {
+  //     bytes += ticket.row([
+  //       PosColumn(
+  //           text: header, width: 12, styles: PosStyles(align: PosAlign.center)),
+  //     ]);
+  //   }
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //       text: "***** CUST-INVOICE *****",
+  //       width: 12,
+  //       styles: PosStyles(align: PosAlign.center, bold: true),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //       text: storeName,
+  //       width: 12,
+  //       styles: PosStyles(
+  //         align: PosAlign.center,
+  //         bold: true,
+  //         height: PosTextSize.size2,
+  //         width: PosTextSize.size2,
+  //       ),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: address, width: 12, styles: PosStyles(align: PosAlign.center))
+  //   ]);
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: cityStateZip,
+  //         width: 12,
+  //         styles: PosStyles(align: PosAlign.center))
+  //   ]);
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "Phone: $storePhone",
+  //         width: 12,
+  //         styles: PosStyles(align: PosAlign.center)),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "Date: $_displayDate", width: 7),
+  //     PosColumn(text: "Time: $_displayTime", width: 5),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "Cashier: $cashierName", width: 7),
+  //     PosColumn(text: "StoreID: $storeId", width: 5),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "Role: $cashierRole", width: 7),
+  //     PosColumn(text: "OrderID: $orderIdToPrint", width: 5),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   // -------------------------------
+  //   // ITEM HEADER
+  //   // -------------------------------
+  //   bytes += ticket.row([
+  //     PosColumn(text: "#", width: 1, styles: PosStyles(bold: true)),
+  //     PosColumn(text: "Description", width: 5, styles: PosStyles(bold: true)),
+  //     PosColumn(
+  //         text: "Qty",
+  //         width: 1,
+  //         styles: PosStyles(align: PosAlign.center, bold: true)),
+  //     PosColumn(
+  //         text: "Rate",
+  //         width: 2,
+  //         styles: PosStyles(align: PosAlign.right, bold: true)),
+  //     PosColumn(
+  //         text: "Amt",
+  //         width: 3,
+  //         styles: PosStyles(align: PosAlign.right, bold: true)),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   String formatCurrency(double amount) {
+  //     if (amount < 0) {
+  //       return "-${TextConstants.currencySymbol}${amount.abs().toStringAsFixed(2)}";
+  //     } else {
+  //       return "${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}";
+  //     }
+  //   }
+  //
+  //   // Helper function to wrap long item names
+  //   List<String> wrapItemName(String name, int maxLength) {
+  //     List<String> lines = [];
+  //     String remaining = name;
+  //
+  //     while (remaining.isNotEmpty) {
+  //       if (remaining.length <= maxLength) {
+  //         lines.add(remaining);
+  //         break;
+  //       } else {
+  //         // Find a good break point (space) within the maxLength
+  //         int breakIndex = remaining.lastIndexOf(' ', maxLength);
+  //         if (breakIndex == -1) {
+  //           // No space found, force break at maxLength
+  //           breakIndex = maxLength;
+  //         }
+  //         lines.add(remaining.substring(0, breakIndex));
+  //         remaining = remaining.substring(breakIndex).trim();
+  //       }
+  //     }
+  //     return lines;
+  //   }
+  //
+  //   // -------------------------------
+  //   // ITEMS LOOP (with Weighted Item support + Name Wrapping)
+  //   // -------------------------------
+  //   for (int i = 0; i < orderItems.length; i++) {
+  //     var item = orderItems[i];
+  //
+  //     String itemName = item['item_name'] ?? '';
+  //     double unitPrice = (item['item_price'] ?? 0).toDouble();
+  //     int qty = (item['items_count'] ?? 0).toInt();
+  //     double lineTotal = (item['item_sum_price'] ?? 0).toDouble();
+  //     String type = item['item_type']?.toString().toLowerCase() ?? '';
+  //
+  //     // Hide merchant discount/discount line-items from print item list
+  //     final nameLower = itemName.toLowerCase();
+  //     if (type.contains('discount') ||
+  //         nameLower.contains('merchant discount')) {
+  //       continue;
+  //     }
+  //
+  //     bool isPayout = type.contains(TextConstants.payoutText);
+  //     bool isCoupon = type.contains(TextConstants.couponText);
+  //     bool isCashback = type.contains("cashback");
+  //     bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+  //
+  //     // ── WEIGHTED ITEM DETECTION ──
+  //     final bool isWeightedItem = type.contains('weighted');
+  //
+  //     double weightQty = 0.0;
+  //     double weightUnitPrice = 0.0;
+  //     if (isWeightedItem) {
+  //       weightQty = (item['weight_qty'] ??
+  //           item['weightQty'] ??
+  //           item['weight'] ??
+  //           0.0).toDouble();
+  //       weightUnitPrice = (item['unit_price'] ??
+  //           item['regular_price'] ??
+  //           item['item_price'] ??
+  //           0.0).toDouble();
+  //     }
+  //
+  //     // ── FORMAT QTY/WEIGHT ──
+  //     String formattedQtyOrWeight;
+  //     if (isWeightedItem && weightQty > 0) {
+  //       formattedQtyOrWeight = "${weightQty.toStringAsFixed(2)}lb";
+  //     } else {
+  //       formattedQtyOrWeight = "$qty";
+  //     }
+  //
+  //     // ── FORMAT RATE ──
+  //     String formattedRate;
+  //     if (isWeightedItem && weightUnitPrice > 0) {
+  //       formattedRate = formatCurrency(weightUnitPrice);
+  //     } else {
+  //       formattedRate = formatCurrency(unitPrice);
+  //     }
+  //
+  //     // ── FORMAT TOTAL ──
+  //     String formattedTotal;
+  //     if (isWeightedItem && weightQty > 0 && weightUnitPrice > 0) {
+  //       formattedTotal = formatCurrency(weightUnitPrice * weightQty);
+  //     } else {
+  //       formattedTotal = formatCurrency(lineTotal);
+  //     }
+  //
+  //     // ── WRAP LONG ITEM NAMES ──
+  //     List<String> nameLines = wrapItemName(itemName, 18); // Max 18 chars per line
+  //
+  //     // Print first line with all details
+  //     bytes += ticket.row([
+  //       PosColumn(text: "${i + 1}", width: 1),
+  //       PosColumn(text: nameLines[0], width: 5),
+  //       PosColumn(
+  //           text: formattedQtyOrWeight,
+  //           width: 1,
+  //           styles: PosStyles(align: PosAlign.center)),
+  //       PosColumn(
+  //           text: formattedRate,
+  //           width: 2,
+  //           styles: PosStyles(align: PosAlign.right)),
+  //       PosColumn(
+  //           text: formattedTotal,
+  //           width: 3,
+  //           styles: PosStyles(align: PosAlign.right)),
+  //     ]);
+  //
+  //     // Print additional name lines (if any) with indentation
+  //     for (int j = 1; j < nameLines.length; j++) {
+  //       bytes += ticket.row([
+  //         PosColumn(text: "", width: 1),           // Empty # column
+  //         PosColumn(text: "  ${nameLines[j]}", width: 5), // Indented description
+  //         PosColumn(text: "", width: 1),           // Empty qty
+  //         PosColumn(text: "", width: 2),           // Empty rate
+  //         PosColumn(text: "", width: 3),           // Empty amount
+  //       ]);
+  //     }
+  //
+  //     // ────────────────────────────────────────────────
+  //     // DISCOUNT EXTRACTION & PRINTING (unchanged)
+  //     // ────────────────────────────────────────────────
+  //     String discountType = item['discount_type']?.toString() ?? '';
+  //
+  //     double autoDiscount = (discountType.isEmpty || discountType == 'auto')
+  //         ? (item['auto_discount'] ?? 0).toDouble()
+  //         : 0.0;
+  //
+  //     double multipackDiscount = (discountType == 'multipack')
+  //         ? (item['auto_discount'] ?? 0).toDouble()
+  //         : 0.0;
+  //
+  //     double comboDiscount =
+  //     (discountType == 'combo' || discountType == 'mixmatch')
+  //         ? (item['auto_discount'] ?? 0).toDouble()
+  //         : 0.0;
+  //
+  //     // Auto Discount
+  //     if (autoDiscount > 0 && !isPayoutOrCoupon) {
+  //       bytes += ticket.row([
+  //         PosColumn(text: "  Auto Discount", width: 9),
+  //         PosColumn(
+  //           text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
+  //           width: 3,
+  //           styles: PosStyles(align: PosAlign.right),
+  //         ),
+  //       ]);
+  //     }
+  //
+  //     // Combo / Mix & Match Discount
+  //     if (comboDiscount > 0 && !isPayoutOrCoupon) {
+  //       bytes += ticket.row([
+  //         PosColumn(text: "  Combo Discount", width: 9),
+  //         PosColumn(
+  //           text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
+  //           width: 3,
+  //           styles: PosStyles(align: PosAlign.right),
+  //         ),
+  //       ]);
+  //     }
+  //
+  //     // Multipack Discount
+  //     if (multipackDiscount > 0 && !isPayoutOrCoupon) {
+  //       bytes += ticket.row([
+  //         PosColumn(text: "  Multipack Discount", width: 9),
+  //         PosColumn(
+  //           text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
+  //           width: 3,
+  //           styles: PosStyles(align: PosAlign.right),
+  //         ),
+  //       ]);
+  //     }
+  //
+  //     bytes += ticket.emptyLines(1);
+  //   }
+  //
+  //   final double discount = () {
+  //     final raw = _order["discount"] ??
+  //         _order["order_discount"] ??
+  //         _order["discount_amount"];
+  //     final parsed = raw == null ? null : double.tryParse(raw.toString());
+  //     final fromGetOrder =
+  //         parsed ?? (discountValue != 0 ? discountValue : null);
+  //     if (fromGetOrder == null) return this.discount;
+  //     return fromGetOrder != 0 ? -(fromGetOrder.abs()) : 0.0;
+  //   }();
+  //
+  //   // -------------------------------
+  //   // TOTALS (unchanged from your version)
+  //   // -------------------------------
+  //   bytes += ticket.feed(1);
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.grossTotal, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(grossTotal),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   // Show Coupon (standardized negative display)
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.discountText, width: 8),
+  //     PosColumn(
+  //       text: discount != 0 ? formatCurrency(discount) : formatCurrency(0.0),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.taxText, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(tax),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //       text: merchantDiscountPercentage > 0
+  //           ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
+  //           : TextConstants.merchantDiscount,
+  //       width: 8,
+  //     ),
+  //     PosColumn(
+  //       text: merchantDiscount != 0
+  //           ? formatCurrency(merchantDiscount)
+  //           : formatCurrency(0.0),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   if (cashbackFee > 0) {
+  //     bytes += ticket.row([
+  //       PosColumn(text: TextConstants.cashbackFee, width: 8),
+  //       PosColumn(
+  //         text: formatCurrency(cashbackFee),
+  //         width: 4,
+  //         styles: PosStyles(align: PosAlign.right),
+  //       ),
+  //     ]);
+  //   }
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.servicecharges, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(servicecharges),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   // Final Net Payable logic matching the summary screen precisely
+  //   double printNetPayable = grossTotal +
+  //       discount +
+  //       merchantDiscount +
+  //       tax +
+  //       servicecharges +
+  //       cashbackFee;
+  //   if (printNetPayable < 0) printNetPayable = 0.0;
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.netPayable, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(printNetPayable),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   if (redeemedValue > 0) {
+  //     bytes += ticket.row([
+  //       PosColumn(text: "Redeemed Amount", width: 8),
+  //       PosColumn(
+  //         text: "-${formatCurrency(redeemedValue).replaceAll('-', '')}",
+  //         width: 4,
+  //         styles: PosStyles(align: PosAlign.right),
+  //       ),
+  //     ]);
+  //   }
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.payByCash, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(payByCash),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "Pay by EBT", width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(payByEbt),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.payByOther, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(payByOther),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.tenderAmount, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(tenderAmount),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.change, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(changeAmount),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //
+  //
+  //   // ── NEW: Only print "Order Earned Points" when redeem/loyalty was active for this order ──
+  //   final bool _shouldPrintEarnedPoints =
+  //       isRedeemActive || redeemedValue > 0 || availablePoints > 0;
+  //
+  //   if (_shouldPrintEarnedPoints) {
+  //     final int earnedPoints =
+  //         (_order['total_loyalty_points'] as num?)?.toInt() ?? 0;
+  //
+  //     bytes += ticket.row([
+  //       PosColumn(text: "Order Earned Points", width: 8),
+  //       PosColumn(
+  //         text: "$earnedPoints pts",
+  //         width: 4,
+  //         styles: PosStyles(align: PosAlign.right),
+  //       ),
+  //     ]);
+  //   }
+  //
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   if (footer != "") {
+  //     bytes += ticket.feed(1);
+  //     bytes += ticket.row([
+  //       PosColumn(
+  //           text: footer, width: 12, styles: PosStyles(align: PosAlign.center)),
+  //     ]);
+  //   }
+  // }
+
+
   Future _preparePrintTicket() async {
     if (kDebugMode) {
-      print("OrderSummaryScreen _preparePrintTicket call print receipt");
+      print("═══════════════════════════════════════════════════════════");
+      print("🖨️ ORDER SUMMARY SCREEN - PREPARE PRINT TICKET");
+      print("═══════════════════════════════════════════════════════════");
+      print("📋 Order ID: $orderId");
+      print("📋 Offline Order ID: ${widget.offlineOrderId}");
+      print("📋 Items Count: ${orderItems.length}");
+      print("📋 Total Payable: ${computedNetPayable.toStringAsFixed(2)}");
+      print("═══════════════════════════════════════════════════════════");
     }
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 1: LOAD PRINTER DATA
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     var printerData = await loadPrinterData();
+    if (kDebugMode) {
+      print("📦 Printer Data Loaded:");
+      print("   Header: ${printerData?[AppDBConst.receiptHeaderText] ?? 'Not Set'}");
+      print("   Footer: ${printerData?[AppDBConst.receiptFooterText] ?? 'Not Set'}");
+      print("   Logo Path: ${printerData?[AppDBConst.receiptIconPath] ?? 'Not Set'}");
+    }
+
     var header = printerData?[AppDBConst.receiptHeaderText] ?? "";
     var footer = printerData?[AppDBConst.receiptFooterText] ?? "";
     var logo = printerData?[AppDBConst.receiptIconPath] ?? "";
@@ -14583,14 +15143,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes = [];
     final ticket = await _printerSettings.getTicket();
 
-    // -------------------------------
-    // LOGO (unchanged)
-    // -------------------------------
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 2: LOGO PROCESSING
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (kDebugMode) {
+      print("🖼️ Processing Logo...");
+    }
+
     final ByteData data;
     if (logo != "") {
+      if (kDebugMode) {
+        print("   Logo path provided: $logo");
+      }
       data = await GlobalUtility.fileToByteData(File(logo)) ??
           await rootBundle.load('assets/Bubbas_logo.png');
     } else {
+      if (kDebugMode) {
+        print("   Using default logo: assets/Bubbas_logo.png");
+      }
       data = await rootBundle.load('assets/Bubbas_logo.png');
     }
 
@@ -14605,44 +15175,164 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       drawImage(originalImg, thumbnail, dstX: padding.toInt());
       var grayscaleImage = img.grayscale(originalImg);
       // bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
-    }
-
-    // -------------------------------
-    // HEADER & STORE INFO (unchanged)
-    // -------------------------------
-    var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
-    var storeId = "${merchantDetails?[AppDBConst.storeId]}";
-    // var storePhone = "${merchantDetails?[AppDBConst.storePhone]}";
-// === CUSTOMER CONTACT (Mobile) ===
-    String customerMobile = '';
-    if (mobileController.text.isNotEmpty) {
-      customerMobile = mobileController.text.trim();
+      if (kDebugMode) {
+        print("✅ Logo processed successfully");
+      }
     } else {
-      // Fallback from Hive / offline order
-      final box = StorageProvider.offlineOrders;
-      final key = (orderId ?? widget.offlineOrderId ?? 0).toString();
-      final raw = await box.get(key);
-      if (raw is Map) {
-        customerMobile = (raw['customer_phone'] ?? raw['mobile'] ?? raw['loyaltyContact'] ?? '').toString().trim();
+      if (kDebugMode) {
+        print("⚠️ Logo image has 0 bytes, skipping");
       }
     }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 3: STORE DETAILS - FIXED
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (kDebugMode) {
+      print("🏪 Loading Store Details...");
+    }
+
+    var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
+    var storeId = "${merchantDetails?[AppDBConst.storeId] ?? 'N/A'}";
+
     var storeDetails = await AssetDBHelper.instance.getStoreDetails();
-    var storeName = "${storeDetails?.name}";
-    var address = "${storeDetails?.address},";
-    var cityStateZip =
-        "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
+
+    // ✅ FIX: Get phone from storeDetails first, fallback to merchantDetails
+    String storePhone = "";
+    if (storeDetails?.phoneNumber != null && storeDetails!.phoneNumber!.isNotEmpty) {
+      storePhone = storeDetails.phoneNumber!;
+    } else if (merchantDetails?[AppDBConst.storePhone] != null &&
+        merchantDetails![AppDBConst.storePhone].toString().isNotEmpty) {
+      storePhone = merchantDetails![AppDBConst.storePhone].toString();
+    }
+
+    String storeName = storeDetails?.name?.isNotEmpty == true
+        ? storeDetails!.name!
+        : "Store Name";
+
+    // ✅ FIX: Only build address if it has content
+    String address = storeDetails?.address != null && storeDetails!.address!.isNotEmpty
+        ? "${storeDetails.address},"
+        : "";
+
+    // ✅ FIX: Build city/state/zip only with non-empty values
+    String city = storeDetails?.city?.isNotEmpty == true ? storeDetails!.city! : "";
+    String state = storeDetails?.state?.isNotEmpty == true ? storeDetails!.state! : "";
+    String zip = storeDetails?.zipCode?.isNotEmpty == true ? storeDetails!.zipCode! : "";
+
+    List<String> locationParts = [];
+    if (city.isNotEmpty) locationParts.add(city);
+    if (state.isNotEmpty) locationParts.add(state);
+    if (zip.isNotEmpty) locationParts.add(zip);
+
+    String cityStateZip = locationParts.isNotEmpty ? locationParts.join(", ") : "";
+
     var orderIdToPrint = '$orderId';
 
+    if (kDebugMode) {
+      print("   Store Name: $storeName");
+      print("   Store ID: $storeId");
+      print("   Store Phone: ${storePhone.isNotEmpty ? storePhone : 'Not Set'}");
+      print("   Address: ${address.isNotEmpty ? address : 'Not Set'}");
+      print("   City/State/Zip: ${cityStateZip.isNotEmpty ? cityStateZip : 'Not Set'}");
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 4: USER/CASHIER DETAILS
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     final userData = await UserDbHelper().getUserData();
     var cashierName =
         "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
     var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
 
-    if (header != "") {
+    if (kDebugMode) {
+      print("👤 Cashier Details:");
+      print("   Name: $cashierName");
+      print("   Role: $cashierRole");
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 5: CUSTOMER CONTACT (MOBILE NUMBER) - FIX ADDED HERE
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    String customerContact = "";
+    try {
+      final box = StorageProvider.offlineOrders;
+      final String orderKey = widget.offlineOrderId?.toString() ??
+          widget.orderId?.toString() ??
+          orderId?.toString() ??
+          "";
+      if (orderKey.isNotEmpty) {
+        if (kDebugMode) {
+          print("🔍 Looking for customer contact in Hive key: $orderKey");
+        }
+        final rawOrder = await box.get(orderKey);
+        if (rawOrder != null) {
+          final order = Map<String, dynamic>.from(rawOrder);
+          customerContact = order["loyaltyContact"]?.toString() ?? "";
+          if (kDebugMode) {
+            print("   Hive loyaltyContact: '$customerContact'");
+          }
+        } else {
+          if (kDebugMode) {
+            print("   No order found in Hive for key: $orderKey");
+          }
+        }
+      }
+
+      // Fallback to mobileController
+      if (customerContact.isEmpty) {
+        customerContact = mobileController.text.trim();
+        if (kDebugMode) {
+          print("   Fallback to mobileController: '$customerContact'");
+        }
+      }
+
+      // Fallback to loyaltyData
+      if (customerContact.isEmpty && loyaltyData != null) {
+        customerContact = loyaltyData?["contact"]?.toString() ?? "";
+        if (kDebugMode) {
+          print("   Fallback to loyaltyData: '$customerContact'");
+        }
+      }
+
+      if (kDebugMode) {
+        print("📞 FINAL Customer Contact: '${customerContact.isNotEmpty ? customerContact : 'Not Provided'}'");
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("⚠️ Failed to get customer contact: $e");
+      }
+      // Final fallback
+      customerContact = mobileController.text.trim();
+      if (kDebugMode) {
+        print("   Final fallback to mobileController: '$customerContact'");
+      }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 6: DATE AND TIME
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (kDebugMode) {
+      print("📅 Date: $_displayDate");
+      print("🕐 Time: $_displayTime");
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 7: BUILD RECEIPT HEADER
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (kDebugMode) {
+      print("📄 Building Receipt...");
+      print("─────────────────────────────────────────────────────────────");
+    }
+
+    // Header
+    if (header.isNotEmpty) {
       bytes += ticket.row([
         PosColumn(
             text: header, width: 12, styles: PosStyles(align: PosAlign.center)),
       ]);
+      if (kDebugMode) {
+        print("🏷️ Header: $header");
+      }
     }
 
     bytes += ticket.row([
@@ -14655,6 +15345,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     bytes += ticket.feed(1);
 
+    // Store Name
     bytes += ticket.row([
       PosColumn(
         text: storeName,
@@ -14667,27 +15358,52 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         ),
       ),
     ]);
+    if (kDebugMode) {
+      print("🏪 Store: $storeName");
+    }
 
     bytes += ticket.feed(1);
 
-    bytes += ticket.row([
-      PosColumn(
-          text: address, width: 12, styles: PosStyles(align: PosAlign.center))
-    ]);
-    bytes += ticket.row([
-      PosColumn(
-          text: cityStateZip,
-          width: 12,
-          styles: PosStyles(align: PosAlign.center))
-    ]);
-    bytes += ticket.row([
-      PosColumn(
-          text: "Phone: $customerMobile",
-          width: 12,
-          styles: PosStyles(align: PosAlign.center)),
-    ]);
+    // ✅ FIX: Only print address if it has content
+    if (address.isNotEmpty && address != "N/A") {
+      bytes += ticket.row([
+        PosColumn(
+            text: address, width: 12, styles: PosStyles(align: PosAlign.center))
+      ]);
+      if (kDebugMode) {
+        print("📭 Address: $address");
+      }
+    }
+
+    // ✅ FIX: Only print city/state/zip if it has content
+    if (cityStateZip.isNotEmpty && cityStateZip != "N/A") {
+      bytes += ticket.row([
+        PosColumn(
+            text: cityStateZip,
+            width: 12,
+            styles: PosStyles(align: PosAlign.center))
+      ]);
+      if (kDebugMode) {
+        print("📮 City/State/Zip: $cityStateZip");
+      }
+    }
+
+    // ✅ FIX: Only print phone if it has content
+    if (storePhone.isNotEmpty && storePhone != "N/A") {
+      bytes += ticket.row([
+        PosColumn(
+            text: "Phone: $storePhone",
+            width: 12,
+            styles: PosStyles(align: PosAlign.center)),
+      ]);
+      if (kDebugMode) {
+        print("📞 Store Phone: $storePhone");
+      }
+    }
 
     bytes += ticket.feed(1);
+
+    // Divider
     bytes += ticket.row([
       PosColumn(
           text: "-----------------------------------------------", width: 12),
@@ -14695,6 +15411,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     bytes += ticket.feed(1);
 
+    // Date, Time, Cashier, StoreID, OrderID
     bytes += ticket.row([
       PosColumn(text: "Date: $_displayDate", width: 7),
       PosColumn(text: "Time: $_displayTime", width: 5),
@@ -14710,7 +15427,28 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       PosColumn(text: "OrderID: $orderIdToPrint", width: 5),
     ]);
 
+    if (kDebugMode) {
+      print("👤 Cashier: $cashierName");
+      print("🏷️ Order ID: $orderIdToPrint");
+    }
+
+    // ⭐ CUSTOMER CONTACT - NOW PRINTED ON RECEIPT
+    if (customerContact.isNotEmpty) {
+      bytes += ticket.row([
+        PosColumn(text: "Customer: $customerContact", width: 12),
+      ]);
+      if (kDebugMode) {
+        print("📞 Customer: $customerContact");
+      }
+    } else {
+      if (kDebugMode) {
+        print("📞 Customer: Not Provided");
+      }
+    }
+
     bytes += ticket.feed(1);
+
+    // Divider
     bytes += ticket.row([
       PosColumn(
           text: "-----------------------------------------------", width: 12),
@@ -14718,9 +15456,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     bytes += ticket.feed(1);
 
-    // -------------------------------
-    // ITEM HEADER
-    // -------------------------------
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 8: ITEM HEADER
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     bytes += ticket.row([
       PosColumn(text: "#", width: 1, styles: PosStyles(bold: true)),
       PosColumn(text: "Description", width: 5, styles: PosStyles(bold: true)),
@@ -14740,6 +15478,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     bytes += ticket.feed(1);
 
+    if (kDebugMode) {
+      print("─────────────────────────────────────────────────────────────");
+      print("🛒 ITEMS:");
+      print("   # | Description | Qty | Rate | Amt");
+      print("─────────────────────────────────────────────────────────────");
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 9: FORMATTING HELPERS
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     String formatCurrency(double amount) {
       if (amount < 0) {
         return "-${TextConstants.currencySymbol}${amount.abs().toStringAsFixed(2)}";
@@ -14771,9 +15519,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       return lines;
     }
 
-    // -------------------------------
-    // ITEMS LOOP (with Weighted Item support + Name Wrapping)
-    // -------------------------------
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 10: ITEMS LOOP (with Weighted Item support + Name Wrapping)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    int itemIndex = 0;
+    double printedGrossTotal = 0.0;
+    double printedTotalDiscount = 0.0;
+
     for (int i = 0; i < orderItems.length; i++) {
       var item = orderItems[i];
 
@@ -14787,6 +15539,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final nameLower = itemName.toLowerCase();
       if (type.contains('discount') ||
           nameLower.contains('merchant discount')) {
+        if (kDebugMode) {
+          print("   ⏭️ Skipping discount line: $itemName");
+        }
         continue;
       }
 
@@ -14829,18 +15584,26 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // ── FORMAT TOTAL ──
       String formattedTotal;
+      double displayTotal;
       if (isWeightedItem && weightQty > 0 && weightUnitPrice > 0) {
-        formattedTotal = formatCurrency(weightUnitPrice * weightQty);
+        displayTotal = weightUnitPrice * weightQty;
+        formattedTotal = formatCurrency(displayTotal);
       } else {
+        displayTotal = lineTotal;
         formattedTotal = formatCurrency(lineTotal);
       }
 
+      // Track totals for logging
+      printedGrossTotal += displayTotal;
+
       // ── WRAP LONG ITEM NAMES ──
-      List<String> nameLines = wrapItemName(itemName, 18); // Max 18 chars per line
+      List<String> nameLines = wrapItemName(itemName, 18);
+
+      itemIndex++;
 
       // Print first line with all details
       bytes += ticket.row([
-        PosColumn(text: "${i + 1}", width: 1),
+        PosColumn(text: "$itemIndex", width: 1),
         PosColumn(text: nameLines[0], width: 5),
         PosColumn(
             text: formattedQtyOrWeight,
@@ -14856,20 +15619,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             styles: PosStyles(align: PosAlign.right)),
       ]);
 
+      if (kDebugMode) {
+        print("   $itemIndex | ${nameLines[0]} | $formattedQtyOrWeight | $formattedRate | $formattedTotal");
+      }
+
       // Print additional name lines (if any) with indentation
       for (int j = 1; j < nameLines.length; j++) {
         bytes += ticket.row([
-          PosColumn(text: "", width: 1),           // Empty # column
-          PosColumn(text: "  ${nameLines[j]}", width: 5), // Indented description
-          PosColumn(text: "", width: 1),           // Empty qty
-          PosColumn(text: "", width: 2),           // Empty rate
-          PosColumn(text: "", width: 3),           // Empty amount
+          PosColumn(text: "", width: 1),
+          PosColumn(text: "  ${nameLines[j]}", width: 5),
+          PosColumn(text: "", width: 1),
+          PosColumn(text: "", width: 2),
+          PosColumn(text: "", width: 3),
         ]);
+        if (kDebugMode) {
+          print("     ${nameLines[j]}");
+        }
       }
 
-      // ────────────────────────────────────────────────
-      // DISCOUNT EXTRACTION & PRINTING (unchanged)
-      // ────────────────────────────────────────────────
+      // ── DISCOUNT EXTRACTION & PRINTING ──
       String discountType = item['discount_type']?.toString() ?? '';
 
       double autoDiscount = (discountType.isEmpty || discountType == 'auto')
@@ -14895,6 +15663,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             styles: PosStyles(align: PosAlign.right),
           ),
         ]);
+        printedTotalDiscount += autoDiscount;
+        if (kDebugMode) {
+          print("     Auto Discount: -${formatCurrency(autoDiscount)}");
+        }
       }
 
       // Combo / Mix & Match Discount
@@ -14907,6 +15679,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             styles: PosStyles(align: PosAlign.right),
           ),
         ]);
+        printedTotalDiscount += comboDiscount;
+        if (kDebugMode) {
+          print("     Combo Discount: -${formatCurrency(comboDiscount)}");
+        }
       }
 
       // Multipack Discount
@@ -14919,12 +15695,27 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             styles: PosStyles(align: PosAlign.right),
           ),
         ]);
+        printedTotalDiscount += multipackDiscount;
+        if (kDebugMode) {
+          print("     Multipack Discount: -${formatCurrency(multipackDiscount)}");
+        }
       }
 
       bytes += ticket.emptyLines(1);
     }
 
-    final double discount = () {
+    if (kDebugMode) {
+      print("─────────────────────────────────────────────────────────────");
+      print("📊 Item Totals:");
+      print("   Gross Total (from items): ${formatCurrency(printedGrossTotal)}");
+      print("   Total Discounts: ${formatCurrency(printedTotalDiscount)}");
+      print("─────────────────────────────────────────────────────────────");
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 11: DISCOUNT VALUE (Coupon / Order Level)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    final double couponDiscountValue = () {
       final raw = _order["discount"] ??
           _order["order_discount"] ??
           _order["discount_amount"];
@@ -14935,15 +15726,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       return fromGetOrder != 0 ? -(fromGetOrder.abs()) : 0.0;
     }();
 
-    // -------------------------------
-    // TOTALS (unchanged from your version)
-    // -------------------------------
+    if (kDebugMode) {
+      print("🏷️ Coupon/Order Discount: ${formatCurrency(couponDiscountValue)}");
+      print("📊 Merchant Discount: ${formatCurrency(merchantDiscount)}");
+      print("📊 Tax: ${formatCurrency(tax)}");
+      print("📊 Cashback Fee: ${formatCurrency(cashbackFee)}");
+      print("📊 Redeemed Value: ${formatCurrency(redeemedValue)}");
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 12: TOTALS SECTION
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     bytes += ticket.feed(1);
     bytes += ticket.row([
       PosColumn(
           text: "-----------------------------------------------", width: 12),
     ]);
 
+    // Gross Total
     bytes += ticket.row([
       PosColumn(text: TextConstants.grossTotal, width: 8),
       PosColumn(
@@ -14953,16 +15753,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     ]);
 
-    // Show Coupon (standardized negative display)
+    // Coupon/Order Discount
     bytes += ticket.row([
       PosColumn(text: TextConstants.discountText, width: 8),
       PosColumn(
-        text: discount != 0 ? formatCurrency(discount) : formatCurrency(0.0),
+        text: couponDiscountValue != 0 ? formatCurrency(couponDiscountValue) : formatCurrency(0.0),
         width: 4,
         styles: PosStyles(align: PosAlign.right),
       ),
     ]);
 
+    // Tax
     bytes += ticket.row([
       PosColumn(text: TextConstants.taxText, width: 8),
       PosColumn(
@@ -14972,6 +15773,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     ]);
 
+    // Merchant Discount
     bytes += ticket.row([
       PosColumn(
         text: merchantDiscountPercentage > 0
@@ -14988,6 +15790,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     ]);
 
+    // Cashback Fee
     if (cashbackFee > 0) {
       bytes += ticket.row([
         PosColumn(text: TextConstants.cashbackFee, width: 8),
@@ -14999,6 +15802,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ]);
     }
 
+    // Service Charges
     bytes += ticket.row([
       PosColumn(text: TextConstants.servicecharges, width: 8),
       PosColumn(
@@ -15015,9 +15819,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     bytes += ticket.feed(1);
 
-    // Final Net Payable logic matching the summary screen precisely
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 13: NET PAYABLE
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     double printNetPayable = grossTotal +
-        discount +
+        couponDiscountValue +
         merchantDiscount +
         tax +
         servicecharges +
@@ -15029,10 +15835,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       PosColumn(
         text: formatCurrency(printNetPayable),
         width: 4,
-        styles: PosStyles(align: PosAlign.right),
+        styles: PosStyles(align: PosAlign.right, bold: true),
       ),
     ]);
 
+    if (kDebugMode) {
+      print("💰 Net Payable: ${formatCurrency(printNetPayable)}");
+    }
+
+    // Redeemed Amount
     if (redeemedValue > 0) {
       bytes += ticket.row([
         PosColumn(text: "Redeemed Amount", width: 8),
@@ -15042,8 +15853,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           styles: PosStyles(align: PosAlign.right),
         ),
       ]);
+      if (kDebugMode) {
+        print("🎯 Redeemed: -${formatCurrency(redeemedValue)}");
+      }
     }
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 14: PAYMENT BREAKDOWN
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     bytes += ticket.row([
       PosColumn(text: TextConstants.payByCash, width: 8),
       PosColumn(
@@ -15089,13 +15906,22 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     ]);
 
+    if (kDebugMode) {
+      print("💵 Payment Breakdown:");
+      print("   Cash: ${formatCurrency(payByCash)}");
+      print("   EBT: ${formatCurrency(payByEbt)}");
+      print("   Other: ${formatCurrency(payByOther)}");
+      print("   Tendered: ${formatCurrency(tenderAmount)}");
+      print("   Change: ${formatCurrency(changeAmount)}");
+    }
 
-
-    // ── NEW: Only print "Order Earned Points" when redeem/loyalty was active for this order ──
-    final bool _shouldPrintEarnedPoints =
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 15: LOYALTY/EARNED POINTS (only if redeem was used)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    final bool shouldPrintEarnedPoints =
         isRedeemActive || redeemedValue > 0 || availablePoints > 0;
 
-    if (_shouldPrintEarnedPoints) {
+    if (shouldPrintEarnedPoints) {
       final int earnedPoints =
           (_order['total_loyalty_points'] as num?)?.toInt() ?? 0;
 
@@ -15107,22 +15933,56 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           styles: PosStyles(align: PosAlign.right),
         ),
       ]);
+
+      if (kDebugMode) {
+        print("⭐ Order Earned Points: $earnedPoints pts");
+      }
     }
 
-
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 16: FOOTER
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     bytes += ticket.row([
       PosColumn(
           text: "-----------------------------------------------", width: 12),
     ]);
 
-    if (footer != "") {
+    if (footer.isNotEmpty) {
       bytes += ticket.feed(1);
       bytes += ticket.row([
         PosColumn(
             text: footer, width: 12, styles: PosStyles(align: PosAlign.center)),
       ]);
+      if (kDebugMode) {
+        print("📝 Footer: $footer");
+      }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 17: FINAL SUMMARY
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (kDebugMode) {
+      print("═══════════════════════════════════════════════════════════");
+      print("✅ RECEIPT PREPARED SUCCESSFULLY");
+      print("═══════════════════════════════════════════════════════════");
+      print("📊 Final Summary:");
+      print("   Gross Total: ${formatCurrency(grossTotal)}");
+      print("   Coupon Discount: ${formatCurrency(couponDiscountValue)}");
+      print("   Merchant Discount: ${formatCurrency(merchantDiscount)}");
+      print("   Tax: ${formatCurrency(tax)}");
+      print("   Cashback Fee: ${formatCurrency(cashbackFee)}");
+      print("   Net Payable: ${formatCurrency(printNetPayable)}");
+      print("   Total Tendered: ${formatCurrency(tenderAmount)}");
+      print("   Change: ${formatCurrency(changeAmount)}");
+      if (customerContact.isNotEmpty) {
+        print("   Customer: $customerContact");
+      }
+      print("═══════════════════════════════════════════════════════════");
+      print("📋 Total bytes for print: ${bytes.length}");
+      print("═══════════════════════════════════════════════════════════");
     }
   }
+
 
 //////
 

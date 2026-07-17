@@ -10,7 +10,7 @@
         android:layout_height="match_parent"
         android:orientation="horizontal">
 
-        <!-- Left half: slideshow -->
+        <!-- Left half: Logo + Welcome Text -->
         <LinearLayout
             android:id="@+id/welcome_info"
             android:layout_width="0dp"
@@ -25,27 +25,29 @@
                 android:layout_width="150dp"
                 android:layout_height="wrap_content"
                 android:src="@drawable/pinaka_logo"
-                android:contentDescription="Logo"
+                android:contentDescription="Store Logo"
                 android:adjustViewBounds="true"
-                android:layout_marginBottom="20dp" />
+                android:layout_marginBottom="24dp" />
 
             <TextView
                 android:id="@+id/welcome_text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Welcome To Pinaka"
-                android:textSize="40sp"
+                android:text="Welcome to"
+                android:textSize="42sp"
                 android:textStyle="bold"
                 android:textColor="#FFFFFF"
                 android:gravity="center"
                 android:fontFamily="serif"
-                android:lineSpacingExtra="2dp"
-                android:letterSpacing="0.02"
-                android:breakStrategy="simple" />
+                android:lineSpacingExtra="4dp"
+                android:letterSpacing="0.01"
+                android:breakStrategy="simple"
+                android:maxLines="2"
+                android:ellipsize="end" />
 
         </LinearLayout>
 
-        <!-- Right half: welcome text/logo -->
+        <!-- Right half: Slideshow -->
         <FrameLayout
             android:id="@+id/slideshow_container"
             android:layout_width="0dp"
@@ -53,6 +55,7 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:padding="16dp">
+
             <ImageView
                 android:id="@+id/slideshow_image"
                 android:layout_width="match_parent"
@@ -72,6 +75,7 @@
         android:textColor="#FFFFFF"
         android:gravity="center"
         android:layout_gravity="bottom|center_horizontal"
-        android:padding="8dp"
+        android:padding="12dp"
         android:visibility="gone" />
+
 </FrameLayout>

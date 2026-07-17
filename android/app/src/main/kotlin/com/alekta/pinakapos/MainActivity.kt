@@ -212,7 +212,7 @@ class MainActivity : FlutterActivity() {
                         )
                         Log.d("CustomerDisplay", "✔ Updated welcome layout with store details")
                     } else {
-                        Log.d("CustomerDisplay", "⛔ Order active → storing store info only (will apply on reset)")
+                        Log.d("CustomerDisplay", " Order active → storing store info only (will apply on reset)")
                     }
 
                     result.success("Welcome updated with store")
@@ -221,7 +221,7 @@ class MainActivity : FlutterActivity() {
                 "showCustomerData" -> {
 
                     if (isShowingThankYou) {
-                        Log.d("CustomerDisplay", "⛔ Thank You active → skipping customer data update")
+                        Log.d("CustomerDisplay", " Thank You active → skipping customer data update")
                         result.success("Skipped")
                         return@setMethodCallHandler
                     }
@@ -1116,8 +1116,17 @@ class MainActivity : FlutterActivity() {
             currentStoreLogoUrl = storeLogoUrl
             currentStoreBaseUrl = storeBaseUrl ?: ""
 
-            welcomeText.text =
-                if (storeName.isNotEmpty()) "Welcome to $storeName" else "👋 Welcome to Pinaka"
+            // Update the welcome text with dynamic store name
+            welcomeText.text = if (storeName.isNotEmpty()) {
+                "Welcome to $storeName"
+            } else {
+                "👋 Welcome to Pinaka"
+            }
+
+            // Make sure the text is visible and properly styled
+            welcomeText.visibility = View.VISIBLE
+            welcomeText.invalidate()
+            welcomeText.requestLayout()
 
             val footerText = findViewById<TextView>(R.id.footer_text)
             footerText?.visibility = if (storeName.isNotEmpty()) View.VISIBLE else View.GONE
@@ -1144,9 +1153,17 @@ class MainActivity : FlutterActivity() {
                 Log.d("CustomerDisplay", "✅ Using default Welcome logo")
             }
 
+            // Also update the store info text in the customer layout if it exists
+            val storeInfoText = findViewById<TextView>(R.id.store_info_text)
+            if (storeInfoText != null && storeName.isNotEmpty()) {
+                storeInfoText.text = storeName
+            }
+
             if (storeName.isNotEmpty()) {
                 loadSlideshowFromApi(currentStoreBaseUrl)
             }
+
+            Log.d("CustomerDisplay", "✅ Welcome updated with store: $storeName")
         }
 
         private fun loadSlideshowFromApi(storeBaseUrl: String) {
@@ -1308,13 +1325,17 @@ class MainActivity : FlutterActivity() {
                 val logoView = findViewById<ImageView>(R.id.welcome_logo)
                 slideshowImageView = findViewById(R.id.slideshow_image)
 
-                welcomeText.text =
-                    if (storeName.isNotEmpty()) "Welcome to $storeName"
-                    else "👋 Welcome to Pinaka"
+                // Set the dynamic welcome text
+                welcomeText.text = if (storeName.isNotEmpty()) {
+                    "Welcome to $storeName"
+                } else {
+                    "👋 Welcome to Pinaka"
+                }
+                welcomeText.visibility = View.VISIBLE
 
-                footerText.visibility =
-                    if (storeName.isNotEmpty()) View.VISIBLE else View.GONE
+                footerText.visibility = if (storeName.isNotEmpty()) View.VISIBLE else View.GONE
 
+                // Load logo
                 if (!storeLogoUrl.isNullOrEmpty()) {
                     Thread {
                         try {
@@ -1335,6 +1356,8 @@ class MainActivity : FlutterActivity() {
                 if (currentStoreBaseUrl.isNotEmpty() && storeName.isNotEmpty()) {
                     loadSlideshowFromApi(currentStoreBaseUrl)
                 }
+
+                Log.d("CustomerDisplay", "✅ Welcome layout shown with store: $storeName")
             }
         }
 
