@@ -9,14 +9,16 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/appconstant.dart';
+
 class StoreDetailsRepository {
   final http.Client _client;
 
   StoreDetailsRepository({http.Client? client})
       : _client = client ?? http.Client();
 
-  static final Uri _uri = Uri.parse(
-    'https://kioski.alekyatechsolutions.com/wp-json/pinaka-kiosk/v1/assets/store-details',
+  Uri get _uri => Uri.parse(
+    AppConstants.storeDetailsEndpoint,
   );
 
   static const String _cacheKey = 'store_details_cache';

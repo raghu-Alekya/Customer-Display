@@ -4,10 +4,10 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../model/category_model.dart';
+import '../utils/appconstant.dart';
 
 class CategoryRemoteDataSource {
-  static const String _baseUrl =
-      'https://kioski.alekyatechsolutions.com/wp-json/wc/v3/products/categories';
+  String get _baseUrl => AppConstants.categoriesEndpoint;
 
   final http.Client _client;
 

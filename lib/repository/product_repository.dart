@@ -4,13 +4,12 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../model/product model.dart';
+import '../utils/appconstant.dart';
 
 class ProductRemoteDataSource {
-  static const String _customBaseUrl =
-      'https://kioski.alekyatechsolutions.com/wp-json/pinaka-kiosk/v1/products-by-category';
-  static const String _wcProductsBaseUrl =
-      'https://kioski.alekyatechsolutions.com/wp-json/wc/v3/products';
+  String get _customBaseUrl => AppConstants.productsByCategoryEndpoint;
 
+  String get _wcProductsBaseUrl => AppConstants.wcProductsEndpoint;
   final http.Client _client;
 
   ProductRemoteDataSource({http.Client? client})

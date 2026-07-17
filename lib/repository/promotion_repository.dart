@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../model/promotion_image_model.dart';
+import '../utils/appconstant.dart';
 
 class PromotionRepository {
   final http.Client _client;
@@ -13,7 +14,7 @@ class PromotionRepository {
     required String token,
   }) async {
     final uri = Uri.parse(
-      'https://kioski.alekyatechsolutions.com/wp-json/pinaka-kiosk/v1/orders/get-portrait-promotion-images',
+      AppConstants.portraitPromotionImagesEndpoint,
     );
 
     print("🔵 Portrait API: $uri");
@@ -50,7 +51,7 @@ class PromotionRepository {
     required String token,
   }) async {
     final uri = Uri.parse(
-      'https://kioski.alekyatechsolutions.com/wp-json/pinaka-kiosk/v1/orders/get-full-screen-promotion-images',
+      AppConstants.fullScreenPromotionImagesEndpoint,
     );
 
     print("🔵 Full Screen API: $uri");
@@ -87,7 +88,7 @@ class PromotionRepository {
     required String token,
   }) async {
     final uri = Uri.parse(
-      'https://kioski.alekyatechsolutions.com/wp-json/pinaka-kiosk/v1/orders/get-banner-promotion-images',
+      AppConstants.bannerPromotionImagesEndpoint,
     );
 
     print("🔵 Banner API: $uri");

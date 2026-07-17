@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:kiosk/splashscreen.dart';
 import 'package:kiosk/widgets/printer_settings_screen.dart';
 import 'package:kiosk/widgets/setting_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   late final PageController _controller;
   int _currentPage = 0;
+  Timer? _idleTimer;
   Timer? _slideTimer;
   String selectedType = "Dine-In"; // default
 
@@ -49,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadStoreDetails();
 
     _restartSlideTimer();
+    _startIdleTimer();
   }
 
   /// Always moves to the next page (forward). Content repeats via modulo so the
@@ -67,6 +70,22 @@ class _HomeScreenState extends State<HomeScreen> {
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeInOut,
     );
+  }
+  void _startIdleTimer() {
+    _idleTimer?.cancel();
+
+    _idleTimer = Timer(const Duration(seconds: 15), () {
+      print("15 seconds completed");
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const KioskScreen(),
+        ),
+            (route) => false,
+      );
+    });
   }
 
   void _restartSlideTimer() {
@@ -95,6 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _slideTimer?.cancel();
+    _idleTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -205,7 +225,11 @@ class _HomeScreenState extends State<HomeScreen> {
         : 22.0;
     final buttonWidth = MediaQuery.of(context).size.width * 0.42;
 
-    return MultiBlocListener(
+    return Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _startIdleTimer(),
+        onPointerMove: (_) => _startIdleTimer(),
+        child: MultiBlocListener(
       listeners: [
         BlocListener<PromotionBloc, PromotionState>(
           listener: (context, state) async {
@@ -250,6 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
       ],
+
       child: Scaffold(
       backgroundColor: Colors.black,
       body: Center(
@@ -504,8 +529,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                           ),
-                          onPressed: () {
-                            Navigator.push(
+                          onPressed: () async {
+                            _idleTimer?.cancel();
+
+                            await Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (_) => const FoodUiScreen(
@@ -513,6 +540,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                             );
+
+                            if (mounted) {
+                              _startIdleTimer();
+                            }
                           },
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -547,8 +578,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                           ),
-                          onPressed: () {
-                            Navigator.push(
+                          onPressed: () async {
+                            _idleTimer?.cancel();
+
+                            await  Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (_) => const FoodUiScreen(
@@ -556,6 +589,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                             );
+                            if (mounted) {
+                              _startIdleTimer();
+                            }
                           },
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -641,7 +677,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     ),
-    );
+    ));
   }
 }
 

@@ -634,7 +634,11 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
           const SizedBox(width: 14),
 
           /// VEG / NON VEG
-          Row(
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
             children: List.generate(orderTypes.length, (index) {
               final selected = selectedType == index;
               Color backgroundColor = Colors.white;
@@ -721,7 +725,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                 ),
               );
             }),
-          )
+            ))  )
         ],
       ),
     );
@@ -1637,10 +1641,11 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
 
   Widget _bottomBar() {
     final bottomHeight = Responsive.isDesktop(context)
-        ? 92.0
+        ? 95.0
         : Responsive.isTablet(context)
-        ? 86.0
-        : 78.0;
+        ? 88.0
+        : 82.0;
+
     final homeSize = Responsive.isDesktop(context)
         ? 64.0
         : Responsive.isTablet(context)
@@ -1669,16 +1674,11 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
         ? 20.0
         : Responsive.isTablet(context)
         ? 18.0
-        : 16.0;
+        : 15.0;
 
     return Container(
       height: bottomHeight,
-      padding: EdgeInsets.only(
-        left: Responsive.w(context) * .015,
-        right: Responsive.w(context) * .015,
-        top: Responsive.h(context) * .015, // Increase top spacing
-        bottom: Responsive.h(context) * .01,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(
@@ -1720,11 +1720,12 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
             ),
           ),
 
-          SizedBox(width: Responsive.w(context) * .58),
+          /// Push remaining widgets to the right
+          const Spacer(),
 
           SizedBox(
             width: Responsive.isDesktop(context)
-                ? 260
+                ? 270
                 : Responsive.isTablet(context)
                 ? 220
                 : 190,
@@ -1739,6 +1740,8 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                     children: [
                       Text(
                         "Total Price",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Colors.black54,
                           fontSize: labelFont,
@@ -1759,7 +1762,7 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                   ),
                 ),
 
-                SizedBox(width: Responsive.w(context) * .01),
+                const SizedBox(width: 8),
 
                 /// CART BUTTON
                 GestureDetector(
@@ -1773,83 +1776,80 @@ class _FoodUiScreenState extends State<FoodUiScreen> {
                       ),
                     );
                   },
-                  child: SizedBox(
-                    width: MediaQuery.of(context).size.width * 0.24,
-                    child: Container(
-                      height: cartHeight,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: Responsive.isDesktop(context)
-                            ? 28
-                            : Responsive.isTablet(context)
-                            ? 24
-                            : 20,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFF8A00),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Icon(
-                                Icons.shopping_cart_checkout,
-                                color: Colors.white,
-                                size: Responsive.isDesktop(context)
-                                    ? 34
-                                    : Responsive.isTablet(context)
-                                    ? 30
-                                    : 26,
-                              ),
-                              if (CartManager.cartItems.isNotEmpty)
-                                Positioned(
-                                  right: -6,
-                                  top: -6,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: const BoxDecoration(
-                                      color: Colors.red,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Text(
-                                      "${_totalCartQuantity()}",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: Responsive.isDesktop(context)
-                                            ? 12
-                                            : Responsive.isTablet(context)
-                                            ? 11
-                                            : 10,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                  child: Container(
+                    height: cartHeight,
+                    width: Responsive.isDesktop(context)
+                        ? 170
+                        : Responsive.isTablet(context)
+                        ? 145
+                        : 90,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF8A00),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Icon(
+                              Icons.shopping_cart_checkout,
+                              color: Colors.white,
+                              size: Responsive.isDesktop(context)
+                                  ? 34
+                                  : Responsive.isTablet(context)
+                                  ? 30
+                                  : 24,
+                            ),
+                            if (CartManager.cartItems.isNotEmpty)
+                              Positioned(
+                                right: -5,
+                                top: -5,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    "${_totalCartQuantity()}",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                 ),
-                            ],
-                          ),
-                          SizedBox(width: Responsive.w(context) * .02),
-                          Text(
+                              ),
+                          ],
+                        ),
+
+                        const SizedBox(width: 6),
+
+                        Flexible(
+                          child: Text(
                             "Cart",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: cartFont,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                )],
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
-
   Widget _capsule({
     required Widget child,
     EdgeInsetsGeometry? margin,

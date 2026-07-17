@@ -4,6 +4,7 @@ class LoginResponse {
   final String storeName;
   final String storeLogo;
   final String licenseKey;
+  final String storeBaseUrl; // <-- Add this
 
   LoginResponse({
     required this.success,
@@ -11,6 +12,7 @@ class LoginResponse {
     required this.storeName,
     required this.storeLogo,
     required this.licenseKey,
+    required this.storeBaseUrl,
   });
 
   factory LoginResponse.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class LoginResponse {
       storeName: json['store_name'] ?? '',
       storeLogo: (json['store_logo'] ?? '').toString().replaceAll('%22', ''),
       licenseKey: json['license_key'] ?? '',
+      storeBaseUrl: json['store_base_url'] ?? '', // <-- Add this
     );
   }
 }

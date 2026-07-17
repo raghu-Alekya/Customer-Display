@@ -5,6 +5,7 @@ import 'package:kiosk/user_login.dart';
 
 import '../splashscreen.dart';
 import 'bloc/login_bloc.dart';
+import 'helper.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -165,7 +166,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                       Center(
                                       child: SizedBox(
                                       // width: 450,
-                      height: MediaQuery.of(context).size.height * 0.45,
+                                        height: Responsive.isDesktop(context)
+                                            ? MediaQuery.of(context).size.height * 0.70
+                                            : Responsive.isTablet(context)
+                                            ? MediaQuery.of(context).size.height * 0.45
+                                            : MediaQuery.of(context).size.height * 0.40,
                       child: Container(
                                         width: double.infinity,
                                         padding: const EdgeInsets.all(20),

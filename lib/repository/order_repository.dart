@@ -3,12 +3,12 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-class OrderRepository {
-  static const String _orderUrl =
-      'https://kioski.alekyatechsolutions.com/wp-json/pinaka-kiosk/v1/orders';
-  static const String _cashPaymentUrl =
-      'https://kioski.alekyatechsolutions.com/wp-json/pinaka-kiosk/v1/payments/create-payment';
+import '../utils/appconstant.dart';
 
+class OrderRepository {
+  String get _orderUrl => AppConstants.ordersEndpoint;
+
+  String get _paymentUrl => AppConstants.createPaymentEndpoint;
   Future<Map<String, dynamic>> createCashPayment({
     required int orderId,
     required double amount,
@@ -35,7 +35,7 @@ class OrderRepository {
     );
 
     final response = await http.post(
-      Uri.parse(_cashPaymentUrl),
+      Uri.parse(_paymentUrl),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -92,7 +92,7 @@ class OrderRepository {
     );
 
     final response = await http.post(
-      Uri.parse(_cashPaymentUrl),
+      Uri.parse(_paymentUrl),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',

@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:kiosk/splashscreen.dart';
 
 import 'bloc/user_login_bloc.dart';
+import 'helper.dart';
 
 class AppColors {
   static const primaryBlue = Color(0xFF23467A);
@@ -180,7 +181,11 @@ class _UserLoginState extends State<UserLogin> {
                             /// Login Card
                         SizedBox(
                           width: double.infinity,
-                          height: MediaQuery.of(context).size.height * 0.50, // Increase as needed
+                          height: Responsive.isDesktop(context)
+                              ? MediaQuery.of(context).size.height * 0.80
+                              : Responsive.isTablet(context)
+                              ? MediaQuery.of(context).size.height * 0.55
+                              : MediaQuery.of(context).size.height * 0.50, // Increase as needed
                           child: Container(
                               width: double.infinity,
                               padding: const EdgeInsets.all(20),

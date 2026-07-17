@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../model/login_model.dart';
 import '../repository/login_repository.dart';
+import '../utils/appconstant.dart';
 
 // EVENTS
 abstract class LoginEvent extends Equatable {
@@ -79,6 +80,12 @@ class LoginBloc extends Bloc<LoginEvent, LoginState> {
       );
 
       if (response.success) {
+        // Set dynamic base domain
+        AppConstants.baseDomain = response.storeBaseUrl;
+
+        print("Base Domain: ${AppConstants.baseDomain}");
+        print("Base URL: ${AppConstants.baseUrl}");
+
         emit(LoginSuccess(response));
       } else {
         emit(LoginFailure(response.message));

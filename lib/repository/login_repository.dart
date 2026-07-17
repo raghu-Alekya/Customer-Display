@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../model/login_model.dart';
+import '../utils/appconstant.dart';
 
 class LoginRepository {
   Future<LoginResponse> login({
@@ -9,7 +10,7 @@ class LoginRepository {
     required String storeId,
   }) async {
     final url = Uri.parse(
-      'https://test.alekyatechsolutions.com/wp-json/custom/v1/validate-merchant',
+      AppConstants.merchantLoginEndpoint,
     );
 
     print("🔵 Login API URL: $url");

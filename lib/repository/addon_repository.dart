@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../model/addon_model.dart';
+import '../utils/appconstant.dart';
 
 class AddonRepository {
   Future<List<AddonModel>> getAddons({
@@ -27,7 +28,7 @@ class AddonRepository {
 
     /// 2. API CALL IF CACHE EMPTY
     final url = Uri.parse(
-      'https://kioski.alekyatechsolutions.com/wp-json/pinaka-kiosk/v1/modifiers-addons/get-modifiers-by-product-id?product_id=$productId',
+      AppConstants.getModifiersByProductEndpoint(productId),
     );
 
     print("👉 API URL: $url");
