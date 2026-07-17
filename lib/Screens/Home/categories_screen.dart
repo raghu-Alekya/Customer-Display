@@ -108,7 +108,7 @@ class CategoryBarWithAllButton extends StatelessWidget {
     return GestureDetector(
       onTap: onDismissEditMode,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 10.0),
         child: Container(
           decoration: BoxDecoration(
             color: isDark ? ThemeNotifier.primaryBackground : Colors.white,
@@ -3784,13 +3784,34 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     );
 
     Widget buildContentArea() {
+      // if (_showCategoryGrid) {
+      //   return Expanded(
+      //     child: SingleChildScrollView(
+      //       child: Container(
+      //         margin: const EdgeInsets.only(
+      //             left: 10, right: 10, top: 0, bottom: 12),
+      //         decoration: innerBoxDecoration(),
+      //         child: CategoryGridOverlay(
+      //           categoryListItems: categoryListItems,
+      //           onCategoryTapped: (uiIndex) {
+      //             final selectedCategory = visibleCats[uiIndex];
+      //             final realIndex =
+      //             categories.indexWhere((c) => c.id == selectedCategory.id);
+      //             if (realIndex != -1) _onCategoryTapped(realIndex);
+      //           },
+      //         ),
+      //       ),
+      //     ),
+      //   );
+      // }
+
       if (_showCategoryGrid) {
         return Expanded(
-          child: SingleChildScrollView(
-            child: Container(
-              margin: const EdgeInsets.only(
-                  left: 10, right: 10, top: 0, bottom: 12),
-              decoration: innerBoxDecoration(),
+          child: Container(
+            margin: const EdgeInsets.only(
+                left: 10, right: 10, top: 0, bottom: 12),
+            decoration: innerBoxDecoration(),
+            child: SingleChildScrollView(
               child: CategoryGridOverlay(
                 categoryListItems: categoryListItems,
                 onCategoryTapped: (uiIndex) {
@@ -3805,23 +3826,45 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         );
       }
 
+      // return Expanded(
+      //   child: NotificationListener<ScrollNotification>(
+      //     onNotification: _onIndigoProductsScrollNotification,
+      //     child: SingleChildScrollView(
+      //       child: Container(
+      //         margin: const EdgeInsets.only(
+      //             left: 10, right: 10, top: 0, bottom: 12),
+      //         decoration: innerBoxDecoration(),
+      //         child: Column(
+      //           crossAxisAlignment: CrossAxisAlignment.start,
+      //           children: _buildInnerColumnChildren(
+      //             isDark: isDark,
+      //             subCategoryListItems: subCategoryListItems,
+      //             buildProductsWidget: buildProductsWidget,
+      //           ),
+      //         ),
+      //       ),
+      //     ),
+      //   ),
+      // );
+
       return Expanded(
-        child: NotificationListener<ScrollNotification>(
-          onNotification: _onIndigoProductsScrollNotification,
-          child: SingleChildScrollView(
-            child: Container(
-              margin: const EdgeInsets.only(
-                  left: 10, right: 10, top: 0, bottom: 12),
-              decoration: innerBoxDecoration(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: _buildInnerColumnChildren(
-                  isDark: isDark,
-                  subCategoryListItems: subCategoryListItems,
-                  buildProductsWidget: buildProductsWidget,
+        child: Container(
+          margin: const EdgeInsets.only(
+              left: 10, right: 10, top: 0, bottom: 10),
+          decoration: innerBoxDecoration(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildIndigoSubCategoryBar(isDark),
+              Expanded(
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: _onIndigoProductsScrollNotification,
+                  child: SingleChildScrollView(
+                    child: _buildIndigoProductsGrid(isDark),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
       );
@@ -3931,6 +3974,239 @@ class _CategoriesScreenState extends State<CategoriesScreen>
 
       ),
       
+    );
+  }
+
+  Widget _buildIndigoSubCategoryBar(bool isDark) {
+    final dividerColor =
+    isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF1F1F3);
+    final breadcrumbColor =
+    isDark ? const Color(0xFFB0B0D0) : const Color(0xFF4C5F7D);
+
+    final indigoSubCatItems = _indigoSubCategories
+        .map((cat) => {
+      'name': cat.name,
+      'image': cat.image ?? '',
+      'count': cat.count,
+    })
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (navigationPath.isNotEmpty ||
+            _isLoadingIndigoSubCategories ||
+            indigoSubCatItems.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (navigationPath.isNotEmpty) ...[
+                  GestureDetector(
+                    onTap: () => _onNavigationPathTapped(0),
+                    child: Text(
+                      navigationPath.first,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: breadcrumbColor,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    child: Icon(Icons.chevron_right_rounded,
+                        size: 16, color: breadcrumbColor),
+                  ),
+                ],
+                Expanded(
+                  child: _isLoadingIndigoSubCategories
+                      ? const SizedBox(
+                    height: 48,
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFFE74C3C)),
+                      ),
+                    ),
+                  )
+                      : indigoSubCatItems.isEmpty
+                      ? const SizedBox.shrink()
+                      : SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: List.generate(
+                        indigoSubCatItems.length,
+                            (index) {
+                          final sub = indigoSubCatItems[index];
+                          final bool isSelected =
+                              _selectedIndigoSubCategoryIndex ==
+                                  index;
+                          final String imgPath =
+                              (sub['image'] as String?) ??
+                                  'assets/default.png';
+
+                          return Padding(
+                            padding:
+                            const EdgeInsets.only(right: 8),
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() =>
+                                _selectedIndigoSubCategoryIndex =
+                                    index);
+                                _loadIndigoProductsBySubCategory(
+                                    _indigoSubCategories[index].id);
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(
+                                    milliseconds: 180),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? const Color(0xFFFFE5E5)
+                                      : isDark
+                                      ? const Color(0xFF26253A)
+                                      : Colors.white,
+                                  borderRadius:
+                                  BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? const Color(0xFFFE6464)
+                                        : isDark
+                                        ? Colors.white12
+                                        : const Color(
+                                        0xFFDDDDDD),
+                                    width: isSelected ? 1.5 : 1.0,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius:
+                                      BorderRadius.circular(4),
+                                      child: imgPath
+                                          .startsWith('http')
+                                          ? Image.network(imgPath,
+                                          width: 28,
+                                          height: 28,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __,
+                                              ___) =>
+                                          const Icon(
+                                              Icons.image,
+                                              size: 28))
+                                          : Image.asset(
+                                          'assets/default.png',
+                                          width: 28,
+                                          height: 28,
+                                          fit: BoxFit.cover),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      sub['name'] as String,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        color: isSelected
+                                            ? const Color(0xFFFE6464)
+                                            : isDark
+                                            ? Colors.white
+                                            : const Color(
+                                            0xFF2C3E50),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Divider(thickness: 1, color: dividerColor),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIndigoProductsGrid(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_isLoadingIndigoProducts)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 28),
+            child: Center(
+              child: CircularProgressIndicator(
+                  strokeWidth: 2.5, color: Color(0xFFE74C3C)),
+            ),
+          )
+        else if (_selectedIndigoSubCategoryIndex != null &&
+            _indigoProducts.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text("No products in this category.",
+                style: TextStyle(fontSize: 12, color: Colors.grey)),
+          )
+        else if (_indigoProducts.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 4, 10, 12),
+              child: LayoutBuilder(builder: (context, constraints) {
+                const int cols = 4;
+                const double gap = 8.0;
+                final double cardW =
+                    (constraints.maxWidth - gap * (cols - 1)) / cols;
+                const double cardH = 72.0;
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: _indigoProducts
+                      .take(_visibleIndigoProductCount)
+                      .map((product) {
+                    return SizedBox(
+                      width: cardW,
+                      height: cardH,
+                      child: _IndigoProductCard(
+                        product: product,
+                        isDark: isDark,
+                        onTap: () => _onIndigoProductTapped(product),
+                      ),
+                    );
+                  }).toList(),
+                );
+              }),
+            ),
+        if (_isIndigoPaginating &&
+            _visibleIndigoProductCount < _indigoProducts.length)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 14),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 22,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Color(0xFFE74C3C)),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -4045,7 +4321,7 @@ class _IndigoProductCard extends StatelessWidget {
           padding: const EdgeInsets.all(5.0),
           child: Row(
             children: [
-              const SizedBox(width: 5),
+              const SizedBox(width: 6),
               Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

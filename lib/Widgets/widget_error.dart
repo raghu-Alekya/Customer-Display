@@ -9,10 +9,13 @@
 // import 'package:flutter_barcode_listener/flutter_barcode_listener.dart';
 // import 'package:flutter_slidable/flutter_slidable.dart';
 // import 'package:flutter_svg/svg.dart';
+// import 'package:http/http.dart' as http;
 // import 'package:pinaka_pos/Database/storage/storage_provider.dart';
-// import 'package:intl/intl.dart'; // Added for date formatting
+// import 'package:intl/intl.dart';
 // import 'package:pinaka_pos/Database/assets_db_helper.dart';
 // import 'package:pinaka_pos/Helper/Extentions/extensions.dart';
+// import 'package:pinaka_pos/Helper/Extentions/money_rounding_helper.dart';
+// import 'package:pinaka_pos/Screens/Home/pos_home_screen.dart';
 // import 'package:pinaka_pos/Screens/Home/redeem_points_popup_screen.dart';
 // import 'package:pinaka_pos/Utilities/printer_settings.dart';
 // import 'package:provider/provider.dart';
@@ -34,7 +37,9 @@
 // import '../../Helper/Extentions/theme_notifier.dart';
 // import '../../Helper/api_response.dart';
 // import '../../Helper/customerdisplayhelper.dart';
+// import '../../Helper/url_helper.dart';
 // import '../../Models/Payment/payment_model.dart';
+// import '../../Models/Payment/void_payment_model.dart';
 // import '../../Preferences/pinaka_preferences.dart';
 // import '../../Repositories/Orders/order_repository.dart';
 // import '../../Repositories/Payment/payment_repository.dart';
@@ -44,34 +49,33 @@
 // import '../../Utilities/svg_images_utility.dart';
 // import '../../Widgets/PaymentNumPad.dart';
 // import '../../Widgets/offline_order_sync_service.dart';
+// import '../../Widgets/pay_later_widget.dart';
 // import '../../Widgets/scanner_guard.dart';
 // import '../../Widgets/widget_custom_num_pad.dart';
 // import '../../Widgets/widget_payment_dialog.dart';
 // import '../../Widgets/widget_topbar.dart';
 // import '../../services/CustomerDisplayService.dart';
 // import '../../services/customer_services.dart';
-// import '../Auth/login_screen.dart';
-// import 'Settings/image_utils.dart';
-// import 'Settings/printer_setup_screen.dart';
-// import 'categories_screen.dart';
-// import 'edit_product_screen.dart';
+//
+//
 // import 'package:android_intent_plus/android_intent.dart';
 //
 // import 'package:thermal_printer/thermal_printer.dart';
 //
-// import 'pos_home_screen.dart';
+// import 'Settings/image_utils.dart';
+// import 'Settings/printer_setup_screen.dart';
 // import 'isar_payments/local_payments_db_helper.dart';
 // import 'isar_payments/local_payments_model.dart';
+//
 //
 // class LastPaymentInfo {
 //   final String method;
 //   final double amount;
 //   late final String? paymentId;
-//
-//   // ⭐ SUNMI FIELDS
 //   final String? sunmiTxnId;
 //   final String? sunmiOrderId;
-//   final String? sunmiDeviceId; // ⭐ ADD THIS
+//   final String? sunmiDeviceId;
+//   final String? transactionId; // ⭐ ADD THIS
 //
 //   LastPaymentInfo({
 //     required this.method,
@@ -80,6 +84,7 @@
 //     this.sunmiTxnId,
 //     this.sunmiOrderId,
 //     this.sunmiDeviceId,
+//     this.transactionId, // ⭐ ADD THIS
 //   });
 //
 //   Map<String, dynamic> toJson() => {
@@ -89,6 +94,7 @@
 //     "sunmiTxnId": sunmiTxnId,
 //     "sunmiOrderId": sunmiOrderId,
 //     "sunmiDeviceId": sunmiDeviceId,
+//     "transactionId": transactionId, // ⭐ ADD THIS
 //   };
 //
 //   factory LastPaymentInfo.fromJson(Map<String, dynamic> json) {
@@ -99,6 +105,7 @@
 //       sunmiTxnId: json["sunmiTxnId"],
 //       sunmiOrderId: json["sunmiOrderId"],
 //       sunmiDeviceId: json["sunmiDeviceId"],
+//       transactionId: json["transactionId"], // ⭐ ADD THIS
 //     );
 //   }
 // }
@@ -178,8 +185,7 @@
 //       continue;
 //     }
 //     final m = Map<String, dynamic>.from(c);
-//     if (m['generate_type'] == true &&
-//         m['code']?.toString().trim() == trimmed) {
+//     if (m['generate_type'] == true && m['code']?.toString().trim() == trimmed) {
 //       for (final line in lines) {
 //         if (line is! Map) continue;
 //         if (line['code']?.toString().trim() == trimmed) {
@@ -292,7 +298,8 @@
 //       final p = byId[pid];
 //       if (p == null) continue;
 //
-//       if (!_orderSummaryLineEbtEligible(line) && _cachedProductMapIndicatesEbt(p)) {
+//       if (!_orderSummaryLineEbtEligible(line) &&
+//           _cachedProductMapIndicatesEbt(p)) {
 //         line['is_ebt_eligible'] = 1;
 //         line['ebt_eligible'] = 1;
 //       }
@@ -307,9 +314,8 @@
 //         final parentId = parentRaw is int
 //             ? parentRaw
 //             : int.tryParse(parentRaw?.toString() ?? '') ?? 0;
-//         final isChildVariation = (typeStr == 'variation' ||
-//             typeStr == 'variant') &&
-//             parentId > 0;
+//         final isChildVariation =
+//             (typeStr == 'variation' || typeStr == 'variant') && parentId > 0;
 //         if (!isChildVariation) continue;
 //
 //         final vId = int.tryParse(
@@ -333,11 +339,60 @@
 //         if (lType.isEmpty || lType == 'product') {
 //           line['item_type'] = 'variant';
 //         }
+//         // NEW: Merge meta_data (loyalty points etc.) from cached Indigo product
+//         // === IMPROVED: Merge meta_data (loyalty points + other merchant data) ===
+//         if (p != null) {
+//           print('🔍 [Merge Meta] Found cached product for ID: ${p['fast_key_product_id'] ?? p['id']} | Name: ${p['name'] ?? p['fast_key_item_name']}');
+//
+//           dynamic meta = p['meta_data'] ?? p['metaData'];
+//
+//           if (meta is List) {
+//             line['meta_data'] = List<Map<String, dynamic>>.from(meta);
+//             print('✅ [Merge Meta] Copied meta_data List with ${meta.length} entries');
+//           } else if (meta is Map) {
+//             line['meta_data'] = [Map<String, dynamic>.from(meta)];
+//             print('✅ [Merge Meta] Converted single meta Map to List');
+//           } else {
+//             // Try alternative keys
+//             meta = p['metaData'] ?? p['metadata'] ?? p['meta'] ?? null;
+//             if (meta is List) {
+//               line['meta_data'] = List<Map<String, dynamic>>.from(meta);
+//               print('✅ [Merge Meta] Found meta_data using fallback key');
+//             } else {
+//               print('⚠️ [Merge Meta] No meta_data found in cached product');
+//             }
+//           }
+//
+//           // Always provide fallback key
+//           if (line['meta_data'] != null) {
+//             line['metaData'] = line['meta_data'];
+//           }
+//
+//           // Extract loyalty points + debug print
+//           if (line['meta_data'] is List) {
+//             bool foundLoyalty = false;
+//             for (var m in line['meta_data']) {
+//               if (m is Map && m['key'] == '_product_loyalty_points') {
+//                 final points = int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+//                 line['loyalty_points'] = points;
+//                 print('🎯 [Merge Meta] Loyalty Points Found: $points for ${p['name']}');
+//                 foundLoyalty = true;
+//                 break;
+//               }
+//             }
+//             if (!foundLoyalty) {
+//               print('ℹ️ [Merge Meta] No _product_loyalty_points found in meta_data');
+//             }
+//           }
+//         } else {
+//           print('⚠️ [Merge Meta] No cached product (p == null)');
+//         }
+//
 //       }
 //     }
 //   } catch (_) {}
-// }
 //
+// }
 //
 // /// Pending orders often load line items from SQLite without EBT/variation flags
 // /// while the same cart still exists in Hive `products`. Merge so badges match the order panel.
@@ -350,23 +405,22 @@
 //   if (rawProducts is! List || rawProducts.isEmpty) return;
 //
 //   for (final line in lineItems) {
-//     final name =
-//     (line[AppDBConst.itemName] ?? line['item_name'] ?? '').toString().trim();
+//     final name = (line[AppDBConst.itemName] ?? line['item_name'] ?? '')
+//         .toString()
+//         .trim();
 //     final pidRaw = line['product_id'] ??
 //         line[AppDBConst.itemProductId] ??
 //         line['item_product_id'];
-//     final int? pid = pidRaw is int
-//         ? pidRaw
-//         : int.tryParse(pidRaw?.toString() ?? '');
+//     final int? pid =
+//     pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
 //
 //     Map<String, dynamic>? matched;
 //     for (final p in rawProducts) {
 //       if (p is! Map) continue;
 //       final m = Map<String, dynamic>.from(p);
 //       final pPidRaw = m['product_id'] ?? m['id'];
-//       final pPid = pPidRaw is int
-//           ? pPidRaw
-//           : int.tryParse(pPidRaw?.toString() ?? '');
+//       final pPid =
+//       pPidRaw is int ? pPidRaw : int.tryParse(pPidRaw?.toString() ?? '');
 //       if (pid != null && pPid != null && pPid == pid) {
 //         matched = m;
 //         break;
@@ -403,8 +457,7 @@
 //       final dynamic ebt = matched['is_ebt_eligible'];
 //       if (ebt == true ||
 //           ebt == 1 ||
-//           (ebt is String &&
-//               (ebt == '1' || ebt.toLowerCase() == 'true'))) {
+//           (ebt is String && (ebt == '1' || ebt.toLowerCase() == 'true'))) {
 //         line['is_ebt_eligible'] = 1;
 //         line['ebt_eligible'] = 1;
 //       } else if (_cachedProductMapIndicatesEbt(matched)) {
@@ -499,7 +552,7 @@
 //   @override
 //   Widget buildScrollbar(
 //       BuildContext context, Widget child, ScrollableDetails details) {
-//     return child; // prevents scrollbar from showing
+//     return child;
 //   }
 // }
 //
@@ -567,15 +620,23 @@
 //   DateTime? _lastOrderSyncAt;
 //   String? _lastSyncedOrderKey;
 //
+//   double? _pendingTaxRefTax;
+//   double? _pendingTaxRefBase;
+//   double? _pendingTaxRefRate;
+//
 //   double ebtTotal = 0.0;
 //   double payByEbt = 0.0; // ADD THIS
 //   TextEditingController ebtAmountController = TextEditingController();
+//
+//   Map<String, dynamic>? _selectedPayLaterUser;  // ← ADD THIS LINE
+//   bool _isPayLaterSelected = false;
 //
 //   PaymentMode _paymentModeFromMethod(dynamic method) {
 //     final String m = (method ?? '').toString().trim().toLowerCase();
 //     if (m == TextConstants.ebtText.toLowerCase()) return PaymentMode.ebt;
 //     if (m == TextConstants.card.toLowerCase()) return PaymentMode.card;
-//     if (m == TextConstants.wallet.toLowerCase()) return PaymentMode.wallet;
+//     if (m == TextConstants.wallet.toLowerCase()) return PaymentMode.payLater;
+//     if (m == 'pay later') return PaymentMode.payLater;   // ⭐ ADDED: route Pay Later to Wallet mode
 //     return PaymentMode.cash;
 //   }
 //
@@ -619,6 +680,8 @@
 //   double payByCard = 0.0;
 //   Map<String, dynamic>? offlineOrder;
 //
+//   bool _isCardPaymentCancelled = false;
+//
 //   double?
 //   _currentPaymentRemainingBalance; // Track remaining balance from current payment
 //   Map<String, dynamic>? _lastPaymentDetails; // Store details of last payment
@@ -642,318 +705,9 @@
 //   bool isCouponAppliedFromApi = false;
 //   double couponValue = 0;
 //   double couponDiscount = 0.0;
+//   double merchantDiscountPercentage = 0.0;
 //
 //   bool _isProcessing = false; // Add this flag
-//
-//   // Add this method to calculate actual balance from payment history
-//
-//   // Future<void> _calculateBalanceFromPaymentHistory() async {
-//   //   try {
-//   //     if (orderId == null || orderId == 0) {
-//   //       setState(() {
-//   //         balanceAmount = computedNetPayable;
-//   //         _currentPaymentRemainingBalance = null;
-//   //         _lastPaymentDetails = null;
-//   //       });
-//   //       return;
-//   //     }
-//   //
-//   //     final payments =
-//   //     await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
-//   //     final box = StorageProvider.offlineOrders;
-//   //     final key = orderId.toString();
-//   //     final rawStored = await box.get(key);
-//   //     final stored = Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
-//   //     final double originalEbt =
-//   //         (stored["originalEbt"] as num?)?.toDouble() ?? ebtTotal;
-//   //
-//   //     if (payments.isEmpty) {
-//   //       final double remainingEbt =
-//   //           (stored["remainingEbt"] as num?)?.toDouble() ?? originalEbt;
-//   //       setState(() {
-//   //         balanceAmount = computedNetPayable;
-//   //         _currentPaymentRemainingBalance = null;
-//   //         _lastPaymentDetails = null;
-//   //         payByEbt = 0.0;
-//   //         ebtTotal = remainingEbt;
-//   //       });
-//   //       return;
-//   //     }
-//   //
-//   //     payments.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-//   //
-//   //     double totalPaid = 0.0;
-//   //     double runningBalance = computedNetPayable;
-//   //     LocalPayment? lastPayment;
-//   //     double previousBalance = computedNetPayable;
-//   //
-//   //     print("\n📊 PAYMENT HISTORY PROGRESSION FOR ORDER #$orderId:");
-//   //     print("=" * 60);
-//   //     print("Starting Balance: \$${computedNetPayable.toStringAsFixed(2)}");
-//   //     print("-" * 60);
-//   //
-//   //     // Track balance progression
-//   //     for (var i = 0; i < payments.length; i++) {
-//   //       final payment = payments[i];
-//   //       final paymentAmount = payment.amount;
-//   //
-//   //       double balanceBeforePayment = runningBalance;
-//   //       totalPaid += paymentAmount;
-//   //       runningBalance -= paymentAmount;
-//   //       if (runningBalance < 0) runningBalance = 0.0;
-//   //
-//   //       lastPayment = payment;
-//   //
-//   //       print(
-//   //           "Payment ${i + 1}: ${payment.paymentMethod} - \$${paymentAmount.toStringAsFixed(2)}");
-//   //       print("  Balance Before: \$${balanceBeforePayment.toStringAsFixed(2)}");
-//   //       print("  Balance After: \$${runningBalance.toStringAsFixed(2)}");
-//   //       print("  " + "-" * 40);
-//   //
-//   //       previousBalance = balanceBeforePayment; // Store for next iteration
-//   //     }
-//   //
-//   //     // for (var i = 0; i < payments.length; i++) {
-//   //     //   final payment = payments[i];
-//   //     //   final paymentAmount = payment.amount;
-//   //     //   final isVoid = paymentAmount < 0; // or payment.status == 'void'
-//   //     //
-//   //     //   double balanceBeforePayment = runningBalance;
-//   //     //
-//   //     //   if (isVoid) {
-//   //     //     runningBalance -= paymentAmount; // subtract negative = add back
-//   //     //   } else {
-//   //     //     runningBalance -= paymentAmount;
-//   //     //     totalPaid += paymentAmount; // only count actual paid towards totalPaid
-//   //     //   }
-//   //     //
-//   //     //   if (runningBalance < 0) runningBalance = 0.0;
-//   //     //
-//   //     //   lastPayment = payment;
-//   //     //
-//   //     //   print("Payment ${i + 1}: ${payment.paymentMethod} - \$${paymentAmount.toStringAsFixed(2)}"
-//   //     //       "${isVoid ? ' (VOID)' : ''}");
-//   //     //   print("  Balance Before: \$${balanceBeforePayment.toStringAsFixed(2)}");
-//   //     //   print("  Balance After: \$${runningBalance.toStringAsFixed(2)}");
-//   //     //   print("  " + "-" * 40);
-//   //     //
-//   //     //   previousBalance = balanceBeforePayment;
-//   //     // }
-//   //
-//   //     double actualRemaining = computedNetPayable - totalPaid;
-//   //     if (actualRemaining < 0) actualRemaining = 0.0;
-//   //
-//   //     print("\n📈 FINAL SUMMARY:");
-//   //     print("Total Paid: \$${totalPaid.toStringAsFixed(2)}");
-//   //     print("Remaining Balance: \$${actualRemaining.toStringAsFixed(2)}");
-//   //     print(
-//   //         "Previous Balance Before Last Payment: \$${previousBalance.toStringAsFixed(2)}");
-//   //     print("=" * 60);
-//   //
-//   //     // Set last payment details with progression info
-//   //     if (lastPayment != null) {
-//   //       _lastPaymentDetails = {
-//   //         'amount': lastPayment.amount,
-//   //         'method': lastPayment.paymentMethod,
-//   //         'remainingBalance': actualRemaining,
-//   //         'previousBalance': previousBalance, //  ADD THIS
-//   //         'datetime': lastPayment.datetime,
-//   //         'paymentId': lastPayment.id,
-//   //         'totalPaid': totalPaid, //  ADD THIS
-//   //         'paymentNumber': payments.length, //  ADD THIS
-//   //       };
-//   //     }
-//   //
-//   //     setState(() {
-//   //       tenderAmount = totalPaid;
-//   //       balanceAmount = actualRemaining;
-//   //
-//   //       if (actualRemaining > 0) {
-//   //         _currentPaymentRemainingBalance = actualRemaining;
-//   //       } else {
-//   //         _currentPaymentRemainingBalance = null;
-//   //       }
-//   //
-//   //       // Payment method totals
-//   //       payByCash = payments
-//   //           .where((p) =>
-//   //       p.paymentMethod.toLowerCase() ==
-//   //           TextConstants.cash.toLowerCase())
-//   //           .fold(0.0, (sum, p) => sum + p.amount);
-//   //
-//   //       payByCard = payments
-//   //           .where((p) =>
-//   //       p.paymentMethod.toLowerCase() ==
-//   //           TextConstants.card.toLowerCase())
-//   //           .fold(0.0, (sum, p) => sum + p.amount);
-//   //
-//   //       payByEbt = payments
-//   //           .where((p) =>
-//   //       p.paymentMethod.toLowerCase() ==
-//   //           TextConstants.ebtText.toLowerCase())
-//   //           .fold(0.0, (sum, p) => sum + p.amount);
-//   //
-//   //       payByOther = payments
-//   //           .where((p) =>
-//   //       p.paymentMethod.toLowerCase() !=
-//   //           TextConstants.cash.toLowerCase() &&
-//   //           p.paymentMethod.toLowerCase() !=
-//   //               TextConstants.card.toLowerCase() &&
-//   //           p.paymentMethod.toLowerCase() !=
-//   //               TextConstants.ebtText.toLowerCase())
-//   //           .fold(0.0, (sum, p) => sum + p.amount);
-//   //
-//   //       // Match API-path logic: non-EBT overflow should reduce remaining EBT.
-//   //       final double nonEbtOrderValue =
-//   //       (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
-//   //       final double nonEbtPaid = payByCash + payByOther;
-//   //       final double overflowToEbt =
-//   //       nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
-//   //       final double remainingEbt =
-//   //       (originalEbt - payByEbt).clamp(0.0, double.infinity);
-//   //       ebtTotal = (remainingEbt - overflowToEbt).clamp(0.0, double.infinity);
-//   //
-//   //       isPaymentStarted = totalPaid > 0;
-//   //     });
-//   //
-//   //     stored["originalEbt"] = originalEbt;
-//   //     stored["remainingEbt"] = ebtTotal;
-//   //     stored["redeemed_value"] = redeemedValue;   // ensure saved
-//   //     await box.put(key, stored);
-//   //   } catch (e, stackTrace) {
-//   //     if (kDebugMode) {
-//   //       print(" Error calculating balance from payment history: $e");
-//   //       print(stackTrace);
-//   //     }
-//   //     setState(() {
-//   //       balanceAmount = computedNetPayable;
-//   //       _currentPaymentRemainingBalance = null;
-//   //       _lastPaymentDetails = null;
-//   //
-//   //     });
-//   //   }
-//   // }
-//
-//   // void _recalculateGrossAndNetFromLineItemDiscounts() {
-//   //   if (orderItems.isEmpty) return;
-//   //
-//   //   double toDouble(dynamic v) =>
-//   //       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
-//   //
-//   //   double recalculatedGrossTotal = 0.0;
-//   //   double totalLineItemDiscount = 0.0;
-//   //
-//   //   for (final item in orderItems) {
-//   //     final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
-//   //     final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
-//   //
-//   //     // Skip non-product lines for discount calculation
-//   //     if (itemType.contains('discount') ||
-//   //         itemType.contains('coupon') ||
-//   //         itemType.contains('payout') ||
-//   //         itemType.contains('cashback') ||
-//   //         itemType.contains('loyalty') ||
-//   //         itemName.contains('merchant discount')) {
-//   //       continue;
-//   //     }
-//   //
-//   //     final double itemSumPrice = toDouble(item['item_sum_price']);
-//   //     final double unitPrice = toDouble(item['item_price'] ?? item['price']);
-//   //     final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-//   //     final double lineOriginalTotal = unitPrice * qty;
-//   //
-//   //     // Use item_sum_price if available (more accurate from OrderScreenPanel)
-//   //     // Otherwise calculate from unit price × quantity
-//   //     final double lineGross = itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
-//   //     recalculatedGrossTotal += lineGross;
-//   //
-//   //     final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
-//   //
-//   //     // Extract all discount types
-//   //     double autoDiscount = [
-//   //       item['auto_discount'],
-//   //       item['auto_discount_total'],
-//   //       item['autoDiscount'],
-//   //       item['autoDiscountTotal'],
-//   //       item['display_auto_discount'],
-//   //       item['_pos_auto_discount'],
-//   //     ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
-//   //
-//   //     double comboDiscount = [
-//   //       item['combo_discount_total'],
-//   //       item['comboDiscountTotal'],
-//   //       item['combo_discount'],
-//   //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-//   //
-//   //     double mixMatchDiscount = [
-//   //       item['mixmatch_discount_total'],
-//   //       item['mixMatchDiscountTotal'],
-//   //       item['mixmatch_discount'],
-//   //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-//   //
-//   //     double multipackDiscount = [
-//   //       item['multipack_discount_total'],
-//   //       item['multipackDiscountTotal'],
-//   //       item['multipack_discount'],
-//   //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-//   //
-//   //     // Fix: backend sometimes moves discount into auto_discount for typed discounts
-//   //     if (dtype == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
-//   //       mixMatchDiscount = autoDiscount;
-//   //       autoDiscount = 0;
-//   //     }
-//   //     if (dtype == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
-//   //       comboDiscount = autoDiscount;
-//   //       autoDiscount = 0;
-//   //     }
-//   //     if (dtype == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
-//   //       multipackDiscount = autoDiscount;
-//   //       autoDiscount = 0;
-//   //     }
-//   //
-//   //     final double itemDiscount = autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
-//   //     totalLineItemDiscount += itemDiscount;
-//   //   }
-//   //
-//   //   // Only update if we have discounted items
-//   //   if (totalLineItemDiscount <= 0 && (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
-//   //     return;
-//   //   }
-//   //
-//   //   // CRITICAL FIX: Use recalculatedGrossTotal as the new gross total
-//   //   // This ensures the gross total reflects the PRE-discount total from item_sum_price
-//   //   final double newGrossTotal = recalculatedGrossTotal > 0 ? recalculatedGrossTotal : grossTotal;
-//   //
-//   //   // NetTotal = GrossTotal - LineItemDiscounts + OrderDiscount + MerchantDiscount
-//   //   final double newNetTotal = newGrossTotal - totalLineItemDiscount + discount + merchantDiscount;
-//   //   final double newNetPayable = newNetTotal + tax + cashbackFee;
-//   //
-//   //   if (kDebugMode) {
-//   //     print('── LINE-ITEM DISCOUNT RECALCULATION ──');
-//   //     print('   Original Gross Total      : $grossTotal');
-//   //     print('   Recalculated Gross Total  : $newGrossTotal');
-//   //     print('   Total Line Item Discounts : $totalLineItemDiscount');
-//   //     print('   Order Discount            : $discount');
-//   //     print('   Merchant Discount         : $merchantDiscount');
-//   //     print('   Tax                       : $tax');
-//   //     print('   Cashback Fee              : $cashbackFee');
-//   //     print('   New Net Total             : $newNetTotal');
-//   //     print('   New Net Payable           : $newNetPayable');
-//   //   }
-//   //
-//   //   setState(() {
-//   //     grossTotal = newGrossTotal - totalLineItemDiscount + discount ; ////===
-//   //     //newNetTotal.clamp(0.0, double.infinity); // post-discount value
-//   //     NetTotal = newNetTotal.clamp(0.0, double.infinity);      NetTotal = newNetTotal.clamp(0.0, double.infinity);
-//   //     computedNetPayable = newNetPayable.clamp(0.0, double.infinity);
-//   //     orderTotal = computedNetPayable;
-//   //
-//   //     // Only reset balanceAmount if no payment has been made yet
-//   //     if (tenderAmount <= 0) {
-//   //       balanceAmount = computedNetPayable;
-//   //     }
-//   //   });
-//   // }
 //
 //   Future<void> _calculateBalanceFromPaymentHistory() async {
 //     try {
@@ -962,7 +716,6 @@
 //           balanceAmount = computedNetPayable;
 //           _currentPaymentRemainingBalance = null;
 //           _lastPaymentDetails = null;
-//
 //         });
 //         return;
 //       }
@@ -972,18 +725,18 @@
 //       final box = StorageProvider.offlineOrders;
 //       final key = orderId.toString();
 //       final rawStored = await box.get(key);
-//       final stored = Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
+//       final stored =
+//       Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
 //       final double originalEbt =
 //           (stored["originalEbt"] as num?)?.toDouble() ?? ebtTotal;
 //       redeemedValue = (stored["redeemed_value"] as num?)?.toDouble() ?? 0.0;
 //       final double effectivePayable =
-//       (computedNetPayable - redeemedValue)
-//           .clamp(0.0, double.infinity);
+//       (computedNetPayable - redeemedValue).clamp(0.0, double.infinity);
 //
 //       if (payments.isEmpty) {
 //         final double remainingEbt =
 //             (stored["remainingEbt"] as num?)?.toDouble() ?? originalEbt;
-//         stored["redeemed_value"] = redeemedValue;   // ensure saved
+//         stored["redeemed_value"] = redeemedValue; // ensure saved
 //
 //         setState(() {
 //           balanceAmount = effectivePayable;
@@ -1033,32 +786,6 @@
 //         previousBalance = balanceBeforePayment; // Store for next iteration
 //       }
 //
-//       // for (var i = 0; i < payments.length; i++) {
-//       //   final payment = payments[i];
-//       //   final paymentAmount = payment.amount;
-//       //   final isVoid = paymentAmount < 0; // or payment.status == 'void'
-//       //
-//       //   double balanceBeforePayment = runningBalance;
-//       //
-//       //   if (isVoid) {
-//       //     runningBalance -= paymentAmount; // subtract negative = add back
-//       //   } else {
-//       //     runningBalance -= paymentAmount;
-//       //     totalPaid += paymentAmount; // only count actual paid towards totalPaid
-//       //   }
-//       //
-//       //   if (runningBalance < 0) runningBalance = 0.0;
-//       //
-//       //   lastPayment = payment;
-//       //
-//       //   print("Payment ${i + 1}: ${payment.paymentMethod} - \$${paymentAmount.toStringAsFixed(2)}"
-//       //       "${isVoid ? ' (VOID)' : ''}");
-//       //   print("  Balance Before: \$${balanceBeforePayment.toStringAsFixed(2)}");
-//       //   print("  Balance After: \$${runningBalance.toStringAsFixed(2)}");
-//       //   print("  " + "-" * 40);
-//       //
-//       //   previousBalance = balanceBeforePayment;
-//       // }
 //
 //       double actualRemaining = effectivePayable - totalPaid;
 //
@@ -1129,7 +856,10 @@
 //         // Match API-path logic: non-EBT overflow should reduce remaining EBT.
 //         final double nonEbtOrderValue =
 //         (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
-//         final double nonEbtPaid = payByCash + payByOther;
+//         // final double nonEbtPaid = payByCash + payByOther;
+//
+//         final double nonEbtPaid = payByCash + payByOther+payByCard ;
+//
 //         final double overflowToEbt =
 //         nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
 //         final double remainingEbt =
@@ -1154,6 +884,7 @@
 //       });
 //     }
 //   }
+//
 //   Future<void> _printPaymentHistorySummary() async {
 //     if (orderId == null || orderId == 0) return;
 //
@@ -2162,6 +1893,29 @@
 //     }
 //   }
 //
+//   // ADD THIS NEW METHOD - does not change any existing code
+//   void _recalculateEbtTotalAfterDiscount() {
+//     final double originalEbt = widget.ebtAmount;
+//     if (originalEbt <= 0) return;
+//
+//     final double originalNetPayable = widget.netPayable > 0
+//         ? widget.netPayable
+//         : (widget.grossTotal + widget.orderTax);
+//
+//     if (originalNetPayable <= 0) return;
+//
+//     // Calculate proportion of EBT in original order
+//     final double ebtRatio = originalEbt / originalNetPayable;
+//
+//     // Apply same ratio to new net payable
+//     final double newEbtTotal = (computedNetPayable * ebtRatio)
+//         .clamp(0.0, originalEbt);
+//
+//     // Only update remaining EBT (not already paid portion)
+//     final double alreadyPaidEbt = payByEbt;
+//     ebtTotal = (newEbtTotal - alreadyPaidEbt).clamp(0.0, double.infinity);
+//   }
+//
 // // Show success popup
 //   Future<void> _showPaymentSuccessPopup(
 //       double amount, LocalPayment payment) async {
@@ -2426,99 +2180,13 @@
 //     });
 //   }
 //
-//   // void _handlePay() {
-//   //   final cleanAmount = amountController.text
-//   //       .replaceAll(TextConstants.currencySymbol, '')
-//   //       .trim();
-//   //
-//   //   final double amount = double.tryParse(cleanAmount) ?? 0.0;
-//   //
-//   //   if (amount <= 0 && computedNetPayable > 0) {
-//   //     setState(() {
-//   //       _amountErrorText = TextConstants.amountValidation;
-//   //     });
-//   //     return;
-//   //   }
-//   //
-//   //   _amountErrorText = null;
-//   //
-//   //   // EBT validation
-//   //   if (selectedPaymentMethod == TextConstants.ebtText) {
-//   //     if (ebtTotal <= 0) {
-//   //       setState(() {
-//   //         _amountErrorText = "No EBT balance available";
-//   //       });
-//   //       return;
-//   //     }
-//   //
-//   //     if (amount > ebtTotal) {
-//   //       setState(() {
-//   //         _amountErrorText =
-//   //         "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
-//   //       });
-//   //       return;
-//   //     }
-//   //   }
-//   //
-//   //   // CARD → Sunmi
-//   //   if (selectedPaymentMethod == TextConstants.card) {
-//   //     _showPaymentProgressDialog(context);
-//   //     _openSunmiSaleScreen(
-//   //       amount: amount,
-//   //       orderId: (widget.orderId ?? widget.offlineOrderId).toString(),
-//   //     );
-//   //     _resetAmountAfterPay();
-//   //     return;
-//   //   }
-//   //
-//   //   // ✅ FIX: Use current payment remaining if available, otherwise use main balance
-//   //   final double currentRemainingBalance = _currentPaymentRemainingBalance ?? balanceAmount;
-//   //
-//   //   print("🔍 PAYMENT CALCULATION:");
-//   //   print("💰 Amount entered: \$${amount.toStringAsFixed(2)}");
-//   //   print("💵 Tendered so far: \$${tenderAmount.toStringAsFixed(2)}");
-//   //   print("📊 Main balance: \$${balanceAmount.toStringAsFixed(2)}");
-//   //   print("🎯 Current payment remaining: \$${(_currentPaymentRemainingBalance ?? 0).toStringAsFixed(2)}");
-//   //   print("📈 Using for calculation: \$${currentRemainingBalance.toStringAsFixed(2)}");
-//   //
-//   //   final bool willCompletePayment = amount >= currentRemainingBalance;
-//   //   final double changeAmount = willCompletePayment ? (amount - currentRemainingBalance) : 0.0;
-//   //
-//   //   print("🎯 Will complete payment? $willCompletePayment");
-//   //   print("💵 Change if complete: \$${changeAmount.toStringAsFixed(2)}");
-//   //
-//   //   if (willCompletePayment) {
-//   //     _successPopupShown = true;
-//   //
-//   //     // Coupon data for popup
-//   //     final box = StorageProvider.offlineOrders;
-//   //     final key = (orderId ?? 0).toString();
-//   //     final couponResponse = (box.get(key)?["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
-//   //
-//   //     print("✅ Showing FULL payment popup");
-//   //     _showPaymentDialog(
-//   //       context,
-//   //       tenderAmount + amount,
-//   //       changeAmount: changeAmount,
-//   //       showChange: changeAmount > 0,
-//   //       couponResponse: couponResponse,
-//   //     );
-//   //   } else {
-//   //     print("🟡 Showing PARTIAL payment popup");
-//   //     _showPartialPaymentDialog(context, amount);
-//   //   }
-//   //
-//   //   // Call API in background (no loading)
-//   //   _callCreatePaymentAPI(skipPopup: true);
-//   //   _resetAmountAfterPay();
-//   // }
-//
 //   void _handlePay() {
 //     if (balanceAmount <= 0 &&
 //         (double.tryParse(amountController.text
 //             .replaceAll(TextConstants.currencySymbol, '')
 //             .trim()) ??
-//             0) > 0) {
+//             0) >
+//             0) {
 //       print(
 //           "⚠️ DEFENSIVE RESET: balance=0 but amount entered > 0 → forcing reset after possible void");
 //       setState(() {
@@ -2556,24 +2224,19 @@
 //       }
 //       if (enteredCents > ebtCents) {
 //         setState(() {
-//           _amountErrorText = "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
+//           _amountErrorText =
+//           "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
 //         });
 //         return;
 //       }
 //     }
 //
-//     // ✅ REMOVED the Sunmi‑only branch for Card.
-//     // Now Card payments go through the same flow as Cash / EBT.
-//     // The original code was:
-//     // if (selectedPaymentMethod == TextConstants.card) {
-//     //   _openSunmiSaleScreen(...);
-//     //   return;
-//     // }
 //
 //     // ✅ All payment methods (Cash, Card, Wallet, EBT) now call the local storage API
 //     _callCreatePaymentAPI(); // uses validated amount
 //     _resetAmountAfterPay();
 //   }
+//
 // //  ADD THIS METHOD (you might already have it, but here it is for reference)
 //   void _resetAmountAfterPay() {
 //     _rawAmount = 0;
@@ -2870,8 +2533,7 @@
 //           if (entry is! Map) continue;
 //           final m = Map<String, dynamic>.from(entry);
 //           final oid = m['order_id'] ?? m['id'] ?? m[AppDBConst.orderServerId];
-//           final int? o =
-//           oid is int ? oid : int.tryParse(oid?.toString() ?? '');
+//           final int? o = oid is int ? oid : int.tryParse(oid?.toString() ?? '');
 //           if (o != null && wantIds.contains(o)) {
 //             hiveOrder = m;
 //             break;
@@ -2884,9 +2546,208 @@
 //     await _mergeOrderSummaryLineItemsFromProductCache(orderItems);
 //   }
 //
-//   static const MethodChannel customerDisplayChannel =
-//   MethodChannel(
-//     'com.example.flutter_customer_display/sunmi_display',
+//
+//   // === LOYALTY POINTS CALCULATION (FIXED + DEBUG) ===
+// // FIX: Added Hive fallback so meta_data missing from orderItems is recovered
+// //      from the offline order's products array. All other code unchanged.
+//   void _calculateAndPrintLoyaltyPoints() async {
+//     if (orderItems.isEmpty) {
+//       print("⚠️ [Loyalty] No order items found");
+//       return;
+//     }
+//
+//     // --- FIX: Pre-load Hive products so we can recover meta_data ---
+//     Map<String, List<Map<String, dynamic>>> _hiveMetaByName = {};
+//     Map<String, List<Map<String, dynamic>>> _hiveMetaBySku  = {};
+//
+//     try {
+//       final box = StorageProvider.offlineOrders;
+//       final String orderKey = widget.offlineOrderId?.toString() ??
+//           widget.orderId?.toString() ??
+//           orderId?.toString() ??
+//           "";
+//
+//       if (orderKey.isNotEmpty) {
+//         final rawOrder = await box.get(orderKey);
+//         if (rawOrder is Map) {
+//           final hiveOrder = Map<String, dynamic>.from(rawOrder);
+//           final hiveProducts = (hiveOrder['products'] as List?) ?? [];
+//
+//           for (final p in hiveProducts) {
+//             if (p is! Map) continue;
+//             final product = Map<String, dynamic>.from(p);
+//             final metaRaw = product['meta_data'] ?? product['metaData'];
+//             if (metaRaw == null) continue;
+//
+//             List<Map<String, dynamic>> metaList = [];
+//             if (metaRaw is List) {
+//               for (final m in metaRaw) {
+//                 if (m is Map) metaList.add(Map<String, dynamic>.from(m));
+//               }
+//             }
+//             if (metaList.isEmpty) continue;
+//
+//             // Index by name (lowercase)
+//             final name = (product['name'] ?? product['product_name'] ?? '')
+//                 .toString().toLowerCase().trim();
+//             if (name.isNotEmpty) {
+//               _hiveMetaByName[name] = metaList;
+//             }
+//
+//             // Index by sku (lowercase)
+//             final sku = (product['sku'] ?? product['item_sku'] ?? '')
+//                 .toString().toLowerCase().trim();
+//             if (sku.isNotEmpty) {
+//               _hiveMetaBySku[sku] = metaList;
+//             }
+//           }
+//           print('🔍 [Loyalty] Hive fallback loaded: '
+//               '${_hiveMetaByName.length} by name, '
+//               '${_hiveMetaBySku.length} by sku');
+//         }
+//       }
+//     } catch (e) {
+//       print('⚠️ [Loyalty] Hive pre-load error (non-fatal): $e');
+//     }
+//     // --- END FIX ---
+//
+//     int totalLoyaltyPoints = 0;
+//
+//     for (var item in orderItems) {
+//       final int qty =
+//       (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+//
+//       int itemPoints = 0;
+//
+//       // Step 1: try meta_data already on the item (original logic, unchanged)
+//       final meta = item['meta_data'];
+//       if (meta is List) {
+//         for (var m in meta) {
+//           if (m is Map && m['key'] == '_product_loyalty_points') {
+//             itemPoints = int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+//             break;
+//           }
+//         }
+//       } else if (meta is Map && meta['key'] == '_product_loyalty_points') {
+//         itemPoints = int.tryParse(meta['value']?.toString() ?? '0') ?? 0;
+//       }
+//
+//       // --- FIX: Step 2 – fall back to Hive when item has no meta_data ---
+//       if (itemPoints == 0 && (_hiveMetaByName.isNotEmpty || _hiveMetaBySku.isNotEmpty)) {
+//         final itemName = (item['item_name'] ?? item['fast_key_item_name'] ?? '')
+//             .toString().toLowerCase().trim();
+//         final itemSku  = (item['sku'] ?? item['item_sku'] ?? '')
+//             .toString().toLowerCase().trim();
+//
+//         List<Map<String, dynamic>>? fallbackMeta;
+//         if (itemName.isNotEmpty) fallbackMeta = _hiveMetaByName[itemName];
+//         if (fallbackMeta == null && itemSku.isNotEmpty) {
+//           fallbackMeta = _hiveMetaBySku[itemSku];
+//         }
+//
+//         if (fallbackMeta != null) {
+//           for (final m in fallbackMeta) {
+//             if (m['key'] == '_product_loyalty_points') {
+//               itemPoints =
+//                   int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+//               print('🔄 [Loyalty] Recovered meta from Hive for "$itemName" '
+//                   '→ $itemPoints pts');
+//               break;
+//             }
+//           }
+//         }
+//       }
+//       // --- END FIX ---
+//
+//       final linePoints = qty * itemPoints;
+//       item['loyalty_points'] = linePoints; // save per item (unchanged)
+//
+//       if (linePoints > 0) {
+//         final itemName = (item['item_name'] ??
+//             item['fast_key_item_name'] ??
+//             'Unknown')
+//             .toString();
+//         print(
+//             '🔹 [Loyalty] $itemName × $qty = $linePoints pts (per item: $itemPoints)');
+//       }
+//
+//       totalLoyaltyPoints += linePoints;
+//     }
+//
+//     // Store total on order level (unchanged)
+//     _order['total_loyalty_points'] = totalLoyaltyPoints;
+//
+//     if (totalLoyaltyPoints > 0) {
+//       print(
+//           '🛒 [Loyalty] ORDER TOTAL LOYALTY POINTS = $totalLoyaltyPoints pts');
+//     } else {
+//       print('ℹ️ [Loyalty] No loyalty points found in this order');
+//     }
+//
+//     // Refresh UI so the points row shows the new total
+//     if (mounted) setState(() {});
+//   }
+//
+//
+//   // DEBUG ONLY - call this to find where loyalty data actually lives
+//   Future<void> _debugPrintHiveOrderStructure() async {
+//     try {
+//       final box = StorageProvider.offlineOrders;
+//       final String orderKey = widget.offlineOrderId?.toString() ??
+//           widget.orderId?.toString() ??
+//           orderId?.toString() ??
+//           "";
+//
+//       print('🔎 [DEBUG] Looking for orderKey: $orderKey');
+//
+//       if (orderKey.isEmpty) {
+//         print('🔎 [DEBUG] orderKey is EMPTY');
+//         return;
+//       }
+//
+//       final rawOrder = await box.get(orderKey);
+//       if (rawOrder == null) {
+//         print('🔎 [DEBUG] Hive entry is NULL for key: $orderKey');
+//         // Print ALL keys in box to find correct one
+//         final allKeys = await box.getKeys();
+//         print('🔎 [DEBUG] All Hive keys: $allKeys');
+//         return;
+//       }
+//
+//       final hiveOrder = Map<String, dynamic>.from(rawOrder as Map);
+//       print('🔎 [DEBUG] Hive order top-level keys: ${hiveOrder.keys.toList()}');
+//
+//       // Check products array
+//       final products = (hiveOrder['products'] as List?) ?? [];
+//       print('🔎 [DEBUG] products[] count: ${products.length}');
+//
+//       for (int i = 0; i < products.length; i++) {
+//         if (products[i] is! Map) continue;
+//         final p = Map<String, dynamic>.from(products[i] as Map);
+//         print('🔎 [DEBUG] products[$i] keys: ${p.keys.toList()}');
+//         print('🔎 [DEBUG] products[$i] name: ${p['name'] ?? p['product_name']}');
+//         print('🔎 [DEBUG] products[$i] meta_data: ${p['meta_data']}');
+//         print('🔎 [DEBUG] products[$i] loyalty_points: ${p['loyalty_points']}');
+//       }
+//
+//       // Also check orderItems (what fetchOrderItems returns)
+//       print('🔎 [DEBUG] orderItems count: ${orderItems.length}');
+//       for (int i = 0; i < orderItems.length; i++) {
+//         final item = orderItems[i];
+//         print('🔎 [DEBUG] orderItems[$i] keys: ${item.keys.toList()}');
+//         print('🔎 [DEBUG] orderItems[$i] name: ${item['item_name']}');
+//         print('🔎 [DEBUG] orderItems[$i] meta_data: ${item['meta_data']}');
+//         print('🔎 [DEBUG] orderItems[$i] loyalty_points: ${item['loyalty_points']}');
+//         print('🔎 [DEBUG] orderItems[$i] product_id: ${item['product_id']}');
+//       }
+//
+//     } catch (e, st) {
+//       print('🔎 [DEBUG] Error: $e\n$st');
+//     }
+//   }
+//
+//   static const MethodChannel customerDisplayChannel = MethodChannel(
+//     'com.alekta.pinakapos/sunmi_display',
 //   );
 //
 //   Future<void> _handleCustomerAddFromDisplay(String contact) async {
@@ -2906,8 +2767,7 @@
 //
 //       final offlineOrder = Map<String, dynamic>.from(existing);
 //
-//       final syncResponse =
-//       await orderBloc.syncSingleOfflineOrder(offlineOrder);
+//       final syncResponse = await orderBloc.syncSingleOfflineOrder(offlineOrder);
 //
 //       if (syncResponse == null) {
 //         throw Exception("Sync failed");
@@ -2930,7 +2790,8 @@
 //
 //       final pts = int.tryParse(
 //         data["available_points"]?.toString() ?? "0",
-//       ) ?? 0;
+//       ) ??
+//           0;
 //
 //       // final redeemedAmount =
 //       //     (data["value_redeemed"] as num?)?.toDouble() ?? 0.0;
@@ -2938,7 +2799,6 @@
 //       print("SENDING TO CUSTOMER DISPLAY");
 //       print("points=$pts");
 //       // print("redeemedAmount=$redeemedAmount");
-//
 //
 //       // UPDATE CUSTOMER DISPLAY
 //       await customerDisplayChannel.invokeMethod(
@@ -2958,11 +2818,11 @@
 //
 //         mobileController.text = contact;
 //       });
-//
 //     } catch (e) {
 //       print("ERROR: $e");
 //     }
 //   }
+//
 //   Future<void> _applyRedeemFromCustomerDisplay() async {
 //     setState(() {
 //       isRedeemAppliedFromApi = true;
@@ -2972,149 +2832,8 @@
 //       //     (computedNetPayable - redeemedValue) - tenderAmount;
 //     });
 //
-//     // await CustomerDisplayHelper.updateCustomerDisplay(
-//     //   widget.orderId ?? widget.offlineOrderId ?? 0,
-//     //   summaryEnabled: true,
-//     //   redeemedValue: redeemedValue, // ADD
-//     // );
+//
 //   }
-//
-//   ///srija tax issue???
-//   // double getAdjustedSummaryTax() {
-//   //   double totalSubtotal = 0.0;
-//   //   double totalDiscount = 0.0;
-//   //
-//   //   double _num(dynamic value) {
-//   //     if (value is num) return value.toDouble();
-//   //     return double.tryParse(value?.toString() ?? '') ?? 0.0;
-//   //   }
-//   //
-//   //   print("========== TAX ADJUST START ==========");
-//   //
-//   //   for (var item in orderItems) {
-//   //     final String itemName =
-//   //         item['item_name']?.toString() ?? 'Unknown';
-//   //
-//   //     // ✅ SKIP EBT PRODUCTS
-//   //     final bool isEbt =
-//   //         item['is_ebt'] == true ||
-//   //             item['ebt'] == true ||
-//   //             item['isEBT'] == true ||
-//   //             item['is_ebt_eligible'] == true;
-//   //
-//   //     if (isEbt) {
-//   //       print("🚫 EBT ITEM SKIPPED: $itemName");
-//   //       continue;
-//   //     }
-//   //
-//   //     final double price = _num(item['item_price']);
-//   //     final double qty = _num(item['items_count']);
-//   //
-//   //     final double itemSubtotal = price * qty;
-//   //
-//   //     final String discountType =
-//   //         item['discount_type']?.toString().toLowerCase() ?? '';
-//   //
-//   //     double autoDiscount =
-//   //     _num(item['auto_discount']) != 0
-//   //         ? _num(item['auto_discount'])
-//   //         : _num(item['auto_discount_total']) != 0
-//   //         ? _num(item['auto_discount_total'])
-//   //         : _num(item['autoDiscount']) != 0
-//   //         ? _num(item['autoDiscount'])
-//   //         : _num(item['autoDiscountTotal']) != 0
-//   //         ? _num(item['autoDiscountTotal'])
-//   //         : _num(item['display_auto_discount']);
-//   //
-//   //     // double comboDiscount = _num(orderItem['combo_discount_total']) +
-//   //     //     _num(orderItem['comboDiscountTotal']) +
-//   //     //     _num(orderItem['combo_discount']);
-//   //     //
-//   //     // double mixMatchDiscount = _num(orderItem['mixmatch_discount_total']) +
-//   //     //     _num(orderItem['mixMatchDiscountTotal']) +
-//   //     //     _num(orderItem['mixmatch_discount']);
-//   //     //
-//   //     // double multipackDiscount = _num(orderItem['multipack_discount_total']) +
-//   //     //     _num(orderItem['multipackDiscountTotal']) +
-//   //     //     _num(orderItem['multipack_discount']);
-//   //
-//   //     double comboDiscount = [
-//   //       item['combo_discount_total'],
-//   //       item['comboDiscountTotal'],
-//   //       item['combo_discount'],
-//   //     ]
-//   //         .map((e) => _num(e))
-//   //         .firstWhere((v) => v != 0, orElse: () => 0);
-//   //
-//   //     double mixMatchDiscount = [
-//   //       item['mixmatch_discount_total'],
-//   //       item['mixMatchDiscountTotal'],
-//   //       item['mixmatch_discount'],
-//   //     ]
-//   //         .map((e) => _num(e))
-//   //         .firstWhere((v) => v != 0, orElse: () => 0);
-//   //
-//   //     double multipackDiscount = [
-//   //       item['multipack_discount_total'],
-//   //       item['multipackDiscountTotal'],
-//   //       item['multipack_discount'],
-//   //     ]
-//   //         .map((e) => _num(e))
-//   //         .firstWhere((v) => v != 0, orElse: () => 0);
-//   //     if (discountType == 'mixmatch' &&
-//   //         autoDiscount > 0 &&
-//   //         mixMatchDiscount == 0) {
-//   //       mixMatchDiscount = autoDiscount;
-//   //       autoDiscount = 0;
-//   //     }
-//   //
-//   //     if (discountType == 'combo' &&
-//   //         autoDiscount > 0 &&
-//   //         comboDiscount == 0) {
-//   //       comboDiscount = autoDiscount;
-//   //       autoDiscount = 0;
-//   //     }
-//   //
-//   //     if (discountType == 'multipack' &&
-//   //         autoDiscount > 0 &&
-//   //         multipackDiscount == 0) {
-//   //       multipackDiscount = autoDiscount;
-//   //       autoDiscount = 0;
-//   //     }
-//   //
-//   //     final double itemDiscount =
-//   //         autoDiscount +
-//   //             comboDiscount +
-//   //             mixMatchDiscount +
-//   //             multipackDiscount;
-//   //
-//   //     totalSubtotal += itemSubtotal;
-//   //     totalDiscount += itemDiscount;
-//   //
-//   //     print("🛒 ITEM: $itemName");
-//   //     print("Subtotal: $itemSubtotal");
-//   //     print("Discount: $itemDiscount");
-//   //   }
-//   //
-//   //   final double taxableAmount =
-//   //       totalSubtotal - totalDiscount;
-//   //
-//   //   final double rawTax = taxableAmount * 0.091;
-//   //
-//   //   final double roundedTax =
-//   //   double.parse(rawTax.toStringAsFixed(2));
-//   //
-//   //   print("Total Subtotal = $totalSubtotal");
-//   //   print("Total Discount = $totalDiscount");
-//   //   print("Taxable Amount = $taxableAmount");
-//   //   print("Raw Tax = $rawTax");
-//   //   print("Final Tax = $roundedTax");
-//   //
-//   //   print("========== TAX ADJUST END ==========");
-//   //
-//   //   return roundedTax;
-//   // }
-//
 //
 //   // /// bala tax code
 //
@@ -3122,8 +2841,10 @@
 //     // Only distribute coupon discount across real product lines
 //     final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
 //     final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
-//     if (itemType.contains('discount') || itemType.contains('coupon') ||
-//         itemType.contains('payout') || itemType.contains('cashback') ||
+//     if (itemType.contains('discount') ||
+//         itemType.contains('coupon') ||
+//         itemType.contains('payout') ||
+//         itemType.contains('cashback') ||
 //         itemName.contains('merchant discount')) return 0.0;
 //
 //     final double couponDisc = discount.abs(); // discount is already negative
@@ -3140,17 +2861,42 @@
 //   }
 //
 //   double _extractTotalDiscountForItem(Map<String, dynamic> item) {
-//     double n(dynamic v) => v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+//     double n(dynamic v) =>
+//         v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
 //
-//     double posAuto = n(item['_pos_auto_discount']) +
-//         n(item['auto_discount']) +
-//         n(item['autoDiscount']) +
-//         n(item['auto_discount_total']) +
-//         n(item['display_auto_discount']);
+//     // 🔥 FIX: Take MAX value for AUTO discounts
+//     List<double> autoDiscountValues = [
+//       n(item['_pos_auto_discount']),
+//       n(item['auto_discount']),
+//       n(item['autoDiscount']),
+//       n(item['auto_discount_total']),
+//       n(item['display_auto_discount']),
+//     ];
+//     double posAuto = autoDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 //
-//     double combo = n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
-//     double multipack = n(item['multipack_discount_total']) + n(item['multipackDiscountTotal']);
-//     double mixmatch = n(item['mixmatch_discount_total']);
+//     // 🔥 FIX: Take MAX value for COMBO discounts
+//     List<double> comboDiscountValues = [
+//       n(item['combo_discount_total']),
+//       n(item['comboDiscountTotal']),
+//       n(item['combo_discount']),
+//     ];
+//     double combo = comboDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
+//
+//     // 🔥 FIX: Take MAX value for MULTIPACK discounts
+//     List<double> multipackDiscountValues = [
+//       n(item['multipack_discount_total']),
+//       n(item['multipackDiscountTotal']),
+//       n(item['multipack_discount']),
+//     ];
+//     double multipack = multipackDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
+//
+//     // 🔥 FIX: Take MAX value for MIXMATCH discounts
+//     List<double> mixmatchDiscountValues = [
+//       n(item['mixmatch_discount_total']),
+//       n(item['mixMatchDiscountTotal']),
+//       n(item['mixmatch_discount']),
+//     ];
+//     double mixmatch = mixmatchDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 //
 //     // ADD: proportional share of order-level coupon discount
 //     double couponShare = _proportionalCouponDiscountForItem(item);
@@ -3168,7 +2914,7 @@
 //       lineDiscount = posAuto + combo + multipack + mixmatch;
 //     }
 //
-//     return lineDiscount + couponShare; // ✅ Include coupon share
+//     return lineDiscount + couponShare;
 //   }
 //
 //   Future<void> _recalculateTaxOnDiscountedItems() async {
@@ -3192,59 +2938,111 @@
 //       double n(dynamic v) =>
 //           v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
 //
-//       double posAuto = n(item['_pos_auto_discount']) +
-//           n(item['auto_discount']) +
-//           n(item['autoDiscount']) +
-//           n(item['auto_discount_total']) +
-//           n(item['display_auto_discount']);
+//       List<double> autoDiscountValues = [
+//         n(item['_pos_auto_discount']),
+//         n(item['auto_discount']),
+//         n(item['autoDiscount']),
+//         n(item['auto_discount_total']),
+//         n(item['display_auto_discount']),
+//       ];
+//       double posAuto = autoDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 //
-//       double combo =
-//           n(item['combo_discount_total']) + n(item['comboDiscountTotal']);
-//       double multipack =
-//           n(item['multipack_discount_total']) + n(item['multipackDiscountTotal']);
-//       double mixmatch = n(item['mixmatch_discount_total']);
+//       List<double> comboDiscountValues = [
+//         n(item['combo_discount_total']),
+//         n(item['comboDiscountTotal']),
+//         n(item['combo_discount']),
+//       ];
+//       double combo = comboDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 //
-//       final String dtype =
-//       (item['discount_type'] ?? '').toString().toLowerCase();
+//       List<double> multipackDiscountValues = [
+//         n(item['multipack_discount_total']),
+//         n(item['multipackDiscountTotal']),
+//         n(item['multipack_discount']),
+//       ];
+//       double multipack = multipackDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 //
-//       if (dtype == 'auto' || dtype.isEmpty) return posAuto;
+//       List<double> mixmatchDiscountValues = [
+//         n(item['mixmatch_discount_total']),
+//         n(item['mixMatchDiscountTotal']),
+//         n(item['mixmatch_discount']),
+//       ];
+//       double mixmatch = mixmatchDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
+//
+//       final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
+//
+//       if (dtype.isEmpty) {
+//         double total = posAuto + combo + multipack + mixmatch;
+//         return total > 0 ? total : 0.0;
+//       }
+//
+//       if (dtype == 'auto') return posAuto;
 //       if (dtype == 'combo' || dtype == 'mixmatch')
 //         return combo > 0 ? combo : posAuto;
 //       if (dtype == 'multipack') return multipack > 0 ? multipack : posAuto;
 //       return posAuto + combo + multipack + mixmatch;
 //     }
 //
-//     double totalTax = 0.0;
-//     bool anyItemHasDiscountOrTaxRate = false;
+//     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//     // 🔥 STEP 1: Calculate product totals and tax rates (exclude payout/cashback)
+//     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//     double productGrossTotal = 0.0;
+//     double productDiscountTotal = 0.0;
+//     double payoutCashbackTotal = 0.0;
 //     double totalLineGross = 0.0;
 //     double totalLineDiscount = 0.0;
+//     double totalTaxFromItems = 0.0;
+//     bool anyItemHasDiscountOrTaxRate = false;
+//     double weightedTaxRate = 0.0;
+//
+//     // 🔥 NEW: Track product tax rates directly from Hive like the order panel
+//     final Map<int, double> _hiveTaxRateByProductId = {};
+//     final Map<int, String> _hiveTaxStatusByProductId = {};
+//
+//     // Load tax rates from offline order products
+//     if (offlineOrder != null) {
+//       final hiveProducts = (offlineOrder?['products'] as List?) ?? [];
+//       for (final p in hiveProducts) {
+//         final int pid = int.tryParse(
+//             (p['product_id'] ?? p['id'] ?? '0').toString()) ?? 0;
+//         if (pid <= 0) continue;
+//         final double rate = double.tryParse(p['tax_rate']?.toString() ?? '0') ?? 0.0;
+//         final String status = (p['tax_status'] ?? 'taxable').toString().toLowerCase();
+//         if (rate > 0) _hiveTaxRateByProductId[pid] = rate;
+//         _hiveTaxStatusByProductId[pid] = status;
+//       }
+//     }
 //
 //     for (final item in orderItems) {
-//       final String itemType =
-//       (item['item_type'] ?? '').toString().toLowerCase();
-//       final String itemName =
-//       (item['item_name'] ?? '').toString().toLowerCase();
+//       final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+//       final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
 //
 //       if (itemType.contains('discount') ||
 //           itemType.contains('coupon') ||
-//           itemType.contains('payout') ||
-//           itemType.contains('cashback') ||
 //           itemType.contains('loyalty') ||
 //           itemName.contains('merchant discount')) {
 //         continue;
 //       }
 //
+//       final bool isPayout = itemType.contains('payout') || itemName.contains('payout');
+//       final bool isCashback = itemType.contains('cashback') || itemName.contains('cashback');
+//       final bool isPayoutOrCashback = isPayout || isCashback;
+//
 //       final double unitPrice = toDouble(item['item_price'] ?? item['price']);
-//       final int qty =
-//       (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+//       final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
 //       final double lineTotal = unitPrice * qty;
 //
 //       final double itemDiscount = lineItemOnlyDiscount(item);
-//       final double taxableBase =
-//       (lineTotal - itemDiscount).clamp(0.0, double.infinity);
+//       final double taxableBase = (lineTotal - itemDiscount).clamp(0.0, double.infinity);
 //
 //       totalLineGross += lineTotal;
 //       totalLineDiscount += itemDiscount;
+//
+//       if (!isPayoutOrCashback) {
+//         productGrossTotal += lineTotal;
+//         productDiscountTotal += itemDiscount;
+//       } else {
+//         payoutCashbackTotal += lineTotal;
+//       }
 //
 //       if (itemDiscount > 0) anyItemHasDiscountOrTaxRate = true;
 //
@@ -3254,87 +3052,130 @@
 //       if (taxRate > 0) {
 //         anyItemHasDiscountOrTaxRate = true;
 //         itemTax = taxableBase * taxRate;
+//         if (taxableBase > 0) {
+//           weightedTaxRate += (taxableBase * taxRate);
+//         }
 //       } else {
-//         final double rawTax =
-//         toDouble(item['item_tax'] ?? item['tax_amount']);
+//         final double rawTax = toDouble(item['item_tax'] ?? item['tax_amount']);
 //         if (rawTax > 0 && lineTotal > 0) {
 //           anyItemHasDiscountOrTaxRate = true;
 //           itemTax = rawTax * (taxableBase / lineTotal);
+//           if (taxableBase > 0) {
+//             weightedTaxRate += (taxableBase * (rawTax / lineTotal));
+//           }
+//         }
+//         // 🔥 FIX: If no tax found, try to get from Hive product map
+//         else if (itemTax <= 0) {
+//           final int productId = int.tryParse((item['product_id'] ?? 0).toString()) ?? 0;
+//           if (productId > 0) {
+//             final double hiveTaxRate = _hiveTaxRateByProductId[productId] ?? 0.0;
+//             if (hiveTaxRate > 0 && taxableBase > 0) {
+//               itemTax = (taxableBase * hiveTaxRate) / 100.0;
+//               weightedTaxRate += (taxableBase * (hiveTaxRate / 100.0));
+//               anyItemHasDiscountOrTaxRate = true;
+//             }
+//           }
 //         }
 //       }
 //
-//       totalTax += itemTax;
+//       totalTaxFromItems += itemTax;
 //     }
 //
-//     totalTax = double.parse(totalTax.toStringAsFixed(4));
+//     // Calculate the weighted average tax rate
+//     final double totalTaxableBase = productGrossTotal - productDiscountTotal;
+//     if (totalTaxableBase > 0) {
+//       weightedTaxRate = weightedTaxRate / totalTaxableBase;
+//     } else {
+//       weightedTaxRate = 0.0;
+//     }
 //
-//     final double serverTax = widget.orderTax;
+//     totalTaxFromItems = double.parse(totalTaxFromItems.toStringAsFixed(4));
 //
-//     final double netAfterDiscount =
-//         totalLineGross - totalLineDiscount + discount + merchantDiscount;
+//     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//     // 🔥 STEP 2: Calculate Merchant Discount on PRODUCTS ONLY
+//     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//     final String mdType = offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+//     final double productNetAfterDiscounts = productGrossTotal - productDiscountTotal;
 //
-//     double finalTax;
+//     if (mdType == 'percentage' && merchantDiscountPercentage > 0 && productNetAfterDiscounts > 0) {
+//       merchantDiscount = -((productNetAfterDiscounts * merchantDiscountPercentage) / 100.0);
+//       merchantDiscount = double.parse(merchantDiscount.toStringAsFixed(2));
+//     } else {
+//       merchantDiscount = 0.0;
+//     }
 //
-//     if (!anyItemHasDiscountOrTaxRate) {
-//       // ── ONLY scale tax by coupon ratio when coupon was applied in THIS session.
-//       // For pending/reloaded orders, isCouponAppliedFromApi is false,
-//       // so we skip scaling and return the server tax as-is (e.g. $6.36).
-//       if (serverTax > 0 && discount < 0 && isCouponAppliedFromApi) {
-//         final double originalGross = widget.grossTotal;
-//         if (originalGross > 0) {
-//           final double taxableNet =
-//           (originalGross + discount).clamp(0.0, double.infinity);
-//           finalTax = serverTax * (taxableNet / originalGross);
-//         } else {
-//           finalTax = 0.0;
-//         }
-//       } else {
-//         finalTax = serverTax > 0 ? serverTax : totalTax;
-//       }
-//       if (kDebugMode) {
-//         print('── TAX: No item-level data. finalTax=$finalTax');
-//       }
-//     } else if (totalTax <= 0 && serverTax > 0) {
-//       if (netAfterDiscount > 0.005) {
-//         finalTax = serverTax;
+//     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//     // 🔥 STEP 3: Calculate TAX - CORRECTED VERSION
+//     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//     double finalTax = 0.0;
+//
+//     final double couponDiscount = discount < 0 ? discount.abs() : 0.0;
+//     final double taxableNetAmount = (productNetAfterDiscounts + merchantDiscount - couponDiscount).clamp(0.0, double.infinity);
+//
+//     print("🔧 TAX CALCULATION - CORRECTED:");
+//     print("   📍 productGrossTotal: $productGrossTotal");
+//     print("   📍 productDiscountTotal: $productDiscountTotal");
+//     print("   📍 productNetAfterDiscounts: $productNetAfterDiscounts");
+//     print("   📍 merchantDiscount: $merchantDiscount");
+//     print("   📍 couponDiscount: $couponDiscount");
+//     print("   📍 taxableNetAmount: $taxableNetAmount");
+//     print("   📍 weightedTaxRate: ${(weightedTaxRate * 100).toStringAsFixed(2)}%");
+//     print("   📍 totalTaxFromItems: $totalTaxFromItems");
+//     print("   ───────────────────────────────────────────────");
+//
+//     // 🔥 PRIMARY METHOD: Calculate tax directly from the weighted tax rate
+//     // This is what the order panel does - it uses the tax rate from Hive
+//     if (weightedTaxRate > 0 && taxableNetAmount > 0) {
+//       print("   ✅ Calculating tax directly from weighted tax rate");
+//       print("   🧮 Calculation: $taxableNetAmount × ${(weightedTaxRate * 100).toStringAsFixed(2)}%");
+//       finalTax = roundTaxHalfUp(taxableNetAmount * weightedTaxRate);
+//       print("   🧾 Final tax: $finalTax");
+//     }
+//     // SECONDARY METHOD: If we have item tax data, use proportional scaling
+//     else if (anyItemHasDiscountOrTaxRate && totalTaxFromItems > 0 && productGrossTotal > 0) {
+//       final double originalBase = productNetAfterDiscounts;
+//       if (originalBase > 0) {
+//         print("   ✅ Using item tax data with proportional scaling");
+//         print("   🧮 Calculation: $totalTaxFromItems × ($taxableNetAmount / $originalBase)");
+//         print("   🧮 Ratio: ${(taxableNetAmount / originalBase).toStringAsFixed(4)}");
+//         double scaledTax = totalTaxFromItems * (taxableNetAmount / originalBase);
+//         finalTax = roundTaxHalfUp(scaledTax);
+//         print("   🧾 Final tax: $finalTax");
 //       } else {
 //         finalTax = 0.0;
 //       }
-//       if (kDebugMode) {
-//         print('── TAX: Recalc=0, server=$serverTax, net=$netAfterDiscount → finalTax=$finalTax');
-//       }
-//     } else {
-//       if (discount < 0 && totalLineGross > 0) {
-//         final double postCouponBase =
-//         (totalLineGross - totalLineDiscount + discount)
-//             .clamp(0.0, double.infinity);
-//         final double preCouponBase =
-//         (totalLineGross - totalLineDiscount).clamp(0.01, double.infinity);
-//         totalTax = totalTax * (postCouponBase / preCouponBase);
-//         totalTax = double.parse(totalTax.toStringAsFixed(4));
-//       }
-//       finalTax = totalTax;
-//       if (kDebugMode) {
-//         print('── TAX: Using recalculated value: $finalTax');
-//       }
+//     }
+//     // TERTIARY METHOD: Calculate from product gross using weighted tax rate
+//     else if (weightedTaxRate > 0 && productGrossTotal > 0) {
+//       print("   ✅ Calculating tax from product gross with weighted tax rate");
+//       print("   🧮 Calculation: $taxableNetAmount × ${(weightedTaxRate * 100).toStringAsFixed(2)}%");
+//       finalTax = roundTaxHalfUp(taxableNetAmount * weightedTaxRate);
+//       print("   🧾 Final tax: $finalTax");
+//     }
+//     // FALLBACK: Use server tax
+//     else {
+//       print("   ⚠️ Fallback: Using server tax directly");
+//       print("   📍 widget.orderTax: ${widget.orderTax}");
+//       finalTax = widget.orderTax;
+//       print("   🧾 Final tax: $finalTax");
 //     }
 //
-//     if (kDebugMode) {
-//       print('── TAX RECALCULATION COMPLETE ──');
-//       print('   Gross Total        : $totalLineGross');
-//       print('   Line Discounts     : $totalLineDiscount');
-//       print('   Coupon/Order Disc  : $discount');
-//       print('   Net After Discount : $netAfterDiscount');
-//       print('   Server Tax         : $serverTax');
-//       print('   Recalculated Tax   : $totalTax');
-//       print('   Final Tax Used     : $finalTax');
-//     }
+//     // Ensure we have a reasonable tax value
+//     finalTax = double.parse(finalTax.toStringAsFixed(2));
 //
-//     final bool taxChanged = (finalTax - tax).abs() > 0.005;
-//     if (!taxChanged) return;
+//     print("   ───────────────────────────────────────────────");
+//     print("   🎯 FINAL TAX: $finalTax");
+//     print("   ✅ Expected tax rate applied to taxable amount");
 //
-//     final double newNetTotal = widget.grossTotal + discount + merchantDiscount;
+//     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//     // 🔥 STEP 4: Calculate final totals
+//     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//     final double newNetTotal = grossTotal + discount + merchantDiscount;
 //     final double newNetPayable = newNetTotal + finalTax + cashbackFee;
+//
+//     final bool totalsChanged = (finalTax - tax).abs() > 0.000005 ||
+//         (newNetPayable - computedNetPayable).abs() > 0.000005;
+//     if (!totalsChanged) return;
 //
 //     setState(() {
 //       tax = finalTax;
@@ -3367,9 +3208,16 @@
 //             offlineOrder["balance_amount"] = newNetPayable;
 //             offlineOrder["remaining_balance"] = newNetPayable;
 //           }
+//           offlineOrder["merchantDiscount"] = merchantDiscount.abs();
+//           offlineOrder["merchant_discount"] = merchantDiscount.abs();
+//           offlineOrder["merchantDiscountPercentage"] = merchantDiscountPercentage;
+//           offlineOrder["NetTotal"] = newNetTotal;
+//           offlineOrder["net_total"] = newNetTotal;
+//
 //           await box.put(orderKey, offlineOrder);
 //           if (kDebugMode) {
-//             print("💾 [CD/Summary] Updated Hive with recalculated tax: $finalTax, netPayable: $newNetPayable");
+//             print(
+//                 "💾 [CD/Summary] Updated Hive with recalculated tax: $finalTax, netPayable: $newNetPayable");
 //           }
 //         }
 //       } catch (e) {
@@ -3389,159 +3237,37 @@
 //     }
 //   }
 //
+//
 // // ─────────────────────────────────────────────────────────────────────────────
 //
-//   // void _recalculateGrossAndNetFromLineItemDiscounts() {
-//   //   if (orderItems.isEmpty) return;
-//   //
-//   //   double toDouble(dynamic v) =>
-//   //       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
-//   //
-//   //   double recalculatedGrossTotal = 0.0;
-//   //   double totalLineItemDiscount = 0.0;
-//   //   double payoutCashbackTotal = 0.0;
-//   //
-//   //   for (final item in orderItems) {
-//   //     final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
-//   //     final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
-//   //
-//   //     // ── Payout / cashback: accumulate separately, excluded from product gross.
-//   //     final bool isPayout = itemType.contains('payout') ||
-//   //         itemType.contains('cashback') ||
-//   //         itemName.contains('payout') ||
-//   //         itemName.contains('cashback');
-//   //
-//   //     if (isPayout) {
-//   //       final double sumPrice = toDouble(item['item_sum_price']);
-//   //       final double unitPrice = toDouble(item['item_price'] ?? item['price']);
-//   //       final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-//   //       payoutCashbackTotal += sumPrice != 0 ? sumPrice : unitPrice * qty;
-//   //       continue;
-//   //     }
-//   //
-//   //     // ── Skip non-product meta lines.
-//   //     if (itemType.contains('discount') ||
-//   //         itemType.contains('coupon') ||
-//   //         itemType.contains('loyalty') ||
-//   //         itemName.contains('merchant discount')) {
-//   //       continue;
-//   //     }
-//   //
-//   //     // ── Real product line.
-//   //     final double itemSumPrice = toDouble(item['item_sum_price']);
-//   //     final double unitPrice = toDouble(item['item_price'] ?? item['price']);
-//   //     final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-//   //     final double lineOriginalTotal = unitPrice * qty;
-//   //
-//   //     final double lineGross = itemSumPrice > 0 ? itemSumPrice : lineOriginalTotal;
-//   //     recalculatedGrossTotal += lineGross;
-//   //
-//   //     final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
-//   //
-//   //     double autoDiscount = [
-//   //       item['auto_discount'],
-//   //       item['auto_discount_total'],
-//   //       item['autoDiscount'],
-//   //       item['autoDiscountTotal'],
-//   //       item['display_auto_discount'],
-//   //       item['_pos_auto_discount'],
-//   //     ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
-//   //
-//   //     double comboDiscount = [
-//   //       item['combo_discount_total'],
-//   //       item['comboDiscountTotal'],
-//   //       item['combo_discount'],
-//   //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-//   //
-//   //     double mixMatchDiscount = [
-//   //       item['mixmatch_discount_total'],
-//   //       item['mixMatchDiscountTotal'],
-//   //       item['mixmatch_discount'],
-//   //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-//   //
-//   //     double multipackDiscount = [
-//   //       item['multipack_discount_total'],
-//   //       item['multipackDiscountTotal'],
-//   //       item['multipack_discount'],
-//   //     ].map((e) => toDouble(e)).firstWhere((v) => v != 0, orElse: () => 0);
-//   //
-//   //     if (dtype == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
-//   //       mixMatchDiscount = autoDiscount;
-//   //       autoDiscount = 0;
-//   //     }
-//   //     if (dtype == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
-//   //       comboDiscount = autoDiscount;
-//   //       autoDiscount = 0;
-//   //     }
-//   //     if (dtype == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
-//   //       multipackDiscount = autoDiscount;
-//   //       autoDiscount = 0;
-//   //     }
-//   //
-//   //     final double itemDiscount =
-//   //         autoDiscount + comboDiscount + mixMatchDiscount + multipackDiscount;
-//   //     totalLineItemDiscount += itemDiscount;
-//   //   }
-//   //
-//   //   // Nothing to recalculate if no discounts and gross matches.
-//   //   if (totalLineItemDiscount <= 0 &&
-//   //       payoutCashbackTotal == 0 &&
-//   //       (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
-//   //     return;
-//   //   }
-//   //
-//   //   final double newGrossTotal =
-//   //   recalculatedGrossTotal > 0 ? recalculatedGrossTotal : grossTotal;
-//   //
-//   //   final double newGrossAfterItemDiscounts = newGrossTotal - totalLineItemDiscount;
-//   //
-//   //   // ── KEY FIX ──────────────────────────────────────────────────────────────
-//   //   // Gross Total displayed = product gross after discounts + payout/cashback.
-//   //   // Payout(-10) brings it down: $21.93 + (-$10) = $11.93
-//   //   // Cashback(+5) brings it up:  $21.93 + (-$5) + $5 = $21.93
-//   //   final double newGrossForDisplay = newGrossAfterItemDiscounts + payoutCashbackTotal;
-//   //   // ─────────────────────────────────────────────────────────────────────────
-//   //
-//   //   // NetTotal = grossForDisplay + coupon + merchant discount (no payout double-count)
-//   //   final double newNetTotal = newGrossForDisplay +
-//   //       discount +        // order-level coupon (negative)
-//   //       merchantDiscount;
-//   //
-//   //   final double newNetPayable = newNetTotal + tax + cashbackFee;
-//   //
-//   //   if (kDebugMode) {
-//   //     print('── LINE-ITEM DISCOUNT RECALCULATION ──');
-//   //     print('   Product Gross (pre-discount)       : $newGrossTotal');
-//   //     print('   Total Line Item Discounts          : $totalLineItemDiscount');
-//   //     print('   Product Gross After Discounts      : $newGrossAfterItemDiscounts');
-//   //     print('   Payout / Cashback Total            : $payoutCashbackTotal');
-//   //     print('   Gross For Display (shown)          : $newGrossForDisplay');
-//   //     print('   Order Discount (coupon)            : $discount');
-//   //     print('   Merchant Discount                  : $merchantDiscount');
-//   //     print('   Tax                                : $tax');
-//   //     print('   Cashback Fee                       : $cashbackFee');
-//   //     print('   New Net Total                      : $newNetTotal');
-//   //     print('   New Net Payable                    : $newNetPayable');
-//   //   }
-//   //
-//   //   setState(() {
-//   //     // Gross Total = product prices after item discounts + payout/cashback
-//   //     // e.g. no payout:        $21.93
-//   //     //      payout -$10:      $11.93
-//   //     //      payout -$5 + cb +$5: $21.93
-//   //     grossTotal = newGrossForDisplay.clamp(0.0, double.infinity);
-//   //
-//   //     NetTotal = newNetTotal.clamp(0.0, double.infinity);
-//   //     computedNetPayable = newNetPayable.clamp(0.0, double.infinity);
-//   //     orderTotal = computedNetPayable;
-//   //
-//   //     if (tenderAmount <= 0) {
-//   //       balanceAmount = computedNetPayable;
-//   //     }
-//   //   });
-//   // }
+//   Future<void> _loadLatestMerchantDiscount() async {
+//     final key = (widget.offlineOrderId ?? orderId ?? 0).toString();
+//     final raw = await StorageProvider.offlineOrders.get(key);
 //
-//   void _recalculateGrossAndNetFromLineItemDiscounts() {
+//     if (raw != null && raw is Map) {
+//       final mdRaw = raw['merchantDiscount'] ??
+//           raw['merchant_discount'] ??
+//           raw['_merchant_discount'] ?? 0;
+//
+//       final double mdVal = (mdRaw is num)
+//           ? mdRaw.toDouble()
+//           : double.tryParse(mdRaw.toString()) ?? 0.0;
+//
+//       setState(() {
+//         merchantDiscount = mdVal.abs();           // Positive for UI display
+//         merchantDiscountPercentage = (raw['merchantDiscountPercentage'] as num?)?.toDouble() ?? 0.0;
+//
+//         // Also update internal map
+//         _order[AppDBConst.merchantDiscount] = -mdVal;
+//         _order["merchantDiscount"] = -mdVal;
+//         _order["merchant_discount"] = -mdVal;
+//       });
+//
+//       print("🔄 Loaded fresh merchant discount from Hive: $merchantDiscount (was stale before)");
+//     }
+//   }
+//
+//   Future<void> _recalculateGrossAndNetFromLineItemDiscounts() async {
 //     if (orderItems.isEmpty) return;
 //
 //     double toDouble(dynamic v) =>
@@ -3551,12 +3277,15 @@
 //     double totalLineItemDiscount = 0.0;
 //     double payoutCashbackTotal = 0.0;
 //
+//     // Store previous values to detect changes
+//     final double previousGrossTotal = grossTotal;
+//     final double previousMerchantDiscount = merchantDiscount;
+//     final double previousComputedNetPayable = computedNetPayable;
+//
 //     for (final item in orderItems) {
 //       final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
 //       final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
 //
-//       // ── Payout / cashback detection — check BOTH item_type AND item_name
-//       // because some items have empty item_type but name = "Payout" or "Cashback"
 //       final bool isPayout = itemType.contains('payout') ||
 //           itemType.contains('cashback') ||
 //           itemName == 'payout' ||
@@ -3567,13 +3296,10 @@
 //       if (isPayout) {
 //         final double unitPrice = toDouble(item['item_price'] ?? item['price']);
 //         final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
-//         // Use item_price × qty — always the cashier-entered value.
-//         // Payout: item_price is negative (e.g. -10), cashback: positive (+5).
 //         payoutCashbackTotal += unitPrice * qty;
-//         continue; // ← CRITICAL: skip all further processing for this item
+//         continue;
 //       }
 //
-//       // ── Skip non-product meta lines.
 //       if (itemType.contains('discount') ||
 //           itemType.contains('coupon') ||
 //           itemType.contains('loyalty') ||
@@ -3581,7 +3307,6 @@
 //         continue;
 //       }
 //
-//       // ── Real product line — only reach here for actual products.
 //       final double itemSumPrice = toDouble(item['item_sum_price']);
 //       final double unitPrice = toDouble(item['item_price'] ?? item['price']);
 //       final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
@@ -3592,14 +3317,17 @@
 //
 //       final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
 //
-//       double autoDiscount = [
-//         item['auto_discount'],
-//         item['auto_discount_total'],
-//         item['autoDiscount'],
-//         item['autoDiscountTotal'],
-//         item['display_auto_discount'],
-//         item['_pos_auto_discount'],
-//       ].map((e) => toDouble(e)).fold(0.0, (a, b) => a + b);
+//       // 🔥 FIX: Take MAX value instead of SUM to prevent double counting
+//       List<double> discountValues = [
+//         toDouble(item['auto_discount']),
+//         toDouble(item['auto_discount_total']),
+//         toDouble(item['autoDiscount']),
+//         toDouble(item['autoDiscountTotal']),
+//         toDouble(item['display_auto_discount']),
+//         toDouble(item['_pos_auto_discount']),
+//       ];
+//
+//       double autoDiscount = discountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
 //
 //       double comboDiscount = [
 //         item['combo_discount_total'],
@@ -3637,46 +3365,31 @@
 //       totalLineItemDiscount += itemDiscount;
 //     }
 //
-//     // ── Guard: nothing changed, skip setState.
 //     if (totalLineItemDiscount <= 0 &&
 //         payoutCashbackTotal == 0 &&
 //         (recalculatedGrossTotal - grossTotal).abs() <= 0.01) {
 //       return;
 //     }
 //
-//     // ── Use widget.grossTotal as the product baseline when recalculatedGrossTotal
-//     //    is 0 (pure payout order — no real product lines at all).
 //     final double productGross = recalculatedGrossTotal != 0
 //         ? recalculatedGrossTotal
 //         : (widget.grossTotal > 0 ? widget.grossTotal : 0.0);
 //
-//     // Product prices after item-level discounts.
 //     final double productGrossAfterDiscounts = productGross - totalLineItemDiscount;
 //
-//     // Gross shown in UI = product gross after discounts + payout/cashback.
-//     // Pure payout order: productGrossAfterDiscounts = 0, payoutCashbackTotal = -10 → -10 ✓
-//     // Products + payout: 21.93 + (-10) = 11.93 ✓
 //     final double newGrossForDisplay = productGrossAfterDiscounts + payoutCashbackTotal;
 //
-//     // NetTotal = grossForDisplay + coupon + merchant discount.
-//     final double newNetTotal = newGrossForDisplay + discount ;
-//
-//     // Net payable — allow negative for refund/payout-only orders.
-//     final double newNetPayable =  newNetTotal + tax + cashbackFee + merchantDiscount;
+//     final double newNetTotal = newGrossForDisplay + discount + merchantDiscount;
+//     final double newNetPayable = newNetTotal + tax + cashbackFee;
 //
 //     if (kDebugMode) {
 //       print('── LINE-ITEM DISCOUNT RECALCULATION ──');
-//       print('   Product Gross (pre-discount)       : $productGross');
-//       print('   Total Line Item Discounts          : $totalLineItemDiscount');
-//       print('   Product Gross After Discounts      : $productGrossAfterDiscounts');
-//       print('   Payout / Cashback Total            : $payoutCashbackTotal');
-//       print('   Gross For Display                  : $newGrossForDisplay');
-//       print('   Order Discount (coupon)            : $discount');
-//       print('   Merchant Discount                  : $merchantDiscount');
-//       print('   Tax                                : $tax');
-//       print('   Cashback Fee                       : $cashbackFee');
-//       print('   New Net Total                      : $newNetTotal');
-//       print('   New Net Payable                    : $newNetPayable');
+//       print('   New Gross For Display : $newGrossForDisplay');
+//       print('   Total Line Discounts  : $totalLineItemDiscount');
+//       print('   NetTotal (pre-merchant) : $newNetTotal');
+//       print('   Merchant Discount     : $merchantDiscount');
+//       print('   New Net Payable       : $newNetPayable');
+//
 //     }
 //
 //     setState(() {
@@ -3689,14 +3402,88 @@
 //         balanceAmount = newNetPayable;
 //       }
 //     });
+//
+//     final String orderKey = widget.offlineOrderId?.toString() ??
+//         widget.orderId?.toString() ??
+//         orderId?.toString() ??
+//         "";
+//
+//     if (orderKey.isNotEmpty) {
+//       try {
+//         final box = StorageProvider.offlineOrders;
+//         final rawOrder = await box.get(orderKey);
+//         if (rawOrder != null) {
+//           final offlineOrder = Map<String, dynamic>.from(rawOrder);
+//           offlineOrder["gross_total"] = newGrossForDisplay;
+//           offlineOrder["NetTotal"] = newNetTotal;
+//           offlineOrder["net_total"] = newNetTotal;
+//           offlineOrder["net_payable"] = newNetPayable;
+//           offlineOrder["grand_total"] = newNetPayable;
+//           if (tenderAmount <= 0) {
+//             offlineOrder["balanceAmount"] = newNetPayable;
+//             offlineOrder["balance_amount"] = newNetPayable;
+//             offlineOrder["remaining_balance"] = newNetPayable;
+//           }
+//           offlineOrder["merchantDiscount"] = merchantDiscount.abs();
+//           offlineOrder["merchant_discount"] = merchantDiscount.abs();
+//           offlineOrder["merchantDiscountPercentage"] = merchantDiscountPercentage;
+//
+//           await box.put(orderKey, offlineOrder);
+//           if (kDebugMode) {
+//             print(
+//                 "💾 [CD/Summary] Updated Hive with recalculated gross: $newGrossForDisplay, netTotal: $newNetTotal, netPayable: $newNetPayable");
+//           }
+//         }
+//       } catch (e) {
+//         if (kDebugMode) {
+//           print("❌ [CD/Summary] Failed to update Hive order gross/net: $e");
+//         }
+//       }
+//     }
+//
+//     // Update customer display when merchant discount changes
+//     final bool merchantDiscountChanged = (merchantDiscount - previousMerchantDiscount).abs() > 0.01;
+//     final bool netPayableChanged = (computedNetPayable - previousComputedNetPayable).abs() > 0.01;
+//
+//     if (merchantDiscountChanged || netPayableChanged) {
+//       await _updateCustomerDisplayWithMerchantDiscount();
+//       if (widget.offlineOrderId != null) {
+//         await CustomerDisplayHelper.updateCustomerDisplay(
+//           widget.offlineOrderId!,
+//           summaryEnabled: true,
+//         );
+//       }
+//     }
 //   }
+//
+//   Future<void> _updateCustomerDisplayWithMerchantDiscount() async {
+//     final int? orderIdToUse = widget.offlineOrderId ?? orderId;
+//     if (orderIdToUse == null || orderIdToUse == 0) return;
+//
+//     if (kDebugMode) {
+//       print('🔄 Updating customer display via helper...');
+//     }
+//
+//     try {
+//       await CustomerDisplayHelper.updateCustomerDisplay(
+//         orderIdToUse,
+//         summaryEnabled: true,
+//       );
+//     } catch (e) {
+//       if (kDebugMode) {
+//         print('Failed to update customer display via helper: $e');
+//       }
+//     }
+//   }
+//
+//
 //
 //   @override
 //   void initState() {
 //     super.initState();
 //
 //     const MethodChannel _customerDisplayChannel = MethodChannel(
-//       'com.example.flutter_customer_display/sunmi_display',
+//       'com.alekta.pinakapos/sunmi_display',
 //     );
 //
 //     _customerDisplayChannel.setMethodCallHandler((call) async {
@@ -3726,15 +3513,12 @@
 //         return;
 //       }
 //
-//
-//
 //       if (call.method == "customerDisplayRedeemClicked") {
 //         final String contact = call.arguments["contact"] ?? "";
 //
 //         print("📱 CONTACT = $contact");
 //         // CLOSE POS KEYBOARD
 //         FocusManager.instance.primaryFocus?.unfocus();
-//
 //
 //         if (contact.isEmpty) {
 //           if (mounted) {
@@ -3765,7 +3549,6 @@
 //               "redeemedAmount": redeemedValue,
 //             },
 //           );
-//
 //         } catch (e) {
 //           print("❌ ERROR = $e");
 //
@@ -3791,11 +3574,23 @@
 //
 //     // remaining initState code...
 //
-//     ScannerGuard.isCouponPopupOpen= true;
+//     ScannerGuard.isCouponPopupOpen = true;
 //
-//     orderItems = widget.orderItems
-//         .map((e) => Map<String, dynamic>.from(e))
-//         .toList();
+//
+//     orderItems = List.from(widget.orderItems); // ensure copy
+//
+//     // IMPORTANT: Call after merges
+//     WidgetsBinding.instance.addPostFrameCallback((_) async {
+//       await _mergeOrderSummaryLineItemsFromProductCache(orderItems);
+//       _mergeOrderSummaryLineItemsFromHive(orderItems, offlineOrder);
+//
+//       _calculateAndPrintLoyaltyPoints();
+//       _syncEbtTotalWithOrderItems();   // ← ADD THIS
+//       if (mounted) setState(() {});
+//     });
+//
+//     orderItems =
+//         widget.orderItems.map((e) => Map<String, dynamic>.from(e)).toList();
 //     grossTotal = widget.grossTotal;
 //     discount =
 //     (widget.orderDiscount != 0) ? -(widget.orderDiscount.abs()) : 0.0;
@@ -3804,6 +3599,8 @@
 //     // tax = getAdjustedSummaryTax();
 //     orderId = widget.orderId;
 //     ebtTotal = widget.ebtAmount;
+//
+//     // merchantDiscountPercentage is loaded asynchronously below
 //
 //     _displayDate = widget.formattedDate;
 //     _displayTime = widget.formattedTime;
@@ -3817,7 +3614,8 @@
 //         final rawExisting = await box.get(key);
 //         final existing =
 //         Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
-//         if (widget.ebtAmount > 0 && existing["originalEbt"] != widget.ebtAmount) {
+//         if (widget.ebtAmount > 0 &&
+//             existing["originalEbt"] != widget.ebtAmount) {
 //           existing["originalEbt"] = widget.ebtAmount;
 //           existing["remainingEbt"] = widget.ebtAmount;
 //           await box.put(key, existing);
@@ -3830,6 +3628,13 @@
 //       if (await offlineBox.containsKey(orderIdKey)) {
 //         final raw = await offlineBox.get(orderIdKey);
 //         offlineOrder = raw is Map ? Map<String, dynamic>.from(raw) : null;
+//         if (offlineOrder != null &&
+//             offlineOrder!['merchantDiscountPercentage'] != null) {
+//           merchantDiscountPercentage = double.tryParse(
+//               offlineOrder!['merchantDiscountPercentage']?.toString() ??
+//                   '0') ??
+//               0.0;
+//         }
 //
 //         if (offlineOrder != null &&
 //             offlineOrder!['tenderAmount'] != null &&
@@ -3868,14 +3673,23 @@
 //       }
 //
 //       await _enrichOrderItemsFromHiveProducts();
+//       await _debugPrintHiveOrderStructure();
+//
+//       _calculateAndPrintLoyaltyPoints();
 //       await _recalculateTaxOnDiscountedItems();
 //       if (!widget.itemPricesAlreadyAdjusted) {
-//         _recalculateGrossAndNetFromLineItemDiscounts();
+//         await _recalculateGrossAndNetFromLineItemDiscounts();
 //       }
+//
+// // ✅ FIX: Recalculate EBT proportionally after merchant discount is applied
+//       _recalculateEbtTotalAfterDiscount();
+//       _syncEbtTotalWithOrderItems();   // ← ADD THIS
+//
 //
 //       if (mounted) setState(() {});
 //
 //       await _calculateBalanceFromPaymentHistory();
+//
 //       await _printPaymentHistorySummary();
 //       if (_currentPaymentRemainingBalance != null) {
 //         print("\n ACTIVE PAYMENT SESSION DETECTED");
@@ -3889,7 +3703,7 @@
 //       await retrySyncUnsyncedPayments();
 //       await _recalculateTaxOnDiscountedItems();
 //       if (!widget.itemPricesAlreadyAdjusted) {
-//         _recalculateGrossAndNetFromLineItemDiscounts();
+//         await _recalculateGrossAndNetFromLineItemDiscounts();
 //       }
 //     });
 //
@@ -3907,7 +3721,6 @@
 //
 //       await retrySyncUnsyncedPayments();
 //       await _recalculateTaxOnDiscountedItems();
-//
 //     });
 //
 //     Future.delayed(Duration.zero, () async {
@@ -4141,7 +3954,8 @@
 //       final data = jsonDecode(result);
 //       final fullSunmi = jsonDecode(data["fullResponse"]);
 //
-//       double paidAmount = double.tryParse(fullSunmi["processedAmount"] ?? "0") ?? 0.0;
+//       double paidAmount =
+//           double.tryParse(fullSunmi["processedAmount"] ?? "0") ?? 0.0;
 //
 //       if (paidAmount <= 0) {
 //         throw Exception("Invalid paid amount from Sunmi");
@@ -4150,7 +3964,8 @@
 //       // ==================== UNIFIED PAYMENT FLOW (Same as Cash) ====================
 //       selectedPaymentMethod = TextConstants.card;
 //
-//       final String datetime = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+//       final String datetime =
+//       DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 //
 //       final localPayment = LocalPayment(
 //         orderId: widget.orderId ?? 0,
@@ -4172,12 +3987,15 @@
 //         }),
 //         isSynced: false,
 //         createdAt: DateTime.now(),
-//         remainingBalance: (balanceAmount - paidAmount).clamp(0.0, double.infinity),
-//         status: PaymentDbStatus.pending, // Will be marked completed later if needed
+//         remainingBalance:
+//         (balanceAmount - paidAmount).clamp(0.0, double.infinity),
+//         status:
+//         PaymentDbStatus.pending, // Will be marked completed later if needed
 //       );
 //
 //       // 1. Save to Isar
-//       final savedPayment = await LocalPaymentDBHelper.instance.savePayment(localPayment);
+//       final savedPayment =
+//       await LocalPaymentDBHelper.instance.savePayment(localPayment);
 //
 //       // 2. Save to Hive (this is what powers your session history)
 //       await _savePaymentToHive(
@@ -4211,12 +4029,13 @@
 //       } else {
 //         _showPaymentSuccessPopup(paidAmount, savedPayment);
 //       }
-//
 //     } catch (e, stack) {
 //       print("Sunmi Card Payment Error: $e");
 //       print(stack);
 //       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(content: Text("Card payment faileddddddd: $e"), backgroundColor: Colors.red),
+//         SnackBar(
+//             content: Text("Card payment faileddddddd: $e"),
+//             backgroundColor: Colors.red),
 //       );
 //     } finally {
 //       setState(() {
@@ -4430,6 +4249,7 @@
 //       print("🗑 [Hive] Redeem REMOVED → OrderId: $orderId");
 //     }
 //   }
+//
 //   Future<void> _fetchPaymentsByOrderId() async {
 //     if (kDebugMode) print("###### _fetchPaymentsByOrderId");
 //
@@ -4653,334 +4473,1637 @@
 //   }
 //
 //   void deleteItemFromOrder(dynamic itemId) async {
-//     // TODO: Implement actual deletion logic
 //     setState(() {
 //       orderItems.removeWhere((item) => item[AppDBConst.itemId] == itemId);
+//       _syncEbtTotalWithOrderItems();   // ← ADD THIS
 //     });
 //   }
 //
-// //   void _callCreatePaymentAPI() {
-// //     if (kDebugMode) {
-// //       print("###### _callCreatePaymentAPI called, balanceAmount: $balanceAmount");
-// //     }
-// //
-// //     // ------------------------------------------------------
-// //     //  RULE 0: Ensure user selected a payment method
-// //     // ------------------------------------------------------
-// //     if (selectedPaymentMethod == null || selectedPaymentMethod!.isEmpty) {
-// //       print("❌ ERROR: No payment method selected");
-// //       return;
-// //     }
-// //
-// //     final bool isCard = selectedPaymentMethod == TextConstants.card;
-// //
-// //     // ------------------------------------------------------
-// //     // ⭐ RULE 1: If method is NOT card, amount is required
-// //     // ------------------------------------------------------
-// //     if (!isCard && balanceAmount > 0 && amountController.text.isEmpty) {
-// //       print("❌ ERROR: Amount required for Cash / Wallet / EBT");
-// //       return;
-// //     }
-// //
-// //     // Clean amount
-// //     String cleanAmount = amountController.text
-// //         .replaceAll(TextConstants.currencySymbol, '')
-// //         .trim();
-// //
-// //     double amount = double.tryParse(cleanAmount) ?? 0.0;
-// //
-// //     // ------------------------------------------------------
-// //     // ⭐ RULE 2: CARD amount handled by Sunmi, ignore validation
-// //     // ------------------------------------------------------
-// //     if (isCard) {
-// //       print("💳 CARD PAYMENT → Skipping amount validation, Sunmi handles it.");
-// //       amount = amount > 0 ? amount : 0.0;
-// //     } else {
-// //       // ------------------------------------------------------
-// //       // ⭐ RULE 3: No negative amount
-// //       // ------------------------------------------------------
-// //       if (amount < 0) {
-// //         print("❌ ERROR: Negative amount");
-// //         return;
-// //       }
-// //
-// //       // ------------------------------------------------------
-// //       // ⭐ RULE 4: Amount cannot be zero IF balance > 0
-// //       // ------------------------------------------------------
-// //       if (amount == 0 && computedNetPayable > 0) {
-// //         setState(() => _amountErrorText = TextConstants.amountValidation);
-// //         return;
-// //       }
-// //     }
-// //
-// //     _amountErrorText = null;
-// //     double remainingBalance = balanceAmount;
-// //
-// //     setState(() {
-// //       _processingPaymentMethod = selectedPaymentMethod;
-// //       isLoading = true;
-// //     });
-// //     _showPaymentProgressDialog(context);
-// //
-// //     final String datetime =
-// //     DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-// //
-// //     // ⭐ Important fix: Dynamic paymentMethod
-// //     final paymentRequest = PaymentRequestModel(
-// //       title: selectedPaymentMethod!,
-// //       orderId: orderId ?? 0,
-// //       amount: amount,
-// //       paymentMethod: selectedPaymentMethod!, // <-- correct method passed
-// //       shiftId: shiftId,
-// //       vendorId: vendorId,
-// //       userId: userId ?? 0,
-// //       serviceType: serviceType,
-// //       datetime: datetime,
-// //       notes: '',
-// //     );
-// //
-// //     if (kDebugMode) print("Creating payment with request: $paymentRequest");
-// //
-// //     paymentBloc.createPayment(paymentRequest);
-// //
-// //     StreamSubscription? subscription;
-// //     subscription = paymentBloc.createPaymentStream.listen(
-// //           (paymentResponse) async {
-// //
-// //
-// //         if (kDebugMode) {
-// //           print("Payment stream response: $paymentResponse");
-// //         }
-// //
-// //         if (paymentResponse.status == Status.ERROR) {
-// //           _hidePaymentProgressDialog();
-// //
-// //           setState(() {
-// //             _processingPaymentMethod = null;
-// //             isLoading = false;
-// //           });
-// //           subscription?.cancel();
-// //           return;
-// //         }
-// //
-// //         if (paymentResponse.status == Status.COMPLETED &&
-// //             paymentResponse.data != null &&
-// //             paymentResponse.data!.message == "Payment Created Successfully") {
-// //           setState(() {
-// //             isPaymentStarted = true;
-// //             _processingPaymentMethod = null;
-// //             isLoading = false;
-// //           });
-// //
-// //           final paymentData = paymentResponse.data!;
-// //           paidAmount = amount;
-// //           paymentId = paymentData.paymentId.toString();
-// //           orderStatus =
-// //               paymentData.orderStatus ?? TextConstants.processing;
-// //
-// //           try {
-// //             final box = StorageProvider.offlineOrders;
-// //             final key = (orderId ?? 0).toString();
-// //
-// //             final existing = box.containsKey(key)
-// //                 ? Map<String, dynamic>.from(box.get(key))
-// //                 : <String, dynamic>{};
-// //
-// //             existing["coupon_response"] = {
-// //               "available_coupons": paymentData.availableCoupons,
-// //               "coupons": paymentData.coupons
-// //                   ?.map((c) => c.toJson())
-// //                   .toList(),
-// //             };
-// //
-// //             await box.put(key, existing);
-// //
-// //             if (kDebugMode) {
-// //               print("🎁 FULL COUPON RESPONSE SAVED");
-// //               print(existing["coupon_response"]);
-// //             }
-// //           } catch (e) {
-// //             print("⚠ Coupon save failed: $e");
-// //           }
-// //
-// //           // ------------------------------------------
-// //           // OFFLINE DELETE (unchanged)
-// //           // ------------------------------------------
-// //           if (widget.isOfflineSynced && widget.offlineOrderId != null) {
-// //             try {
-// //               final offlineId = widget.offlineOrderId!;
-// //               final box = StorageProvider.offlineOrders;
-// //
-// //               if (await box.containsKey(offlineId.toString())) {
-// //                 await box.delete(offlineId.toString());
-// //               }
-// //
-// //               await orderHelper.deleteOrder(offlineId);
-// //             } catch (e) {
-// //               print("⚠ Failed deleting offline order: $e");
-// //             }
-// //           }
-// //
-// //           // =====================================================
-// // // ⭐ STORE LAST PAYMENT INFO (FOR VOID)
-// // // =====================================================
-// //           _lastPayment = LastPaymentInfo(
-// //             method: selectedPaymentMethod!,
-// //             amount: amount,
-// //             paymentId: paymentId,
-// //             sunmiTxnId: null, // ❗ only card has this
-// //           );
-// //
-// // // Save to Hive
-// //           try {
-// //             final box = StorageProvider.offlineOrders;
-// //             final key = (orderId ?? 0).toString();
-// //
-// //             final existing = box.containsKey(key)
-// //                 ? Map<String, dynamic>.from(box.get(key))
-// //                 : <String, dynamic>{};
-// //
-// //             existing["lastPayment"] = _lastPayment!.toJson();
-// //             await box.put(key, existing);
-// //
-// //             if (kDebugMode) {
-// //               print("💾 LAST PAYMENT SAVED (NON-CARD)");
-// //               print("   → method = ${_lastPayment!.method}");
-// //               print("   → amount = ${_lastPayment!.amount}");
-// //               print("   → paymentId = ${_lastPayment!.paymentId}");
-// //             }
-// //           } catch (e) {
-// //             print("⚠ Failed saving last payment to Hive: $e");
-// //           }
-// //
-// //
-// //           // ------------------------------------------
-// //           // BALANCE CALCULATION (unchanged)
-// //           // ------------------------------------------
-// //           final bool isExactPayment = (amount == remainingBalance);
-// //           final bool isOverPayment = (amount > remainingBalance);
-// //           final bool isPartialPayment = (amount < remainingBalance);
-// //
-// //           tenderAmount += amount;
-// //
-// //           if (isOverPayment) {
-// //             changeAmount = amount - remainingBalance;
-// //             balanceAmount = 0.0;
-// //           } else if (isExactPayment) {
-// //             changeAmount = 0.0;
-// //             balanceAmount = 0.0;
-// //           } else if (isPartialPayment) {
-// //             balanceAmount = remainingBalance - amount;
-// //             changeAmount = 0.0;
-// //           }
-// //
-// //           balanceAmount =
-// //               double.tryParse(balanceAmount.toStringAsFixed(2)) ?? 0.0;
-// //           if (changeAmount != null && changeAmount! > 0) {
-// //             final repo = PaymentRepository();
-// //             await repo.updatePaymentMeta(
-// //               paymentId: int.parse(paymentId!),
-// //               key: "_payment_remaining_change",
-// //               value: changeAmount!.toStringAsFixed(2),
-// //             );
-// //           }
-// //
-// //           _order["balanceAmount"] = balanceAmount;
-// //           _order["paidAmount"] = tenderAmount;
-// //           _order["tenderAmount"] = tenderAmount;
-// //
-// //           // ------------------------------------------------------
-// //           // ⭐ SAVE BALANCE + TENDER AMOUNT TO ORDER + HIVE
-// //           // ------------------------------------------------------
-// //           try {
-// //             final offlineBox = StorageProvider.offlineOrders;
-// //             final key = (orderId ?? 0).toString();
-// //
-// //             if (offlineBox.containsKey(key)) {
-// //               final updated = Map<String, dynamic>.from(offlineBox.get(key));
-// //
-// //               updated["balanceAmount"] = balanceAmount;
-// //               updated["paidAmount"] = tenderAmount;
-// //               updated["tenderAmount"] = tenderAmount;
-// //
-// //               // ⭐ Add this line to store EBT
-// //               updated["ebtTotal"] = ebtTotal;
-// //
-// //               offlineBox.put(key, updated);
-// //
-// //               print("✔ Hive updated → balance=$balanceAmount paid=$tenderAmount ebt=$ebtTotal");
-// //             } else {
-// //               // If order not in Hive yet, create it
-// //               offlineBox.put(key, {
-// //                 "balanceAmount": balanceAmount,
-// //                 "paidAmount": tenderAmount,
-// //                 "tenderAmount": tenderAmount,
-// //                 "payByCash": payByCash,
-// //                 "payByOther": payByOther,
-// //                 "ebtTotal": ebtTotal,   // ⭐ Add here too
-// //               });
-// //               print("✔ Hive created → balance=$balanceAmount paid=$tenderAmount ebt=$ebtTotal");
-// //             }
-// //           } catch (e) {
-// //             print("⚠ Hive update error: $e");
-// //           }
-// //           amountController.clear();
-// //
-// //           if (mounted) setState(() {});
-// //
-// //           // ------------------------------------------
-// //           // SHOW POPUPS (unchanged)
-// //           // ------------------------------------------
-// //           // if (isPartialPayment && balanceAmount > 0) {
-// //           //   _showPartialPaymentDialog(context, amount);
-// //           // } else {
-// //           //   _fetchPaymentsByOrderId();
-// //           //   // _showPaymentDialog(
-// //           //   //   context,
-// //           //   //   amount,
-// //           //   //   changeAmount: changeAmount,
-// //           //   //   showChange: changeAmount > 0,
-// //           //   // );
-// //           // }
-// //
-// //           // ------------------------------------------------------
-// // // ⭐ FINAL POPUP CONTROL (CREATE PAYMENT METHOD ONLY)
-// // // ------------------------------------------------------
-// //
-// //           _fetchPaymentsByOrderId(); // keep for UI refresh
-// //
-// //           final bool isPaymentComplete = balanceAmount <= 0;
-// //
-// //           if (isPaymentComplete && !_successPopupShown) {
-// //             _successPopupShown = true;
-// //             _hidePaymentProgressDialog();
-// //
-// //             final box = StorageProvider.offlineOrders;
-// //             final key = (orderId ?? 0).toString();
-// //
-// //             final couponResponse =
-// //                 (box.get(key)?["coupon_response"] as Map?)
-// //                     ?.cast<String, dynamic>() ??
-// //                     {};
-// //
-// //             _showPaymentDialog(
-// //               context,
-// //               tenderAmount,
-// //               changeAmount: changeAmount,
-// //               showChange: changeAmount != null && changeAmount! > 0,
-// //               couponResponse: couponResponse,
-// //             );
-// //           } else if (balanceAmount > 0) {
-// //             _hidePaymentProgressDialog();
-// //             _showPartialPaymentDialog(context, amount);
-// //           }
-// //
-// //
-// //           subscription?.cancel();
-// //         }
-// //       },
-// //     );
-// //   }
+//
+//   Future<void> _voidCardPaymentViaKickbackAPI({
+//     required String transactionId,
+//     required String paymentId,
+//     required int wooOrderId,
+//   }) async {
+//     if (transactionId.isEmpty) {
+//       if (kDebugMode) print("⚠️ Kickback void skipped – no transaction_id");
+//       return;
+//     }
+//
+//     try {
+//       final String token = await _getTokenFromDb();
+//
+//       final uri = Uri.parse(
+//         "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/void-kickback-transaction",
+//       );
+//
+//       if (kDebugMode) {
+//         print("🔄 Voiding card via kickback API");
+//         print("   order_id: $wooOrderId");
+//         print("   payment_id: $paymentId");
+//         print("   transaction_id: $transactionId");
+//       }
+//
+//       final response = await http.post(
+//         uri,
+//         headers: {
+//           "Content-Type": "application/json",
+//           "Authorization": "Bearer $token",
+//         },
+//         body: jsonEncode({
+//           "order_id": wooOrderId.toString(),
+//           "payment_id": paymentId,
+//           "transaction_id": transactionId,
+//         }),
+//       );
+//
+//       if (kDebugMode) {
+//         print("Kickback void response: ${response.statusCode}");
+//         print("Body: ${response.body}");
+//       }
+//
+//       final Map<String, dynamic> body =
+//       jsonDecode(response.body) as Map<String, dynamic>;
+//
+//       if (body["success"] == true) {
+//         if (kDebugMode) print("✅ Kickback card void successful");
+//       } else {
+//         if (kDebugMode) {
+//           print("Kickback card void failed: ${body["message"]}");
+//         }
+//       }
+//     } catch (e, st) {
+//       if (kDebugMode) {
+//         print(" _voidCardPaymentViaKickbackAPI error: $e");
+//         print(st);
+//       }
+//     }
+//   }
+//
+//   Future<void> _voidServerPaymentIfCard({required String? serverPaymentId}) async {
+//     if (kDebugMode) {
+//       print(" ===== _voidServerPaymentIfCard CALLED =====");
+//       print("   serverPaymentId  : $serverPaymentId");
+//       print("   _lastPayment     : ${_lastPayment?.toJson()}");
+//     }
+//
+//     if (serverPaymentId == null || serverPaymentId.isEmpty) {
+//       if (kDebugMode) print(" Card void skipped – no server payment_id");
+//       return;
+//     }
+//
+//     final int wooOrderId = await _resolveWooOrderIdForPayment(forceSync: false);
+//     if (kDebugMode) print("   wooOrderId resolved: $wooOrderId");
+//
+//     if (wooOrderId <= 0) {
+//       if (kDebugMode) print(" Card void skipped – wooOrderId missing");
+//       return;
+//     }
+//
+//     // ── STEP 1: Try transactionId from in-memory _lastPayment ──────────────
+//     String? txnId = _lastPayment?.transactionId;
+//     if (kDebugMode) print("   transactionId from _lastPayment: $txnId");
+//
+//     // ── STEP 2: If null, recover from Hive (handles screen-reload case) ─────
+//     if (txnId == null || txnId.isEmpty) {
+//       if (kDebugMode) print("🔍 transactionId not in memory → checking Hive...");
+//       try {
+//         final String orderKey = widget.offlineOrderId?.toString() ??
+//             widget.orderId?.toString() ??
+//             orderId?.toString() ??
+//             "";
+//         if (orderKey.isNotEmpty) {
+//           final box = StorageProvider.offlineOrders;
+//           final rawHive = await box.get(orderKey);
+//           if (rawHive is Map) {
+//             final hiveMap = Map<String, dynamic>.from(rawHive);
+//             final dynamic lastPaymentRaw = hiveMap["lastPayment"];
+//             if (lastPaymentRaw is Map) {
+//               final Map<String, dynamic> lastPaymentMap =
+//               Map<String, dynamic>.from(lastPaymentRaw);
+//               txnId = lastPaymentMap["transactionId"]?.toString();
+//               if (kDebugMode) {
+//                 print("   Hive lastPayment: $lastPaymentMap");
+//                 print("   transactionId recovered from Hive: $txnId");
+//               }
+//             } else {
+//               if (kDebugMode) print("   Hive lastPayment key missing or not a Map");
+//             }
+//           }
+//         }
+//       } catch (e) {
+//         if (kDebugMode) print("⚠️ Failed to read transactionId from Hive: $e");
+//       }
+//     }
+//
+//     // ── STEP 3: Route to kickback API if we have a transactionId ────────────
+//     if (txnId != null && txnId.isNotEmpty) {
+//       if (kDebugMode) {
+//         print("✅ transactionId found → routing to kickback void API");
+//         print("   txnId      : $txnId");
+//         print("   paymentId  : $serverPaymentId");
+//         print("   wooOrderId : $wooOrderId");
+//       }
+//       await _voidCardPaymentViaKickbackAPI(
+//         transactionId: txnId,
+//         paymentId: serverPaymentId,
+//         wooOrderId: wooOrderId,
+//       );
+//       return;
+//     }
+//
+//     // ── STEP 4: Fallback to old void API (no transactionId available) ────────
+//     if (kDebugMode) {
+//       print("⚠️ No transactionId found anywhere → falling back to old void API");
+//       print("   paymentId  : $serverPaymentId");
+//       print("   wooOrderId : $wooOrderId");
+//     }
+//
+//     final completer = Completer<void>();
+//     late StreamSubscription sub;
+//     sub = paymentBloc.voidPaymentStream.listen((response) {
+//       if (response.status == Status.COMPLETED ||
+//           response.status == Status.ERROR) {
+//         if (kDebugMode) {
+//           print(
+//               "Old void API → ${response.status} ${response.message ?? response.data?.message}");
+//         }
+//         if (!completer.isCompleted) completer.complete();
+//         sub.cancel();
+//       }
+//     });
+//
+//
+//     paymentBloc.voidPayment(VoidPaymentRequestModel(
+//       orderId: wooOrderId,
+//       paymentId: serverPaymentId,
+//     ));
+//
+//     await completer.future.timeout(
+//       const Duration(seconds: 15),
+//       onTimeout: () {
+//         if (kDebugMode) print("⚠️ Old void API timed out");
+//         sub.cancel();
+//       },
+//     );
+//
+//     if (kDebugMode) print("🔴 ===== _voidServerPaymentIfCard DONE =====");
+//   }
+//
+//   // Add this helper method to the class
+//   Future<http.Response> _postWithRedirect(Uri uri, {required Map<String, String> headers, required String body}) async {
+//     final client = http.Client();
+//     try {
+//       var response = await client.post(uri, headers: headers, body: body);
+//
+//       // Handle 307 redirect
+//       if (response.statusCode == 307 || response.statusCode == 301 || response.statusCode == 302) {
+//         final location = response.headers['location'];
+//         if (location != null) {
+//           final redirectUri = Uri.parse(location);
+//           response = await client.post(redirectUri, headers: headers, body: body);
+//         }
+//       }
+//       return response;
+//     } finally {
+//       client.close();
+//     }
+//   }
+//
+//   Future<String> _getTokenFromDb() async {
+//     final db = await DBHelper.instance.database;
+//     final result = await db.query(
+//       AppDBConst.userTable,
+//       where:
+//       '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+//       orderBy: '${AppDBConst.userId} DESC',
+//       limit: 1,
+//     );
+//
+//     if (result.isEmpty) {
+//       throw Exception('No active user token found');
+//     }
+//
+//     final token = result.first[AppDBConst.userToken] as String;
+//     if (kDebugMode) print('Token from DB: $token');
+//     return token;
+//   }
+//
+//   /// Pay Later only supports paying the FULL balance — disable the button
+//   /// whenever the user has typed a partial amount into the keypad.
+//   bool _isPartialAmountEntered() {
+//     final double enteredAmount = double.tryParse(
+//       amountController.text
+//           .replaceAll(TextConstants.currencySymbol, '')
+//           .trim(),
+//     ) ??
+//         0.0;
+//
+//     final double effectiveBalance =
+//         _currentPaymentRemainingBalance ?? balanceAmount;
+//
+//     return enteredAmount > 0 && enteredAmount < (effectiveBalance - 0.01);
+//   }
+//
+//   // Future<void> _handlePayLaterPayment() async {
+//   //   // Safety guard — button is already disabled for this case, but re-check.
+//   //   setState(() => _amountErrorText = null);
+//   //
+//   //   // ⭐ NEW: Require an amount to be entered/selected first — same validation
+//   //   // Cash and Card use. Without this, tapping Pay Later at $0.00 skipped
+//   //   // straight to the popup + sync, which is wrong.
+//   //   final double enteredAmount = double.tryParse(
+//   //     amountController.text
+//   //         .replaceAll(TextConstants.currencySymbol, '')
+//   //         .trim(),
+//   //   ) ??
+//   //       0.0;
+//   //
+//   //   if (enteredAmount <= 0 && computedNetPayable > 0) {
+//   //     setState(() => _amountErrorText = TextConstants.amountValidation);
+//   //     return;
+//   //   }
+//   //
+//   //   if (_isPartialAmountEntered()) {
+//   //     ScaffoldMessenger.of(context).showSnackBar(
+//   //       const SnackBar(
+//   //         content: Text("Pay Later cannot be used with a partial amount"),
+//   //         backgroundColor: Colors.red,
+//   //       ),
+//   //     );
+//   //     return;
+//   //   }
+//   //
+//   //   final double effectiveBalance =
+//   //       _currentPaymentRemainingBalance ?? balanceAmount;
+//   //
+//   //   if (effectiveBalance <= 0) {
+//   //     ScaffoldMessenger.of(context).showSnackBar(
+//   //       const SnackBar(
+//   //         content: Text("Nothing to pay"),
+//   //         backgroundColor: Colors.orange,
+//   //       ),
+//   //     );
+//   //     return;
+//   //   }
+//   //
+//   //   // ── Show the Pay Later customer-picker popup ───────────────────────────
+//   //   final dynamic selectedUser = await showDialog<dynamic>(
+//   //     context: context,
+//   //     barrierDismissible: false,
+//   //     builder: (_) => Dialog(
+//   //       backgroundColor: Colors.transparent,
+//   //       elevation: 0,
+//   //       insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+//   //       child: PayLaterWidget(),
+//   //     ),
+//   //   );
+//   //
+//   //   // Cancel tapped (or dialog dismissed) → just stay on Order Summary.
+//   //   if (selectedUser == null) {
+//   //     if (kDebugMode) print(" Pay Later cancelled by user");
+//   //     return;
+//   //   }
+//   //
+//   //   setState(() {
+//   //     _selectedPayLaterUser = Map<String, dynamic>.from(selectedUser as Map);
+//   //     _isPayLaterSelected = true;
+//   //     _processingPaymentMethod = "Pay Later";
+//   //     isLoading = true;
+//   //   });
+//   //
+//   //   _showPaymentProgressDialog(context);
+//   //
+//   //   try {
+//   //     final box = StorageProvider.offlineOrders;
+//   //     final String orderKey = widget.offlineOrderId?.toString() ??
+//   //         widget.orderId?.toString() ??
+//   //         orderId?.toString() ??
+//   //         "";
+//   //
+//   //     if (orderKey.isEmpty) {
+//   //       _hidePaymentProgressDialog();
+//   //       setState(() {
+//   //         isLoading = false;
+//   //         _processingPaymentMethod = null;
+//   //       });
+//   //       ScaffoldMessenger.of(context).showSnackBar(
+//   //         const SnackBar(
+//   //           content: Text("Could not resolve order"),
+//   //           backgroundColor: Colors.red,
+//   //         ),
+//   //       );
+//   //       return;
+//   //     }
+//   //
+//   //     final raw = await box.get(orderKey);
+//   //     final Map<String, dynamic> order =
+//   //     raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+//   //
+//   //     // ── Attach Pay Later customer to the offline order BEFORE syncing ────
+//   //     order['selectedPayLaterUser'] =
+//   //     Map<String, dynamic>.from(_selectedPayLaterUser!);
+//   //     order['is_pay_later_order'] = true;
+//   //     order['payment_method'] = "Pay Later";
+//   //
+//   //     await box.put(orderKey, order);
+//   //
+//   //     if (kDebugMode) {
+//   //       print("✅ Pay Later user saved to Hive before sync: "
+//   //           "${_selectedPayLaterUser!['name']} (ID: ${_selectedPayLaterUser!['user_id']})");
+//   //     }
+//   //
+//   //     // ── Sync the order (with the Pay Later user attached) to the server ──
+//   //     final result = await OrderRepository().syncSingleOfflineOrder(order);
+//   //
+//   //     if (result == null || result is! Map) {
+//   //       _hidePaymentProgressDialog();
+//   //       setState(() {
+//   //         isLoading = false;
+//   //         _processingPaymentMethod = null;
+//   //       });
+//   //       ScaffoldMessenger.of(context).showSnackBar(
+//   //         const SnackBar(
+//   //           content: Text("Failed to sync Pay Later order"),
+//   //           backgroundColor: Colors.red,
+//   //         ),
+//   //       );
+//   //       return;
+//   //     }
+//   //
+//   //     _hidePaymentProgressDialog();
+//   //
+//   //     // ── Treat this as a full payment (Pay Later covers the whole balance)─
+//   //     final double amount = effectiveBalance;
+//   //     final double newTender = tenderAmount + amount;
+//   //
+//   //     _lastPayment = LastPaymentInfo(
+//   //       method: "Pay Later",
+//   //       amount: amount,
+//   //       paymentId: "paylater_${DateTime.now().millisecondsSinceEpoch}",
+//   //       sunmiTxnId: null,
+//   //     );
+//   //
+//   //     final String datetimeStr =
+//   //     DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+//   //
+//   //     final localPayment = LocalPayment(
+//   //       orderId: orderId ?? 0,
+//   //       title: "Pay Later",
+//   //       amount: amount,
+//   //       paymentMethod: "Pay Later",
+//   //       shiftId: shiftId,
+//   //       vendorId: vendorId,
+//   //       userId: userId ?? 0,
+//   //       serviceType: serviceType,
+//   //       datetime: datetimeStr,
+//   //       notes:
+//   //       "Pay Later – assigned to ${_selectedPayLaterUser?['name'] ?? 'customer'} "
+//   //           "(ID: ${_selectedPayLaterUser?['user_id']})",
+//   //       isSynced: true,
+//   //       createdAt: DateTime.now(),
+//   //       remainingBalance: 0.0,
+//   //       status: PaymentDbStatus.completed,
+//   //     );
+//   //
+//   //     final savedPayment =
+//   //     await LocalPaymentDBHelper.instance.savePayment(localPayment);
+//   //
+//   //     await _savePaymentToHive(
+//   //       amount: amount,
+//   //       paymentMethod: "Pay Later",
+//   //       transactionId: "paylater_${savedPayment.id}",
+//   //       localPayment: savedPayment,
+//   //     );
+//   //     await _saveLocalPaymentToHive(savedPayment);
+//   //
+//   //     setState(() {
+//   //       isPaymentStarted = true;
+//   //       isLoading = false;
+//   //       _processingPaymentMethod = null;
+//   //       paidAmount = amount;
+//   //       tenderAmount = newTender;
+//   //       balanceAmount = 0.0;
+//   //       changeAmount = 0.0;
+//   //       payByOther += amount; // Pay Later rolls up under "Other" totals
+//   //       _currentPaymentRemainingBalance = null;
+//   //       _lastPaymentDetails = null;
+//   //       _successPopupShown = true;
+//   //     });
+//   //
+//   //     _resetAmountAfterPay();
+//   //
+//   //     final cr = order["coupon_response"];
+//   //     final couponResponse =
+//   //     cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+//   //
+//   //     // ── Show the same full-payment success popup as cash/card/EBT ────────
+//   //     _showPaymentDialog(
+//   //       context,
+//   //       newTender,
+//   //       changeAmount: 0.0,
+//   //       showChange: false,
+//   //       couponResponse: couponResponse,
+//   //     );
+//   //   } catch (e, st) {
+//   //     if (kDebugMode) {
+//   //       print("❌ _handlePayLaterPayment error: $e");
+//   //       print(st);
+//   //     }
+//   //     _hidePaymentProgressDialog();
+//   //     setState(() {
+//   //       isLoading = false;
+//   //       _processingPaymentMethod = null;
+//   //     });
+//   //     ScaffoldMessenger.of(context).showSnackBar(
+//   //       SnackBar(
+//   //         content: Text("Pay Later error: $e"),
+//   //         backgroundColor: Colors.red,
+//   //       ),
+//   //     );
+//   //   }
+//   // }
+//
+//   ///// above code was old and working
+//
+//   Future<void> _handlePayLaterPayment() async {
+//     // Safety guard — button is already disabled for this case, but re-check.
+//     setState(() => _amountErrorText = null);
+//
+//     // ⭐ NEW: Require an amount to be entered/selected first — same validation
+//     // Cash and Card use. Without this, tapping Pay Later at $0.00 skipped
+//     // straight to the popup + sync, which is wrong.
+//     final double enteredAmount = double.tryParse(
+//       amountController.text
+//           .replaceAll(TextConstants.currencySymbol, '')
+//           .trim(),
+//     ) ??
+//         0.0;
+//
+//     if (enteredAmount <= 0 && computedNetPayable > 0) {
+//       setState(() => _amountErrorText = TextConstants.amountValidation);
+//       return;
+//     }
+//
+//     if (_isPartialAmountEntered()) {
+//       ScaffoldMessenger.of(context).showSnackBar(
+//         const SnackBar(
+//           content: Text("Pay Later cannot be used with a partial amount"),
+//           backgroundColor: Colors.red,
+//         ),
+//       );
+//       return;
+//     }
+//
+//     final double effectiveBalance =
+//         _currentPaymentRemainingBalance ?? balanceAmount;
+//
+//     if (effectiveBalance <= 0) {
+//       ScaffoldMessenger.of(context).showSnackBar(
+//         const SnackBar(
+//           content: Text("Nothing to pay"),
+//           backgroundColor: Colors.orange,
+//         ),
+//       );
+//       return;
+//     }
+//
+//     // ⭐ FIX: Cap the entered amount to the effective balance (like Cash/Card)
+//     // This prevents Pay Later from taking more than the remaining balance
+//     double amountToUse = enteredAmount;
+//
+//     // If entered amount exceeds balance, cap it to the balance
+//     if (enteredAmount > effectiveBalance) {
+//       amountToUse = effectiveBalance;
+//
+//       // Update the UI to show the capped amount
+//       _rawAmount = (amountToUse * 100).round();
+//       amountController.text =
+//       '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+//       setState(() {
+//         _isAmountEntered = true;
+//         _amountErrorText = null;
+//       });
+//
+//       // Show a snackbar to inform the user
+//       ScaffoldMessenger.of(context).showSnackBar(
+//         SnackBar(
+//           content: Text(
+//               'Amount adjusted to remaining balance (${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)})'
+//           ),
+//           backgroundColor: Colors.orange,
+//           duration: const Duration(seconds: 2),
+//         ),
+//       );
+//     }
+//
+//     if (amountToUse <= 0) {
+//       setState(() => _amountErrorText = TextConstants.amountValidation);
+//       return;
+//     }
+//
+//     // ── Show the Pay Later customer-picker popup ───────────────────────────
+//     final dynamic selectedUser = await showDialog<dynamic>(
+//       context: context,
+//       barrierDismissible: false,
+//       builder: (_) => Dialog(
+//         backgroundColor: Colors.transparent,
+//         elevation: 0,
+//         insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+//         child: PayLaterWidget(),
+//       ),
+//     );
+//
+//     // Cancel tapped (or dialog dismissed) → just stay on Order Summary.
+//     if (selectedUser == null) {
+//       if (kDebugMode) print(" Pay Later cancelled by user");
+//       return;
+//     }
+//
+//     setState(() {
+//       _selectedPayLaterUser = Map<String, dynamic>.from(selectedUser as Map);
+//       _isPayLaterSelected = true;
+//       _processingPaymentMethod = "Pay Later";
+//       isLoading = true;
+//     });
+//
+//     _showPaymentProgressDialog(context);
+//
+//     try {
+//       final box = StorageProvider.offlineOrders;
+//       final String orderKey = widget.offlineOrderId?.toString() ??
+//           widget.orderId?.toString() ??
+//           orderId?.toString() ??
+//           "";
+//
+//       if (orderKey.isEmpty) {
+//         _hidePaymentProgressDialog();
+//         setState(() {
+//           isLoading = false;
+//           _processingPaymentMethod = null;
+//         });
+//         ScaffoldMessenger.of(context).showSnackBar(
+//           const SnackBar(
+//             content: Text("Could not resolve order"),
+//             backgroundColor: Colors.red,
+//           ),
+//         );
+//         return;
+//       }
+//
+//       final raw = await box.get(orderKey);
+//       final Map<String, dynamic> order =
+//       raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+//
+//       // ── Attach Pay Later customer to the offline order BEFORE syncing ────
+//       order['selectedPayLaterUser'] =
+//       Map<String, dynamic>.from(_selectedPayLaterUser!);
+//       order['is_pay_later_order'] = true;
+//       order['payment_method'] = "Pay Later";
+//
+//       await box.put(orderKey, order);
+//
+//       if (kDebugMode) {
+//         print("✅ Pay Later user saved to Hive before sync: "
+//             "${_selectedPayLaterUser!['name']} (ID: ${_selectedPayLaterUser!['user_id']})");
+//       }
+//
+//       // ── Sync the order (with the Pay Later user attached) to the server ──
+//       final result = await OrderRepository().syncSingleOfflineOrder(order);
+//
+//       if (result == null || result is! Map) {
+//         _hidePaymentProgressDialog();
+//         setState(() {
+//           isLoading = false;
+//           _processingPaymentMethod = null;
+//         });
+//         ScaffoldMessenger.of(context).showSnackBar(
+//           const SnackBar(
+//             content: Text("Failed to sync Pay Later order"),
+//             backgroundColor: Colors.red,
+//           ),
+//         );
+//         return;
+//       }
+//
+//       _hidePaymentProgressDialog();
+//
+//       // ⭐ FIX: Use the capped amount (amountToUse) instead of effectiveBalance
+//       // This ensures Pay Later only takes the exact amount entered (capped at balance)
+//       final double amount = amountToUse;
+//       final double newTender = tenderAmount + amount;
+//
+//       _lastPayment = LastPaymentInfo(
+//         method: "Pay Later",
+//         amount: amount,
+//         paymentId: "paylater_${DateTime.now().millisecondsSinceEpoch}",
+//         sunmiTxnId: null,
+//       );
+//
+//       final String datetimeStr =
+//       DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+//
+//       final localPayment = LocalPayment(
+//         orderId: orderId ?? 0,
+//         title: "Pay Later",
+//         amount: amount,
+//         paymentMethod: "Pay Later",
+//         shiftId: shiftId,
+//         vendorId: vendorId,
+//         userId: userId ?? 0,
+//         serviceType: serviceType,
+//         datetime: datetimeStr,
+//         notes:
+//         "Pay Later – assigned to ${_selectedPayLaterUser?['name'] ?? 'customer'} "
+//             "(ID: ${_selectedPayLaterUser?['user_id']})",
+//         isSynced: true,
+//         createdAt: DateTime.now(),
+//         remainingBalance: (effectiveBalance - amount).clamp(0.0, double.infinity),
+//         status: PaymentDbStatus.completed,
+//       );
+//
+//       final savedPayment =
+//       await LocalPaymentDBHelper.instance.savePayment(localPayment);
+//
+//       await _savePaymentToHive(
+//         amount: amount,
+//         paymentMethod: "Pay Later",
+//         transactionId: "paylater_${savedPayment.id}",
+//         localPayment: savedPayment,
+//       );
+//       await _saveLocalPaymentToHive(savedPayment);
+//
+//       // Calculate new balance after this payment
+//       final double newBalance = (effectiveBalance - amount).clamp(0.0, double.infinity);
+//       final bool isFullPayment = newBalance <= 0.01;
+//
+//       setState(() {
+//         isPaymentStarted = true;
+//         isLoading = false;
+//         _processingPaymentMethod = null;
+//         paidAmount = amount;
+//         tenderAmount = newTender;
+//         balanceAmount = newBalance;
+//         changeAmount = 0.0;
+//         payByOther += amount; // Pay Later rolls up under "Other" totals
+//
+//         if (isFullPayment) {
+//           _currentPaymentRemainingBalance = null;
+//           _lastPaymentDetails = null;
+//           _successPopupShown = true;
+//         } else {
+//           _currentPaymentRemainingBalance = newBalance;
+//           _lastPaymentDetails = {
+//             'amount': amount,
+//             'method': "Pay Later",
+//             'remainingBalance': newBalance,
+//             'previousBalance': effectiveBalance,
+//             'datetime': DateTime.now().toIso8601String(),
+//             'paymentNumber': (_lastPaymentDetails?['paymentNumber'] ?? 0) + 1,
+//           };
+//         }
+//       });
+//
+//       _resetAmountAfterPay();
+//
+//       final cr = order["coupon_response"];
+//       final couponResponse =
+//       cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+//
+//       // ── Show appropriate dialog based on payment status ──
+//       if (isFullPayment) {
+//         _successPopupShown = true;
+//         await CustomerDisplayService.showThankYou();
+//         await orderHelper.setActiveOrder(null);
+//         await CustomerDisplayService.resetDisplay();
+//
+//         _showPaymentDialog(
+//           context,
+//           newTender,
+//           changeAmount: 0.0,
+//           showChange: false,
+//           couponResponse: couponResponse,
+//         );
+//       } else {
+//         _showPartialPaymentDialog(context, amount);
+//       }
+//     } catch (e, st) {
+//       if (kDebugMode) {
+//         print("❌ _handlePayLaterPayment error: $e");
+//         print(st);
+//       }
+//       _hidePaymentProgressDialog();
+//       setState(() {
+//         isLoading = false;
+//         _processingPaymentMethod = null;
+//       });
+//       ScaffoldMessenger.of(context).showSnackBar(
+//         SnackBar(
+//           content: Text("Pay Later error: $e"),
+//           backgroundColor: Colors.red,
+//         ),
+//       );
+//     }
+//   }
+//
+//   Future<void> _handleEbtCardPaymentViaAPI() async {
+//     final double amount = double.tryParse(
+//       amountController.text
+//           .replaceAll(TextConstants.currencySymbol, '')
+//           .trim(),
+//     ) ??
+//         0.0;
+//
+//     if (amount <= 0) {
+//       setState(() => _amountErrorText = TextConstants.amountValidation);
+//       return;
+//     }
+//
+//     // EBT-specific validation
+//     final int enteredCents = (amount * 100).round();
+//     final int ebtCents = (ebtTotal * 100).round();
+//
+//     if (ebtCents <= 0) {
+//       setState(() => _amountErrorText = "No EBT balance available");
+//       return;
+//     }
+//     if (enteredCents > ebtCents) {
+//       setState(() => _amountErrorText =
+//       "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})");
+//       return;
+//     }
+//
+//     _amountErrorText = null;
+//
+//     // ── 1. Show loading ──────────────────────────────────────
+//     setState(() {
+//       isLoading = true;
+//       _processingPaymentMethod = TextConstants.ebtText;
+//     });
+//     _showPaymentProgressDialog(context);
+//
+//     try {
+//       // ── 2. Sync offline order → get WooCommerce order id ──
+//       final box = StorageProvider.offlineOrders;
+//       final String orderKey = widget.offlineOrderId?.toString() ??
+//           widget.orderId?.toString() ??
+//           orderId?.toString() ??
+//           "";
+//
+//       int wooOrderId = 0;
+//
+//       if (orderKey.isNotEmpty) {
+//         final raw = await box.get(orderKey);
+//         if (raw is Map) {
+//           final offlineMap = Map<String, dynamic>.from(raw);
+//
+//           final cached = offlineMap["wooOrderId"];
+//           wooOrderId = (cached is int)
+//               ? cached
+//               : int.tryParse(cached?.toString() ?? "") ?? 0;
+//
+//           if (wooOrderId == 0) {
+//             final syncResult =
+//             await OrderRepository().syncSingleOfflineOrder(offlineMap);
+//             if (syncResult is Map) {
+//               wooOrderId = (syncResult?["id"] as num?)?.toInt() ?? 0;
+//               offlineMap["wooOrderId"] = wooOrderId;
+//               await box.put(orderKey, offlineMap);
+//             }
+//           }
+//         }
+//       }
+//
+//       if (wooOrderId == 0) {
+//         wooOrderId = widget.orderId ?? orderId ?? 0;
+//       }
+//
+//       if (wooOrderId == 0) {
+//         _hidePaymentProgressDialog();
+//         setState(() {
+//           isLoading = false;
+//           _processingPaymentMethod = null;
+//         });
+//         ScaffoldMessenger.of(context).showSnackBar(
+//           const SnackBar(
+//             content: Text("Could not resolve order – please try again"),
+//             backgroundColor: Colors.red,
+//           ),
+//         );
+//         return;
+//       }
+//
+//       // ── 3. Build auth header ──────────────────────────────
+//       final String token = await _getTokenFromDb();
+//
+//       // ── 4. Call create-payment API ────────────────────────
+//       if (_isCardPaymentCancelled) return;
+//
+// // === API Call ===
+//       final uri = Uri.parse(
+//         "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment",
+//       );
+//
+//       final requestBody = {
+//         "order_id": wooOrderId,
+//         "amount": amount,
+//         "payment_method": "card",
+//         "shift_id": shiftId,
+//       };
+//
+// // Print request details
+//       print("API URLllllll: $uri");
+//       print("Request Body: ${jsonEncode(requestBody)}");
+//
+//       final http.Response response = await http.post(
+//         uri,
+//         headers: {
+//           "Content-Type": "application/json",
+//           "Authorization": "Bearer $token",
+//         },
+//         body: jsonEncode(requestBody),
+//       );
+//
+// // Print response details
+//       print("Response Status Code: ${response.statusCode}");
+//       print("Response Body: ${response.body}");
+//
+//       _hidePaymentProgressDialog();
+//       setState(() {
+//         isLoading = false;
+//         _processingPaymentMethod = null;
+//       });
+//
+//       if (kDebugMode) {
+//         print("EBT payment API → ${response.statusCode}");
+//         print("Body: ${response.body}");
+//       }
+//
+//       final Map<String, dynamic> body =
+//       jsonDecode(response.body) as Map<String, dynamic>;
+//
+//       // ── 5. Handle response ────────────────────────────────
+//       if (body["success"] != true) {
+//         final String msg =
+//             body["message"]?.toString() ?? "EBT payment failed";
+//         ScaffoldMessenger.of(context).showSnackBar(
+//           SnackBar(content: Text(msg), backgroundColor: Colors.red),
+//         );
+//         return;
+//       }
+//
+//       // ── 6. success: true → update local state & save ──────
+// // Refresh payment history FIRST so balanceAmount is accurate
+// // (card/cash payments already made are reflected correctly)
+//       await _calculateBalanceFromPaymentHistory();
+//
+//       final double currentBalance = balanceAmount; // now fresh
+//       final double newTender = payByEbt + amount;
+//       double newBalance = (currentBalance - amount).clamp(0.0, double.infinity);
+//       double newChange = 0.0;
+//       if (amount > currentBalance) {
+//         newChange = amount - currentBalance;
+//         newBalance = 0.0;
+//       }
+//
+// // Use a small tolerance for floating point (e.g. 0.01)
+//       final bool isFullPayment = newBalance <= 0.01;
+//
+//
+//       final String datetimeStr =
+//       DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+//
+//       final localPayment = LocalPayment(
+//         orderId: orderId ?? 0,
+//         title: TextConstants.ebtText,
+//         amount: amount,
+//         paymentMethod: TextConstants.ebtText,
+//         shiftId: shiftId,
+//         vendorId: vendorId,
+//         userId: userId ?? 0,
+//         serviceType: serviceType,
+//         datetime: datetimeStr,
+//         notes: "ebt via API – wooOrderId: $wooOrderId",
+//         isSynced: true,
+//         createdAt: DateTime.now(),
+//         remainingBalance: newBalance,
+//         status: isFullPayment
+//             ? PaymentDbStatus.completed
+//             : PaymentDbStatus.pending,
+//       );
+//
+//       final saved =
+//       await LocalPaymentDBHelper.instance.savePayment(localPayment);
+//
+//       _lastPayment = LastPaymentInfo(
+//         method: TextConstants.ebtText,
+//         amount: amount,
+//         paymentId: saved.id.toString(),
+//         sunmiTxnId: null,
+//         sunmiOrderId: null,
+//       );
+//
+//       await _savePaymentToHive(
+//         amount: amount,
+//         paymentMethod: TextConstants.ebtText,
+//         transactionId: "ebt_api_${saved.id}",
+//         localPayment: saved,
+//       );
+//       await _saveLocalPaymentToHive(saved);
+//
+//       setState(() {
+//         isPaymentStarted = true;
+//         paidAmount = amount;
+//         paymentId = saved.id.toString();
+//         tenderAmount = newTender;
+//         balanceAmount = newBalance;
+//         changeAmount = newChange;
+//         payByEbt += amount;
+//         // Reduce remaining EBT balance
+//         ebtTotal = (ebtTotal - amount).clamp(0.0, double.infinity);
+//         _currentPaymentRemainingBalance =
+//         isFullPayment ? null : newBalance;
+//         _lastPaymentDetails = {
+//           "amount": amount,
+//           "method": TextConstants.ebtText,
+//           "remainingBalance": newBalance,
+//           "previousBalance": currentBalance,
+//           "datetime": DateTime.now().toIso8601String(),
+//           "paymentNumber":
+//           (_lastPaymentDetails?["paymentNumber"] ?? 0) + 1,
+//         };
+//       });
+//
+//       _resetAmountAfterPay();
+//
+//       // ── 7. Show popup ─────────────────────────────────────
+//
+//       if (isFullPayment) {
+//         _successPopupShown = false; // reset so full dialog always shows
+//         // _successPopupShown = true;
+//         await CustomerDisplayService.showThankYou();
+//         await orderHelper.setActiveOrder(null);
+//         await CustomerDisplayService.resetDisplay();
+//
+//         final boxData = await box.get(orderKey);
+//         final cr = boxData is Map ? boxData["coupon_response"] : null;
+//         final couponResponse = cr is Map
+//             ? Map<String, dynamic>.from(cr)
+//             : <String, dynamic>{};
+//
+//         _showPaymentDialog(
+//           context,
+//           newTender,
+//           changeAmount: newChange,
+//           showChange: newChange > 0,
+//           couponResponse: couponResponse,
+//         );
+//       } else if (!isFullPayment && amount > 0) {
+//         _showPartialPaymentDialog(context, amount);
+//       }
+//     } catch (e, st) {
+//       _hidePaymentProgressDialog();
+//       setState(() {
+//         isLoading = false;
+//         _processingPaymentMethod = null;
+//       });
+//       // Only show error if NOT cancelled by user
+//       if (!_isCardPaymentCancelled && mounted) {
+//         ScaffoldMessenger.of(context).showSnackBar(
+//           SnackBar(
+//             content: const Text("Payment failed. Please try again."),
+//             backgroundColor: Colors.red,
+//             duration: const Duration(seconds: 3),
+//           ),
+//         );
+//       }
+//       // Reset cancel flag
+//       _isCardPaymentCancelled = false;
+//     }
+//   }
+//
+//   Future<void> _handleCardPaymentViaAPI() async {
+//     _isCardPaymentCancelled = false;
+//
+//     final double enteredAmount = double.tryParse(
+//       amountController.text
+//           .replaceAll(TextConstants.currencySymbol, '')
+//           .trim(),
+//     ) ??
+//         0.0;
+//
+//     if (enteredAmount <= 0) {
+//       setState(() => _amountErrorText = TextConstants.amountValidation);
+//       return;
+//     }
+//
+//     _recalculateGrossAndNetFromLineItemDiscounts();
+//     await _recalculateTaxOnDiscountedItems();
+//     await _calculateBalanceFromPaymentHistory();
+//
+//     final double effectiveBalance =
+//         _currentPaymentRemainingBalance ?? balanceAmount;
+//     final double amount = enteredAmount.clamp(0.0, effectiveBalance + 0.01);
+//
+//     if ((enteredAmount - amount).abs() > 0.01) {
+//       setState(() {
+//         _rawAmount = (amount * 100).round();
+//         amountController.text =
+//         '${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}';
+//         _isAmountEntered = true;
+//       });
+//
+//       ScaffoldMessenger.of(context).showSnackBar(
+//         SnackBar(
+//           content: Text(
+//               'Amount adjusted to available balance (\$${amount.toStringAsFixed(2)})'),
+//           backgroundColor: Colors.orange,
+//           duration: const Duration(seconds: 2),
+//         ),
+//       );
+//     }
+//
+//     _amountErrorText = null;
+//
+//     final double balanceBeforePayment = effectiveBalance;
+//     final bool willBeFullPayment = amount >= (balanceBeforePayment - 0.01);
+//
+//     if (kDebugMode) {
+//       print(
+//           '💰 CARD PAYMENT → Amount: \$$amount | Balance before: \$$balanceBeforePayment');
+//     }
+//
+//     setState(() {
+//       isLoading = true;
+//       _processingPaymentMethod = TextConstants.card;
+//     });
+//     _showPaymentProgressDialog(context);
+//
+//     try {
+//       // ── Detect void and clear cached wooOrderId if needed ──────────────
+//       try {
+//         final String orderKey = widget.offlineOrderId?.toString() ??
+//             widget.orderId?.toString() ??
+//             orderId?.toString() ??
+//             '';
+//         if (orderKey.isNotEmpty) {
+//           final box = StorageProvider.offlineOrders;
+//           final rawHive = await box.get(orderKey);
+//           if (rawHive is Map) {
+//             final hiveMap = Map<String, dynamic>.from(rawHive);
+//             final int localOrderId = int.tryParse(orderKey) ?? 0;
+//             if (localOrderId > 0) {
+//               final payments = await LocalPaymentDBHelper.instance
+//                   .getPaymentsByOrderId(localOrderId);
+//               final bool hasVoidedPayment = payments
+//                   .any((p) => p.status == PaymentDbStatus.voided || p.amount < 0);
+//               if (hasVoidedPayment) {
+//                 hiveMap['synced'] = false;
+//                 await box.put(orderKey, hiveMap);
+//                 if (kDebugMode) {
+//                   print(
+//                       '🔄 Void detected → cleared cached wooOrderId for fresh sync');
+//                 }
+//               }
+//             }
+//           }
+//         }
+//       } catch (e) {
+//         if (kDebugMode) {
+//           print('⚠️ Void-detection pre-check failed (non-fatal): $e');
+//         }
+//       }
+//
+//       int wooOrderId =
+//       await _resolveWooOrderIdForPayment(forceSync: false);
+//       if (wooOrderId == 0) {
+//         _hidePaymentProgressDialog();
+//         setState(() {
+//           isLoading = false;
+//           _processingPaymentMethod = null;
+//         });
+//         ScaffoldMessenger.of(context).showSnackBar(
+//           const SnackBar(
+//               content: Text('Could not resolve order'),
+//               backgroundColor: Colors.red),
+//         );
+//         return;
+//       }
+//
+//       if (_isCardPaymentCancelled) return;
+//
+//       final String token = await _getTokenFromDb();
+//       if (_isCardPaymentCancelled) return;
+//
+//       final requestBody = {
+//         'order_id': wooOrderId,
+//         'amount': amount ,
+//         'payment_method': 'card',
+//         'shift_id': shiftId,
+//       };
+//
+//       if (kDebugMode) {
+//         print('========== CARD PAYMENT REQUEST ==========');
+//         print('Body: ${jsonEncode(requestBody)}');
+//         print('==========================================');
+//       }
+//
+//       final uri = Uri.parse(
+//           '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment');
+//       //
+//       // final http.Response response = await http.post(
+//       //   uri,
+//       //   headers: {
+//       //     'Content-Type': 'application/json',
+//       //     'Authorization': 'Bearer $token',
+//       //   },
+//       //   body: jsonEncode(requestBody),
+//       // );
+//
+//       final http.Response response = await _postWithRedirect(
+//         uri,
+//         headers: {
+//           'Content-Type': 'application/json',
+//           'Authorization': 'Bearer $token',
+//         },
+//         body: jsonEncode(requestBody),
+//       );
+//
+//       _hidePaymentProgressDialog();
+//       setState(() {
+//         isLoading = false;
+//         _processingPaymentMethod = null;
+//       });
+//
+//       if (kDebugMode) {
+//         print('URL: $uri');
+//         print('Response Status Code: ${response.statusCode}');
+//         print('Response Body: ${response.body}');
+//       }
+//
+//       // final Map<String, dynamic> body =
+//       // jsonDecode(response.body) as Map<String, dynamic>;
+//
+//       Map<String, dynamic> body;
+//       try {
+//         body = jsonDecode(response.body) as Map<String, dynamic>;
+//       } catch (e) {
+//         _hidePaymentProgressDialog();
+//         setState(() {
+//           isLoading = false;
+//           _processingPaymentMethod = null;
+//         });
+//         if (mounted) {
+//           ScaffoldMessenger.of(context).showSnackBar(
+//             SnackBar(
+//               content: const Text("Payment failed. Please try again."),
+//               backgroundColor: Colors.red,
+//               duration: const Duration(seconds: 3),
+//               action: SnackBarAction(
+//                 label: 'Retry',
+//                 textColor: Colors.white,
+//                 onPressed: () {
+//                   _handleCardPaymentViaAPI();
+//                 },
+//               ),
+//             ),
+//           );
+//         }
+//         return;
+//       }
+//
+//       if (body['success'] != true) {
+//         final String msg =
+//             body['message']?.toString() ?? 'Card payment failed';
+//         ScaffoldMessenger.of(context).showSnackBar(
+//             SnackBar(content: Text(msg), backgroundColor: Colors.red));
+//         _resetAmountAfterPay();
+//         return;
+//       }
+//
+//       final String? serverPaymentId = _extractServerPaymentId(body);
+//
+//       // ── KEY FIX: use helper that reads both top-level and nested fields ──
+//       final String? cardTransactionId = _extractCardTransactionId(body);
+//
+//       if (kDebugMode) {
+//         print(
+//             'cardTransactionId extracted → $cardTransactionId (serverPaymentId: $serverPaymentId)');
+//       }
+//
+//       // ── Cache wooOrderId from response ──────────────────────────────────
+//       final int responseWooOrderId =
+//           (body['order_id'] as num?)?.toInt() ?? wooOrderId;
+//       if (responseWooOrderId > 0) {
+//         try {
+//           final box = StorageProvider.offlineOrders;
+//           final String orderKey = widget.offlineOrderId?.toString() ??
+//               widget.orderId?.toString() ??
+//               orderId?.toString() ??
+//               '';
+//           if (orderKey.isNotEmpty) {
+//             final rawHive = await box.get(orderKey);
+//             if (rawHive is Map) {
+//               final hiveMap = Map<String, dynamic>.from(rawHive);
+//               hiveMap['wooOrderId'] = responseWooOrderId;
+//               hiveMap['synced'] = true;
+//               hiveMap['sync_at'] = DateTime.now().toIso8601String();
+//               await box.put(orderKey, hiveMap);
+//               if (kDebugMode) {
+//                 print(
+//                     '✅ wooOrderId cached from payment response → $responseWooOrderId');
+//               }
+//             }
+//           }
+//         } catch (e) {
+//           if (kDebugMode) {
+//             print('⚠️ Failed to cache wooOrderId from response: $e');
+//           }
+//         }
+//       }
+//
+//       // ── Build _lastPayment with transactionId populated ─────────────────
+//       _lastPayment = LastPaymentInfo(
+//         method: TextConstants.card,
+//         amount: amount,
+//         paymentId: serverPaymentId,
+//         transactionId: cardTransactionId, // ← now correctly set
+//       );
+//
+//       if (kDebugMode) {
+//         print('💾 _lastPayment built:');
+//         print('   method        : ${_lastPayment!.method}');
+//         print('   amount        : ${_lastPayment!.amount}');
+//         print('   paymentId     : ${_lastPayment!.paymentId}');
+//         print('   transactionId : ${_lastPayment!.transactionId}');
+//       }
+//
+//       // ── Persist lastPayment (including transactionId) to Hive ───────────
+//       try {
+//         final box = StorageProvider.offlineOrders;
+//         final String orderKey = widget.offlineOrderId?.toString() ??
+//             widget.orderId?.toString() ??
+//             orderId?.toString() ??
+//             '';
+//         if (orderKey.isNotEmpty) {
+//           final rawHive = await box.get(orderKey);
+//           if (rawHive is Map) {
+//             final hiveMap = Map<String, dynamic>.from(rawHive);
+//             hiveMap['lastPayment'] = _lastPayment!.toJson();
+//             await box.put(orderKey, hiveMap);
+//             if (kDebugMode) {
+//               print(
+//                   '✅ lastPayment persisted to Hive → transactionId: $cardTransactionId');
+//             }
+//           }
+//         }
+//       } catch (e) {
+//         if (kDebugMode) {
+//           print('⚠️ Failed to persist lastPayment to Hive: $e');
+//         }
+//       }
+//
+//       // ── Save locally ─────────────────────────────────────────────────────
+//       final String datetimeStr =
+//       DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+//       final localPayment = LocalPayment(
+//         orderId: orderId ?? 0,
+//         title: TextConstants.card,
+//         amount: amount,
+//         paymentMethod: TextConstants.card,
+//         shiftId: shiftId,
+//         vendorId: vendorId,
+//         userId: userId ?? 0,
+//         serviceType: serviceType,
+//         datetime: datetimeStr,
+//         notes: 'Card payment via API',
+//         isSynced: true,
+//         createdAt: DateTime.now(),
+//         remainingBalance:
+//         (balanceBeforePayment - amount).clamp(0.0, double.infinity),
+//         status: PaymentDbStatus.pending,
+//       );
+//
+//       final savedPayment =
+//       await LocalPaymentDBHelper.instance.savePayment(localPayment);
+//
+//       if (serverPaymentId != null) {
+//         await LocalPaymentDBHelper.instance
+//             .markAsSynced(savedPayment.id, int.tryParse(serverPaymentId) ?? 0);
+//       }
+//
+//       await _savePaymentToHive(
+//         amount: amount,
+//         paymentMethod: TextConstants.card,
+//         transactionId: 'card_api_${savedPayment.id}',
+//         localPayment: savedPayment,
+//       );
+//       await _saveLocalPaymentToHive(savedPayment);
+//
+//       // ── Refresh balance ──────────────────────────────────────────────────
+//       await _calculateBalanceFromPaymentHistory();
+//
+//       final double finalRemaining =
+//           _currentPaymentRemainingBalance ?? balanceAmount;
+//       final bool isActuallyFull = finalRemaining <= 0.01;
+//
+//       final double newTenderAmount = payByCard;
+//       final double newChangeAmount = amount > balanceBeforePayment
+//           ? (amount - balanceBeforePayment)
+//           : 0.0;
+//
+//       // ── EBT recalculation ────────────────────────────────────────────────
+//       final double originalEbt = ebtTotal;
+//       final double nonEbtOrderValue =
+//       (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
+//       final double totalNonEbtPaid = payByCash + payByOther + newTenderAmount;
+//       final double overflowToEbt =
+//       totalNonEbtPaid > nonEbtOrderValue
+//           ? (totalNonEbtPaid - nonEbtOrderValue)
+//           : 0.0;
+//       final double newEbtTotal =
+//       (originalEbt - overflowToEbt).clamp(0.0, double.infinity);
+//
+//       Future.microtask(() => _recalculateEbtAfterNonEbtPayment?.call());
+//
+//       setState(() {
+//         balanceAmount = finalRemaining;
+//         payByCard = newTenderAmount;
+//         ebtTotal = newEbtTotal;
+//         _currentPaymentRemainingBalance =
+//         isActuallyFull ? null : finalRemaining;
+//         _lastPaymentDetails = {
+//           'amount': amount,
+//           'method': TextConstants.card,
+//           'remainingBalance': finalRemaining,
+//           'previousBalance': balanceBeforePayment,
+//           'datetime': DateTime.now().toIso8601String(),
+//           'paymentNumber':
+//           (_lastPaymentDetails?['paymentNumber'] ?? 0) + 1,
+//         };
+//       });
+//
+//       _resetAmountAfterPay();
+//
+//       // ── Show success or partial dialog ───────────────────────────────────
+//       if (isActuallyFull) {
+//         _successPopupShown = true;
+//         final box = StorageProvider.offlineOrders;
+//         final key =
+//         (orderId ?? widget.offlineOrderId ?? 0).toString();
+//         final raw = await box.get(key);
+//         final couponResponse =
+//         (raw is Map && raw['coupon_response'] is Map)
+//             ? Map<String, dynamic>.from(raw['coupon_response'])
+//             : <String, dynamic>{};
+//
+//         if (mounted) {
+//           await CustomerDisplayService.showThankYou();
+//           _showPaymentDialog(
+//             context,
+//             newTenderAmount,
+//             changeAmount: newChangeAmount,
+//             showChange: newChangeAmount > 0,
+//             couponResponse: couponResponse,
+//           );
+//         }
+//       } else {
+//         if (mounted) {
+//           _showPartialPaymentDialog(context, amount);
+//         }
+//       }
+//     } catch (e, st) {
+//       _hidePaymentProgressDialog();
+//       setState(() {
+//         isLoading = false;
+//         _processingPaymentMethod = null;
+//         selectedPaymentMethod = TextConstants.cash;
+//       });
+//       _resetAmountAfterPay();
+//
+//       if (kDebugMode) {
+//         print('❌ _handleCardPaymentViaAPI error: $e');
+//         print(st);
+//       }
+//
+//       ScaffoldMessenger.of(context).showSnackBar(
+//         SnackBar(
+//             content: Text('Card payment error: $e'),
+//             backgroundColor: Colors.red),
+//       );
+//     }
+//   }
+//
+//   String? _extractCardTransactionId(Map<String, dynamic> body) {
+//     // 1. Top-level "transaction_id" (present in the response you showed)
+//     final topLevel = body['transaction_id']?.toString().trim();
+//     if (topLevel != null && topLevel.isNotEmpty) return topLevel;
+//
+//     // 2. Nested inside transaction_details (camelCase and snake_case variants)
+//     final details = body['transaction_details'];
+//     if (details is Map) {
+//       final nested = details['transactionid']?.toString().trim() ??
+//           details['transaction_id']?.toString().trim() ??
+//           details['transactionId']?.toString().trim();
+//       if (nested != null && nested.isNotEmpty) return nested;
+//     }
+//
+//     return null;
+//   }
+//
+//   Future<int> _resolveWooOrderIdForPayment({bool forceSync = true}) async {
+//     final box = StorageProvider.offlineOrders;
+//     final String orderKey = widget.offlineOrderId?.toString() ??
+//         widget.orderId?.toString() ??
+//         orderId?.toString() ??
+//         "";
+//
+//     if (orderKey.isEmpty) {
+//       return widget.orderId ?? orderId ?? 0;
+//     }
+//
+//     final raw = await box.get(orderKey);
+//     if (raw is! Map) {
+//       return widget.orderId ?? orderId ?? 0;
+//     }
+//
+//     var offlineMap = Map<String, dynamic>.from(raw);
+//     final int localId = orderId ?? int.tryParse(orderKey) ?? 0;
+//     if (localId > 0) {
+//       offlineMap['id'] ??= localId;
+//       offlineMap['order_id'] ??= localId;
+//     }
+//
+//     // ── STEP 1: Read cached wooOrderId (never cleared – the critical fix) ──────
+//     int wooOrderId =
+//         int.tryParse(offlineMap['wooOrderId']?.toString() ?? '') ?? 0;
+//
+//     if (wooOrderId > 0) {
+//       if (kDebugMode) {
+//         print('✅ [resolveWooOrderId] Using cached wooOrderId: $wooOrderId');
+//       }
+//       return wooOrderId;
+//     }
+//
+//     // ── STEP 2: Cache is empty → this is the very first card tap for this order.
+//     //           Attempt a sync.  If the server says "duplicate", extract and cache
+//     //           the existing Woo order ID rather than throwing. ─────────────────
+//     if (kDebugMode) {
+//       print('🔄 [resolveWooOrderId] No cached wooOrderId — attempting first sync');
+//     }
+//
+//     try {
+//       final syncResult =
+//       await OrderRepository().syncSingleOfflineOrder(offlineMap);
+//
+//       if (syncResult is Map) {
+//         wooOrderId = (syncResult?['id'] as num?)?.toInt() ?? 0;
+//
+//         if (wooOrderId > 0) {
+//           offlineMap['wooOrderId'] = wooOrderId;
+//           offlineMap['synced'] = true;
+//           offlineMap['sync_at'] = DateTime.now().toIso8601String();
+//           await box.put(orderKey, offlineMap);
+//
+//           if (kDebugMode) {
+//             print(
+//                 '✅ [resolveWooOrderId] Sync succeeded — wooOrderId cached: $wooOrderId');
+//           }
+//         }
+//       }
+//     } catch (e) {
+//       // ── Handle duplicate_client_order_id gracefully ──────────────────────────
+//       // The error arrives as a JSON string like:
+//       //   {"code":"duplicate_client_order_id","message":"...already exists (Order ID: 42410).","data":{"status":400}}-Invalid Request:
+//       // We parse the embedded Woo order ID and cache it so no further syncs are
+//       // attempted, and the payment API receives the correct server-side ID.
+//       final errorStr = e.toString();
+//
+//       if (errorStr.contains('duplicate_client_order_id')) {
+//         if (kDebugMode) {
+//           print(
+//               '⚠️ [resolveWooOrderId] duplicate_client_order_id detected — extracting existing Woo order ID');
+//           print('   Raw error: $errorStr');
+//         }
+//
+//         // Try to extract the numeric ID from the message.
+//         // Patterns we handle:
+//         //   "already exists (Order ID: 42410)"
+//         //   "already exists. Order ID: 42410"
+//         final RegExp idPattern =
+//         RegExp(r'Order ID[:\s]+(\d+)', caseSensitive: false);
+//         final match = idPattern.firstMatch(errorStr);
+//
+//         if (match != null) {
+//           final int extractedId = int.tryParse(match.group(1) ?? '') ?? 0;
+//
+//           if (extractedId > 0) {
+//             wooOrderId = extractedId;
+//             offlineMap['wooOrderId'] = wooOrderId;
+//             offlineMap['synced'] = true;
+//             offlineMap['sync_at'] = DateTime.now().toIso8601String();
+//             await box.put(orderKey, offlineMap);
+//
+//             if (kDebugMode) {
+//               print(
+//                   '✅ [resolveWooOrderId] Extracted & cached wooOrderId from duplicate error: $wooOrderId');
+//             }
+//           }
+//         }
+//
+//         // Also try parsing the error body as JSON in case the string includes it.
+//         if (wooOrderId == 0) {
+//           try {
+//             // The error string may start with the raw JSON body.
+//             final jsonStart = errorStr.indexOf('{');
+//             if (jsonStart >= 0) {
+//               final jsonPart = errorStr.substring(jsonStart);
+//               // Find end of first JSON object (simple heuristic).
+//               final jsonEnd = jsonPart.indexOf('}-') + 1;
+//               final jsonStr =
+//               jsonEnd > 0 ? jsonPart.substring(0, jsonEnd) : jsonPart;
+//               final Map<String, dynamic> body =
+//               jsonDecode(jsonStr) as Map<String, dynamic>;
+//               final msg = body['message']?.toString() ?? '';
+//               final m2 = idPattern.firstMatch(msg);
+//               if (m2 != null) {
+//                 final int id2 = int.tryParse(m2.group(1) ?? '') ?? 0;
+//                 if (id2 > 0) {
+//                   wooOrderId = id2;
+//                   offlineMap['wooOrderId'] = wooOrderId;
+//                   offlineMap['synced'] = true;
+//                   offlineMap['sync_at'] = DateTime.now().toIso8601String();
+//                   await box.put(orderKey, offlineMap);
+//                   if (kDebugMode) {
+//                     print(
+//                         '✅ [resolveWooOrderId] Extracted wooOrderId from JSON error body: $wooOrderId');
+//                   }
+//                 }
+//               }
+//             }
+//           } catch (_) {
+//             // JSON parse failed — not critical, we'll fall through to the
+//             // widget.orderId fallback below.
+//           }
+//         }
+//
+//         if (wooOrderId == 0 && kDebugMode) {
+//           print(
+//               '❌ [resolveWooOrderId] Could not extract wooOrderId from duplicate error — payment will likely fail');
+//         }
+//       } else {
+//         // Some other sync error — rethrow so the caller can show the user.
+//         if (kDebugMode) {
+//           print('❌ [resolveWooOrderId] Sync failed with unexpected error: $e');
+//         }
+//         rethrow;
+//       }
+//     }
+//
+//     // ── STEP 3: Last-resort fallback ─────────────────────────────────────────
+//     if (wooOrderId == 0) {
+//       wooOrderId = widget.orderId ?? orderId ?? 0;
+//       if (kDebugMode) {
+//         print(
+//             '⚠️ [resolveWooOrderId] Using widget.orderId as last-resort fallback: $wooOrderId');
+//       }
+//     }
+//
+//     return wooOrderId;
+//   }
+//
+//
+//   String? _extractServerPaymentId(Map<String, dynamic> body) {
+//     final dynamic raw = body['payment_id'] ??
+//         (body['data'] is Map ? body['data']['payment_id'] : null) ??
+//         (body['data'] is Map ? body['data']['id'] : null);
+//     if (raw == null) return null;
+//     final s = raw.toString().trim();
+//     return s.isEmpty ? null : s;
+//   }
+//
+//   void _recalculateEbtAfterNonEbtPayment() {
+//     final double originalEbt = widget.ebtAmount; // Original EBT amount from order
+//     final double nonEbtOrderValue = (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
+//
+//     // Calculate total non-EBT payments made (cash, card, other - excluding EBT payments)
+//     final double totalNonEbtPaid = payByCash + payByCard + payByOther;
+//
+//     // If non-EBT payments exceed the non-EBT portion, overflow reduces EBT
+//     final double overflowToEbt = totalNonEbtPaid > nonEbtOrderValue
+//         ? (totalNonEbtPaid - nonEbtOrderValue)
+//         : 0.0;
+//
+//     // Calculate remaining EBT (original EBT minus EBT payments minus overflow from non-EBT)
+//     final double remainingEbt = (originalEbt - payByEbt).clamp(0.0, double.infinity);
+//     final double newEbtTotal = (remainingEbt - overflowToEbt).clamp(0.0, double.infinity);
+//
+//     setState(() {
+//       ebtTotal = newEbtTotal;
+//     });
+//   }
+//
+//
 //
 //   Future<void> _callCreatePaymentAPI({bool skipPopup = false}) async {
 //     if (kDebugMode) {
@@ -5330,6 +6453,18 @@
 //     }
 //   }
 //
+//   bool get _hasEbtItemsInOrder =>
+//       orderItems.any((item) => _orderSummaryLineEbtEligible(item));
+//
+//   void _syncEbtTotalWithOrderItems() {
+//     if (!_hasEbtItemsInOrder && ebtTotal != 0.0) {
+//       ebtTotal = 0.0;
+//       if (kDebugMode) {
+//         print("🧹 No EBT-eligible items remain → ebtTotal reset to 0");
+//       }
+//     }
+//   }
+//
 //   @override
 //   Widget build(BuildContext context) {
 //     final theme = Theme.of(context);
@@ -5437,197 +6572,169 @@
 //                               ],
 //                             ),
 //                             child: Row(
-//                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+//                               // mainAxisAlignment: MainAxisAlignment.spaceBetween,
 //                               children: [
-//                                 _buildPaymentModeButton(
-//                                   TextConstants.cash,
-//                                   Image.asset(
-//                                     'assets/cash.png',
-//                                     width: ResponsiveLayout.getIconSize(24),
-//                                     height: ResponsiveLayout.getIconSize(24),
-//                                     fit: BoxFit.contain,
-//                                   ),
-//                                   gradient: const LinearGradient(
-//                                     colors: [
-//                                       Color(0xFF9CCD7B),
-//                                       Color(0xFF9CCD7B)
-//                                     ],
-//                                   ),
-//                                   borderColor: const Color(0xFF9CCD7B),
-//                                   iconColor: Color(0xFF9CCD7B),
-//                                   isLoading: _processingPaymentMethod ==
-//                                       TextConstants.cash &&
-//                                       isLoading,
-//                                   isDisabled:
-//                                   _processingPaymentMethod != null &&
-//                                       _processingPaymentMethod !=
-//                                           TextConstants.cash,
-//                                   onTap: () async {
-//                                     _selectPaymentMethod(TextConstants.cash);
-//                                     // await CustomerService
-//                                     //     .publishProcessingPayment(
-//                                     //   orderId ?? 0,
-//                                     //   orderItems, // your list of items
-//                                     //   subtotal:
-//                                     //       grossTotal, // same as you send to display now
-//                                     //   tax: tax, // existing tax variable
-//                                     //   total:
-//                                     //       computedNetPayable, // or balanceAmount if you prefer
-//                                     // );
-//                                     _handlePay();
-//                                   },
-//                                 ),
-//                                 _buildPaymentModeButton(
-//                                   TextConstants.card,
-//                                   Image.asset(
-//                                     'assets/card.png',
-//                                     width: ResponsiveLayout.getIconSize(24),
-//                                     height: ResponsiveLayout.getIconSize(24),
-//                                     fit: BoxFit.contain,
-//                                   ),
-//                                   gradient: const LinearGradient(
-//                                     colors: [
-//                                       Color(0xFFA484C8),
-//                                       Color(0xFFA484C8)
-//                                     ],
-//                                   ),
-//                                   borderColor: const Color(0xFFA484C8),
-//                                   iconColor: Color(0xFFA484C8),
-//                                   // isLoading: _processingPaymentMethod == TextConstants.card && isLoading,
-//                                   // isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.card,
-//
-//                                   isLoading: false,
-//                                   isDisabled: false,
-//                                   onTap: () async {
-//                                     _selectPaymentMethod(
-//                                       TextConstants.card,
-//                                       //autoFillAmount: true,
-//                                       maxAllowedAmount: balanceAmount,
-//                                     );
-//                                     _handlePay();
-//
-//
-//                                   },
-//                                 ),
-//                                 _buildPaymentModeButton(
-//                                   TextConstants.wallet,
-//                                   Image.asset(
-//                                     'assets/wallet.png',
-//                                     width: ResponsiveLayout.getIconSize(24),
-//                                     height: ResponsiveLayout.getIconSize(24),
-//                                     fit: BoxFit.contain,
-//                                   ),
-//                                   gradient: const LinearGradient(
-//                                     colors: [
-//                                       Color(0xFFCCB985),
-//                                       Color(0xFFCCB985)
-//                                     ],
-//                                   ),
-//                                   borderColor: const Color(0xFFCCB985),
-//                                   iconColor: Color(0xFFCCB985),
-//                                   // isLoading: _processingPaymentMethod == TextConstants.wallet && isLoading,
-//                                   // isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.wallet,
-//                                   // ❌ FORCE DISABLE
-//                                   isLoading: false,
-//                                   isDisabled: true,
-//                                   onTap: () {
-//                                     _selectPaymentMethod(
-//                                       TextConstants.wallet,
-//                                       //autoFillAmount: true,
-//                                       maxAllowedAmount: balanceAmount,
-//                                     );
-//                                     _handlePay();
-//                                   },
-//                                 ),
-//                                 _buildPaymentModeButton(
-//                                   TextConstants.ebtText,
-//                                   Image.asset(
-//                                     'assets/ebt.png',
-//                                     width: ResponsiveLayout.getIconSize(24),
-//                                     height: ResponsiveLayout.getIconSize(24),
-//                                     fit: BoxFit.contain,
-//                                   ),
-//                                   gradient: const LinearGradient(
-//                                     colors: [
-//                                       Color(0xFF84A2CB),
-//                                       Color(0xFF84A2CB)
-//                                     ],
-//                                   ),
-//                                   borderColor: const Color(0xFF84A2CB),
-//                                   iconColor: Colors.white,
-//                                   isLoading: _processingPaymentMethod ==
-//                                       TextConstants.ebtText &&
-//                                       isLoading,
-//                                   isDisabled:
-//                                   _processingPaymentMethod != null &&
-//                                       _processingPaymentMethod !=
-//                                           TextConstants.ebtText,
-//                                   onTap: () {
-//                                     // 1️⃣ Check if there is any EBT left
-//                                     if (ebtTotal <= 0) {
-//                                       setState(() => _amountErrorText =
-//                                       "No EBT balance available");
-//                                       return;
-//                                     }
-//
-//                                     // 2️⃣ Determine the maximum allowed amount
-//                                     final allowedAmount =
-//                                     balanceAmount.clamp(0.0, ebtTotal);
-//
-//                                     if (allowedAmount <= 0) {
-//                                       setState(() => _amountErrorText =
-//                                       "Cannot pay with EBT, balance is zero");
-//                                       return;
-//                                     }
-//
-//                                     // 3️⃣ Respect user-entered partial amount when present.
-//                                     final enteredAmount = double.tryParse(
-//                                       amountController.text
-//                                           .replaceAll(
-//                                           TextConstants.currencySymbol, '')
-//                                           .trim(),
-//                                     ) ??
-//                                         0.0;
-//
-//                                     final amountToUse = enteredAmount > 0
-//                                         ? enteredAmount.clamp(0.0, allowedAmount)
-//                                         : allowedAmount;
-//
-//                                     if (amountToUse <= 0) {
-//                                       setState(() => _amountErrorText =
-//                                           TextConstants.amountValidation);
-//                                       return;
-//                                     }
-//
-//                                     // 4️⃣ Select EBT only (manual amount entry by user)
-//                                     _selectPaymentMethod(
-//                                       TextConstants.ebtText,
-//                                     );
-//
-//                                     // If user already entered amount, submit like Cash flow.
-//                                     if (enteredAmount > 0) {
-//                                       final normalizedAmount = amountToUse;
-//                                       setState(() {
-//                                         _rawAmount = (normalizedAmount * 100).round();
-//                                         amountController.text =
-//                                         '${TextConstants.currencySymbol}${normalizedAmount.toStringAsFixed(2)}';
-//                                         _isAmountEntered = true;
-//                                         _amountErrorText = null;
-//                                       });
+//                                 Expanded(
+//                                   child: _buildPaymentModeButton(
+//                                     TextConstants.cash,
+//                                     Image.asset(
+//                                       'assets/cash.png',
+//                                       width: ResponsiveLayout.getIconSize(24),
+//                                       height: ResponsiveLayout.getIconSize(24),
+//                                       fit: BoxFit.contain,
+//                                     ),
+//                                     gradient: const LinearGradient(
+//                                       colors: [
+//                                         Color(0xFF9CCD7B),
+//                                         Color(0xFF9CCD7B),
+//                                       ],
+//                                     ),
+//                                     borderColor: const Color(0xFF9CCD7B),
+//                                     iconColor: const Color(0xFF9CCD7B),
+//                                     isLoading: _processingPaymentMethod == TextConstants.cash && isLoading,
+//                                     isDisabled: _processingPaymentMethod != null &&
+//                                         _processingPaymentMethod != TextConstants.cash,
+//                                     onTap: () async {
+//                                       _selectPaymentMethod(TextConstants.cash);
 //                                       _handlePay();
-//                                       return;
-//                                     }
-//
-//                                     // Otherwise keep EBT amount user-driven.
-//                                     setState(() {
-//                                       _rawAmount = 0;
-//                                       amountController.text =
-//                                       '${TextConstants.currencySymbol}0.00';
-//                                       _isAmountEntered = false;
-//                                       _amountErrorText = null;
-//                                     });
-//                                   },
+//                                     },
+//                                   ),
 //                                 ),
+//
+//                                 Expanded(
+//                                   child: _buildPaymentModeButton(
+//                                     TextConstants.card,
+//                                     Image.asset(
+//                                       'assets/card.png',
+//                                       width: ResponsiveLayout.getIconSize(24),
+//                                       height: ResponsiveLayout.getIconSize(24),
+//                                       fit: BoxFit.contain,
+//                                     ),
+//                                     gradient: const LinearGradient(
+//                                       colors: [
+//                                         Color(0xFFA484C8),
+//                                         Color(0xFFA484C8),
+//                                       ],
+//                                     ),
+//                                     borderColor: const Color(0xFFA484C8),
+//                                     iconColor: const Color(0xFFA484C8),
+//                                     isLoading: false,
+//                                     isDisabled: false,
+//                                     onTap: () async {
+//                                       _selectPaymentMethod(
+//                                         TextConstants.card,
+//                                         maxAllowedAmount: balanceAmount,
+//                                       );
+//                                       await _handleCardPaymentViaAPI();
+//                                     },
+//                                   ),
+//                                 ),
+//
+//                                 Expanded(
+//                                   child: _buildPaymentModeButton(
+//                                     "Pay Later",
+//                                     Image.asset(
+//                                       'assets/wallet.png',
+//                                       width: ResponsiveLayout.getIconSize(24),
+//                                       height: ResponsiveLayout.getIconSize(24),
+//                                       fit: BoxFit.contain,
+//                                     ),
+//                                     gradient: const LinearGradient(
+//                                       colors: [
+//                                         Color(0xFFCCB985),
+//                                         Color(0xFFCCB985),
+//                                       ],
+//                                     ),
+//                                     borderColor: const Color(0xFFCCB985),
+//                                     iconColor: const Color(0xFFCCB985),
+//                                     isLoading:
+//                                     _processingPaymentMethod == "Pay Later" && isLoading,
+//                                     isDisabled: _isPartialAmountEntered() ||
+//                                         balanceAmount <= 0 ||
+//                                         (_processingPaymentMethod != null &&
+//                                             _processingPaymentMethod != "Pay Later"),
+//                                     onTap: () async {
+//                                       await _handlePayLaterPayment();
+//                                     },
+//                                   ),
+//                                 ),
+//
+//                                 if (ebtTotal > 0 && _hasEbtItemsInOrder)
+//                                   Expanded(
+//                                     child: _buildPaymentModeButton(
+//                                       TextConstants.ebtText,
+//                                       Image.asset(
+//                                         'assets/ebt.png',
+//                                         width: ResponsiveLayout.getIconSize(24),
+//                                         height: ResponsiveLayout.getIconSize(24),
+//                                         fit: BoxFit.contain,
+//                                       ),
+//                                       gradient: const LinearGradient(
+//                                         colors: [
+//                                           Color(0xFF84A2CB),
+//                                           Color(0xFF84A2CB),
+//                                         ],
+//                                       ),
+//                                       borderColor: const Color(0xFF84A2CB),
+//                                       iconColor: Colors.white,
+//                                       isLoading: _processingPaymentMethod ==
+//                                           TextConstants.ebtText &&
+//                                           isLoading,
+//                                       isDisabled: _processingPaymentMethod != null &&
+//                                           _processingPaymentMethod != TextConstants.ebtText,
+//                                       onTap: () async {
+//                                         if (ebtTotal <= 0) {
+//                                           setState(() {
+//                                             _amountErrorText = "No EBT balance available";
+//                                           });
+//                                           return;
+//                                         }
+//
+//                                         final allowedAmount =
+//                                         balanceAmount.clamp(0.0, ebtTotal);
+//
+//                                         if (allowedAmount <= 0) {
+//                                           setState(() {
+//                                             _amountErrorText =
+//                                             "Cannot pay with EBT, balance is zero";
+//                                           });
+//                                           return;
+//                                         }
+//
+//                                         final enteredAmount = double.tryParse(
+//                                           amountController.text
+//                                               .replaceAll(
+//                                               TextConstants.currencySymbol, '')
+//                                               .trim(),
+//                                         ) ??
+//                                             0.0;
+//
+//                                         final amountToUse = enteredAmount > 0
+//                                             ? enteredAmount.clamp(0.0, allowedAmount)
+//                                             : allowedAmount;
+//
+//                                         if (amountToUse <= 0) {
+//                                           setState(() {
+//                                             _amountErrorText =
+//                                                 TextConstants.amountValidation;
+//                                           });
+//                                           return;
+//                                         }
+//
+//                                         _selectPaymentMethod(TextConstants.ebtText);
+//
+//                                         setState(() {
+//                                           _rawAmount = (amountToUse * 100).round();
+//                                           amountController.text =
+//                                           '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+//                                           _isAmountEntered = true;
+//                                           _amountErrorText = null;
+//                                         });
+//
+//                                         await _handleEbtCardPaymentViaAPI();
+//                                       },
+//                                     ),
+//                                   ),
 //                               ],
 //                             ),
 //                           ),
@@ -5644,14 +6751,92 @@
 //     );
 //   }
 //
+//   // void _showPaymentProgressDialog(BuildContext context) {
+//   //   final bool isDark = Theme.of(context).brightness == Brightness.dark;
+//   //
+//   //   // THEME COLORS (same pattern as coupon popup)
+//   //   final Color dialogBg = isDark ? const Color(0xFF252837) : Colors.white;
+//   //   final Color textPrimary = isDark ? Colors.white : const Color(0xFF1F2937);
+//   //   final Color textSecondary =
+//   //   isDark ? Colors.white70 : const Color(0xFF6B7280);
+//   //
+//   //   showDialog(
+//   //     context: context,
+//   //     barrierDismissible: false,
+//   //     builder: (_) {
+//   //       return WillPopScope(
+//   //         onWillPop: () async => false,
+//   //         child: Dialog(
+//   //           elevation: 0,
+//   //           backgroundColor: Colors.transparent,
+//   //           child: Center(
+//   //             child: Container(
+//   //               width: 300,
+//   //               padding: const EdgeInsets.symmetric(
+//   //                 vertical: 28,
+//   //                 horizontal: 24,
+//   //               ),
+//   //               decoration: BoxDecoration(
+//   //                 color: dialogBg,
+//   //                 borderRadius: BorderRadius.circular(18),
+//   //                 boxShadow: [
+//   //                   if (!isDark)
+//   //                     BoxShadow(
+//   //                       color: Colors.black.withOpacity(0.08),
+//   //                       blurRadius: 16,
+//   //                       offset: const Offset(0, 8),
+//   //                     ),
+//   //                 ],
+//   //               ),
+//   //               child: Column(
+//   //                 mainAxisSize: MainAxisSize.min,
+//   //                 children: [
+//   //                   SizedBox(
+//   //                     width: 44,
+//   //                     height: 44,
+//   //                     child: CircularProgressIndicator(
+//   //                       strokeWidth: 3,
+//   //                       valueColor: AlwaysStoppedAnimation<Color>(
+//   //                         isDark ? Colors.white70 : const Color(0xFF1BA672),
+//   //                       ),
+//   //                     ),
+//   //                   ),
+//   //                   const SizedBox(height: 20),
+//   //                   Text(
+//   //                     "Payment in progress",
+//   //                     textAlign: TextAlign.center,
+//   //                     style: TextStyle(
+//   //                       fontSize: 17,
+//   //                       fontWeight: FontWeight.w600,
+//   //                       color: textPrimary,
+//   //                     ),
+//   //                   ),
+//   //                   const SizedBox(height: 6),
+//   //                   if (_processingPaymentMethod != null)
+//   //                     Text(
+//   //                       "Processing ${_processingPaymentMethod!}",
+//   //                       textAlign: TextAlign.center,
+//   //                       style: TextStyle(
+//   //                         fontSize: 13,
+//   //                         height: 1.3,
+//   //                         color: textSecondary,
+//   //                       ),
+//   //                     ),
+//   //                 ],
+//   //               ),
+//   //             ),
+//   //           ),
+//   //         ),
+//   //       );
+//   //     },
+//   //   );
+//   // }
+//
 //   void _showPaymentProgressDialog(BuildContext context) {
 //     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-//
-//     // THEME COLORS (same pattern as coupon popup)
 //     final Color dialogBg = isDark ? const Color(0xFF252837) : Colors.white;
 //     final Color textPrimary = isDark ? Colors.white : const Color(0xFF1F2937);
-//     final Color textSecondary =
-//     isDark ? Colors.white70 : const Color(0xFF6B7280);
+//     final Color textSecondary = isDark ? Colors.white70 : const Color(0xFF6B7280);
 //
 //     showDialog(
 //       context: context,
@@ -5665,10 +6850,7 @@
 //             child: Center(
 //               child: Container(
 //                 width: 300,
-//                 padding: const EdgeInsets.symmetric(
-//                   vertical: 28,
-//                   horizontal: 24,
-//                 ),
+//                 padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 24),
 //                 decoration: BoxDecoration(
 //                   color: dialogBg,
 //                   borderRadius: BorderRadius.circular(18),
@@ -5690,9 +6872,7 @@
 //                       child: CircularProgressIndicator(
 //                         strokeWidth: 3,
 //                         valueColor: AlwaysStoppedAnimation<Color>(
-//                           isDark
-//                               ? Colors.white70
-//                               : const Color(0xFF1BA672),
+//                           isDark ? Colors.white70 : const Color(0xFF1BA672),
 //                         ),
 //                       ),
 //                     ),
@@ -5717,6 +6897,43 @@
 //                           color: textSecondary,
 //                         ),
 //                       ),
+//                     // const SizedBox(height: 24),
+//                     // // ✅ CANCEL BUTTON
+//                     // SizedBox(
+//                     //   width: double.infinity,
+//                     //   height: 40,
+//                     //   child: OutlinedButton(
+//                     //     style: OutlinedButton.styleFrom(
+//                     //       foregroundColor: Colors.red,
+//                     //       side: const BorderSide(color: Colors.red, width: 1.5),
+//                     //       shape: RoundedRectangleBorder(
+//                     //         borderRadius: BorderRadius.circular(10),
+//                     //       ),
+//                     //     ),
+//                     //     onPressed: () {
+//                     //       // Set cancel flag
+//                     //       _isCardPaymentCancelled = true;
+//                     //       // Close the progress dialog
+//                     //       if (Navigator.canPop(context)) {
+//                     //         Navigator.pop(context);
+//                     //       }
+//                     //       // Reset loading state
+//                     //       if (mounted) {
+//                     //         setState(() {
+//                     //           isLoading = false;
+//                     //           _processingPaymentMethod = null;
+//                     //         });
+//                     //       }
+//                     //     },
+//                     //     child: const Text(
+//                     //       "Cancel Payment",
+//                     //       style: TextStyle(
+//                     //         fontSize: 14,
+//                     //         fontWeight: FontWeight.w600,
+//                     //       ),
+//                     //     ),
+//                     //   ),
+//                     // ),
 //                   ],
 //                 ),
 //               ),
@@ -5846,7 +7063,7 @@
 //         ),
 //       );
 //   }
-//
+// //******************************************************************************** */
 //   void _showRedeemPointsSnackBar(BuildContext context) {
 //     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 //
@@ -5941,7 +7158,8 @@
 //               // so back-flow still detects a void even when one ID path is empty.
 //               final Set<int> candidateIds = {
 //                 if (orderId != null && orderId! > 0) orderId!,
-//                 if (widget.orderId != null && widget.orderId! > 0) widget.orderId!,
+//                 if (widget.orderId != null && widget.orderId! > 0)
+//                   widget.orderId!,
 //                 if (widget.offlineOrderId != null && widget.offlineOrderId! > 0)
 //                   widget.offlineOrderId!,
 //               };
@@ -5949,8 +7167,8 @@
 //               final List<LocalPayment> payments = [];
 //               final Set<int> seenPaymentIds = {};
 //               for (final id in candidateIds) {
-//                 final rows =
-//                 await LocalPaymentDBHelper.instance.getPaymentsByOrderId(id);
+//                 final rows = await LocalPaymentDBHelper.instance
+//                     .getPaymentsByOrderId(id);
 //                 for (final p in rows) {
 //                   if (seenPaymentIds.add(p.id)) {
 //                     payments.add(p);
@@ -5966,8 +7184,7 @@
 //
 //               // After a full void, net can be ~0 but unsynced void lines must still sync;
 //               // user should still get the exit confirmation.
-//               final bool hasUnsyncedPayments =
-//               payments.any((p) => !p.isSynced);
+//               final bool hasUnsyncedPayments = payments.any((p) => !p.isSynced);
 //
 //               final bool hasDiscount = discount > 0;
 //
@@ -6077,13 +7294,14 @@
 //             ),
 //           ),
 //
-//           const SizedBox(width: 70),
+//           const SizedBox(width: 20),
 //
-//           const SizedBox(width: 160),
+//           const SizedBox(width: 180),
 //           Expanded(
 //             child: Row(
 //               crossAxisAlignment: CrossAxisAlignment.center,
 //               children: [
+//
 //                 // ---------------- CUSTOMER INPUT CONTAINER ----------------
 //                 Expanded(
 //                   child: Container(
@@ -6115,6 +7333,7 @@
 //                           ),
 //                         ),
 //                         const SizedBox(width: 10),
+//
 //                         Expanded(
 //                           child: Container(
 //                             height: 40,
@@ -6138,14 +7357,14 @@
 //                               builder: (context, innerSetState) {
 //                                 print(
 //                                     "BUILD -> isCustomerFieldDisabled=$isCustomerFieldDisabled, "
-//                                         "showCustomerInput=$showCustomerInput"
-//                                 );
+//                                         "showCustomerInput=$showCustomerInput");
 //                                 return TextField(
 //                                   controller: mobileController,
 //                                   enabled: true,
 //                                   readOnly: showCustomerInput,
-//                                   enableInteractiveSelection: !showCustomerInput,
-//                                   keyboardType: TextInputType.emailAddress,
+//                                   enableInteractiveSelection:
+//                                   !showCustomerInput,
+//                                   keyboardType: TextInputType.number,
 //                                   inputFormatters: [
 //                                     TextInputFormatter.withFunction(
 //                                             (oldValue, newValue) {
@@ -6177,7 +7396,7 @@
 //                                     });
 //                                   },
 //                                   decoration: const InputDecoration(
-//                                     hintText: 'Add Mobile No or Email',
+//                                     hintText: 'Add Mobile No ',
 //                                     border: InputBorder.none,
 //                                     isCollapsed: true,
 //                                     counterText: '',
@@ -6237,45 +7456,8 @@
 //
 //                       final localOrderId = widget.offlineOrderId;
 //                       if (localOrderId != null) {
-//                         final customerItems = orderItems.map((item) {
-//
-//                           return {
-//                             "name": item["item_name"] ?? "",
-//                             "qty": item["items_count"] ?? 1,
-//                             "price": item["item_price"] ?? 0.0,
-//                             "image": item["item_image"] ?? "",
-//                           };
-//
-//                         }).toList();
-//
-//                         await CustomerDisplayService.showCustomerData(
-//
-//                           orderId: localOrderId ?? 0,
-//
-//                           items: customerItems,
-//
-//                           grossTotal: grossTotal,
-//
-//                           discount: discount,
-//
-//                           merchantDiscount: merchantDiscount,
-//
-//                           // ✅ FIX NET TOTAL
-//                           netTotal:
-//                           grossTotal -
-//                               discount.abs(),
-//
-//                           tax: tax,
-//
-//                           netPayable: computedNetPayable,
-//
-//                           cashbackFee: cashbackFee,
-//
-//                           redeemedAmount:
-//                           redeemedValue.toDouble(),
-//
-//                           loyaltyContact: "",
-//
+//                         await CustomerDisplayHelper.updateCustomerDisplay(
+//                           localOrderId,
 //                           summaryEnabled: true,
 //                         );
 //                       }
@@ -6294,7 +7476,6 @@
 //                     final contact = mobileController.text.trim();
 //
 //                     try {
-//
 //                       // ======================================
 //                       // 1️⃣ LOAD OFFLINE ORDER FROM HIVE
 //                       // ======================================
@@ -6334,8 +7515,7 @@
 //                       // ======================================
 //                       // 3️⃣ GET WOO ORDER ID
 //                       // ======================================
-//                       final int syncedOrderId =
-//                           syncResponse["id"] ?? 0;
+//                       final int syncedOrderId = syncResponse["id"] ?? 0;
 //
 //                       if (syncedOrderId == 0) {
 //                         throw Exception("Backend order id missing");
@@ -6372,7 +7552,8 @@
 //
 //                       final pts = int.tryParse(
 //                         data["available_points"]?.toString() ?? "0",
-//                       ) ?? 0;
+//                       ) ??
+//                           0;
 //                       // ======================================
 //                       // 5️⃣ UPDATE UI
 //                       // ======================================
@@ -6387,8 +7568,7 @@
 //                       });
 //
 //                       print(
-//                           "AFTER ADD -> isCustomerFieldDisabled = $isCustomerFieldDisabled"
-//                       );
+//                           "AFTER ADD -> isCustomerFieldDisabled = $isCustomerFieldDisabled");
 //                       // ======================================
 //                       // 6️⃣ SAVE CONTACT LOCALLY
 //                       // ======================================
@@ -6404,7 +7584,7 @@
 // // ======================================
 //                       try {
 //                         await const MethodChannel(
-//                           'com.example.flutter_customer_display/sunmi_display',
+//                           'com.alekta.pinakapos/sunmi_display',
 //                         ).invokeMethod(
 //                           'showCustomerData',
 //                           {
@@ -6421,7 +7601,9 @@
 //                             'orderDate': offlineOrder['order_date'] ?? '',
 //                             'orderTime': offlineOrder['order_time'] ?? '',
 //                             'cashbackFee':
-//                             (offlineOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
+//                             (offlineOrder['cashback_fee'] as num?)
+//                                 ?.toDouble() ??
+//                                 0.0,
 //                             'loyaltyContact': contact,
 //                             'availablePoints': pts,
 //                             'summaryEnabled': true,
@@ -6441,9 +7623,7 @@
 //                           ),
 //                         );
 //                       }
-//
 //                     } catch (e) {
-//
 //                       print("❌ ERROR: $e");
 //
 //                       if (mounted) {
@@ -6456,9 +7636,7 @@
 //                           ),
 //                         );
 //                       }
-//
 //                     } finally {
-//
 //                       if (mounted) {
 //                         setState(() => isAddLoading = false);
 //                       }
@@ -6671,42 +7849,8 @@
 //                             ),
 //                           ),
 //
-//                           // ─── Only show when there is a current partial/offline remaining balance ───
-//                           // if (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0) ...[
-//                           //
-//                           //
-//                           //   const SizedBox(width: 16),
-//                           //   Container(
-//                           //     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-//                           //     decoration: BoxDecoration(
-//                           //       color: Colors.orange.withOpacity(0.18),
-//                           //       borderRadius: BorderRadius.circular(6),
-//                           //       border: Border.all(color: Colors.orange[700]!, width: 1.3),
-//                           //     ),
-//                           //     child: Row(
-//                           //       mainAxisSize: MainAxisSize.min,
-//                           //       children: [
-//                           //         Icon(
-//                           //           Icons.cloud_off_rounded,
-//                           //           size: 16,
-//                           //           color: Colors.orange[800],
-//                           //         ),
-//                           //         const SizedBox(width: 6),
-//                           //
-//                           //
-//                           //       Text(
-//                           //           "Offline balance: ${TextConstants.currencySymbol}${_currentPaymentRemainingBalance!.toStringAsFixed(2)}",
-//                           //           style: TextStyle(
-//                           //             color: Colors.orange[900],
-//                           //             fontWeight: FontWeight.w600,
-//                           //             fontSize: 13.5,
-//                           //           ),
-//                           //         ),
-//                           //
-//                           //       ],
-//                           //     ),
-//                           //   ),
-//                           // ],
+//
+//
 //                         ],
 //                       ),
 //                     ],
@@ -6922,7 +8066,15 @@
 //                                   : '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
 //                               isTotal: true,
 //                             ),
-//
+//                             //Raghu--**
+//                             if (merchantDiscount < 0)
+//                               _buildOrderCalculation(
+//                                 merchantDiscountPercentage > 0
+//                                     ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
+//                                     : TextConstants
+//                                     .merchantDiscount,
+//                                 '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
+//                               ),
 //                             _buildOrderCalculation(
 //                                 TextConstants.discountText,
 //                                 '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}',
@@ -6967,6 +8119,8 @@
 //                                     .black, // ✅ ensures gradient works correctly
 //                               ),
 //                             ),
+//                             //Raghu--***
+//
 //                             _buildOrderCalculation(
 //                               TextConstants.NetTotal,
 //                               NetTotal < 0
@@ -6975,13 +8129,10 @@
 //                             ),
 //
 //                             _buildOrderCalculation(
-//                                 TextConstants.taxText,
-//                                 '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}'),
-//                             if (merchantDiscount < 0)
-//                               _buildOrderCalculation(
-//                                 TextConstants.merchantDiscount,
-//                                 '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
-//                               ),
+//                               TextConstants.taxText,
+//                               '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}',
+//                             ),
+//                             //Raghu--*
 //
 //                             if (cashbackFee > 0)
 //                               _buildOrderCalculation(
@@ -7077,6 +8228,29 @@
 //                             _buildOrderCalculation(
 //                                 TextConstants.change,
 //                                 '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
+//                             // After Change Amount Row
+//                             const SizedBox(height: 6),
+//                             Row(
+//                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+//                               children: [
+//                                 Text(
+//                                   "Order Earned Points",
+//                                   style: TextStyle(
+//                                     fontSize: 14,
+//                                     fontWeight: FontWeight.w600,
+//                                     color: Colors.amber[800],
+//                                   ),
+//                                 ),
+//                                 Text(
+//                                   "${_order['total_loyalty_points'] ?? 0} pts",
+//                                   style: TextStyle(
+//                                     fontSize: 15,
+//                                     fontWeight: FontWeight.bold,
+//                                     color: Colors.amber[700],
+//                                   ),
+//                                 ),
+//                               ],
+//                             ),
 //                           ],
 //                         ),
 //                       ),
@@ -7194,6 +8368,20 @@
 //       //Build #1.0.29:  Fetch the orderServerId from the database
 //
 //       if (orderData.isNotEmpty) {
+//         double dbMerchantDiscountPerc = 0.0;
+//         try {
+//           final box = StorageProvider.offlineOrders;
+//           final key = (orderHelper.activeOrderId).toString();
+//           if (await box.containsKey(key)) {
+//             final raw = await box.get(key);
+//             if (raw is Map) {
+//               dbMerchantDiscountPerc = double.tryParse(
+//                   raw['merchantDiscountPercentage']?.toString() ?? '0') ??
+//                   0.0;
+//             }
+//           }
+//         } catch (_) {}
+//
 //         setState(() {
 //           orderId = orderData.first[AppDBConst.orderServerId] as int? ?? 0;
 //           orderDateTime =
@@ -7209,6 +8397,7 @@
 //           merchantDiscount = dbMerchantDiscount != 0
 //               ? -(dbMerchantDiscount.abs())
 //               : 0.0; // Build #1.0.80
+//           merchantDiscountPercentage = dbMerchantDiscountPerc;
 //           tax =
 //               (orderData.first[AppDBConst.orderTax] as num?)?.toDouble() ?? 0.0;
 //           orderTotal =
@@ -7270,6 +8459,321 @@
 //     }
 //   }
 //
+// //   Widget _buildOrderItem(int index) {
+// //     final themeHelper = Provider.of<ThemeNotifier>(context);
+// //     final orderItem = orderItems[index];
+// //
+// //     final String itemType =
+// //         orderItem['item_type']?.toString().toLowerCase() ?? '';
+// //     final String itemNameLower =
+// //     (orderItem['item_name']?.toString() ?? '').toLowerCase();
+// //
+// //     // Hide merchant discount line-items from the list (keep it in totals section).
+// //     if (itemType.contains('discount') ||
+// //         itemNameLower.contains('merchant discount')) {
+// //       return const SizedBox.shrink();
+// //     }
+// //
+// //     final bool isPayout = itemType.contains(TextConstants.payoutText);
+// //     final bool isCoupon = itemType.contains(TextConstants.couponText);
+// //     final bool isCashback = itemType.contains("cashback");
+// //     final bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+// //
+// //     // Parse variation_id: Woo/Hive use variation_id; SQLite uses item_variation_id.
+// //     final int varId = _orderSummaryLineVariationId(orderItem);
+// //     final bool hasVariationId = varId > 0;
+// //
+// //     // Only show variant icon for actual product line items (not payout/coupon/custom/cashback)
+// //     final bool isProductItem = !isPayoutOrCoupon;
+// //     final bool isVariantFlag =
+// //         orderItem['is_variant'] == true || orderItem['is_variant'] == 1;
+// //     // item_variation_custom_name is populated from API even for simple lines
+// //     // (fallback is the full line-item name), so never treat name alone as variant.
+// //     final bool isVariant = isProductItem &&
+// //         (isVariantFlag ||
+// //             (itemType == 'variant' || itemType == 'variation') ||
+// //             hasVariationId);
+// //
+// //     final bool isEbtEligible = _orderSummaryLineEbtEligible(orderItem);
+// //
+// //     final String itemName = orderItem['item_name']?.toString() ?? '';
+// //     final double itemPrice = (orderItem['item_price'] ?? 0).toDouble();
+// //     final int itemCount = (orderItem['items_count'] ?? 0).toInt();
+// //
+// //     final double originalTotal = (orderItem['item_sum_price'] ?? 0).toDouble();
+// //
+// //     // --------------------------------------------------
+// //     // ✅ DISCOUNT EXTRACTION
+// //     // --------------------------------------------------
+// //     // -----------------------------
+// // // DISCOUNT EXTRACTION
+// // // -----------------------------
+// //     final String discountType =
+// //         orderItem['discount_type']?.toString().toLowerCase() ?? '';
+// //
+// //     double _num(dynamic value) {
+// //       if (value is num) return value.toDouble();
+// //       return double.tryParse(value?.toString() ?? '') ?? 0.0;
+// //     }
+// //
+// //     // Pending/offline orders may use *_total or camelCase keys.
+// //     double autoDiscount = _num(orderItem['auto_discount']) != 0
+// //         ? _num(orderItem['auto_discount'])
+// //         : _num(orderItem['auto_discount_total']) != 0
+// //         ? _num(orderItem['auto_discount_total'])
+// //         : _num(orderItem['autoDiscount']) != 0
+// //         ? _num(orderItem['autoDiscount'])
+// //         : _num(orderItem['autoDiscountTotal']) != 0
+// //         ? _num(orderItem['autoDiscountTotal'])
+// //         : _num(orderItem['display_auto_discount']);
+// //
+// //     double comboDiscount = [
+// //       orderItem['combo_discount_total'],
+// //       orderItem['comboDiscountTotal'],
+// //       orderItem['combo_discount'],
+// //     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
+// //
+// //     double mixMatchDiscount = [
+// //       orderItem['mixmatch_discount_total'],
+// //       orderItem['mixMatchDiscountTotal'],
+// //       orderItem['mixmatch_discount'],
+// //     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
+// //
+// //     double multipackDiscount = [
+// //       orderItem['multipack_discount_total'],
+// //       orderItem['multipackDiscountTotal'],
+// //       orderItem['multipack_discount'],
+// //     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
+// //
+// //     /// 🔥 FIX: backend sometimes moves discount into auto_discount
+// //     if (discountType == 'mixmatch' &&
+// //         autoDiscount > 0 &&
+// //         mixMatchDiscount == 0) {
+// //       mixMatchDiscount = autoDiscount;
+// //       autoDiscount = 0;
+// //     }
+// //
+// //     if (discountType == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
+// //       comboDiscount = autoDiscount;
+// //       autoDiscount = 0;
+// //     }
+// //
+// //     if (discountType == 'multipack' &&
+// //         autoDiscount > 0 &&
+// //         multipackDiscount == 0) {
+// //       multipackDiscount = autoDiscount;
+// //       autoDiscount = 0;
+// //     }
+// //
+// //     /// Flags
+// //     final bool hasAutoDiscount = autoDiscount > 0;
+// //     final bool isComboDiscount = comboDiscount > 0 || mixMatchDiscount > 0;
+// //     final bool isMultipackDiscount = multipackDiscount > 0;
+// //
+// //     /// Final price
+// //     final double finalItemTotal = originalTotal -
+// //         autoDiscount -
+// //         comboDiscount -
+// //         mixMatchDiscount -
+// //         multipackDiscount;
+// //
+// //     print(
+// //       "SUMMARY ITEM -> ${orderItem['item_name']} "
+// //           "TYPE:$discountType "
+// //           "AUTO:$autoDiscount "
+// //           "COMBO:$comboDiscount "
+// //           "MIX:$mixMatchDiscount "
+// //           "MULTIPACK:$multipackDiscount",
+// //     );
+// //     return Column(
+// //       children: [
+// //         Padding(
+// //           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+// //           child: SizedBox(
+// //             height: 40,
+// //             child: Row(
+// //               crossAxisAlignment: CrossAxisAlignment.start,
+// //               children: [
+// //                 /// LEFT + CENTER COLUMN
+// //                 Expanded(
+// //                   child: Column(
+// //                     crossAxisAlignment: CrossAxisAlignment.start,
+// //                     children: [
+// //                       /// ROW 1 — NAME + QTY
+// //                       SizedBox(
+// //                         height: 16,
+// //                         child: Row(
+// //                           children: [
+// //                             SizedBox(
+// //                               width: 150,
+// //                               child: Text(
+// //                                 itemName.length > 30
+// //                                     ? '${itemName.substring(0, 30)}...'
+// //                                     : itemName,
+// //                                 maxLines: 1,
+// //                                 overflow: TextOverflow.ellipsis,
+// //                                 style: TextStyle(
+// //                                   fontSize: 12.5,
+// //                                   height: 1.0,
+// //                                   fontWeight: FontWeight.bold,
+// //                                   color: themeHelper.themeMode == ThemeMode.dark
+// //                                       ? ThemeNotifier.textDark
+// //                                       : ThemeNotifier.textLight,
+// //                                 ),
+// //                               ),
+// //                             ),
+// //                             const SizedBox(width: 8),
+// //                             if (!isPayoutOrCoupon)
+// //                               Text(
+// //                                 "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
+// //                                 style: TextStyle(
+// //                                   fontSize: 14,
+// //                                   height: 1.0,
+// //                                   fontWeight: FontWeight.bold,
+// //                                   color: themeHelper.themeMode == ThemeMode.dark
+// //                                       ? ThemeNotifier.textDark
+// //                                       : Colors.black87,
+// //                                 ),
+// //                               ),
+// //                           ],
+// //                         ),
+// //                       ),
+// //
+// //                       /// ROW 2 — BADGES
+// //                       /// ROW 2 — BADGES
+// //                       if (isEbtEligible ||
+// //                           isVariant ||
+// //                           hasAutoDiscount ||
+// //                           isComboDiscount ||
+// //                           isMultipackDiscount)
+// //                         SizedBox(
+// //                           height: 12,
+// //                           child: Row(
+// //                             children: [
+// //                               if (isEbtEligible)
+// //                                 Container(
+// //                                   height: 14,
+// //                                   padding:
+// //                                   const EdgeInsets.symmetric(horizontal: 6),
+// //                                   alignment: Alignment.center,
+// //                                   decoration: BoxDecoration(
+// //                                     color: Colors.green,
+// //                                     borderRadius: BorderRadius.circular(3),
+// //                                   ),
+// //                                   child: const Text(
+// //                                     "EBT",
+// //                                     style: TextStyle(
+// //                                       fontSize: 8,
+// //                                       color: Colors.white,
+// //                                       fontWeight: FontWeight.bold,
+// //                                     ),
+// //                                   ),
+// //                                 ),
+// //                               if (isVariant) ...[
+// //                                 const SizedBox(width: 5),
+// //                                 SvgPicture.asset(
+// //                                   SvgUtils.variationIcon,
+// //                                   height: 8,
+// //                                   width: 8,
+// //                                 ),
+// //                               ],
+// //                               if (hasAutoDiscount) ...[
+// //                                 const SizedBox(width: 5),
+// //                                 _discountBadge(
+// //                                   "Autodiscount",
+// //                                   Colors.red,
+// //                                   amount: autoDiscount,
+// //                                 ),
+// //                               ],
+// //                               if (isComboDiscount) ...[
+// //                                 const SizedBox(width: 5),
+// //                                 _discountBadge(
+// //                                   "combo discount",
+// //                                   Colors.orange,
+// //                                   amount: comboDiscount + mixMatchDiscount,
+// //                                 ),
+// //                               ],
+// //                               if (isMultipackDiscount) ...[
+// //                                 const SizedBox(width: 5),
+// //                                 _discountBadge(
+// //                                   "Multipack",
+// //                                   Colors.blue,
+// //                                   amount: multipackDiscount,
+// //                                 ),
+// //                               ],
+// //                             ],
+// //                           ),
+// //                         ),
+// //                     ],
+// //                   ),
+// //                 ),
+// //
+// //                 /// RIGHT PRICE COLUMN
+// //                 SizedBox(
+// //                   //width: 55,
+// //                   child: Column(
+// //                     crossAxisAlignment: CrossAxisAlignment.start,
+// //                     children: [
+// //                       /// FINAL PRICE
+// //                       SizedBox(
+// //                         height: 16,
+// //                         child: Text(
+// //                           isCoupon || isPayout
+// //                               ? "-${TextConstants.currencySymbol}${originalTotal.abs().toStringAsFixed(2)}"
+// //                               : "${TextConstants.currencySymbol}${finalItemTotal.toStringAsFixed(2)}",
+// //                           style: TextStyle(
+// //                             fontSize: 14,
+// //                             height: 1.0,
+// //                             fontWeight: FontWeight.bold,
+// //                             color: isCoupon || isPayout
+// //                                 ? Colors.red
+// //                                 : themeHelper.themeMode == ThemeMode.dark
+// //                                 ? ThemeNotifier.textDark
+// //                                 : ThemeNotifier.textLight,
+// //                           ),
+// //                         ),
+// //                       ),
+// //
+// //                       /// STRIKED ORIGINAL
+// //                       SizedBox(
+// //                         height: 12,
+// //                         child: ((hasAutoDiscount ||
+// //                             isComboDiscount ||
+// //                             isMultipackDiscount) &&
+// //                             !isPayoutOrCoupon)
+// //                             ? Text(
+// //                           "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
+// //                           style: const TextStyle(
+// //                             fontSize: 12,
+// //                             height: 1.0,
+// //                             color: Colors.grey,
+// //                             decoration: TextDecoration.lineThrough,
+// //                           ),
+// //                         )
+// //                             : const SizedBox.shrink(),
+// //                       ),
+// //
+// //                       const SizedBox(height: 12),
+// //                     ],
+// //                   ),
+// //                 ),
+// //               ],
+// //             ),
+// //           ),
+// //         ),
+// //
+// //         /// ✅ DIVIDER — NOW IT WILL SHOW
+// //         Divider(
+// //           height: 1,
+// //           thickness: 0.8,
+// //           color: themeHelper.themeMode == ThemeMode.dark
+// //               ? Colors.black26
+// //               : Colors.grey.shade300,
+// //         ),
+// //       ],
+// //     );
+// //   }
+//
 //   Widget _buildOrderItem(int index) {
 //     final themeHelper = Provider.of<ThemeNotifier>(context);
 //     final orderItem = orderItems[index];
@@ -7290,16 +8794,17 @@
 //     final bool isCashback = itemType.contains("cashback");
 //     final bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
 //
+//     // 🔥 CHECK IF WEIGHTED ITEM
+//     final bool isWeightedItem = itemType.contains('weighted');
+//
 //     // Parse variation_id: Woo/Hive use variation_id; SQLite uses item_variation_id.
 //     final int varId = _orderSummaryLineVariationId(orderItem);
 //     final bool hasVariationId = varId > 0;
 //
 //     // Only show variant icon for actual product line items (not payout/coupon/custom/cashback)
 //     final bool isProductItem = !isPayoutOrCoupon;
-//     final bool isVariantFlag = orderItem['is_variant'] == true ||
-//         orderItem['is_variant'] == 1;
-//     // item_variation_custom_name is populated from API even for simple lines
-//     // (fallback is the full line-item name), so never treat name alone as variant.
+//     final bool isVariantFlag =
+//         orderItem['is_variant'] == true || orderItem['is_variant'] == 1;
 //     final bool isVariant = isProductItem &&
 //         (isVariantFlag ||
 //             (itemType == 'variant' || itemType == 'variation') ||
@@ -7313,12 +8818,28 @@
 //
 //     final double originalTotal = (orderItem['item_sum_price'] ?? 0).toDouble();
 //
+//     // 🔥 EXTRACT WEIGHT DATA FOR WEIGHTED ITEMS
+//     double weightQty = 0.0;
+//     double unitPrice = 0.0;
+//     if (isWeightedItem) {
+//       weightQty = (orderItem['weight_qty'] ??
+//           orderItem['weightQty'] ??
+//           orderItem['weight'] ??
+//           0.0).toDouble();
+//       unitPrice = (orderItem['unit_price'] ??
+//           orderItem['regular_price'] ??
+//           orderItem['item_price'] ??
+//           0.0).toDouble();
+//
+//       print('🟢 DISPLAY ITEM: ${orderItem['item_name']} | '
+//           'unitPricePerLb=$unitPrice | '
+//           'weightLbs=$weightQty | '
+//           'lineTotal=${unitPrice * weightQty}');
+//     }
+//
 //     // --------------------------------------------------
 //     // ✅ DISCOUNT EXTRACTION
 //     // --------------------------------------------------
-//     // -----------------------------
-// // DISCOUNT EXTRACTION
-// // -----------------------------
 //     final String discountType =
 //         orderItem['discount_type']?.toString().toLowerCase() ?? '';
 //
@@ -7327,9 +8848,7 @@
 //       return double.tryParse(value?.toString() ?? '') ?? 0.0;
 //     }
 //
-//     // Pending/offline orders may use *_total or camelCase keys.
-//     double autoDiscount =
-//     _num(orderItem['auto_discount']) != 0
+//     double autoDiscount = _num(orderItem['auto_discount']) != 0
 //         ? _num(orderItem['auto_discount'])
 //         : _num(orderItem['auto_discount_total']) != 0
 //         ? _num(orderItem['auto_discount_total'])
@@ -7343,29 +8862,21 @@
 //       orderItem['combo_discount_total'],
 //       orderItem['comboDiscountTotal'],
 //       orderItem['combo_discount'],
-//     ]
-//         .map((e) => _num(e))
-//         .firstWhere((v) => v != 0, orElse: () => 0);
+//     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
 //
 //     double mixMatchDiscount = [
 //       orderItem['mixmatch_discount_total'],
 //       orderItem['mixMatchDiscountTotal'],
 //       orderItem['mixmatch_discount'],
-//     ]
-//         .map((e) => _num(e))
-//         .firstWhere((v) => v != 0, orElse: () => 0);
+//     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
 //
 //     double multipackDiscount = [
 //       orderItem['multipack_discount_total'],
 //       orderItem['multipackDiscountTotal'],
 //       orderItem['multipack_discount'],
-//     ]
-//         .map((e) => _num(e))
-//         .firstWhere((v) => v != 0, orElse: () => 0);
-//     /// 🔥 FIX: backend sometimes moves discount into auto_discount
-//     if (discountType == 'mixmatch' &&
-//         autoDiscount > 0 &&
-//         mixMatchDiscount == 0) {
+//     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
+//
+//     if (discountType == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
 //       mixMatchDiscount = autoDiscount;
 //       autoDiscount = 0;
 //     }
@@ -7375,33 +8886,21 @@
 //       autoDiscount = 0;
 //     }
 //
-//     if (discountType == 'multipack' &&
-//         autoDiscount > 0 &&
-//         multipackDiscount == 0) {
+//     if (discountType == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
 //       multipackDiscount = autoDiscount;
 //       autoDiscount = 0;
 //     }
 //
-//     /// Flags
 //     final bool hasAutoDiscount = autoDiscount > 0;
 //     final bool isComboDiscount = comboDiscount > 0 || mixMatchDiscount > 0;
 //     final bool isMultipackDiscount = multipackDiscount > 0;
 //
-//     /// Final price
 //     final double finalItemTotal = originalTotal -
 //         autoDiscount -
 //         comboDiscount -
 //         mixMatchDiscount -
 //         multipackDiscount;
 //
-//     print(
-//       "SUMMARY ITEM -> ${orderItem['item_name']} "
-//           "TYPE:$discountType "
-//           "AUTO:$autoDiscount "
-//           "COMBO:$comboDiscount "
-//           "MIX:$mixMatchDiscount "
-//           "MULTIPACK:$multipackDiscount",
-//     );
 //     return Column(
 //       children: [
 //         Padding(
@@ -7441,23 +8940,87 @@
 //                             ),
 //                             const SizedBox(width: 8),
 //                             if (!isPayoutOrCoupon)
-//                               Text(
-//                                 "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
-//                                 style: TextStyle(
-//                                   fontSize: 14,
-//                                   height: 1.0,
-//                                   fontWeight: FontWeight.bold,
-//                                   color: themeHelper.themeMode == ThemeMode.dark
-//                                       ? ThemeNotifier.textDark
-//                                       : Colors.black87,
-//                                 ),
+//                               Builder(
+//                                 builder: (_) {
+//                                   // 🔥 FOR WEIGHTED ITEMS - SHOW WEIGHT INFO
+//                                   if (isWeightedItem && weightQty > 0 && unitPrice > 0) {
+//                                     final double lineTotal = unitPrice * weightQty;
+//                                     return Text(
+//                                       "\$${unitPrice.toStringAsFixed(2)} × ${weightQty.toStringAsFixed(3)} lb",
+//                                       style: TextStyle(
+//                                         fontSize: 12,
+//                                         height: 1.0,
+//                                         fontWeight: FontWeight.bold,
+//                                         color: themeHelper.themeMode == ThemeMode.dark
+//                                             ? ThemeNotifier.textDark
+//                                             : Colors.black87,
+//                                       ),
+//                                     );
+//                                   }
+//                                   // 🔥 NORMAL ITEMS
+//                                   return Text(
+//                                     "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} × $itemCount",
+//                                     style: TextStyle(
+//                                       fontSize: 14,
+//                                       height: 1.0,
+//                                       fontWeight: FontWeight.bold,
+//                                       color: themeHelper.themeMode == ThemeMode.dark
+//                                           ? ThemeNotifier.textDark
+//                                           : Colors.black87,
+//                                     ),
+//                                   );
+//                                 },
 //                               ),
 //                           ],
 //                         ),
 //                       ),
 //
-//                       /// ROW 2 — BADGES
-//                       /// ROW 2 — BADGES
+//                       /// ROW 2 — WEIGHT BADGE (for weighted items)
+//                       // if (isWeightedItem && weightQty > 0)
+//                       //   SizedBox(
+//                       //     height: 12,
+//                       //     child: Row(
+//                       //       children: [
+//                       //         Container(
+//                       //           height: 14,
+//                       //           padding: const EdgeInsets.symmetric(horizontal: 6),
+//                       //           alignment: Alignment.center,
+//                       //           decoration: BoxDecoration(
+//                       //             color: Colors.orange,
+//                       //             borderRadius: BorderRadius.circular(3),
+//                       //           ),
+//                       //           child: Text(
+//                       //             "${weightQty.toStringAsFixed(3)} lb",
+//                       //             style: const TextStyle(
+//                       //               fontSize: 8,
+//                       //               color: Colors.white,
+//                       //               fontWeight: FontWeight.bold,
+//                       //             ),
+//                       //           ),
+//                       //         ),
+//                       //         const SizedBox(width: 5),
+//                       //         Container(
+//                       //           height: 14,
+//                       //           padding: const EdgeInsets.symmetric(horizontal: 6),
+//                       //           alignment: Alignment.center,
+//                       //           decoration: BoxDecoration(
+//                       //             color: Colors.blue.shade300,
+//                       //             borderRadius: BorderRadius.circular(3),
+//                       //           ),
+//                       //           child: Text(
+//                       //             "\$${unitPrice.toStringAsFixed(2)}/lb",
+//                       //             style: const TextStyle(
+//                       //               fontSize: 8,
+//                       //               color: Colors.white,
+//                       //               fontWeight: FontWeight.bold,
+//                       //             ),
+//                       //           ),
+//                       //         ),
+//                       //       ],
+//                       //     ),
+//                       //   ),
+//
+//                       /// ROW 2 — BADGES (existing)
 //                       if (isEbtEligible ||
 //                           isVariant ||
 //                           hasAutoDiscount ||
@@ -7470,8 +9033,7 @@
 //                               if (isEbtEligible)
 //                                 Container(
 //                                   height: 14,
-//                                   padding:
-//                                   const EdgeInsets.symmetric(horizontal: 6),
+//                                   padding: const EdgeInsets.symmetric(horizontal: 6),
 //                                   alignment: Alignment.center,
 //                                   decoration: BoxDecoration(
 //                                     color: Colors.green,
@@ -7527,7 +9089,6 @@
 //
 //                 /// RIGHT PRICE COLUMN
 //                 SizedBox(
-//                   //width: 55,
 //                   child: Column(
 //                     crossAxisAlignment: CrossAxisAlignment.start,
 //                     children: [
@@ -7537,6 +9098,8 @@
 //                         child: Text(
 //                           isCoupon || isPayout
 //                               ? "-${TextConstants.currencySymbol}${originalTotal.abs().toStringAsFixed(2)}"
+//                               : isWeightedItem
+//                               ? "${TextConstants.currencySymbol}${(unitPrice * weightQty).toStringAsFixed(2)}"
 //                               : "${TextConstants.currencySymbol}${finalItemTotal.toStringAsFixed(2)}",
 //                           style: TextStyle(
 //                             fontSize: 14,
@@ -7569,8 +9132,6 @@
 //                         )
 //                             : const SizedBox.shrink(),
 //                       ),
-//
-//                       const SizedBox(height: 12),
 //                     ],
 //                   ),
 //                 ),
@@ -7579,7 +9140,7 @@
 //           ),
 //         ),
 //
-//         /// ✅ DIVIDER — NOW IT WILL SHOW
+//         /// DIVIDER
 //         Divider(
 //           height: 1,
 //           thickness: 0.8,
@@ -7625,15 +9186,14 @@
 //       amount =
 //       '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
 //     } else if (label == TextConstants.payByCash) {
-//       amount =
-//       '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}';
+//       amount = '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}';
 //     } else if (label == TextConstants.payByOther) {
 //       amount =
 //       '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
 //     } else if (label == TextConstants.discountText) {
 //       amount =
 //       '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}'; // Display discount from DB
-//     }else if (label == TextConstants.netPayable) {
+//     } else if (label == TextConstants.netPayable) {
 //       amount =
 //       '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}';
 //     }
@@ -7647,17 +9207,21 @@
 //         : (isTotal ? Colors.black87 : Colors.grey[800]!);
 //     Widget? leadingIcon;
 //
+//     //Raghu--**
+//     // ---------------- Merchant Discount----------------
 //     if (isTotal) {
 //       amountColor = themeHelper.themeMode == ThemeMode.dark
 //           ? ThemeNotifier.textDark
 //           : Colors.black87;
 //     } else if (label == TextConstants.discountText || isDiscount) {
-//       labelColor = Colors.green[600]!;
+//       labelColor = const Color.fromARGB(255, 53, 195, 60)!;
 //       amountColor = Colors.green[600]!;
-//     } else if (label == TextConstants.merchantDiscount) {
+//     } else if (label.startsWith(TextConstants.merchantDiscount)) {
 //       labelColor = Colors.blue[600]!;
 //       amountColor = Colors.blue[600]!;
 //     }
+//     //Raghu--*
+//
 //     // ---------------- CASHBACK ( #55CBCD ) ----------------
 //     else if (label == TextConstants.cashbackFee ||
 //         label.toLowerCase().contains("cashback")) {
@@ -7780,15 +9344,18 @@
 //       ),
 //     );
 //   }
+//
 //   Future<void> showRedeemSummary(double redeemedAmount) async {
 //     if (redeemedAmount <= 0) {
 //       print("❌ Redeem: Invalid amount $redeemedAmount");
 //       return;
 //     }
 //
-//     print("🔄 Redeem Requested: $redeemedAmount | Current computedNetPayable: $computedNetPayable | Tendered: $tenderAmount");
+//     print(
+//         "🔄 Redeem Requested: $redeemedAmount | Current computedNetPayable: $computedNetPayable | Tendered: $tenderAmount");
 //
-//     final double availableBalance = (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
+//     final double availableBalance =
+//     (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
 //     final double actualRedeem = redeemedAmount.clamp(0.0, availableBalance);
 //
 //     setState(() {
@@ -7800,11 +9367,13 @@
 //       computedNetPayable = NetTotal + tax + cashbackFee;
 //       orderTotal = computedNetPayable;
 //
-//       balanceAmount = (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
+//       balanceAmount =
+//           (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
 //
 //       // Reduce EBT if needed
 //       if (ebtTotal > 0) {
-//         ebtTotal = (ebtTotal - (redeemedAmount - actualRedeem)).clamp(0.0, double.infinity);
+//         ebtTotal = (ebtTotal - (redeemedAmount - actualRedeem))
+//             .clamp(0.0, double.infinity);
 //       }
 //     });
 //
@@ -7818,7 +9387,7 @@
 //         order['redeemed_value'] = actualRedeem;
 //         order['net_payable'] = computedNetPayable;
 //         order['balance_amount'] = balanceAmount;
-//         order['NetTotal'] = NetTotal;           // extra safety
+//         order['NetTotal'] = NetTotal; // extra safety
 //         order['computedNetPayable'] = computedNetPayable;
 //         await box.put(key, order);
 //         print("💾 Redeem successfully saved to Hive → $actualRedeem");
@@ -7840,10 +9409,8 @@
 //   }
 //
 //   Future<void> _removeRedeemedAmount() async {
-//
 //     // 🔴 Contact is mandatory
 //     if (mobileController.text.trim().isEmpty) {
-//
 //       ScaffoldMessenger.of(context).showSnackBar(
 //         const SnackBar(
 //           content: Text("Customer contact not found."),
@@ -7854,41 +9421,34 @@
 //       return;
 //     }
 //
-//     final String contact =
-//     mobileController.text.trim();
+//     final String contact = mobileController.text.trim();
 //
 //     // =====================================
 // // GET WOO ORDER ID FROM HIVE
 // // =====================================
-//     final offlineBox =
-//         StorageProvider.offlineOrders;
+//     final offlineBox = StorageProvider.offlineOrders;
 //
-//     final localKey =
-//     widget.offlineOrderId?.toString();
+//     final localKey = widget.offlineOrderId?.toString();
 //
 //     if (localKey == null) {
 //       throw Exception("Offline order not found");
 //     }
 //
-//     final existing =
-//     await offlineBox.get(localKey);
+//     final existing = await offlineBox.get(localKey);
 //
 //     if (existing == null) {
 //       throw Exception("Order data missing");
 //     }
 //
-//     final offlineOrder =
-//     Map<String, dynamic>.from(
+//     final offlineOrder = Map<String, dynamic>.from(
 //       existing is Map ? existing : {},
 //     );
 //
 // // 🔥 GET WOO ORDER ID
-//     final int order =
-//         int.tryParse(
-//           offlineOrder["wooOrderId"]
-//               ?.toString() ?? "0",
-//         ) ??
-//             0;
+//     final int order = int.tryParse(
+//       offlineOrder["wooOrderId"]?.toString() ?? "0",
+//     ) ??
+//         0;
 //
 //     if (order == 0) {
 //       throw Exception("Woo Order ID missing");
@@ -7899,13 +9459,10 @@
 //     setState(() => isSummaryLoading = true);
 //
 //     try {
-//
 //       // =====================================
 //       // API CALL
 //       // =====================================
-//       final rawRes =
-//       await OrderRepository()
-//           .removeLoyaltyPoints(
+//       final rawRes = await OrderRepository().removeLoyaltyPoints(
 //         orderId: order,
 //         contact: contact,
 //       );
@@ -7913,17 +9470,13 @@
 //       // =====================================
 //       // SAFE RESPONSE
 //       // =====================================
-//       final result = rawRes is String
-//           ? jsonDecode(rawRes)
-//           : rawRes;
+//       final result = rawRes is String ? jsonDecode(rawRes) : rawRes;
 //
 //       print("🟢 REMOVE RESPONSE: $result");
 //
 //       if (result["success"] != true) {
-//
 //         throw Exception(
-//           result["message"] ??
-//               "Unable to remove points",
+//           result["message"] ?? "Unable to remove points",
 //         );
 //       }
 //
@@ -7932,16 +9485,14 @@
 //       // =====================================
 //       // API VALUES
 //       // =====================================
-//       final double updatedOrderTotal =
-//           double.tryParse(
-//             data["order_total"]?.toString() ?? "0",
-//           ) ??
-//               widget.netPayable;
-//       final int updatedPoints =
-//           int.tryParse(
-//             data["available_points"]?.toString() ?? "0",
-//           ) ??
-//               availablePoints;
+//       final double updatedOrderTotal = double.tryParse(
+//         data["order_total"]?.toString() ?? "0",
+//       ) ??
+//           widget.netPayable;
+//       final int updatedPoints = int.tryParse(
+//         data["available_points"]?.toString() ?? "0",
+//       ) ??
+//           availablePoints;
 //
 // // UPDATE UI
 //       setState(() {
@@ -7978,13 +9529,10 @@
 //       // SUCCESS MESSAGE
 //       // =====================================
 //       if (mounted) {
-//
-//         ScaffoldMessenger.of(context)
-//             .showSnackBar(
+//         ScaffoldMessenger.of(context).showSnackBar(
 //           SnackBar(
 //             content: Text(
-//               result["message"] ??
-//                   "Redeemed points removed successfully.",
+//               result["message"] ?? "Redeemed points removed successfully.",
 //             ),
 //             backgroundColor: Colors.green,
 //           ),
@@ -7992,27 +9540,20 @@
 //       }
 //
 //       print("🧹 Redeem removed successfully");
-//
 //     } catch (e) {
-//
 //       print("❌ Remove Loyalty Error: $e");
 //
 //       if (mounted) {
-//
-//         ScaffoldMessenger.of(context)
-//             .showSnackBar(
+//         ScaffoldMessenger.of(context).showSnackBar(
 //           SnackBar(
 //             content: Text(
-//               e.toString()
-//                   .replaceAll("Exception:", ""),
+//               e.toString().replaceAll("Exception:", ""),
 //             ),
 //             backgroundColor: Colors.red,
 //           ),
 //         );
 //       }
-//
 //     } finally {
-//
 //       if (mounted) {
 //         setState(
 //               () => isSummaryLoading = false,
@@ -8761,331 +10302,152 @@
 //
 //                   // Payment mode buttons - make flexible
 //                   Expanded(
-//                     flex: 2,
-//                     child: Container(
-//                       width: double.infinity,
+//                     // fit: FlexFit.loose,
+//                     child: Padding(
 //                       padding: EdgeInsets.all(ResponsiveLayout.getPadding(8)),
-//                       decoration: BoxDecoration(
-//                         color: themeHelper.themeMode == ThemeMode.dark
-//                             ? const Color(0xFF303136)
-//                             : Colors.white,
-//                         borderRadius: BorderRadius.circular(
-//                           ResponsiveLayout.getRadius(8),
-//                         ),
-//                         border: Border.all(
-//                           color: const Color(0x2E4C5F7D), // #4C5F7D2E
-//                           width: 2, // adjust as needed
-//                         ),
-//                         boxShadow: [
-//                           BoxShadow(
-//                             color: themeHelper.themeMode == ThemeMode.dark
-//                                 ? Colors.black.withOpacity(0.3)
-//                                 : Colors.black12,
-//                             blurRadius: 4,
-//                             offset: const Offset(0, 2),
-//                           ),
-//                         ],
-//                       ),
-//                       child: SingleChildScrollView(
-//                         child: Column(
-//                           crossAxisAlignment: CrossAxisAlignment.start,
-//                           mainAxisAlignment: MainAxisAlignment.start,
-//                           children: [
-//                             // Net Payable
-//                             Container(
+//                       child: Column(
+//                         children: [
+//                           /// Net Payable
+//                           Expanded(
+//                             child: Container(
 //                               width: double.infinity,
-//                               padding: EdgeInsets.all(
-//                                   ResponsiveLayout.getPadding(8)),
-//                               child: Column(
-//                                 crossAxisAlignment: CrossAxisAlignment.start,
-//                                 mainAxisAlignment: MainAxisAlignment.start,
-//                                 children: [
-//                                   // Net Payable
-//                                   Container(
-//                                     padding: const EdgeInsets.only(
-//                                       top: 6,
-//                                       right: 6,
-//                                       bottom: 6,
-//                                     ),
-//                                     decoration: BoxDecoration(
-//                                       color: themeHelper.themeMode ==
-//                                           ThemeMode.dark
-//                                           ? const Color(
-//                                           0xFF091B34) // dark background
-//                                           : const Color(
-//                                           0xFFF4FCF7), // light mode background
-//                                       borderRadius: BorderRadius.circular(6),
-//                                       border: Border(
-//                                         top: BorderSide(
-//                                           color: themeHelper.themeMode ==
-//                                               ThemeMode.dark
-//                                               ? const Color(0xFF091B34)
-//                                               : const Color(0xFF3EAE4C),
-//                                           width: 1,
-//                                         ),
-//                                         right: BorderSide(
-//                                           color: themeHelper.themeMode ==
-//                                               ThemeMode.dark
-//                                               ? const Color(0xFF091B34)
-//                                               : const Color(0xFF3EAE4C),
-//                                           width: 1,
-//                                         ),
-//                                         bottom: BorderSide(
-//                                           color: themeHelper.themeMode ==
-//                                               ThemeMode.dark
-//                                               ? const Color(0xFF091B34)
-//                                               : const Color(0xFF3EAE4C),
-//                                           width: 1,
-//                                         ),
-//                                         left: BorderSide
-//                                             .none, // 🚫 no left border
-//                                       ),
-//                                     ),
-//                                     child: _buildAmountDisplay(
-//                                       TextConstants.netPayable,
-//                                       '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}',
-//                                       leftBarColor: const Color(0xFF3EAE4C),
-//                                       amountColor: themeHelper.themeMode == ThemeMode.dark
-//                                           ? Colors.white
-//                                           : Colors.black,
-//                                     ),
-//                                   ),
-//
-//                                   SizedBox(
-//                                       height: ResponsiveLayout.getHeight(8)),
-//
-//                                   // Balance Amount
-// // If there's a remaining payment balance, show only that
-//                                   if (_currentPaymentRemainingBalance != null &&
-//                                       _currentPaymentRemainingBalance! > 0)
-//                                     Column(
-//                                       children: [
-//                                         SizedBox(
-//                                             height:
-//                                             ResponsiveLayout.getHeight(10)),
-//                                         Container(
-//                                           padding: const EdgeInsets.only(
-//                                             top: 6,
-//                                             right: 6,
-//                                             bottom: 6,
-//                                           ),
-//                                           decoration: BoxDecoration(
-//                                             color: themeHelper.themeMode ==
-//                                                 ThemeMode.dark
-//                                                 ? const Color(0xFF091B34)
-//                                                 : const Color(0xFFE6F3FF),
-//                                             borderRadius:
-//                                             BorderRadius.circular(6),
-//                                             border: Border(
-//                                               top: BorderSide(
-//                                                 color: themeHelper.themeMode ==
-//                                                     ThemeMode.dark
-//                                                     ? const Color(0xFF091B34)
-//                                                     : const Color(0xFF3B7DDD),
-//                                                 width: 1,
-//                                               ),
-//                                               right: BorderSide(
-//                                                 color: themeHelper.themeMode ==
-//                                                     ThemeMode.dark
-//                                                     ? const Color(0xFF091B34)
-//                                                     : const Color(0xFF3B7DDD),
-//                                                 width: 1,
-//                                               ),
-//                                               bottom: BorderSide(
-//                                                 color: themeHelper.themeMode ==
-//                                                     ThemeMode.dark
-//                                                     ? const Color(0xFF091B34)
-//                                                     : const Color(0xFF3B7DDD),
-//                                                 width: 1,
-//                                               ),
-//                                               left: BorderSide.none,
-//                                             ),
-//                                           ),
-//                                           child: _buildPaymentAmountDisplay(
-//                                             // "After ${_lastPaymentDetails?['method'] ?? 'Payment'}",
-//                                             "Balance Amount",
-//
-//                                             '${TextConstants.currencySymbol}${_currentPaymentRemainingBalance!.toStringAsFixed(2)}',
-//                                             leftBarColor:
-//                                             const Color(0xFF3B7DDD),
-//                                             amountColor:
-//                                             themeHelper.themeMode ==
-//                                                 ThemeMode.dark
-//                                                 ? Colors.white
-//                                                 : Colors.black,
-//                                             isPaymentBalance: true,
-//                                           ),
-//                                         ),
-//                                       ],
-//                                     )
-// // Otherwise show the main balance
-//                                   else
-//                                     Container(
-//                                       padding: const EdgeInsets.only(
-//                                         top: 6,
-//                                         right: 6,
-//                                         bottom: 6,
-//                                       ),
-//                                       decoration: BoxDecoration(
-//                                         color: themeHelper.themeMode ==
-//                                             ThemeMode.dark
-//                                             ? const Color(0xFF091B34)
-//                                             : const Color(0xFFFCF4F4),
-//                                         borderRadius: BorderRadius.circular(6),
-//                                         border: Border(
-//                                           top: BorderSide(
-//                                             color: themeHelper.themeMode ==
-//                                                 ThemeMode.dark
-//                                                 ? const Color(0xFF091B34)
-//                                                 : const Color(0xFFE85C43),
-//                                             width: 1,
-//                                           ),
-//                                           right: BorderSide(
-//                                             color: themeHelper.themeMode ==
-//                                                 ThemeMode.dark
-//                                                 ? const Color(0xFF091B34)
-//                                                 : const Color(0xFFE85C43),
-//                                             width: 1,
-//                                           ),
-//                                           bottom: BorderSide(
-//                                             color: themeHelper.themeMode ==
-//                                                 ThemeMode.dark
-//                                                 ? const Color(0xFF091B34)
-//                                                 : const Color(0xFFE85C43),
-//                                             width: 1,
-//                                           ),
-//                                           left: BorderSide.none,
-//                                         ),
-//                                       ),
-//                                       child: _buildPaymentAmountDisplay(
-//                                         TextConstants.balanceAmount,
-//                                         balanceAmount < 0
-//                                             ? '-${TextConstants.currencySymbol}${balanceAmount.abs().toStringAsFixed(2)}'
-//                                             : '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
-//                                         leftBarColor: const Color(0xFFE85C43),
-//                                         amountColor: themeHelper.themeMode ==
-//                                             ThemeMode.dark
-//                                             ? Colors.white
-//                                             : Colors.black,
-//                                       ),
-//                                     ),
-//
-//                                   SizedBox(
-//                                       height: ResponsiveLayout.getHeight(15)),
-//
-// // EBT Amount
-//                                   Container(
-//                                     padding: const EdgeInsets.only(
-//                                       top: 6,
-//                                       right: 6,
-//                                       bottom: 6,
-//                                     ),
-//                                     decoration: BoxDecoration(
-//                                       color: themeHelper.themeMode ==
-//                                           ThemeMode.dark
-//                                           ? const Color(0xFF091B34)
-//                                           : const Color(0xFFF4F7FC),
-//                                       borderRadius: BorderRadius.circular(6),
-//                                       border: Border(
-//                                         top: BorderSide(
-//                                           color: themeHelper.themeMode ==
-//                                               ThemeMode.dark
-//                                               ? const Color(0xFF091B34)
-//                                               : const Color(0xFF3B7DDD),
-//                                           width: 1,
-//                                         ),
-//                                         right: BorderSide(
-//                                           color: themeHelper.themeMode ==
-//                                               ThemeMode.dark
-//                                               ? const Color(0xFF091B34)
-//                                               : const Color(0xFF3B7DDD),
-//                                           width: 1,
-//                                         ),
-//                                         bottom: BorderSide(
-//                                           color: themeHelper.themeMode ==
-//                                               ThemeMode.dark
-//                                               ? const Color(0xFF091B34)
-//                                               : const Color(0xFF3B7DDD),
-//                                           width: 1,
-//                                         ),
-//                                         left: BorderSide.none,
-//                                       ),
-//                                     ),
-//                                     child: _buildAmountDisplay(
-//                                       TextConstants.EBTAmount,
-//                                       ebtTotal < 0
-//                                           ? '-${TextConstants.currencySymbol}${ebtTotal.abs().toStringAsFixed(2)}'
-//                                           : '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
-//                                       leftBarColor: const Color(0xFF3B7DDD),
-//                                       amountColor: themeHelper.themeMode ==
-//                                           ThemeMode.dark
-//                                           ? Colors.white
-//                                           : Colors.black,
-//                                     ),
-//                                   ),
-//
-//                                   SizedBox(
-//                                       height: ResponsiveLayout.getHeight(15)),
-//
-//                                   // // EBT Amount
-//                                   // Container(
-//                                   //   padding: const EdgeInsets.only(
-//                                   //     top: 6,
-//                                   //     right: 6,
-//                                   //     bottom: 6,
-//                                   //   ),
-//                                   //   decoration: BoxDecoration(
-//                                   //     color: themeHelper.themeMode == ThemeMode.dark
-//                                   //         ? const Color(0xFF091B34)
-//                                   //         : const Color(0xFFF4F7FC),
-//                                   //     borderRadius: BorderRadius.circular(6),
-//                                   //     border: Border(
-//                                   //       top: BorderSide(
-//                                   //         color: themeHelper.themeMode == ThemeMode.dark
-//                                   //             ? const Color(0xFF091B34)
-//                                   //             : const Color(0xFF3B7DDD),
-//                                   //         width: 1,
-//                                   //       ),
-//                                   //       right: BorderSide(
-//                                   //         color: themeHelper.themeMode == ThemeMode.dark
-//                                   //             ? const Color(0xFF091B34)
-//                                   //             : const Color(0xFF3B7DDD),
-//                                   //         width: 1,
-//                                   //       ),
-//                                   //       bottom: BorderSide(
-//                                   //         color: themeHelper.themeMode == ThemeMode.dark
-//                                   //             ? const Color(0xFF091B34)
-//                                   //             : const Color(0xFF3B7DDD),
-//                                   //         width: 1,
-//                                   //       ),
-//                                   //       left: BorderSide.none, // 🚫 no left border
-//                                   //     ),
-//                                   //   ),
-//                                   //   child: _buildAmountDisplay(
-//                                   //     TextConstants.EBTAmount,
-//                                   //     ebtTotal < 0
-//                                   //         ? '-${TextConstants.currencySymbol}${ebtTotal.abs().toStringAsFixed(2)}'
-//                                   //         : '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
-//                                   //     leftBarColor: const Color(0xFF3B7DDD),
-//                                   //     amountColor: themeHelper.themeMode == ThemeMode.dark
-//                                   //         ? Colors.white
-//                                   //         : Colors.black,
-//                                   //   ),
-//                                   //
-//                                   // ),
-//                                 ],
+//                               padding: const EdgeInsets.only(top: 6, right: 6, bottom: 6),
+//                               decoration: BoxDecoration(
+//                                 color: themeHelper.themeMode == ThemeMode.dark
+//                                     ? const Color(0xFF091B34)
+//                                     : const Color(0xFFF4FCF7),
+//                                 borderRadius: BorderRadius.circular(6),
+//                                 border: Border(
+//                                   top: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3EAE4C)),
+//                                   right: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3EAE4C)),
+//                                   bottom: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3EAE4C)),
+//                                   left: BorderSide.none,
+//                                 ),
 //                               ),
-//                             )
+//                               child: _buildAmountDisplay(
+//                                 TextConstants.netPayable,
+//                                 '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}',
+//                                 leftBarColor: const Color(0xFF3EAE4C),
+//                                 amountColor: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black,
+//                                 // Dynamic font size
+//                                 labelFontSize: _hasEbtItemsInOrder ? 11 : 18,     // ← was ebtTotal > 0
+//                                 amountFontSize: _hasEbtItemsInOrder ? 12 : 25,
+//                               ),
+//                             ),
+//                           ),
+//
+//                           SizedBox(height: ResponsiveLayout.getHeight(10)),
+//
+//
+//                           /// Balance Amount - Extra Large & Bold when no EBT
+//                           Expanded(
+//                             child: Container(
+//                               width: double.infinity,
+//                               padding: const EdgeInsets.only(top: 6, right: 6, bottom: 6),
+//                               decoration: BoxDecoration(
+//                                 color: themeHelper.themeMode == ThemeMode.dark
+//                                     ? const Color(0xFF091B34)
+//                                     : (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0)
+//                                     ? const Color(0xFFE6F3FF)
+//                                     : const Color(0xFFFCF4F4),
+//                                 borderRadius: BorderRadius.circular(6),
+//                                 border: Border(
+//                                   top: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0) ? const Color(0xFF3B7DDD) : const Color(0xFFE85C43)),
+//                                   right: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0) ? const Color(0xFF3B7DDD) : const Color(0xFFE85C43)),
+//                                   bottom: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0) ? const Color(0xFF3B7DDD) : const Color(0xFFE85C43)),
+//                                   left: BorderSide.none,
+//                                 ),
+//                               ),
+//                               child: _currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0
+//                                   ? _buildPaymentAmountDisplay(
+//                                 "Balance Amount",
+//                                 '${TextConstants.currencySymbol}${_currentPaymentRemainingBalance!.toStringAsFixed(2)}',
+//                                 leftBarColor: const Color(0xFF3B7DDD),
+//                                 amountColor: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black,
+//                                 isPaymentBalance: true,
+//                                 labelFontSize: _hasEbtItemsInOrder ? 11 : 14,     // ← was ebtTotal > 0
+//                                 amountFontSize: _hasEbtItemsInOrder ? 13 : 27,    // ← was ebtTotal > 0
+//                                 amountFontWeight: FontWeight.w900,             // Extra Bold
+//                               )
+//                                   : _buildPaymentAmountDisplay(
+//                                 TextConstants.balanceAmount,
+//                                 balanceAmount < 0
+//                                     ? '-${TextConstants.currencySymbol}${balanceAmount.abs().toStringAsFixed(2)}'
+//                                     : '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
+//                                 leftBarColor: const Color(0xFFE85C43),
+//                                 amountColor: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black,
+//                                 labelFontSize: _hasEbtItemsInOrder ? 11 : 14,     // ← was ebtTotal > 0
+//                                 amountFontSize: _hasEbtItemsInOrder ? 13 : 27,          // Bigger
+//                                 amountFontWeight: FontWeight.w900,                // Extra Bold
+//                               ),
+//                             ),
+//                           ),
+//
+//                           if (ebtTotal > 0 && hasEbtItem) ...[
+//                             SizedBox(height: ResponsiveLayout.getHeight(10)),
+//                             /// EBT (smaller fonts when 3 items are shown)
+//                             Expanded(
+//                               child: Container(
+//                                 width: double.infinity,
+//                                 padding: const EdgeInsets.only(top: 6, right: 6, bottom: 6),
+//                                 decoration: BoxDecoration(
+//                                   color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFFF4F7FC),
+//                                   borderRadius: BorderRadius.circular(6),
+//                                   border: Border(
+//                                     top: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3B7DDD)),
+//                                     right: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3B7DDD)),
+//                                     bottom: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3B7DDD)),
+//                                     left: BorderSide.none,
+//                                   ),
+//                                 ),
+//                                 child: _buildAmountDisplay(
+//                                   TextConstants.EBTAmount,
+//                                   (() {
+//                                     final double originalEbt = widget.ebtAmount;
+//
+//                                     if (originalEbt <= 0) {
+//                                       return '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
+//                                     }
+//
+//                                     final double originalNetPayable = widget.netPayable > 0
+//                                         ? widget.netPayable
+//                                         : (widget.grossTotal + widget.orderTax);
+//
+//                                     if (originalNetPayable <= 0) {
+//                                       return '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
+//                                     }
+//
+//                                     if ((computedNetPayable - originalNetPayable).abs() > 0.01) {
+//                                       final ratio = originalEbt / originalNetPayable;
+//                                       final proportionalEbt =
+//                                       (computedNetPayable * ratio).clamp(0.0, originalEbt);
+//
+//                                       final displayEbt =
+//                                       (proportionalEbt - payByEbt).clamp(0.0, double.infinity);
+//
+//                                       return '${TextConstants.currencySymbol}${displayEbt.toStringAsFixed(2)}';
+//                                     }
+//
+//                                     return '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
+//                                   })(),
+//                                   leftBarColor: const Color(0xFF3B7DDD),
+//                                   amountColor: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black,
+//                                   labelFontSize: 11,
+//                                   amountFontSize: 12,
+//                                 ),
+//                               ),
+//                             ),
 //                           ],
-//                         ),
+//                         ],
 //                       ),
 //                     ),
 //                   ),
+//
 //                   SizedBox(height: ResponsiveLayout.getHeight(10)),
 //
 //                   // Payment options - make flexible
 //                   Expanded(
-//                     flex: 2, // Give less space to payment options
+//                     // flex: 2, // Give less space to payment options
 //                     child: Container(
 //                       width: double.infinity,
 //                       padding:
@@ -9334,12 +10696,10 @@
 //                               _buildRedeemCouponButton(
 //                                 TextConstants.Issuecoupon,
 //                                 "assets/coupon.png",
-//
 //                                 isActive:
 //                                 !(offlineOrder?["coupon_applied"] == true ||
-//                                     isCouponActive||
+//                                     isCouponActive ||
 //                                     computedNetPayable < 0),
-//
 //                                 onTap: () async {
 //                                   if (offlineOrder == null) {
 //                                     ScaffoldMessenger.of(context).showSnackBar(
@@ -9374,6 +10734,137 @@
 //
 //   bool isGenerateCouponActive = false;
 //
+//   // Future<bool> _syncAndShowCouponPopup() async {
+//   //   if (_isProcessing) return false;
+//   //
+//   //   setState(() => _isProcessing = true);
+//   //   bool loaderOpen = true;
+//   //
+//   //   showDialog(
+//   //     context: context,
+//   //     barrierDismissible: false,
+//   //     builder: (_) => const Center(child: CircularProgressIndicator()),
+//   //   );
+//   //
+//   //   try {
+//   //     final response = await OrderRepository().CouponApply(offlineOrder!);
+//   //
+//   //     if (loaderOpen) {
+//   //       Navigator.of(context).pop();
+//   //       loaderOpen = false;
+//   //     }
+//   //
+//   //     if (response == null || response is! Map<String, dynamic>) {
+//   //       _showErrorPopup("Coupon applied but no response data received.");
+//   //       return false;
+//   //     }
+//   //
+//   //     final coupons = response["coupons"] as List? ?? [];
+//   //     if (coupons.isEmpty) {
+//   //       _showErrorPopup("Coupon applied, but no coupon details returned.");
+//   //       return false;
+//   //     }
+//   //
+//   //     final coupon = coupons.first;
+//   //     final double discountAmount =
+//   //         (coupon["amount"] as num?)?.toDouble() ?? 0.0;
+//   //     final String couponCode = coupon["code"]?.toString() ?? "";
+//   //
+//   //     // Optional: Early minimum amount check (if backend provides it)
+//   //     final double minAmount =
+//   //         (coupon["min_amount"] as num?)?.toDouble() ?? 0.0;
+//   //     final double currentSubtotal = grossTotal; // or computed subtotal
+//   //
+//   //     if (minAmount > 0 && currentSubtotal < minAmount) {
+//   //       _showErrorPopup(
+//   //           "Coupon '$couponCode' requires minimum order of \$$minAmount");
+//   //       return false;
+//   //     }
+//   //
+//   //     // Update UI temporarily
+//   //     setState(() {
+//   //       couponValue = discountAmount;
+//   //       ebtTotal = 0.0;
+//   //       cashbackFee = 0.0;
+//   //       isGenerateCouponActive = true;
+//   //     });
+//   //
+//   //     // Show confirmation popup
+//   //     final bool confirmed = await _showCouponResponsePopup(response);
+//   //
+//   //     if (!confirmed) {
+//   //       debugPrint("🔵 Coupon popup closed with X – not saving to Hive");
+//   //       setState(() => isGenerateCouponActive = false);
+//   //       return false;
+//   //     }
+//   //
+//   //     // === Save to Hive only after user confirmation ===
+//   //     final box = StorageProvider.offlineOrders;
+//   //     final String key = offlineOrder?['id']?.toString() ??
+//   //         offlineOrder?['order_id']?.toString() ??
+//   //         offlineOrder?['local_order_id']?.toString() ??
+//   //         "";
+//   //
+//   //     if (key.isEmpty) return true;
+//   //
+//   //     final hasKey = await box.containsKey(key);
+//   //     final raw = hasKey ? await box.get(key) : null;
+//   //     final Map<String, dynamic> existing = raw is Map
+//   //         ? Map<String, dynamic>.from(raw)
+//   //         : Map<String, dynamic>.from(offlineOrder!);
+//   //
+//   //     // Prepare issued coupons
+//   //     final List<Map<String, dynamic>> issueCoupons = [];
+//   //     for (final c in response["coupons"] as List? ?? []) {
+//   //       if (c is! Map) continue;
+//   //       final m = Map<String, dynamic>.from(c);
+//   //       if (m["generate_type"] != true) {
+//   //         m["generate_type"] = false;
+//   //       }
+//   //       issueCoupons.add(m);
+//   //     }
+//   //
+//   //     // Keep previous redeemed coupons
+//   //     final prevCoupons = <Map<String, dynamic>>[];
+//   //     final prevCr = existing["coupon_response"];
+//   //     if (prevCr is Map && prevCr["coupons"] is List) {
+//   //       for (final x in prevCr["coupons"] as List) {
+//   //         if (x is Map) prevCoupons.add(Map<String, dynamic>.from(x));
+//   //       }
+//   //     }
+//   //
+//   //     final keptRedeems =
+//   //     prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
+//   //
+//   //     final mergedResponse = Map<String, dynamic>.from(response);
+//   //     mergedResponse["coupons"] = [...issueCoupons, ...keptRedeems];
+//   //
+//   //     existing["coupon_response"] = mergedResponse;
+//   //     existing["coupon_applied"] = true;
+//   //     existing["coupon_applied_at"] = DateTime.now().toIso8601String();
+//   //     existing["coupon_amount"] = discountAmount;
+//   //
+//   //     await box.put(key, existing);
+//   //     offlineOrder = existing;
+//   //
+//   //     debugPrint("✅ Generated Coupon saved in Hive for order $key");
+//   //     return true;
+//   //   } catch (e) {
+//   //     if (loaderOpen) {
+//   //       Navigator.of(context).pop();
+//   //       loaderOpen = false;
+//   //     }
+//   //     _showErrorPopup("Something went wrong while applying coupon.");
+//   //     debugPrint("❌ Coupon popup error: $e");
+//   //     return false;
+//   //   } finally {
+//   //     setState(() => _isProcessing = false);
+//   //   }
+//   // }
+//
+//   ///above code was working code
+//   ///
+//
 //   Future<bool> _syncAndShowCouponPopup() async {
 //     if (_isProcessing) return false;
 //
@@ -9387,6 +10878,44 @@
 //     );
 //
 //     try {
+//       // ✅ CRITICAL FIX: Save Pay Later user to offlineOrder and Hive BEFORE sync
+//       if (offlineOrder != null && _selectedPayLaterUser != null) {
+//         // Add to offlineOrder map
+//         offlineOrder!['selectedPayLaterUser'] = Map<String, dynamic>.from(_selectedPayLaterUser!);
+//         offlineOrder!['is_pay_later_order'] = true;
+//
+//         debugPrint("✅ Pay Later user added to offlineOrder: ${_selectedPayLaterUser!['name']} (ID: ${_selectedPayLaterUser!['user_id']})");
+//
+//         // ✅ CRITICAL: Save to Hive immediately so the sync function can read it
+//         final box = StorageProvider.offlineOrders;
+//         final String key = offlineOrder?['id']?.toString() ??
+//             offlineOrder?['order_id']?.toString() ??
+//             offlineOrder?['local_order_id']?.toString() ??
+//             widget.offlineOrderId?.toString() ??
+//             "";
+//
+//         if (key.isNotEmpty) {
+//           await box.put(key, offlineOrder);
+//           debugPrint("✅ Pay Later user saved to Hive before sync: ${_selectedPayLaterUser!['name']}");
+//
+//           // ✅ Verify it was saved
+//           final verify = await box.get(key);
+//           if (verify is Map) {
+//             final savedUser = verify['selectedPayLaterUser'];
+//             if (savedUser is Map) {
+//               debugPrint("✅ Verification: Pay Later user found in Hive: ${savedUser['name']} (ID: ${savedUser['user_id']})");
+//             } else {
+//               debugPrint("⚠️ Verification: Pay Later user NOT found in Hive after save!");
+//             }
+//           }
+//         } else {
+//           debugPrint("⚠️ Could not save to Hive - key is empty");
+//         }
+//       } else {
+//         debugPrint("⚠️ No Pay Later user selected or offlineOrder is null");
+//       }
+//
+//       // Now call the repository with the updated offlineOrder
 //       final response = await OrderRepository().CouponApply(offlineOrder!);
 //
 //       if (loaderOpen) {
@@ -9406,19 +10935,20 @@
 //       }
 //
 //       final coupon = coupons.first;
-//       final double discountAmount = (coupon["amount"] as num?)?.toDouble() ?? 0.0;
+//       final double discountAmount =
+//           (coupon["amount"] as num?)?.toDouble() ?? 0.0;
 //       final String couponCode = coupon["code"]?.toString() ?? "";
 //
-//       // Optional: Early minimum amount check (if backend provides it)
-//       final double minAmount = (coupon["min_amount"] as num?)?.toDouble() ?? 0.0;
-//       final double currentSubtotal = grossTotal; // or computed subtotal
+//       final double minAmount =
+//           (coupon["min_amount"] as num?)?.toDouble() ?? 0.0;
+//       final double currentSubtotal = grossTotal;
 //
 //       if (minAmount > 0 && currentSubtotal < minAmount) {
-//         _showErrorPopup("Coupon '$couponCode' requires minimum order of \$$minAmount");
+//         _showErrorPopup(
+//             "Coupon '$couponCode' requires minimum order of \$$minAmount");
 //         return false;
 //       }
 //
-//       // Update UI temporarily
 //       setState(() {
 //         couponValue = discountAmount;
 //         ebtTotal = 0.0;
@@ -9426,7 +10956,6 @@
 //         isGenerateCouponActive = true;
 //       });
 //
-//       // Show confirmation popup
 //       final bool confirmed = await _showCouponResponsePopup(response);
 //
 //       if (!confirmed) {
@@ -9435,11 +10964,12 @@
 //         return false;
 //       }
 //
-//       // === Save to Hive only after user confirmation ===
 //       final box = StorageProvider.offlineOrders;
 //       final String key = offlineOrder?['id']?.toString() ??
 //           offlineOrder?['order_id']?.toString() ??
-//           offlineOrder?['local_order_id']?.toString() ?? "";
+//           offlineOrder?['local_order_id']?.toString() ??
+//           widget.offlineOrderId?.toString() ??
+//           "";
 //
 //       if (key.isEmpty) return true;
 //
@@ -9449,7 +10979,13 @@
 //           ? Map<String, dynamic>.from(raw)
 //           : Map<String, dynamic>.from(offlineOrder!);
 //
-//       // Prepare issued coupons
+//       // ✅ PRESERVE PAY LATER USER DATA IN HIVE
+//       if (_selectedPayLaterUser != null) {
+//         existing['selectedPayLaterUser'] = Map<String, dynamic>.from(_selectedPayLaterUser!);
+//         existing['is_pay_later_order'] = true;
+//         debugPrint("✅ Pay Later user preserved in Hive: ${_selectedPayLaterUser!['name']}");
+//       }
+//
 //       final List<Map<String, dynamic>> issueCoupons = [];
 //       for (final c in response["coupons"] as List? ?? []) {
 //         if (c is! Map) continue;
@@ -9460,7 +10996,6 @@
 //         issueCoupons.add(m);
 //       }
 //
-//       // Keep previous redeemed coupons
 //       final prevCoupons = <Map<String, dynamic>>[];
 //       final prevCr = existing["coupon_response"];
 //       if (prevCr is Map && prevCr["coupons"] is List) {
@@ -9469,7 +11004,8 @@
 //         }
 //       }
 //
-//       final keptRedeems = prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
+//       final keptRedeems =
+//       prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
 //
 //       final mergedResponse = Map<String, dynamic>.from(response);
 //       mergedResponse["coupons"] = [...issueCoupons, ...keptRedeems];
@@ -9482,9 +11018,11 @@
 //       await box.put(key, existing);
 //       offlineOrder = existing;
 //
-//       debugPrint("✅ Generated Coupon saved in Hive for order $key");
+//       debugPrint("✅ Coupon saved in Hive for order $key");
+//       if (_selectedPayLaterUser != null) {
+//         debugPrint("✅ Pay Later user data verified in Hive: ${_selectedPayLaterUser!['name']} (ID: ${_selectedPayLaterUser!['user_id']})");
+//       }
 //       return true;
-//
 //     } catch (e) {
 //       if (loaderOpen) {
 //         Navigator.of(context).pop();
@@ -9498,121 +11036,6 @@
 //     }
 //   }
 //
-//   // Future<bool> _syncAndShowCouponPopup() async {
-//   //   if (_isProcessing) return false;
-//   //
-//   //   setState(() => _isProcessing = true);
-//   //
-//   //   bool loaderOpen = true;
-//   //
-//   //   showDialog(
-//   //     context: context,
-//   //     barrierDismissible: false,
-//   //     builder: (_) => const Center(child: CircularProgressIndicator()),
-//   //   );
-//   //
-//   //   try {
-//   //     final response = await OrderRepository().CouponApply(offlineOrder!);
-//   //
-//   //     if (loaderOpen) {
-//   //       Navigator.of(context).pop();
-//   //       loaderOpen = false;
-//   //     }
-//   //
-//   //     // 🔒 HARD GUARD
-//   //     if (response == null || response is! Map<String, dynamic>) {
-//   //       _showErrorPopup("Coupon applied but no response data received.");
-//   //       return false;
-//   //     }
-//   //
-//   //     final coupons = response["coupons"] as List? ?? [];
-//   //     if (coupons.isEmpty) {
-//   //       _showErrorPopup("Coupon applied, but no coupon details returned.");
-//   //       return false;
-//   //     }
-//   //
-//   //     final coupon = coupons.first;
-//   //     final double discountAmount =
-//   //         (coupon["amount"] as num?)?.toDouble() ?? 0.0;
-//   //
-//   //     // ✅ Only update UI state here; save to Hive only after user clicks OK
-//   //     setState(() {
-//   //       couponValue = discountAmount;
-//   //       ebtTotal = 0.0;
-//   //       cashbackFee = 0.0;
-//   //       isGenerateCouponActive = true;
-//   //     });
-//   //
-//   //     // ✅ Await popup result: true = OK (confirm), false = X (cancel)
-//   //     final bool confirmed = await _showCouponResponsePopup(response);
-//   //
-//   //     if (!confirmed) {
-//   //       // User closed with X – don't save to Hive, reset UI state so they can issue again
-//   //       debugPrint("🔵 Coupon popup closed with X – not saving to Hive");
-//   //       setState(() {
-//   //         isGenerateCouponActive = false;
-//   //       });
-//   //       return false;
-//   //     }
-//   //
-//   //     final box = StorageProvider.offlineOrders;
-//   //
-//   //     final String key = offlineOrder?['id']?.toString() ??
-//   //         offlineOrder?['order_id']?.toString() ??
-//   //         offlineOrder?['local_order_id']?.toString() ??
-//   //         "";
-//   //
-//   //     if (key.isEmpty) return true;
-//   //
-//   //     final hasKey = await box.containsKey(key);
-//   //     final raw = hasKey ? await box.get(key) : null;
-//   //     final Map<String, dynamic> existing = raw is Map
-//   //         ? Map<String, dynamic>.from(raw)
-//   //         : Map<String, dynamic>.from(offlineOrder!);
-//   //
-//   //     final List<Map<String, dynamic>> issueCoupons = [];
-//   //     for (final c in response["coupons"] as List? ?? []) {
-//   //       if (c is! Map) continue;
-//   //       final m = Map<String, dynamic>.from(c);
-//   //       if (m["generate_type"] != true) {
-//   //         m["generate_type"] = false;
-//   //       }
-//   //       issueCoupons.add(m);
-//   //     }
-//   //     final prevCoupons = <Map<String, dynamic>>[];
-//   //     final prevCr = existing["coupon_response"];
-//   //     if (prevCr is Map && prevCr["coupons"] is List) {
-//   //       for (final x in prevCr["coupons"] as List) {
-//   //         if (x is Map) prevCoupons.add(Map<String, dynamic>.from(x));
-//   //       }
-//   //     }
-//   //     final keptRedeems =
-//   //     prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
-//   //     final mergedResponse = Map<String, dynamic>.from(response);
-//   //     mergedResponse["coupons"] = [...issueCoupons, ...keptRedeems];
-//   //     existing["coupon_response"] = mergedResponse;
-//   //     existing["coupon_applied"] = true;
-//   //     existing["coupon_applied_at"] = DateTime.now().toIso8601String();
-//   //     existing["coupon_amount"] = discountAmount;
-//   //
-//   //     await box.put(key, existing);
-//   //     offlineOrder = existing;
-//   //
-//   //     debugPrint("✅ Coupon saved in Hive for order $key");
-//   //     return true;
-//   //   } catch (e) {
-//   //     if (loaderOpen) {
-//   //       Navigator.of(context).pop();
-//   //       loaderOpen = false;
-//   //     }
-//   //     _showErrorPopup("Something went wrong while applying coupon.");
-//   //     debugPrint("❌ Coupon popup error: $e");
-//   //     return false;
-//   //   } finally {
-//   //     setState(() => _isProcessing = false);
-//   //   }
-//   // }
-//
 //   void _showErrorPopup(String message) {
 //     showDialog(
 //       context: context,
@@ -9622,10 +11045,10 @@
 //           child: Text(
 //             "Error",
 //             style: TextStyle(
-//               color: Color(0xFFFE6464),      // 🔴 red color
-//               fontSize: 24,             // adjust if needed
+//               color: Color(0xFFFE6464), // 🔴 red color
+//               fontSize: 24, // adjust if needed
 //               fontWeight: FontWeight.bold, // stronger emphasis
-//               fontFamily: "Inter",      // ✅ your custom font (change if needed)
+//               fontFamily: "Inter", // ✅ your custom font (change if needed)
 //             ),
 //           ),
 //         ),
@@ -10065,107 +11488,73 @@
 //   //     setState(() => isSummaryLoading = false);
 //   //   }
 //   // }
+//
 //   Future<void> _removeAppliedCoupon() async {
-//
 //     try {
+//       final box = StorageProvider.offlineOrders;
 //
-//       final box =
-//           StorageProvider.offlineOrders;
-//
-//       final String orderKey =
-//           widget.orderId?.toString() ??
-//               widget.offlineOrderId?.toString() ??
-//               orderId?.toString() ??
-//               "";
+//       final String orderKey = widget.orderId?.toString() ??
+//           widget.offlineOrderId?.toString() ??
+//           orderId?.toString() ??
+//           "";
 //
 //       if (orderKey.isEmpty) return;
 //
-//       final rawOrder =
-//       await box.get(orderKey);
+//       final rawOrder = await box.get(orderKey);
 //
 //       if (rawOrder == null) return;
 //
-//       final offlineOrder =
-//       Map<String, dynamic>.from(rawOrder);
+//       final offlineOrder = Map<String, dynamic>.from(rawOrder);
 //
 //       if (mounted) {
-//         setState(() =>
-//         isSummaryLoading = true);
+//         setState(() => isSummaryLoading = true);
 //       }
 //
-//       final int safeOrderId =
-//           int.tryParse(orderKey) ??
-//               widget.orderId ??
-//               0;
+//       final int safeOrderId = int.tryParse(orderKey) ?? widget.orderId ?? 0;
 //
-//       final double restoredTax =
-//           widget.orderTax;
+//       final double restoredTax = widget.orderTax;
 //
 //       // ================= RESET VALUES =================
 //       setState(() {
-//
 //         discount = 0.0;
 //         discountValue = 0.0;
 //         couponDiscount = 0.0;
 //
 //         tax = restoredTax;
 //
-//         grossTotal =
-//             widget.grossTotal;
+//         grossTotal = widget.grossTotal;
 //
-//         merchantDiscount =
-//         widget.merchantDiscount < 0
+//         merchantDiscount = widget.merchantDiscount < 0
 //             ? widget.merchantDiscount
 //             : -widget.merchantDiscount.abs();
 //
-//         NetTotal =
-//             grossTotal +
-//                 discount +
-//                 merchantDiscount;
+//         NetTotal = grossTotal + discount + merchantDiscount;
 //
-//         computedNetPayable =
-//             NetTotal +
-//                 tax +
-//                 cashbackFee;
+//         computedNetPayable = NetTotal + tax + cashbackFee;
 //
-//         orderTotal =
-//             computedNetPayable;
+//         orderTotal = computedNetPayable;
 //
-//         balanceAmount =
-//             computedNetPayable -
-//                 tenderAmount;
+//         balanceAmount = computedNetPayable - tenderAmount;
 //
-//         isCouponAppliedFromApi =
-//         false;
+//         isCouponAppliedFromApi = false;
 //       });
 //
 //       // ================= RECALCULATE =================
 //       await _recalculateTaxOnDiscountedItems();
 //
 //       if (!widget.itemPricesAlreadyAdjusted) {
-//
-//         _recalculateGrossAndNetFromLineItemDiscounts();
+//         await _recalculateGrossAndNetFromLineItemDiscounts();
 //       }
-//
+//       //Raghu--**
 //       // ================= FINAL TOTAL RECALC =================
 //       setState(() {
+//         NetTotal = grossTotal + discount + merchantDiscount; //Raghu
 //
-//         NetTotal =
-//             grossTotal +
-//                 discount +
-//                 merchantDiscount;
+//         computedNetPayable = NetTotal + tax + cashbackFee;
 //
-//         computedNetPayable =
-//             NetTotal +
-//                 tax +
-//                 cashbackFee;
+//         orderTotal = computedNetPayable;
 //
-//         orderTotal =
-//             computedNetPayable;
-//
-//         balanceAmount =
-//             computedNetPayable -
-//                 tenderAmount;
+//         balanceAmount = computedNetPayable - tenderAmount;
 //       });
 //
 //       // ================= UPDATE HIVE =================
@@ -10176,17 +11565,13 @@
 //
 //       offlineOrder["applied_coupons"] = [];
 //
-//       offlineOrder["coupon_applied"] =
-//       false;
+//       offlineOrder["coupon_applied"] = false;
 //
-//       offlineOrder["orderDiscount"] =
-//           discount;
+//       offlineOrder["orderDiscount"] = discount;
 //
-//       offlineOrder["tax_discount"] =
-//           tax;
+//       offlineOrder["tax_discount"] = tax;
 //
-//       offlineOrder["grand_total"] =
-//           computedNetPayable;
+//       offlineOrder["grand_total"] = computedNetPayable;
 //
 //       await box.put(
 //         orderKey,
@@ -10195,38 +11580,21 @@
 //
 //       // ================= SERVER SYNC FIRST =================
 //       try {
+//         // await OrderRepository().syncSingleOfflineOrder(
+//         //   offlineOrder,
+//         // );
+//         // ── Inject latest merchant discount into offlineOrder BEFORE sync ──
+//         if (merchantDiscount != 0) {
+//           offlineOrder['merchantDiscount'] = merchantDiscount.abs();
+//           offlineOrder['merchantDiscountPercentage'] = merchantDiscountPercentage;
+//         }
 //
-//         await OrderRepository()
-//             .syncSingleOfflineOrder(
-//           offlineOrder,
-//         );
-//
+//         final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
 //       } catch (e) {
-//
 //         print(
 //           "Sync after coupon removal failed: $e",
 //         );
 //       }
-//
-//       // ================= BUILD CUSTOMER ITEMS =================
-//       final customerItems =
-//       orderItems.map((item) {
-//
-//         return {
-//           "name":
-//           item["item_name"] ?? "",
-//
-//           "qty":
-//           item["items_count"] ?? 1,
-//
-//           "price":
-//           item["item_price"] ?? 0.0,
-//
-//           "image":
-//           item["item_image"] ?? "",
-//         };
-//
-//       }).toList();
 //
 //       // ================= IMPORTANT DELAY =================
 //       await Future.delayed(
@@ -10236,90 +11604,46 @@
 //       );
 //
 //       // ================= FINAL CUSTOMER DISPLAY REFRESH =================
-//       await CustomerDisplayService.showCustomerData(
-//
-//         orderId: safeOrderId,
-//
-//         items: customerItems,
-//
-//         grossTotal:
-//         grossTotal,
-//
-//         discount:
-//         discount,
-//
-//         merchantDiscount:
-//         merchantDiscount,
-//
-//         netTotal:
-//         grossTotal -
-//             discount.abs(),
-//
-//         tax:
-//         tax,
-//
-//         netPayable:
-//         computedNetPayable,
-//
-//         cashbackFee:
-//         cashbackFee,
-//
-//         redeemedAmount:
-//         redeemedValue.toDouble(),
-//
-//         loyaltyContact:
-//         mobileController.text.trim(),
-//
-//         // VERY IMPORTANT
-//         summaryEnabled: true,
-//       );
+//       if (safeOrderId > 0) {
+//         await CustomerDisplayHelper.updateCustomerDisplay(
+//           safeOrderId,
+//           summaryEnabled: true,
+//         );
+//       }
 //
 //       // ================= SUCCESS =================
 //       if (mounted) {
-//
-//         ScaffoldMessenger.of(context)
-//             .showSnackBar(
-//
+//         ScaffoldMessenger.of(context).showSnackBar(
 //           const SnackBar(
 //             content: Text(
 //               "Coupon removed successfully",
 //             ),
-//             backgroundColor:
-//             Colors.green,
+//             backgroundColor: Colors.green,
 //           ),
 //         );
 //       }
-//
 //     } catch (e) {
-//
 //       print(
 //         "Error removing coupon: $e",
 //       );
 //
 //       if (mounted) {
-//
-//         ScaffoldMessenger.of(context)
-//             .showSnackBar(
-//
+//         ScaffoldMessenger.of(context).showSnackBar(
 //           SnackBar(
 //             content: Text(
 //               "Failed to remove coupon: $e",
 //             ),
-//             backgroundColor:
-//             Colors.red,
+//             backgroundColor: Colors.red,
 //           ),
 //         );
 //       }
-//
 //     } finally {
-//
 //       if (mounted) {
-//
-//         setState(() =>
-//         isSummaryLoading = false);
+//         setState(() => isSummaryLoading = false);
 //       }
 //     }
 //   }
+//
 //   void _openCouponPopup() {
 //     ScannerGuard.isCouponPopupOpen = true;
 //
@@ -10341,159 +11665,158 @@
 //       barrierDismissible: false,
 //       barrierColor: Colors.black.withOpacity(0.10),
 //       builder: (context) {
-//         return Stack(
-//             children: [
-//               /// 🔹 WHITE BACKGROUND when keyboard opens
-//               if (MediaQuery.of(context).viewInsets.bottom > 0)
-//                 Positioned.fill(
-//                   child: Container(
-//                     color: isDark
-//                         ? const Color(0xFF1F1D2B) // match your dark dialog bg
-//                         : Colors.white,
-//                   ),
-//                 ),
+//         return Stack(children: [
+//           /// 🔹 WHITE BACKGROUND when keyboard opens
+//           if (MediaQuery.of(context).viewInsets.bottom > 0)
+//             Positioned.fill(
+//               child: Container(
+//                 color: isDark
+//                     ? const Color(0xFF1F1D2B) // match your dark dialog bg
+//                     : Colors.white,
+//               ),
+//             ),
 //
-//               /// 🔹 YOUR EXISTING DIALOG
-//               Center(
-//                   child: WillPopScope(
-//                     onWillPop: () async {
-//                       ScannerGuard.isCouponPopupOpen = false;
-//                       return true;
-//                     },
-//                     child: BarcodeKeyboardListener(
-//                       bufferDuration: const Duration(milliseconds: 600),
-//                       onBarcodeScanned: (barcode) {
-//                         final code = barcode.trim();
-//                         print("🎯 Coupon QR/Barcode scanned → $code");
+//           /// 🔹 YOUR EXISTING DIALOG
+//           Center(
+//               child: WillPopScope(
+//                 onWillPop: () async {
+//                   ScannerGuard.isCouponPopupOpen = false;
+//                   return true;
+//                 },
+//                 child: BarcodeKeyboardListener(
+//                   bufferDuration: const Duration(milliseconds: 600),
+//                   onBarcodeScanned: (barcode) {
+//                     final code = barcode.trim();
+//                     print("🎯 Coupon QR/Barcode scanned → $code");
 //
-//                         _couponCtrl.text = code; // ✅ Correct prefill
-//                       },
-//                       child: Dialog(
-//                         backgroundColor: dialogBg,
-//                         shape: RoundedRectangleBorder(
-//                           borderRadius: BorderRadius.circular(20),
-//                         ),
-//                         child: Container(
-//                           padding: const EdgeInsets.all(26),
-//                           width: MediaQuery.of(context).size.width * 0.30,
-//                           decoration: BoxDecoration(
-//                             color: dialogBg,
-//                             borderRadius: BorderRadius.circular(20),
-//                             boxShadow: [
-//                               if (!isDark)
-//                                 BoxShadow(
-//                                   blurRadius: 12,
-//                                   offset: const Offset(0, 4),
-//                                   color: Colors.black.withOpacity(0.15),
-//                                 ),
-//                             ],
+//                     _couponCtrl.text = code; // ✅ Correct prefill
+//                   },
+//                   child: Dialog(
+//                     backgroundColor: dialogBg,
+//                     shape: RoundedRectangleBorder(
+//                       borderRadius: BorderRadius.circular(20),
+//                     ),
+//                     child: Container(
+//                       padding: const EdgeInsets.all(26),
+//                       width: MediaQuery.of(context).size.width * 0.30,
+//                       decoration: BoxDecoration(
+//                         color: dialogBg,
+//                         borderRadius: BorderRadius.circular(20),
+//                         boxShadow: [
+//                           if (!isDark)
+//                             BoxShadow(
+//                               blurRadius: 12,
+//                               offset: const Offset(0, 4),
+//                               color: Colors.black.withOpacity(0.15),
+//                             ),
+//                         ],
+//                       ),
+//                       child: Column(
+//                         mainAxisSize: MainAxisSize.min,
+//                         crossAxisAlignment: CrossAxisAlignment.start,
+//                         children: [
+//                           Center(
+//                             child: Text(
+//                               "Apply Coupon",
+//                               style: TextStyle(
+//                                 fontSize: 22,
+//                                 fontWeight: FontWeight.bold,
+//                                 color: redPrimary,
+//                               ),
+//                             ),
 //                           ),
-//                           child: Column(
-//                             mainAxisSize: MainAxisSize.min,
-//                             crossAxisAlignment: CrossAxisAlignment.start,
+//                           const SizedBox(height: 20),
+//                           TextField(
+//                             controller: _couponCtrl,
+//                             keyboardType: TextInputType.number,
+//                             style: TextStyle(color: textPrimary),
+//                             decoration: InputDecoration(
+//                               labelText: "Enter Coupon Code",
+//                               labelStyle: TextStyle(color: textSecondary),
+//                               hintStyle: TextStyle(color: hintColor),
+//                               filled: true,
+//                               fillColor:
+//                               isDark ? const Color(0xFF2C2C2C) : Colors.white,
+//                               focusedBorder: OutlineInputBorder(
+//                                 borderRadius: BorderRadius.circular(10),
+//                                 borderSide: BorderSide(color: redPrimary, width: 1),
+//                               ),
+//                               enabledBorder: OutlineInputBorder(
+//                                 borderSide:
+//                                 BorderSide(color: borderColor, width: 1.0),
+//                                 borderRadius: BorderRadius.circular(10),
+//                               ),
+//                             ),
+//                           ),
+//                           const SizedBox(height: 25),
+//                           Row(
+//                             mainAxisAlignment: MainAxisAlignment.end,
 //                             children: [
-//                               Center(
-//                                 child: Text(
-//                                   "Apply Coupon",
-//                                   style: TextStyle(
-//                                     fontSize: 22,
-//                                     fontWeight: FontWeight.bold,
-//                                     color: redPrimary,
-//                                   ),
-//                                 ),
-//                               ),
-//                               const SizedBox(height: 20),
-//                               TextField(
-//                                 controller: _couponCtrl,
-//                                 keyboardType: TextInputType.number,
-//                                 style: TextStyle(color: textPrimary),
-//                                 decoration: InputDecoration(
-//                                   labelText: "Enter Coupon Code",
-//                                   labelStyle: TextStyle(color: textSecondary),
-//                                   hintStyle: TextStyle(color: hintColor),
-//                                   filled: true,
-//                                   fillColor:
-//                                   isDark ? const Color(0xFF2C2C2C) : Colors.white,
-//                                   focusedBorder: OutlineInputBorder(
-//                                     borderRadius: BorderRadius.circular(10),
-//                                     borderSide: BorderSide(color: redPrimary, width: 1),
-//                                   ),
-//                                   enabledBorder: OutlineInputBorder(
-//                                     borderSide:
-//                                     BorderSide(color: borderColor, width: 1.0),
+//                               TextButton(
+//                                 style: TextButton.styleFrom(
+//                                   foregroundColor: redPrimary,
+//                                   side: BorderSide(color: redPrimary, width: 1),
+//                                   shape: RoundedRectangleBorder(
 //                                     borderRadius: BorderRadius.circular(10),
 //                                   ),
+//                                   padding: const EdgeInsets.symmetric(
+//                                     horizontal: 18,
+//                                     vertical: 10,
+//                                   ),
+//                                 ),
+//                                 onPressed: () {
+//                                   ScannerGuard.isCouponPopupOpen =
+//                                   false; // CLOSE FLAG
+//                                   Navigator.pop(context);
+//                                 },
+//                                 child: const Text(
+//                                   "Cancel",
+//                                   style: TextStyle(fontWeight: FontWeight.w600),
 //                                 ),
 //                               ),
-//                               const SizedBox(height: 25),
-//                               Row(
-//                                 mainAxisAlignment: MainAxisAlignment.end,
-//                                 children: [
-//                                   TextButton(
-//                                     style: TextButton.styleFrom(
-//                                       foregroundColor: redPrimary,
-//                                       side: BorderSide(color: redPrimary, width: 1),
-//                                       shape: RoundedRectangleBorder(
-//                                         borderRadius: BorderRadius.circular(10),
-//                                       ),
-//                                       padding: const EdgeInsets.symmetric(
-//                                         horizontal: 18,
-//                                         vertical: 10,
-//                                       ),
-//                                     ),
-//                                     onPressed: () {
-//                                       ScannerGuard.isCouponPopupOpen =
-//                                       false; // CLOSE FLAG
-//                                       Navigator.pop(context);
-//                                     },
-//                                     child: const Text(
-//                                       "Cancel",
-//                                       style: TextStyle(fontWeight: FontWeight.w600),
-//                                     ),
+//                               const SizedBox(width: 12),
+//                               ElevatedButton(
+//                                 style: ElevatedButton.styleFrom(
+//                                   backgroundColor: redPrimary,
+//                                   foregroundColor: Colors.white,
+//                                   shape: RoundedRectangleBorder(
+//                                     borderRadius: BorderRadius.circular(10),
 //                                   ),
-//                                   const SizedBox(width: 12),
-//                                   ElevatedButton(
-//                                     style: ElevatedButton.styleFrom(
-//                                       backgroundColor: redPrimary,
-//                                       foregroundColor: Colors.white,
-//                                       shape: RoundedRectangleBorder(
-//                                         borderRadius: BorderRadius.circular(10),
-//                                       ),
-//                                       padding: const EdgeInsets.symmetric(
-//                                         horizontal: 24,
-//                                         vertical: 12,
-//                                       ),
-//                                     ),
-//                                     onPressed: () async {
-//                                       final code = _couponCtrl.text.trim();
-//
-//                                       if (code.isEmpty) {
-//                                         ScaffoldMessenger.of(context).showSnackBar(
-//                                           SnackBar(
-//                                             content:
-//                                             const Text("Please enter coupon code"),
-//                                             backgroundColor: Colors.redAccent,
-//                                           ),
-//                                         );
-//                                         return;
-//                                       }
-//
-//                                       ScannerGuard.isCouponPopupOpen =
-//                                       false; // CLOSE FLAG
-//                                       Navigator.pop(context);
-//                                       await _applyCoupon(code);
-//                                     },
-//                                     child: const Text("Apply"),
+//                                   padding: const EdgeInsets.symmetric(
+//                                     horizontal: 24,
+//                                     vertical: 12,
 //                                   ),
-//                                 ],
-//                               )
+//                                 ),
+//                                 onPressed: () async {
+//                                   final code = _couponCtrl.text.trim();
+//
+//                                   if (code.isEmpty) {
+//                                     ScaffoldMessenger.of(context).showSnackBar(
+//                                       SnackBar(
+//                                         content:
+//                                         const Text("Please enter coupon code"),
+//                                         backgroundColor: Colors.redAccent,
+//                                       ),
+//                                     );
+//                                     return;
+//                                   }
+//
+//                                   ScannerGuard.isCouponPopupOpen =
+//                                   false; // CLOSE FLAG
+//                                   Navigator.pop(context);
+//                                   await _applyCoupon(code);
+//                                 },
+//                                 child: const Text("Apply"),
+//                               ),
 //                             ],
-//                           ),
-//                         ),
+//                           )
+//                         ],
 //                       ),
 //                     ),
-//                   ))
-//             ]);
+//                   ),
+//                 ),
+//               ))
+//         ]);
 //       },
 //     ).then((_) {
 //       ScannerGuard.isCouponPopupOpen = false; // 🔓 Ensure scanner re-enables
@@ -10520,6 +11843,11 @@
 //
 //       setState(() => isSummaryLoading = true);
 //
+//       // Save original merchant discount values before sync
+//       final double originalMerchantDiscount = merchantDiscount;
+//       final double originalMerchantDiscountPercentage = merchantDiscountPercentage;
+//       final String originalMerchantDiscountType = offlineOrder['merchantDiscountType']?.toString() ?? 'fixed';
+//
 //       // ==================== SMART DUPLICATE CHECK ====================
 //       final dynamic cr = offlineOrder["coupon_response"];
 //       bool isAlreadyRedeemed = false;
@@ -10531,15 +11859,14 @@
 //           if (item is! Map) continue;
 //
 //           final Map<String, dynamic> couponMap = Map<String, dynamic>.from(item);
-//           final String existingCode = (couponMap["code"]?.toString() ?? "").trim().toLowerCase();
+//           final String existingCode =
+//           (couponMap["code"]?.toString() ?? "").trim().toLowerCase();
 //
 //           if (existingCode == code) {
-//             // 🔥 ONLY block with "already applied" if it is ALREADY REDEEMED
 //             if (_couponHiveEntryIsRedeem(couponMap)) {
 //               isAlreadyRedeemed = true;
 //               break;
 //             }
-//             // If only issued → allow (for issuing or redeeming)
 //           }
 //         }
 //       }
@@ -10553,9 +11880,8 @@
 //         );
 //         return;
 //       }
-//       // ============================================================
 //
-//       // Backup
+//       // Backup original
 //       final dynamic originalCouponResponse = offlineOrder["coupon_response"];
 //
 //       // Merge redeem coupon
@@ -10571,7 +11897,12 @@
 //
 //       await box.put(orderKey, offlineOrder);
 //
-//       // Sync to server
+//       // ── Inject latest merchant discount into offlineOrder BEFORE sync ──
+//       if (merchantDiscount != 0) {
+//         offlineOrder['merchantDiscount'] = merchantDiscount.abs();
+//         offlineOrder['merchantDiscountPercentage'] = merchantDiscountPercentage;
+//       }
+//
 //       final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
 //
 //       if (result == null || result is! Map<String, dynamic>) {
@@ -10589,16 +11920,22 @@
 //         return;
 //       }
 //
-//       // SUCCESS logic (unchanged)
-//       final double newDiscount = double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
-//       final double newTax = double.tryParse(result["tax"]?.toString() ?? "0") ?? tax;
-//       final double newTotal = double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
+//       // Extract values from response
+//       final double newDiscount =
+//           double.tryParse(result["discount_total"]?.toString() ?? "0") ?? 0.0;
+//       final double newTax =
+//           double.tryParse(result["tax"]?.toString() ?? "0") ?? widget.orderTax;
+//       final double newTotal =
+//           double.tryParse(result["total"]?.toString() ?? "0") ?? 0.0;
 //
+//       // Update offline order
 //       offlineOrder["orderDiscount"] = newDiscount;
 //       offlineOrder["tax_discount"] = newTax;
 //       offlineOrder["grand_total"] = newTotal;
 //       offlineOrder["coupon_applied"] = true;
-//       offlineOrder["applied_coupons"] = [{"code": code.toUpperCase(), "amount": newDiscount}];
+//       offlineOrder["applied_coupons"] = [
+//         {"code": code.toUpperCase(), "amount": newDiscount}
+//       ];
 //
 //       if (result.containsKey("id")) {
 //         offlineOrder["wooOrderId"] = result["id"];
@@ -10610,32 +11947,66 @@
 //       _enrichRedeemCouponIdsFromWoo(offlineOrder, result, code);
 //       await box.put(orderKey, offlineOrder);
 //
-//       if (localOrderId != null) {
-//         await CustomerDisplayHelper.updateCustomerDisplay(localOrderId, summaryEnabled: true);
-//       }
+//       // ============================================================
+//       // ✅ FIX: RECALCULATE TAX AFTER DISCOUNT IS APPLIED
+//       // ============================================================
 //
+//       // Step 1: Update discount value first
 //       setState(() {
 //         discount = (newDiscount != 0) ? -newDiscount.abs() : 0.0;
-//         tax = newTax;
-//         NetTotal = grossTotal + discount + merchantDiscount;
-//         computedNetPayable = NetTotal + tax + cashbackFee;
-//         orderTotal = newTotal;
-//         balanceAmount = newTotal;
 //         isCouponAppliedFromApi = true;
 //       });
 //
+//       // Step 2: Recalculate tax based on discounted items
 //       await _recalculateTaxOnDiscountedItems();
-//       _recalculateGrossAndNetFromLineItemDiscounts();
+//
+//       // Step 3: Recalculate gross/net from line item discounts
+//       if (!widget.itemPricesAlreadyAdjusted) {
+//         await _recalculateGrossAndNetFromLineItemDiscounts();
+//       }
+//
+//       // Step 4: Final totals update
+//       setState(() {
+//         NetTotal = grossTotal + discount + merchantDiscount;
+//         computedNetPayable = NetTotal + tax + cashbackFee;
+//         orderTotal = computedNetPayable;
+//         balanceAmount = computedNetPayable - tenderAmount;
+//         if (balanceAmount < 0) balanceAmount = 0.0;
+//
+//         // ✅ Restore merchant discount values
+//         merchantDiscount = originalMerchantDiscount;
+//         merchantDiscountPercentage = originalMerchantDiscountPercentage;
+//       });
+//
+//       // ✅ Update offlineOrder with restored merchant discount values
+//       offlineOrder["merchantDiscount"] = originalMerchantDiscount;
+//       offlineOrder["merchantDiscountPercentage"] = originalMerchantDiscountPercentage;
+//       offlineOrder["merchantDiscountType"] = originalMerchantDiscountType;
+//       await box.put(orderKey, offlineOrder);
+//
+//       // ✅ Update customer display
+//       if (localOrderId != null) {
+//         await CustomerDisplayHelper.updateCustomerDisplay(
+//           localOrderId,
+//           summaryEnabled: true,
+//         );
+//       }
+//
 //       ScaffoldMessenger.of(context).showSnackBar(
-//         const SnackBar(content: Text("Coupon applied successfully"), backgroundColor: Colors.green),
+//         const SnackBar(
+//           content: Text("Coupon applied successfully"),
+//           backgroundColor: Colors.green,
+//         ),
 //       );
 //
 //     } catch (e) {
 //       print("❌ Apply coupon error: $e");
-//       // Restore logic (unchanged)
+//       // Restore logic...
 //       try {
 //         final box = StorageProvider.offlineOrders;
-//         final String orderKey = widget.orderId?.toString() ?? widget.offlineOrderId?.toString() ?? "";
+//         final String orderKey = widget.orderId?.toString() ??
+//             widget.offlineOrderId?.toString() ??
+//             "";
 //         if (orderKey.isNotEmpty) {
 //           final raw = await box.get(orderKey);
 //           if (raw is Map) {
@@ -10656,14 +12027,55 @@
 //       } catch (_) {}
 //
 //       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(content: Text("Failed to apply coupon"), backgroundColor: Colors.red),
+//         SnackBar(
+//           content: Text("Failed to apply coupon: $e"),
+//           backgroundColor: Colors.red,
+//         ),
 //       );
 //     } finally {
 //       setState(() => isSummaryLoading = false);
 //     }
 //   }
+//
+//
+//   Future<void> _recalculateMerchantDiscount() async {
+//     // Get merchant discount type and percentage from offline order
+//     final String mdType = offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+//     final num mdPercentage = offlineOrder?['merchantDiscountPercentage'] as num? ?? merchantDiscountPercentage;
+//     //Raghu--**
+//     // Calculate current base (Gross)
+//     final double baseAmount = grossTotal  ;
+//
+//     if (mdType == 'percentage' && mdPercentage > 0) {
+//       // Recalculate merchant discount based on new base amount
+//       final double newMerchantDiscount = -((baseAmount * mdPercentage) / 100.0);
+//
+//       if (kDebugMode) {
+//         print('🔄 Recalculating merchant discount:');
+//         print('   Base Amount (Gross): $baseAmount');
+//         print('   Percentage: $mdPercentage%');
+//         print('   New Merchant Discount: $newMerchantDiscount');
+//         print('   Old Merchant Discount: $merchantDiscount');
+//       }
+//
+//       setState(() {
+//         merchantDiscount = newMerchantDiscount;
+//       });
+//
+//       // Update offline order
+//       if (offlineOrder != null) {
+//         offlineOrder!['merchantDiscount'] = merchantDiscount;
+//         await StorageProvider.offlineOrders.put(
+//             (orderId ?? 0).toString(),
+//             offlineOrder!
+//         );
+//       }
+//     }
+//   }
+//
 //   /// Remove previously failed/invalid redeem coupons before syncing
-//   void _cleanInvalidRedeemCoupons(Map<String, dynamic> offlineOrder, String currentCode) {
+//   void _cleanInvalidRedeemCoupons(
+//       Map<String, dynamic> offlineOrder, String currentCode) {
 //     final cr = offlineOrder['coupon_response'];
 //     if (cr is! Map) return;
 //
@@ -10822,65 +12234,59 @@
 //       String amount, {
 //         required Color leftBarColor,
 //         Color? amountColor = Colors.black,
+//         double labelFontSize = 11,
+//         double amountFontSize = 12,
 //       }) {
 //     final themeHelper = Provider.of<ThemeNotifier>(context);
 //
 //     return Container(
-//       width: MediaQuery.of(context).size.width * 0.240, // fixed width
-//       height: ResponsiveLayout.getHeight(40), // fixed height
+//       width: MediaQuery.of(context).size.width * 0.240,
+//       height: ResponsiveLayout.getHeight(40),
 //       alignment: Alignment.centerLeft,
 //       child: Row(
 //         crossAxisAlignment: CrossAxisAlignment.center,
 //         children: [
-//           // 🔴 LEFT INDICATOR BAR (VERTICALLY CENTERED)
 //           Container(
 //             width: 4,
-//             height: ResponsiveLayout.getHeight(
-//                 40), // slightly taller for visual effect
+//             height: ResponsiveLayout.getHeight(45),
 //             decoration: BoxDecoration(
 //               color: leftBarColor,
 //               borderRadius: const BorderRadius.only(
 //                 topRight: Radius.circular(8),
 //                 bottomRight: Radius.circular(8),
 //               ),
-//               boxShadow: [
-//                 BoxShadow(
-//                   color: leftBarColor.withOpacity(0.45),
-//                   blurRadius: 8,
-//                   offset: const Offset(1, 2),
-//                 ),
-//               ],
 //             ),
 //           ),
-//
 //           const SizedBox(width: 10),
-//
-//           // 📄 TEXT CONTENT
 //           Column(
 //             crossAxisAlignment: CrossAxisAlignment.start,
 //             mainAxisAlignment: MainAxisAlignment.center,
 //             children: [
-//               Text(
-//                 label,
+//               AnimatedDefaultTextStyle(
+//                 duration: const Duration(milliseconds: 200),
+//                 curve: Curves.easeInOut,
 //                 style: TextStyle(
-//                   fontSize: ResponsiveLayout.getFontSize(11),
+//                   fontSize: ResponsiveLayout.getFontSize(labelFontSize),
 //                   fontWeight: FontWeight.w500,
 //                   color: themeHelper.themeMode == ThemeMode.dark
 //                       ? Colors.white
 //                       : const Color(0xFF333333),
 //                 ),
+//                 child: Text(label),
 //               ),
 //               const SizedBox(height: 4),
-//               Text(
-//                 amount,
+//               AnimatedDefaultTextStyle(
+//                 duration: const Duration(milliseconds: 200),
+//                 curve: Curves.easeInOut,
 //                 style: TextStyle(
-//                   fontSize: ResponsiveLayout.getFontSize(12),
+//                   fontSize: ResponsiveLayout.getFontSize(amountFontSize),
 //                   fontWeight: FontWeight.w700,
 //                   color: amountColor ??
 //                       (themeHelper.themeMode == ThemeMode.dark
 //                           ? Colors.white
 //                           : const Color(0xFF222222)),
 //                 ),
+//                 child: Text(amount),
 //               ),
 //             ],
 //           ),
@@ -11032,7 +12438,7 @@
 //             child: Opacity(
 //               opacity: isEnabled ? 1.0 : 0.5,
 //               child: Container(
-//                 width: ResponsiveLayout.getWidth(178),
+//                 width: double.infinity,
 //                 height: ResponsiveLayout.getHeight(54),
 //                 margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
 //                 decoration: BoxDecoration(
@@ -11237,6 +12643,12 @@
 //       // ────────────────────────────────────────────────
 //       await _calculateBalanceFromPaymentHistory();
 //       await _printPaymentHistorySummary();
+//
+//       // ── Call server void for card payments ──────────────────────────
+//       final String? serverPaymentId = _lastPayment?.paymentId;
+//       if (_lastPayment?.method.toLowerCase() == TextConstants.card.toLowerCase()) {
+//         await _voidServerPaymentIfCard(serverPaymentId: serverPaymentId);
+//       }
 //
 //       // ────────────────────────────────────────────────
 //       //  4. CRITICAL: Force-reset "payment completed" flags
@@ -11538,6 +12950,12 @@
 //               originTransactionId: _lastPayment!.sunmiTxnId!,
 //             );
 //           } else {
+//             // For card payments via API (no Sunmi hardware), call kickback void
+//             // then do the local void bookkeeping
+//             if (method == TextConstants.card.toLowerCase()) {
+//               final String? serverPaymentId = _lastPayment!.paymentId;
+//               await _voidServerPaymentIfCard(serverPaymentId: serverPaymentId);
+//             }
 //             await _handleVoidPayment(context, isPartial: isPartial);
 //           }
 //
@@ -11727,10 +13145,48 @@
 //     }
 //   }
 //
+//   Future<void> _updateHiveWithLatestMerchantDiscount() async {
+//     try {
+//       final box = StorageProvider.offlineOrders;
+//       final String orderKey = orderId?.toString() ??
+//           widget.orderId?.toString() ??
+//           widget.offlineOrderId?.toString() ??
+//           "";
+//
+//       if (orderKey.isEmpty) return;
+//
+//       final raw = await box.get(orderKey);
+//       if (raw is! Map<String, dynamic>) return;
+//
+//       final order = Map<String, dynamic>.from(raw);
+//
+//       // Update merchant discount values
+//       order['merchantDiscount'] = merchantDiscount.abs();
+//       order['merchantDiscountPercentage'] = merchantDiscountPercentage;
+//
+//       // Also update financial totals to ensure consistency
+//       order['NetTotal'] = NetTotal;
+//       order['computedNetPayable'] = computedNetPayable;
+//       order['order_total'] = orderTotal;
+//       order['balance_amount'] = balanceAmount;
+//       order['remaining_balance'] = balanceAmount;
+//
+//       await box.put(orderKey, order);
+//
+//       if (kDebugMode) {
+//         print('✅ Updated Hive with merchant discount: $merchantDiscount');
+//         print('   Percentage: $merchantDiscountPercentage%');
+//       }
+//     } catch (e) {
+//       print('❌ Failed to update Hive with merchant discount: $e');
+//     }
+//   }
+//
 //   Future<void> _syncCurrentOfflineOrder() async {
 //     final String orderKey = widget.orderId?.toString() ??
 //         widget.offlineOrderId?.toString() ??
-//         orderId?.toString() ?? "";
+//         orderId?.toString() ??
+//         "";
 //
 //     if (orderKey.isEmpty) return;
 //
@@ -11745,6 +13201,15 @@
 //       if (raw is! Map<String, dynamic>) return;
 //
 //       var order = Map<String, dynamic>.from(raw);
+//
+//       // ✅ CRITICAL: Update merchant discount values before sync
+//       order['merchantDiscount'] = merchantDiscount.abs();
+//       order['merchantDiscountPercentage'] = merchantDiscountPercentage;
+//
+//       // Also update the merchant discount type if available
+//       if (offlineOrder?['merchantDiscountType'] != null) {
+//         order['merchantDiscountType'] = offlineOrder!['merchantDiscountType'];
+//       }
 //
 //       // === CRITICAL: Handle coupon validation failures ===
 //       bool syncSuccess = false;
@@ -11769,7 +13234,8 @@
 //             final payments = await LocalPaymentDBHelper.instance
 //                 .getPaymentsByOrderId(localOrderId);
 //             for (final p in payments.where((p) => !p.isSynced)) {
-//               await LocalPaymentDBHelper.instance.markAsSynced(p.id, wooOrderId);
+//               await LocalPaymentDBHelper.instance
+//                   .markAsSynced(p.id, wooOrderId);
 //             }
 //           }
 //
@@ -11784,10 +13250,10 @@
 //             order['sync_at'] = DateTime.now().toIso8601String();
 //             await box.put(orderKey, order);
 //           }
-//
 //         } else if (retryCount < maxRetries) {
 //           // === HANDLE COUPON FAILURE GRACEFULLY ===
-//           print("⚠️ Sync attempt $retryCount failed. Checking for coupon issues...");
+//           print(
+//               "⚠️ Sync attempt $retryCount failed. Checking for coupon issues...");
 //
 //           // Remove problematic coupons from this attempt and retry
 //           if (order['coupon_response'] is Map) {
@@ -11817,7 +13283,6 @@
 //           // Optional: mark as partially synced or show user notification
 //         }
 //       }
-//
 //     } catch (e, stack) {
 //       print("❌ _syncCurrentOfflineOrder error: $e");
 //       print(stack);
@@ -11908,6 +13373,9 @@
 //           }
 //         }
 //
+//         // ✅ CRITICAL FIX: Update Hive with latest merchant discount values BEFORE sync
+//         await _updateHiveWithLatestMerchantDiscount();
+//
 //         // Sync to backend (your original unchanged _syncCurrentOfflineOrder)
 //         try {
 //           await _syncCurrentOfflineOrder();
@@ -11955,8 +13423,6 @@
 //
 //         // ── VOID ─────────────────────────────────────────────
 //         onVoid: () async {
-//
-//
 //           Navigator.of(dialogCtx, rootNavigator: false).pop();
 //
 //           SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -12001,7 +13467,6 @@
 //           if (selectedOption == TextConstants.email &&
 //               email != null &&
 //               email.isNotEmpty) {
-//
 //             Navigator.of(dialogCtx, rootNavigator: false).pop();
 //
 //             if (orderId == null || orderId == 0) {
@@ -12475,13 +13940,11 @@
 //       useRootNavigator: false,
 //       builder: (dialogCtx) => PaymentDialog(
 //         status: PaymentStatus.exitConfirmation,
-//
 //         onExitCancel: () {
 //           if (Navigator.of(dialogCtx).canPop()) {
 //             Navigator.of(dialogCtx).pop();
 //           }
 //         },
-//
 //         onExitConfirm: () async {
 //           // Close popup
 //           if (Navigator.of(dialogCtx).canPop()) {
@@ -12494,6 +13957,9 @@
 //           } catch (e) {
 //             print(">>> Error updating customer display: $e");
 //           }
+//
+//           // ✅ Update Hive with latest merchant discount before sync
+//           await _updateHiveWithLatestMerchantDiscount();
 //
 //           // Refresh order panel
 //           OrderHelper.isOrderPanelLoaded = false;
@@ -12532,6 +13998,586 @@
 //     }
 //     return printerDB.first;
 //   }
+//
+// //   Future _preparePrintTicket() async {
+// //     if (kDebugMode) {
+// //       print("OrderSummaryScreen _preparePrintTicket call print receipt");
+// //     }
+// //
+// //     var printerData = await loadPrinterData();
+// //     var header = printerData?[AppDBConst.receiptHeaderText] ?? "";
+// //     var footer = printerData?[AppDBConst.receiptFooterText] ?? "";
+// //     var logo = printerData?[AppDBConst.receiptIconPath] ?? "";
+// //
+// //     bytes = [];
+// //     final ticket = await _printerSettings.getTicket();
+// //
+// //     // -------------------------------
+// //     // LOGO (unchanged)
+// //     // -------------------------------
+// //     final ByteData data;
+// //     if (logo != "") {
+// //       data = await GlobalUtility.fileToByteData(File(logo)) ??
+// //           await rootBundle.load('assets/Bubbas_logo.png');
+// //     } else {
+// //       data = await rootBundle.load('assets/Bubbas_logo.png');
+// //     }
+// //
+// //     if (data.lengthInBytes > 0) {
+// //       final Uint8List imageBytes = data.buffer.asUint8List();
+// //       final decodedImage = img.decodeImage(imageBytes)!;
+// //       img.Image thumbnail = img.copyResize(decodedImage, height: 280);
+// //       img.Image originalImg =
+// //       img.copyResize(decodedImage, width: 470, height: 280);
+// //       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
+// //       var padding = (originalImg.width - thumbnail.width) / 2;
+// //       drawImage(originalImg, thumbnail, dstX: padding.toInt());
+// //       var grayscaleImage = img.grayscale(originalImg);
+// //       // bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
+// //     }
+// //
+// //     // -------------------------------
+// //     // HEADER & STORE INFO (unchanged)
+// //     // -------------------------------
+// //     var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
+// //     var storeId = "${merchantDetails?[AppDBConst.storeId]}";
+// //     var storePhone = "${merchantDetails?[AppDBConst.storePhone]}";
+// //
+// //     var storeDetails = await AssetDBHelper.instance.getStoreDetails();
+// //     var storeName = "${storeDetails?.name}";
+// //     var address = "${storeDetails?.address},";
+// //     var cityStateZip =
+// //         "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
+// //     var orderIdToPrint = '$orderId';
+// //
+// //     final userData = await UserDbHelper().getUserData();
+// //     var cashierName =
+// //         "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
+// //     var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
+// //
+// //     if (header != "") {
+// //       bytes += ticket.row([
+// //         PosColumn(
+// //             text: header, width: 12, styles: PosStyles(align: PosAlign.center)),
+// //       ]);
+// //     }
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(
+// //         text: "***** CUST-INVOICE *****",
+// //         width: 12,
+// //         styles: PosStyles(align: PosAlign.center, bold: true),
+// //       ),
+// //     ]);
+// //
+// //     bytes += ticket.feed(1);
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(
+// //         text: storeName,
+// //         width: 12,
+// //         styles: PosStyles(
+// //           align: PosAlign.center,
+// //           bold: true,
+// //           height: PosTextSize.size2,
+// //           width: PosTextSize.size2,
+// //         ),
+// //       ),
+// //     ]);
+// //
+// //     bytes += ticket.feed(1);
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(
+// //           text: address, width: 12, styles: PosStyles(align: PosAlign.center))
+// //     ]);
+// //     bytes += ticket.row([
+// //       PosColumn(
+// //           text: cityStateZip,
+// //           width: 12,
+// //           styles: PosStyles(align: PosAlign.center))
+// //     ]);
+// //     bytes += ticket.row([
+// //       PosColumn(
+// //           text: "Phone: $storePhone",
+// //           width: 12,
+// //           styles: PosStyles(align: PosAlign.center)),
+// //     ]);
+// //
+// //     bytes += ticket.feed(1);
+// //     bytes += ticket.row([
+// //       PosColumn(
+// //           text: "-----------------------------------------------", width: 12),
+// //     ]);
+// //
+// //     bytes += ticket.feed(1);
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(text: "Date: $_displayDate", width: 7),
+// //       PosColumn(text: "Time: $_displayTime", width: 5),
+// //     ]);
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(text: "Cashier: $cashierName", width: 7),
+// //       PosColumn(text: "StoreID: $storeId", width: 5),
+// //     ]);
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(text: "Role: $cashierRole", width: 7),
+// //       PosColumn(text: "OrderID: $orderIdToPrint", width: 5),
+// //     ]);
+// //
+// //     bytes += ticket.feed(1);
+// //     bytes += ticket.row([
+// //       PosColumn(
+// //           text: "-----------------------------------------------", width: 12),
+// //     ]);
+// //
+// //     bytes += ticket.feed(1);
+// //
+// //     // -------------------------------
+// //     // ITEM HEADER
+// //     // -------------------------------
+// //     bytes += ticket.row([
+// //       PosColumn(text: "#", width: 1, styles: PosStyles(bold: true)),
+// //       PosColumn(text: "Description", width: 5, styles: PosStyles(bold: true)),
+// //       PosColumn(
+// //           text: "Qty",
+// //           width: 1,
+// //           styles: PosStyles(align: PosAlign.center, bold: true)),
+// //       PosColumn(
+// //           text: "Rate",
+// //           width: 2,
+// //           styles: PosStyles(align: PosAlign.right, bold: true)),
+// //       PosColumn(
+// //           text: "Amt",
+// //           width: 3,
+// //           styles: PosStyles(align: PosAlign.right, bold: true)),
+// //     ]);
+// //
+// //     bytes += ticket.feed(1);
+// //
+// //     String formatCurrency(double amount) {
+// //       if (amount < 0) {
+// //         return "-${TextConstants.currencySymbol}${amount.abs().toStringAsFixed(2)}";
+// //       } else {
+// //         return "${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}";
+// //       }
+// //     }
+// //
+// //     // -------------------------------
+// //     // ITEMS LOOP (with Combo Discount added)
+// //     // -------------------------------
+// //     // for (int i = 0; i < orderItems.length; i++) {
+// //     //   var item = orderItems[i];
+// //     //
+// //     //   String itemName = item['item_name'] ?? '';
+// //     //   double unitPrice = (item['item_price'] ?? 0).toDouble();
+// //     //   int qty = (item['items_count'] ?? 0).toInt();
+// //     //   double lineTotal = (item['item_sum_price'] ?? 0).toDouble();
+// //     //   String type = item['item_type']?.toString().toLowerCase() ?? '';
+// //     //
+// //     //   // Hide merchant discount/discount line-items from print item list
+// //     //   final nameLower = itemName.toLowerCase();
+// //     //   if (type.contains('discount') ||
+// //     //       nameLower.contains('merchant discount')) {
+// //     //     continue;
+// //     //   }
+// //     //
+// //     //   bool isPayout = type.contains(TextConstants.payoutText);
+// //     //   bool isCoupon = type.contains(TextConstants.couponText);
+// //     //   bool isCashback = type.contains("cashback");
+// //     //   bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+// //     //
+// //     //   String formattedRate = formatCurrency(unitPrice);
+// //     //   String formattedTotal = formatCurrency(lineTotal);
+// //     //
+// //     //   bytes += ticket.row([
+// //     //     PosColumn(text: "${i + 1}", width: 1),
+// //     //     PosColumn(text: itemName, width: 5),
+// //     //     PosColumn(
+// //     //         text: "$qty", width: 1, styles: PosStyles(align: PosAlign.center)),
+// //     //     PosColumn(
+// //     //         text: formattedRate,
+// //     //         width: 2,
+// //     //         styles: PosStyles(align: PosAlign.right)),
+// //     //     PosColumn(
+// //     //         text: formattedTotal,
+// //     //         width: 3,
+// //     //         styles: PosStyles(align: PosAlign.right)),
+// //     //   ]);
+// //     //
+// //     //   // ────────────────────────────────────────────────
+// //     //   // DISCOUNT EXTRACTION & PRINTING
+// //     //   // ────────────────────────────────────────────────
+// //     //   String discountType = item['discount_type']?.toString() ?? '';
+// //     //
+// //     //   double autoDiscount = (discountType.isEmpty || discountType == 'auto')
+// //     //       ? (item['auto_discount'] ?? 0).toDouble()
+// //     //       : 0.0;
+// //     //
+// //     //   double multipackDiscount = (discountType == 'multipack')
+// //     //       ? (item['auto_discount'] ?? 0).toDouble()
+// //     //       : 0.0;
+// //     //
+// //     //   double comboDiscount =
+// //     //   (discountType == 'combo' || discountType == 'mixmatch')
+// //     //       ? (item['auto_discount'] ?? 0).toDouble()
+// //     //       : 0.0;
+// //     //
+// //     //   // Auto Discount
+// //     //   if (autoDiscount > 0 && !isPayoutOrCoupon) {
+// //     //     bytes += ticket.row([
+// //     //       PosColumn(text: "Auto Discount", width: 9),
+// //     //       PosColumn(
+// //     //         text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
+// //     //         width: 3,
+// //     //         styles: PosStyles(align: PosAlign.right),
+// //     //       ),
+// //     //     ]);
+// //     //   }
+// //     //
+// //     //   // Combo / Mix & Match Discount
+// //     //   if (comboDiscount > 0 && !isPayoutOrCoupon) {
+// //     //     bytes += ticket.row([
+// //     //       PosColumn(text: "Combo Discount", width: 9),
+// //     //       PosColumn(
+// //     //         text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
+// //     //         width: 3,
+// //     //         styles: PosStyles(align: PosAlign.right),
+// //     //       ),
+// //     //     ]);
+// //     //   }
+// //     //
+// //     //   // Multipack Discount
+// //     //   if (multipackDiscount > 0 && !isPayoutOrCoupon) {
+// //     //     bytes += ticket.row([
+// //     //       PosColumn(text: "Multipack Discount", width: 9),
+// //     //       PosColumn(
+// //     //         text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
+// //     //         width: 3,
+// //     //         styles: PosStyles(align: PosAlign.right),
+// //     //       ),
+// //     //     ]);
+// //     //   }
+// //     //
+// //     //   bytes += ticket.emptyLines(1);
+// //     // }
+// //
+// //     // Prefer discount coming from GetOrderModel/API (json['discount']) for printing.
+// //     // Falls back to passed-in discountValue (offline) and finally the screen's discount.
+// //
+// //
+// //     // -------------------------------
+// //     // ITEMS LOOP (with Combo Discount added)
+// //     // -------------------------------
+// //     for (int i = 0; i < orderItems.length; i++) {
+// //       var item = orderItems[i];
+// //
+// //       String itemName = item['item_name'] ?? '';
+// //       double unitPrice = (item['item_price'] ?? 0).toDouble();
+// //       int qty = (item['items_count'] ?? 0).toInt();
+// //       double lineTotal = (item['item_sum_price'] ?? 0).toDouble();
+// //       String type = item['item_type']?.toString().toLowerCase() ?? '';
+// //
+// //       // Hide merchant discount/discount line-items from print item list
+// //       final nameLower = itemName.toLowerCase();
+// //       if (type.contains('discount') ||
+// //           nameLower.contains('merchant discount')) {
+// //         continue;
+// //       }
+// //
+// //       bool isPayout = type.contains(TextConstants.payoutText);
+// //       bool isCoupon = type.contains(TextConstants.couponText);
+// //       bool isCashback = type.contains("cashback");
+// //       bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+// //
+// //       // ── WEIGHTED ITEM DETECTION (same logic as UI) ──
+// //       final bool isWeightedItem = type.contains('weighted');
+// //
+// //       double weightQty = 0.0;
+// //       double weightUnitPrice = 0.0;
+// //       if (isWeightedItem) {
+// //         weightQty = (item['weight_qty'] ??
+// //             item['weightQty'] ??
+// //             item['weight'] ??
+// //             0.0).toDouble();
+// //         weightUnitPrice = (item['unit_price'] ??
+// //             item['regular_price'] ??
+// //             item['item_price'] ??
+// //             0.0).toDouble();
+// //       }
+// //
+// //       // ── FORMAT RATE & QTY/WEIGHT columns ──
+// //       String formattedQtyOrWeight;
+// //       String formattedRate;
+// //       String formattedTotal;
+// //
+// //       if (isWeightedItem && weightQty > 0 && weightUnitPrice > 0) {
+// //         // e.g.  "2.000lb"   "$2.99/lb"   "$5.98"
+// //         formattedQtyOrWeight = "${weightQty.toStringAsFixed(2)}lb";
+// //         formattedRate = "${formatCurrency(weightUnitPrice)}";
+// //         formattedTotal = formatCurrency(weightUnitPrice * weightQty);
+// //       } else {
+// //         formattedQtyOrWeight = "$qty";
+// //         formattedRate = formatCurrency(unitPrice);
+// //         formattedTotal = formatCurrency(lineTotal);
+// //       }
+// //
+// //       bytes += ticket.row([
+// //         PosColumn(text: "${i + 1}", width: 1),
+// //         PosColumn(text: itemName, width: 5),
+// //         PosColumn(
+// //             text: formattedQtyOrWeight,
+// //             width: 1,
+// //             styles: PosStyles(align: PosAlign.center)),
+// //         PosColumn(
+// //             text: formattedRate,
+// //             width: 2,
+// //             styles: PosStyles(align: PosAlign.right)),
+// //         PosColumn(
+// //             text: formattedTotal,
+// //             width: 3,
+// //             styles: PosStyles(align: PosAlign.right)),
+// //       ]);
+// //
+// //       // ────────────────────────────────────────────────
+// //       // DISCOUNT EXTRACTION & PRINTING (unchanged)
+// //       // ────────────────────────────────────────────────
+// //       String discountType = item['discount_type']?.toString() ?? '';
+// //
+// //       double autoDiscount = (discountType.isEmpty || discountType == 'auto')
+// //           ? (item['auto_discount'] ?? 0).toDouble()
+// //           : 0.0;
+// //
+// //       double multipackDiscount = (discountType == 'multipack')
+// //           ? (item['auto_discount'] ?? 0).toDouble()
+// //           : 0.0;
+// //
+// //       double comboDiscount =
+// //       (discountType == 'combo' || discountType == 'mixmatch')
+// //           ? (item['auto_discount'] ?? 0).toDouble()
+// //           : 0.0;
+// //
+// //       // Auto Discount
+// //       if (autoDiscount > 0 && !isPayoutOrCoupon) {
+// //         bytes += ticket.row([
+// //           PosColumn(text: "Auto Discount", width: 9),
+// //           PosColumn(
+// //             text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
+// //             width: 3,
+// //             styles: PosStyles(align: PosAlign.right),
+// //           ),
+// //         ]);
+// //       }
+// //
+// //       // Combo / Mix & Match Discount
+// //       if (comboDiscount > 0 && !isPayoutOrCoupon) {
+// //         bytes += ticket.row([
+// //           PosColumn(text: "Combo Discount", width: 9),
+// //           PosColumn(
+// //             text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
+// //             width: 3,
+// //             styles: PosStyles(align: PosAlign.right),
+// //           ),
+// //         ]);
+// //       }
+// //
+// //       // Multipack Discount
+// //       if (multipackDiscount > 0 && !isPayoutOrCoupon) {
+// //         bytes += ticket.row([
+// //           PosColumn(text: "Multipack Discount", width: 9),
+// //           PosColumn(
+// //             text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
+// //             width: 3,
+// //             styles: PosStyles(align: PosAlign.right),
+// //           ),
+// //         ]);
+// //       }
+// //
+// //       bytes += ticket.emptyLines(1);
+// //     }
+// //
+// //     final double discount = () {
+// //       final raw = _order["discount"] ??
+// //           _order["order_discount"] ??
+// //           _order["discount_amount"];
+// //       final parsed = raw == null ? null : double.tryParse(raw.toString());
+// //       final fromGetOrder =
+// //           parsed ?? (discountValue != 0 ? discountValue : null);
+// //       if (fromGetOrder == null) return this.discount;
+// //       return fromGetOrder != 0 ? -(fromGetOrder.abs()) : 0.0;
+// //     }();
+// //
+// //     // -------------------------------
+// //     // TOTALS (unchanged from your version)
+// //     // -------------------------------
+// //     bytes += ticket.feed(1);
+// //     bytes += ticket.row([
+// //       PosColumn(
+// //           text: "-----------------------------------------------", width: 12),
+// //     ]);
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(text: TextConstants.grossTotal, width: 8),
+// //       PosColumn(
+// //         text: formatCurrency(grossTotal),
+// //         width: 4,
+// //         styles: PosStyles(align: PosAlign.right),
+// //       ),
+// //     ]);
+// //
+// //     // Show Coupon (standardized negative display)
+// //     bytes += ticket.row([
+// //       PosColumn(text: TextConstants.discountText, width: 8),
+// //       PosColumn(
+// //         text: discount != 0 ? formatCurrency(discount) : formatCurrency(0.0),
+// //         width: 4,
+// //         styles: PosStyles(align: PosAlign.right),
+// //       ),
+// //     ]);
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(text: TextConstants.taxText, width: 8),
+// //       PosColumn(
+// //         text: formatCurrency(tax),
+// //         width: 4,
+// //         styles: PosStyles(align: PosAlign.right),
+// //       ),
+// //     ]);
+// // //Raghu--**
+// //     bytes += ticket.row([
+// //       PosColumn(
+// //         text: merchantDiscountPercentage > 0
+// //             ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
+// //             : TextConstants.merchantDiscount,
+// //         width: 8,
+// //       ),
+// //       PosColumn(
+// //         text: merchantDiscount != 0
+// //             ? formatCurrency(merchantDiscount)
+// //             : formatCurrency(0.0),
+// //         width: 4,
+// //         styles: PosStyles(align: PosAlign.right),
+// //       ),
+// //     ]);
+// // //Raghu--*
+// //
+// //     if (cashbackFee > 0) {
+// //       bytes += ticket.row([
+// //         PosColumn(text: TextConstants.cashbackFee, width: 8),
+// //         PosColumn(
+// //           text: formatCurrency(cashbackFee),
+// //           width: 4,
+// //           styles: PosStyles(align: PosAlign.right),
+// //         ),
+// //       ]);
+// //     }
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(text: TextConstants.servicecharges, width: 8),
+// //       PosColumn(
+// //         text: formatCurrency(servicecharges),
+// //         width: 4,
+// //         styles: PosStyles(align: PosAlign.right),
+// //       ),
+// //     ]);
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(
+// //           text: "-----------------------------------------------", width: 12),
+// //     ]);
+// //
+// //     bytes += ticket.feed(1);
+// //
+// //     // Final Net Payable logic matching the summary screen precisely
+// //     double printNetPayable = grossTotal +
+// //         discount +
+// //         merchantDiscount +
+// //         tax +
+// //         servicecharges +
+// //         cashbackFee;
+// //     if (printNetPayable < 0) printNetPayable = 0.0;
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(text: TextConstants.netPayable, width: 8),
+// //       PosColumn(
+// //         text: formatCurrency(printNetPayable),
+// //         width: 4,
+// //         styles: PosStyles(align: PosAlign.right),
+// //       ),
+// //     ]);
+// //
+// //     if (redeemedValue > 0) {
+// //       bytes += ticket.row([
+// //         PosColumn(text: "Redeemed Amount", width: 8),
+// //         PosColumn(
+// //           text: "-${formatCurrency(redeemedValue).replaceAll('-', '')}",
+// //           width: 4,
+// //           styles: PosStyles(align: PosAlign.right),
+// //         ),
+// //       ]);
+// //     }
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(text: TextConstants.payByCash, width: 8),
+// //       PosColumn(
+// //         text: formatCurrency(payByCash),
+// //         width: 4,
+// //         styles: PosStyles(align: PosAlign.right),
+// //       ),
+// //     ]);
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(text: "Pay by EBT", width: 8),
+// //       PosColumn(
+// //         text: formatCurrency(payByEbt),
+// //         width: 4,
+// //         styles: PosStyles(align: PosAlign.right),
+// //       ),
+// //     ]);
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(text: TextConstants.payByOther, width: 8),
+// //       PosColumn(
+// //         text: formatCurrency(payByOther),
+// //         width: 4,
+// //         styles: PosStyles(align: PosAlign.right),
+// //       ),
+// //     ]);
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(text: TextConstants.tenderAmount, width: 8),
+// //       PosColumn(
+// //         text: formatCurrency(tenderAmount),
+// //         width: 4,
+// //         styles: PosStyles(align: PosAlign.right),
+// //       ),
+// //     ]);
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(text: TextConstants.change, width: 8),
+// //       PosColumn(
+// //         text: formatCurrency(changeAmount),
+// //         width: 4,
+// //         styles: PosStyles(align: PosAlign.right),
+// //       ),
+// //     ]);
+// //
+// //     bytes += ticket.row([
+// //       PosColumn(
+// //           text: "-----------------------------------------------", width: 12),
+// //     ]);
+// //
+// //     if (footer != "") {
+// //       bytes += ticket.feed(1);
+// //       bytes += ticket.row([
+// //         PosColumn(
+// //             text: footer, width: 12, styles: PosStyles(align: PosAlign.center)),
+// //       ]);
+// //     }
+// //   }
+//
 //
 //   Future _preparePrintTicket() async {
 //     if (kDebugMode) {
@@ -12699,8 +14745,31 @@
 //       }
 //     }
 //
+//     // Helper function to wrap long item names
+//     List<String> wrapItemName(String name, int maxLength) {
+//       List<String> lines = [];
+//       String remaining = name;
+//
+//       while (remaining.isNotEmpty) {
+//         if (remaining.length <= maxLength) {
+//           lines.add(remaining);
+//           break;
+//         } else {
+//           // Find a good break point (space) within the maxLength
+//           int breakIndex = remaining.lastIndexOf(' ', maxLength);
+//           if (breakIndex == -1) {
+//             // No space found, force break at maxLength
+//             breakIndex = maxLength;
+//           }
+//           lines.add(remaining.substring(0, breakIndex));
+//           remaining = remaining.substring(breakIndex).trim();
+//         }
+//       }
+//       return lines;
+//     }
+//
 //     // -------------------------------
-//     // ITEMS LOOP (with Combo Discount added)
+//     // ITEMS LOOP (with Weighted Item support + Name Wrapping)
 //     // -------------------------------
 //     for (int i = 0; i < orderItems.length; i++) {
 //       var item = orderItems[i];
@@ -12723,14 +14792,57 @@
 //       bool isCashback = type.contains("cashback");
 //       bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
 //
-//       String formattedRate = formatCurrency(unitPrice);
-//       String formattedTotal = formatCurrency(lineTotal);
+//       // ── WEIGHTED ITEM DETECTION ──
+//       final bool isWeightedItem = type.contains('weighted');
 //
+//       double weightQty = 0.0;
+//       double weightUnitPrice = 0.0;
+//       if (isWeightedItem) {
+//         weightQty = (item['weight_qty'] ??
+//             item['weightQty'] ??
+//             item['weight'] ??
+//             0.0).toDouble();
+//         weightUnitPrice = (item['unit_price'] ??
+//             item['regular_price'] ??
+//             item['item_price'] ??
+//             0.0).toDouble();
+//       }
+//
+//       // ── FORMAT QTY/WEIGHT ──
+//       String formattedQtyOrWeight;
+//       if (isWeightedItem && weightQty > 0) {
+//         formattedQtyOrWeight = "${weightQty.toStringAsFixed(2)}lb";
+//       } else {
+//         formattedQtyOrWeight = "$qty";
+//       }
+//
+//       // ── FORMAT RATE ──
+//       String formattedRate;
+//       if (isWeightedItem && weightUnitPrice > 0) {
+//         formattedRate = formatCurrency(weightUnitPrice);
+//       } else {
+//         formattedRate = formatCurrency(unitPrice);
+//       }
+//
+//       // ── FORMAT TOTAL ──
+//       String formattedTotal;
+//       if (isWeightedItem && weightQty > 0 && weightUnitPrice > 0) {
+//         formattedTotal = formatCurrency(weightUnitPrice * weightQty);
+//       } else {
+//         formattedTotal = formatCurrency(lineTotal);
+//       }
+//
+//       // ── WRAP LONG ITEM NAMES ──
+//       List<String> nameLines = wrapItemName(itemName, 18); // Max 18 chars per line
+//
+//       // Print first line with all details
 //       bytes += ticket.row([
 //         PosColumn(text: "${i + 1}", width: 1),
-//         PosColumn(text: itemName, width: 5),
+//         PosColumn(text: nameLines[0], width: 5),
 //         PosColumn(
-//             text: "$qty", width: 1, styles: PosStyles(align: PosAlign.center)),
+//             text: formattedQtyOrWeight,
+//             width: 1,
+//             styles: PosStyles(align: PosAlign.center)),
 //         PosColumn(
 //             text: formattedRate,
 //             width: 2,
@@ -12741,8 +14853,19 @@
 //             styles: PosStyles(align: PosAlign.right)),
 //       ]);
 //
+//       // Print additional name lines (if any) with indentation
+//       for (int j = 1; j < nameLines.length; j++) {
+//         bytes += ticket.row([
+//           PosColumn(text: "", width: 1),           // Empty # column
+//           PosColumn(text: "  ${nameLines[j]}", width: 5), // Indented description
+//           PosColumn(text: "", width: 1),           // Empty qty
+//           PosColumn(text: "", width: 2),           // Empty rate
+//           PosColumn(text: "", width: 3),           // Empty amount
+//         ]);
+//       }
+//
 //       // ────────────────────────────────────────────────
-//       // DISCOUNT EXTRACTION & PRINTING
+//       // DISCOUNT EXTRACTION & PRINTING (unchanged)
 //       // ────────────────────────────────────────────────
 //       String discountType = item['discount_type']?.toString() ?? '';
 //
@@ -12762,7 +14885,7 @@
 //       // Auto Discount
 //       if (autoDiscount > 0 && !isPayoutOrCoupon) {
 //         bytes += ticket.row([
-//           PosColumn(text: "Auto Discount", width: 9),
+//           PosColumn(text: "  Auto Discount", width: 9),
 //           PosColumn(
 //             text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
 //             width: 3,
@@ -12774,7 +14897,7 @@
 //       // Combo / Mix & Match Discount
 //       if (comboDiscount > 0 && !isPayoutOrCoupon) {
 //         bytes += ticket.row([
-//           PosColumn(text: "Combo Discount", width: 9),
+//           PosColumn(text: "  Combo Discount", width: 9),
 //           PosColumn(
 //             text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
 //             width: 3,
@@ -12786,7 +14909,7 @@
 //       // Multipack Discount
 //       if (multipackDiscount > 0 && !isPayoutOrCoupon) {
 //         bytes += ticket.row([
-//           PosColumn(text: "Multipack Discount", width: 9),
+//           PosColumn(text: "  Multipack Discount", width: 9),
 //           PosColumn(
 //             text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
 //             width: 3,
@@ -12798,12 +14921,13 @@
 //       bytes += ticket.emptyLines(1);
 //     }
 //
-//     // Prefer discount coming from GetOrderModel/API (json['discount']) for printing.
-//     // Falls back to passed-in discountValue (offline) and finally the screen's discount.
 //     final double discount = () {
-//       final raw = _order["discount"] ?? _order["order_discount"] ?? _order["discount_amount"];
+//       final raw = _order["discount"] ??
+//           _order["order_discount"] ??
+//           _order["discount_amount"];
 //       final parsed = raw == null ? null : double.tryParse(raw.toString());
-//       final fromGetOrder = parsed ?? (discountValue != 0 ? discountValue : null);
+//       final fromGetOrder =
+//           parsed ?? (discountValue != 0 ? discountValue : null);
 //       if (fromGetOrder == null) return this.discount;
 //       return fromGetOrder != 0 ? -(fromGetOrder.abs()) : 0.0;
 //     }();
@@ -12846,7 +14970,12 @@
 //     ]);
 //
 //     bytes += ticket.row([
-//       PosColumn(text: TextConstants.merchantDiscount, width: 8),
+//       PosColumn(
+//         text: merchantDiscountPercentage > 0
+//             ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
+//             : TextConstants.merchantDiscount,
+//         width: 8,
+//       ),
 //       PosColumn(
 //         text: merchantDiscount != 0
 //             ? formatCurrency(merchantDiscount)
@@ -12956,6 +15085,27 @@
 //         styles: PosStyles(align: PosAlign.right),
 //       ),
 //     ]);
+//
+//
+//
+//     // ── NEW: Only print "Order Earned Points" when redeem/loyalty was active for this order ──
+//     final bool _shouldPrintEarnedPoints =
+//         isRedeemActive || redeemedValue > 0 || availablePoints > 0;
+//
+//     if (_shouldPrintEarnedPoints) {
+//       final int earnedPoints =
+//           (_order['total_loyalty_points'] as num?)?.toInt() ?? 0;
+//
+//       bytes += ticket.row([
+//         PosColumn(text: "Order Earned Points", width: 8),
+//         PosColumn(
+//           text: "$earnedPoints pts",
+//           width: 4,
+//           styles: PosStyles(align: PosAlign.right),
+//         ),
+//       ]);
+//     }
+//
 //
 //     bytes += ticket.row([
 //       PosColumn(
@@ -13278,10 +15428,6 @@
 //   ///it is used called by no receipt and print receipt on order payment completed - print button tap
 //   void changeStatusToCompletedAndExit(bool isReceipt,
 //       {String selectedOption = TextConstants.print}) {
-//     /// Build #1.0.168: Fixed Issue - Change is showing as zero only
-//     /// No need here to reset changeAmount,balanceAmount or tenderAmount
-//     /// Every time comes to this screen we are already resetting initially in fetchOrderItems method
-//
 //     if (kDebugMode) {
 //       print(
 //           "OrderSummaryScreen _showReceiptDialog Done call print receipt = $isReceipt");
@@ -13309,13 +15455,21 @@
 //     _isAmountEntered = false;
 //     _amountErrorText = null;
 //
-//     ///ToDO: Change the status of order to 'completed' here
-//     // Build #1.0.49: Added Call Order Status Update API code
+//     // ✅ Update Hive with latest merchant discount before final sync
+//     _updateHiveWithLatestMerchantDiscount().then((_) {
+//       // Background sync after updating Hive
+//       Future(() async {
+//         try {
+//           await _syncCurrentOfflineOrder();
+//           print("✅ Background: Final sync completed");
+//         } catch (e) {
+//           print("❌ Background: Final sync failed: $e");
+//         }
+//       });
+//     });
 //
-//     /// Build #1.0.175: No need change status to completed API call
-//     /// It was handling from backend
 //     Navigator.of(context).pop(); // Dismiss the receipt dialog
-//     // Navigator.of(context).pop(TextConstants.refresh); // Dismiss back to the previous screen with a refresh signal
+//
 //     if (kDebugMode) {
 //       print("changeStatusToCompletedAndExit -> 3:");
 //     }
@@ -13335,7 +15489,7 @@
 //           TextConstants.orderCompleted,
 //           style: const TextStyle(color: Colors.white),
 //         ),
-//         backgroundColor: Colors.green, // Build #1.0.104: updated to green
+//         backgroundColor: Colors.green,
 //         duration: const Duration(seconds: 1),
 //       ),
 //     );
@@ -13465,7 +15619,10 @@
 //       String amount, {
 //         required Color leftBarColor,
 //         Color? amountColor = Colors.black,
-//         bool isPaymentBalance = false, // NEW: Add this flag
+//         bool isPaymentBalance = false,
+//         double labelFontSize = 11,
+//         double amountFontSize = 12,
+//         FontWeight amountFontWeight = FontWeight.w700,   // ← This was missing
 //       }) {
 //     final themeHelper = Provider.of<ThemeNotifier>(context);
 //
@@ -13476,7 +15633,7 @@
 //       child: Row(
 //         crossAxisAlignment: CrossAxisAlignment.center,
 //         children: [
-//           // 🔴 LEFT INDICATOR BAR
+//           // LEFT INDICATOR BAR
 //           Container(
 //             width: 4,
 //             height: ResponsiveLayout.getHeight(45),
@@ -13498,7 +15655,7 @@
 //
 //           const SizedBox(width: 10),
 //
-//           // 📄 TEXT CONTENT
+//           // TEXT CONTENT
 //           Column(
 //             crossAxisAlignment: CrossAxisAlignment.start,
 //             mainAxisAlignment: MainAxisAlignment.center,
@@ -13506,7 +15663,7 @@
 //               Text(
 //                 label,
 //                 style: TextStyle(
-//                   fontSize: ResponsiveLayout.getFontSize(11),
+//                   fontSize: ResponsiveLayout.getFontSize(labelFontSize),
 //                   fontWeight: FontWeight.w500,
 //                   color: themeHelper.themeMode == ThemeMode.dark
 //                       ? Colors.white
@@ -13517,12 +15674,11 @@
 //               Text(
 //                 amount,
 //                 style: TextStyle(
-//                   fontSize: ResponsiveLayout.getFontSize(12),
-//                   fontWeight: FontWeight.w700,
-//                   color: amountColor ??
-//                       (themeHelper.themeMode == ThemeMode.dark
-//                           ? Colors.white
-//                           : const Color(0xFF222222)),
+//                   fontSize: ResponsiveLayout.getFontSize(amountFontSize),
+//                   fontWeight: amountFontWeight,           // ← Now working
+//                   color: amountColor ?? (themeHelper.themeMode == ThemeMode.dark
+//                       ? Colors.white
+//                       : const Color(0xFF222222)),
 //                 ),
 //               ),
 //             ],

@@ -187,30 +187,32 @@ class MainActivity : FlutterActivity() {
 
                     Log.d(
                         "CustomerDisplay",
-                        "➡ showWelcomeWithStore invoked → storeId=$storeId, storeName=$storeName, logoUrl=$storeLogoUrl, baseUrl=$storeBaseUrl"
+                        "➡ showWelcomeWithStore invoked → storeId=$storeId, storeName=$storeName, logo=$storeLogoUrl, baseUrl=$storeBaseUrl"
                     )
 
+                    // Always update global state
                     currentStoreId = storeId
                     currentStoreName = storeName
                     currentStoreLogoUrl = storeLogoUrl
                     currentStoreBaseUrl = storeBaseUrl
 
-                    if (customerDisplayPresentation == null) {
+                    // Ensure presentation exists
+                    if (customerDisplayPresentation == null ||
+                        customerDisplayPresentation?.display == null) {
                         showWelcomeOnCustomerDisplay()
                     }
 
+                    // CRITICAL: Always update the presentation with latest store info
                     if (!isOrderActive) {
-                        customerDisplayPresentation?.showWelcomeLayout(
+                        customerDisplayPresentation?.updateWelcomeWithStore(
                             storeId,
                             storeName,
                             storeLogoUrl,
                             storeBaseUrl
                         )
+                        Log.d("CustomerDisplay", "✔ Updated welcome layout with store details")
                     } else {
-                        Log.d(
-                            "CustomerDisplay",
-                            "⛔ Skipping welcome update — order is active"
-                        )
+                        Log.d("CustomerDisplay", "⛔ Order active → storing store info only (will apply on reset)")
                     }
 
                     result.success("Welcome updated with store")
@@ -781,11 +783,13 @@ class MainActivity : FlutterActivity() {
 
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val displays = displayManager.displays
-        Log.d("CustomerDisplay", "Detected displays: ${displays.size}")
 
         return if (displays.size > 1) {
             val secondaryDisplay = displays[1]
-            if (customerDisplayPresentation == null || customerDisplayPresentation?.display != secondaryDisplay) {
+
+            if (customerDisplayPresentation == null ||
+                customerDisplayPresentation?.display != secondaryDisplay) {
+
                 customerDisplayPresentation?.dismiss()
                 customerDisplayPresentation = CustomerDisplayPresentation(
                     this@MainActivity,
@@ -794,13 +798,23 @@ class MainActivity : FlutterActivity() {
                 )
                 customerDisplayPresentation?.show()
             }
+
+            // Apply current store info immediately after creation
+            if (currentStoreName.isNotEmpty()) {
+                customerDisplayPresentation?.updateWelcomeWithStore(
+                    currentStoreId,
+                    currentStoreName,
+                    currentStoreLogoUrl,
+                    currentStoreBaseUrl
+                )
+            }
+
             true
         } else {
             Log.e("CustomerDisplay", "❌ No secondary display available")
             false
         }
     }
-
     private fun showDataOnCustomerDisplay(
         orderId: Int,
         storeId: String,

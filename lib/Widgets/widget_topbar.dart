@@ -3039,9 +3039,7 @@ import 'ManualPriceDialog.dart';
 
 import 'package:pinaka_pos/Models/Search/product_by_sku_model.dart' as SKU;
 
-// ══════════════════════════════════════════════════════════════════════════════
-// NATIVE SCALE CHANNELS
-// ══════════════════════════════════════════════════════════════════════════════
+
 
 const _scaleMethodChannel = MethodChannel('magellan_scale');
 const _scaleEventChannel = EventChannel('magellan_scale/events');
@@ -4423,24 +4421,186 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     });
   }
 
+  // Future<void> _searchProductsFromApi(String query) async {
+  //   if (_apiSearchCache.containsKey(query)) {
+  //     if (kDebugMode) print('⚡ API search cache hit for "$query"');
+  //     _mergeApiResults(_apiSearchCache[query]!);
+  //     return;
+  //   }
+  //
+  //   if (mounted) setState(() => _isApiSearchLoading = true);
+  //
+  //   try {
+  //     final token = await _getAuthTokenFromDb();
+  //     final encodedQuery = Uri.encodeQueryComponent(query);
+  //     final url = Uri.parse(
+  //       '${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}'
+  //           'products?search=$encodedQuery&page=1&per_page=20',
+  //     );
+  //
+  //     if (kDebugMode) print('🔍 API Search → $url');
+  //
+  //     final response = await http.get(
+  //       url,
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //         'Authorization': 'Bearer $token',
+  //       },
+  //     );
+  //
+  //     if (response.statusCode != 200) {
+  //       if (kDebugMode) {
+  //         print('⚠️ API search ${response.statusCode}: ${response.body}');
+  //       }
+  //       return;
+  //     }
+  //
+  //     final List<dynamic> decoded = jsonDecode(response.body) as List<dynamic>;
+  //
+  //     final List<Map<String, dynamic>> apiProducts = decoded
+  //         .whereType<Map>()
+  //         .map<Map<String, dynamic>>((p) {
+  //       final List<dynamic> images = (p['images'] as List?) ?? [];
+  //       final String imageUrl = images.isNotEmpty && images.first is Map
+  //           ? (images.first['src'] ?? '').toString()
+  //           : '';
+  //
+  //       final List<dynamic> rawTags = (p['tags'] as List?) ?? [];
+  //       final List<Map<String, dynamic>> tags = rawTags
+  //           .whereType<Map>()
+  //           .map((t) => {
+  //         'id': t['id'],
+  //         'name': (t['name'] ?? '').toString(),
+  //         'slug': (t['slug'] ?? '').toString(),
+  //       })
+  //           .toList();
+  //
+  //       final List<dynamic> rawCategories = (p['categories'] as List?) ?? [];
+  //
+  //       // ✅ Extract meta_data properly
+  //       final List<Map<String, dynamic>> metaData = (p['meta_data'] as List?)
+  //           ?.whereType<Map>()
+  //           .map((m) => {
+  //         'id': m['id'],
+  //         'key': m['key']?.toString() ?? '',
+  //         'value': m['value'],
+  //       })
+  //           .toList() ?? [];
+  //
+  //       // ✅ Extract loyalty points for logging
+  //       int loyaltyPoints = 0;
+  //       if (metaData.isNotEmpty) {
+  //         final loyaltyEntry = metaData.firstWhere(
+  //               (m) => m['key'] == '_product_loyalty_points' || m['key'] == '_csv_loyalty_points',
+  //           orElse: () => {},
+  //         );
+  //         if (loyaltyEntry.isNotEmpty) {
+  //           loyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+  //         }
+  //       }
+  //
+  //       // ✅ Print loyalty points for this product
+  //       if (kDebugMode && loyaltyPoints > 0) {
+  //         print('⭐ Product "${p['name']}" (ID: ${p['id']}) has $loyaltyPoints loyalty points');
+  //       }
+  //
+  //       return {
+  //         'fast_key_product_id': p['id'],
+  //         'fast_key_item_name': p['name'] ?? '',
+  //         'fast_key_item_image': imageUrl,
+  //         'fast_key_item_price': p['price'] ?? p['regular_price'] ?? '0',
+  //         'fast_key_item_sku': p['sku'] ?? '',
+  //         'fast_key_item_tags': tags,
+  //         'id': p['id'],
+  //         'name': p['name'] ?? '',
+  //         'price': p['price'] ?? p['regular_price'] ?? '0',
+  //         'regular_price': p['regular_price'] ?? '',
+  //         'sku': p['sku'] ?? '',
+  //         'images': images,
+  //         'tags': tags,
+  //         'variations': p['variations'] ?? [],
+  //         'type': p['type'] ?? 'simple',
+  //         'categories': rawCategories,
+  //         'meta_data': metaData, // ✅ Include meta_data
+  //         'loyalty_points': loyaltyPoints, // ✅ Store for quick access
+  //         'is_ebt_eligible': tags.any((t) {
+  //           final name = (t['name'] ?? '').toString().toLowerCase();
+  //           final slug = (t['slug'] ?? '').toString().toLowerCase();
+  //           return name == 'ebt' ||
+  //               name == 'ebt eligible' ||
+  //               slug == 'ebt' ||
+  //               slug == 'ebt-eligible';
+  //         }),
+  //       };
+  //     }).toList();
+  //
+  //     _apiSearchCache[query] = apiProducts;
+  //
+  //     // ✅ Log summary of loyalty points found
+  //     if (kDebugMode) {
+  //       final productsWithPoints = apiProducts.where((p) => (p['loyalty_points'] ?? 0) > 0);
+  //       print('✅ API returned ${apiProducts.length} products for "$query"');
+  //       print('⭐ ${productsWithPoints.length} products have loyalty points');
+  //       if (productsWithPoints.isNotEmpty) {
+  //         print('📊 Loyalty points details:');
+  //         for (final p in productsWithPoints) {
+  //           print('   • ${p['name']}: ${p['loyalty_points']} points');
+  //         }
+  //       }
+  //     }
+  //
+  //     _mergeApiResults(apiProducts);
+  //   } catch (e) {
+  //     if (kDebugMode) print('❌ _searchProductsFromApi error: $e');
+  //   } finally {
+  //     if (mounted) setState(() => _isApiSearchLoading = false);
+  //   }
+  // }
+
+
   Future<void> _searchProductsFromApi(String query) async {
-    if (_apiSearchCache.containsKey(query)) {
-      if (kDebugMode) print('⚡ API search cache hit for "$query"');
-      _mergeApiResults(_apiSearchCache[query]!);
+    final searchQuery = query.trim();
+
+    if (_apiSearchCache.containsKey(searchQuery)) {
+      if (kDebugMode) {
+        print('⚡ API search cache hit for "$searchQuery"');
+      }
+      _mergeApiResults(_apiSearchCache[searchQuery]!);
       return;
     }
 
-    if (mounted) setState(() => _isApiSearchLoading = true);
+    if (mounted) {
+      setState(() => _isApiSearchLoading = true);
+    }
 
     try {
       final token = await _getAuthTokenFromDb();
-      final encodedQuery = Uri.encodeQueryComponent(query);
-      final url = Uri.parse(
-        '${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}'
-            'products?search=$encodedQuery&page=1&per_page=20',
-      );
 
-      if (kDebugMode) print('🔍 API Search → $url');
+      final encodedQuery = Uri.encodeQueryComponent(searchQuery);
+
+      late final Uri url;
+
+      // If query is only numbers -> SKU search
+      if (RegExp(r'^\d+$').hasMatch(searchQuery)) {
+        url = Uri.parse(
+          '${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}'
+              'products?sku=$encodedQuery&page=1&per_page=20',
+        );
+
+        if (kDebugMode) {
+          print('🔢 SKU Search → $url');
+        }
+      } else {
+        // Normal product name search
+        url = Uri.parse(
+          '${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}'
+              'products?search=$encodedQuery&page=1&per_page=20',
+        );
+
+        if (kDebugMode) {
+          print('🔍 Product Search → $url');
+        }
+      }
 
       final response = await http.get(
         url,
@@ -4457,65 +4617,92 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         return;
       }
 
-      final List<dynamic> decoded = jsonDecode(response.body) as List<dynamic>;
+      final List<dynamic> decoded =
+      jsonDecode(response.body) as List<dynamic>;
 
       final List<Map<String, dynamic>> apiProducts = decoded
           .whereType<Map>()
           .map<Map<String, dynamic>>((p) {
-        final List<dynamic> images = (p['images'] as List?) ?? [];
-        final String imageUrl = images.isNotEmpty && images.first is Map
+
+        final List<dynamic> images =
+            (p['images'] as List?) ?? [];
+
+        final String imageUrl =
+        images.isNotEmpty && images.first is Map
             ? (images.first['src'] ?? '').toString()
             : '';
 
-        final List<dynamic> rawTags = (p['tags'] as List?) ?? [];
-        final List<Map<String, dynamic>> tags = rawTags
-            .whereType<Map>()
-            .map((t) => {
-          'id': t['id'],
-          'name': (t['name'] ?? '').toString(),
-          'slug': (t['slug'] ?? '').toString(),
-        })
-            .toList();
+        final List<dynamic> rawTags =
+            (p['tags'] as List?) ?? [];
 
-        final List<dynamic> rawCategories = (p['categories'] as List?) ?? [];
+        final List<Map<String, dynamic>> tags =
+        rawTags.whereType<Map>().map((t) {
+          return {
+            'id': t['id'],
+            'name': (t['name'] ?? '').toString(),
+            'slug': (t['slug'] ?? '').toString(),
+          };
+        }).toList();
 
-        // ✅ Extract meta_data properly
-        final List<Map<String, dynamic>> metaData = (p['meta_data'] as List?)
-            ?.whereType<Map>()
-            .map((m) => {
-          'id': m['id'],
-          'key': m['key']?.toString() ?? '',
-          'value': m['value'],
-        })
-            .toList() ?? [];
 
-        // ✅ Extract loyalty points for logging
+        final List<dynamic> rawCategories =
+            (p['categories'] as List?) ?? [];
+
+
+        // Extract meta_data
+        final List<Map<String, dynamic>> metaData =
+            (p['meta_data'] as List?)
+                ?.whereType<Map>()
+                .map((m) {
+              return {
+                'id': m['id'],
+                'key': m['key']?.toString() ?? '',
+                'value': m['value'],
+              };
+            }).toList() ??
+                [];
+
+
+        // Extract loyalty points
         int loyaltyPoints = 0;
-        if (metaData.isNotEmpty) {
-          final loyaltyEntry = metaData.firstWhere(
-                (m) => m['key'] == '_product_loyalty_points' || m['key'] == '_csv_loyalty_points',
-            orElse: () => {},
-          );
-          if (loyaltyEntry.isNotEmpty) {
-            loyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
-          }
+
+        final loyaltyEntry = metaData.firstWhere(
+              (m) =>
+          m['key'] == '_product_loyalty_points' ||
+              m['key'] == '_csv_loyalty_points',
+          orElse: () => {},
+        );
+
+        if (loyaltyEntry.isNotEmpty) {
+          loyaltyPoints =
+              int.tryParse(
+                loyaltyEntry['value']?.toString() ?? '0',
+              ) ??
+                  0;
         }
 
-        // ✅ Print loyalty points for this product
+
         if (kDebugMode && loyaltyPoints > 0) {
-          print('⭐ Product "${p['name']}" (ID: ${p['id']}) has $loyaltyPoints loyalty points');
+          print(
+            '⭐ Product "${p['name']}" '
+                '(ID: ${p['id']}) has $loyaltyPoints loyalty points',
+          );
         }
+
 
         return {
           'fast_key_product_id': p['id'],
           'fast_key_item_name': p['name'] ?? '',
           'fast_key_item_image': imageUrl,
-          'fast_key_item_price': p['price'] ?? p['regular_price'] ?? '0',
+          'fast_key_item_price':
+          p['price'] ?? p['regular_price'] ?? '0',
           'fast_key_item_sku': p['sku'] ?? '',
           'fast_key_item_tags': tags,
+
           'id': p['id'],
           'name': p['name'] ?? '',
-          'price': p['price'] ?? p['regular_price'] ?? '0',
+          'price':
+          p['price'] ?? p['regular_price'] ?? '0',
           'regular_price': p['regular_price'] ?? '',
           'sku': p['sku'] ?? '',
           'images': images,
@@ -4523,11 +4710,17 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           'variations': p['variations'] ?? [],
           'type': p['type'] ?? 'simple',
           'categories': rawCategories,
-          'meta_data': metaData, // ✅ Include meta_data
-          'loyalty_points': loyaltyPoints, // ✅ Store for quick access
+
+          'meta_data': metaData,
+          'loyalty_points': loyaltyPoints,
+
           'is_ebt_eligible': tags.any((t) {
-            final name = (t['name'] ?? '').toString().toLowerCase();
-            final slug = (t['slug'] ?? '').toString().toLowerCase();
+            final name =
+            (t['name'] ?? '').toString().toLowerCase();
+
+            final slug =
+            (t['slug'] ?? '').toString().toLowerCase();
+
             return name == 'ebt' ||
                 name == 'ebt eligible' ||
                 slug == 'ebt' ||
@@ -4536,54 +4729,48 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         };
       }).toList();
 
-      _apiSearchCache[query] = apiProducts;
 
-      // ✅ Log summary of loyalty points found
+      _apiSearchCache[searchQuery] = apiProducts;
+
+
       if (kDebugMode) {
-        final productsWithPoints = apiProducts.where((p) => (p['loyalty_points'] ?? 0) > 0);
-        print('✅ API returned ${apiProducts.length} products for "$query"');
-        print('⭐ ${productsWithPoints.length} products have loyalty points');
+        final productsWithPoints = apiProducts.where(
+              (p) => (p['loyalty_points'] ?? 0) > 0,
+        );
+
+        print(
+          ' API returned ${apiProducts.length} products '
+              'for "$searchQuery"',
+        );
+
+        print(
+          '⭐ ${productsWithPoints.length} products have loyalty points',
+        );
+
         if (productsWithPoints.isNotEmpty) {
-          print('📊 Loyalty points details:');
+          print(' Loyalty points details:');
+
           for (final p in productsWithPoints) {
-            print('   • ${p['name']}: ${p['loyalty_points']} points');
+            print(
+              '   • ${p['name']}: ${p['loyalty_points']} points',
+            );
           }
         }
       }
 
+
       _mergeApiResults(apiProducts);
+
     } catch (e) {
-      if (kDebugMode) print('❌ _searchProductsFromApi error: $e');
+      if (kDebugMode) {
+        print('_searchProductsFromApi error: $e');
+      }
     } finally {
-      if (mounted) setState(() => _isApiSearchLoading = false);
+      if (mounted) {
+        setState(() => _isApiSearchLoading = false);
+      }
     }
   }
-
-  // void _mergeApiResults(List<Map<String, dynamic>> apiProducts) {
-  //   if (apiProducts.isEmpty) return;
-  //
-  //   final Map<int, dynamic> existing = {};
-  //   for (final p in _cachedProducts) {
-  //     final int? pid = _productIdFromCacheMap(p);
-  //     if (pid != null) existing[pid] = p;
-  //   }
-  //
-  //   bool changed = false;
-  //   for (final ap in apiProducts) {
-  //     final int? pid = _productIdFromCacheMap(ap);
-  //     if (pid == null) continue;
-  //     if (!existing.containsKey(pid)) {
-  //       existing[pid] = ap;
-  //       changed = true;
-  //     }
-  //   }
-  //
-  //   if (changed && mounted) {
-  //     setState(() {
-  //       _cachedProducts = existing.values.toList();
-  //     });
-  //   }
-  // }
 
   void _mergeApiResults(List<Map<String, dynamic>> apiProducts) {
     if (apiProducts.isEmpty) return;

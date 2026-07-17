@@ -2747,7 +2747,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   static const MethodChannel customerDisplayChannel = MethodChannel(
-    'com.example.flutter_customer_display/sunmi_display',
+    'com.alekta.pinakapos/sunmi_display',
   );
 
   Future<void> _handleCustomerAddFromDisplay(String contact) async {
@@ -3483,7 +3483,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     super.initState();
 
     const MethodChannel _customerDisplayChannel = MethodChannel(
-      'com.example.flutter_customer_display/sunmi_display',
+      'com.alekta.pinakapos/sunmi_display',
     );
 
     _customerDisplayChannel.setMethodCallHandler((call) async {
@@ -3582,9 +3582,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // IMPORTANT: Call after merges
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _mergeOrderSummaryLineItemsFromProductCache(orderItems);
-       _mergeOrderSummaryLineItemsFromHive(orderItems, offlineOrder); // if exists
+      _mergeOrderSummaryLineItemsFromHive(orderItems, offlineOrder);
 
-      _calculateAndPrintLoyaltyPoints();   // ← ADD THIS
+      _calculateAndPrintLoyaltyPoints();
+      _syncEbtTotalWithOrderItems();   // ← ADD THIS
       if (mounted) setState(() {});
     });
 
@@ -3682,6 +3683,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
 // ✅ FIX: Recalculate EBT proportionally after merchant discount is applied
       _recalculateEbtTotalAfterDiscount();
+      _syncEbtTotalWithOrderItems();   // ← ADD THIS
+
 
       if (mounted) setState(() {});
 
@@ -4470,9 +4473,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   void deleteItemFromOrder(dynamic itemId) async {
-    // TODO: Implement actual deletion logic
     setState(() {
       orderItems.removeWhere((item) => item[AppDBConst.itemId] == itemId);
+      _syncEbtTotalWithOrderItems();   // ← ADD THIS
     });
   }
 
@@ -6450,6 +6453,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
+  bool get _hasEbtItemsInOrder =>
+      orderItems.any((item) => _orderSummaryLineEbtEligible(item));
+
+  void _syncEbtTotalWithOrderItems() {
+    if (!_hasEbtItemsInOrder && ebtTotal != 0.0) {
+      ebtTotal = 0.0;
+      if (kDebugMode) {
+        print("🧹 No EBT-eligible items remain → ebtTotal reset to 0");
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -6557,316 +6572,169 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               ],
                             ),
                             child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              // mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                _buildPaymentModeButton(
-                                  TextConstants.cash,
-                                  Image.asset(
-                                    'assets/cash.png',
-                                    width: ResponsiveLayout.getIconSize(24),
-                                    height: ResponsiveLayout.getIconSize(24),
-                                    fit: BoxFit.contain,
+                                Expanded(
+                                  child: _buildPaymentModeButton(
+                                    TextConstants.cash,
+                                    Image.asset(
+                                      'assets/cash.png',
+                                      width: ResponsiveLayout.getIconSize(24),
+                                      height: ResponsiveLayout.getIconSize(24),
+                                      fit: BoxFit.contain,
+                                    ),
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFF9CCD7B),
+                                        Color(0xFF9CCD7B),
+                                      ],
+                                    ),
+                                    borderColor: const Color(0xFF9CCD7B),
+                                    iconColor: const Color(0xFF9CCD7B),
+                                    isLoading: _processingPaymentMethod == TextConstants.cash && isLoading,
+                                    isDisabled: _processingPaymentMethod != null &&
+                                        _processingPaymentMethod != TextConstants.cash,
+                                    onTap: () async {
+                                      _selectPaymentMethod(TextConstants.cash);
+                                      _handlePay();
+                                    },
                                   ),
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF9CCD7B),
-                                      Color(0xFF9CCD7B)
-                                    ],
-                                  ),
-                                  borderColor: const Color(0xFF9CCD7B),
-                                  iconColor: Color(0xFF9CCD7B),
-                                  isLoading: _processingPaymentMethod ==
-                                      TextConstants.cash &&
-                                      isLoading,
-                                  isDisabled:
-                                  _processingPaymentMethod != null &&
-                                      _processingPaymentMethod !=
-                                          TextConstants.cash,
-                                  onTap: () async {
-                                    _selectPaymentMethod(TextConstants.cash);
-                                    // await CustomerService
-                                    //     .publishProcessingPayment(
-                                    //   orderId ?? 0,
-                                    //   orderItems, // your list of items
-                                    //   subtotal:
-                                    //       grossTotal, // same as you send to display now
-                                    //   tax: tax, // existing tax variable
-                                    //   total:
-                                    //       computedNetPayable, // or balanceAmount if you prefer
-                                    // );
-                                    _handlePay();
-                                  },
-                                ),
-                                _buildPaymentModeButton(
-                                  TextConstants.card,
-                                  Image.asset(
-                                    'assets/card.png',
-                                    width: ResponsiveLayout.getIconSize(24),
-                                    height: ResponsiveLayout.getIconSize(24),
-                                    fit: BoxFit.contain,
-                                  ),
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFFA484C8),
-                                      Color(0xFFA484C8)
-                                    ],
-                                  ),
-                                  borderColor: const Color(0xFFA484C8),
-                                  iconColor: Color(0xFFA484C8),
-                                  // isLoading: _processingPaymentMethod == TextConstants.card && isLoading,
-                                  // isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.card,
-
-                                  isLoading: false,
-                                  isDisabled: false,
-                                  onTap: () async {
-                                    _selectPaymentMethod(
-                                      TextConstants.card,
-                                      maxAllowedAmount: balanceAmount,
-                                    );
-                                    await _handleCardPaymentViaAPI();
-                                  },
-                                ),
-                                _buildPaymentModeButton(
-                                  "Pay Later",
-                                  Image.asset(
-                                    'assets/wallet.png',
-                                    width: ResponsiveLayout.getIconSize(24),
-                                    height: ResponsiveLayout.getIconSize(24),
-                                    fit: BoxFit.contain,
-                                  ),
-                                  gradient: const LinearGradient(
-                                    colors: [Color(0xFFCCB985), Color(0xFFCCB985)],
-                                  ),
-                                  borderColor: const Color(0xFFCCB985),
-                                  iconColor: const Color(0xFFCCB985),
-                                  isLoading: _processingPaymentMethod == "Pay Later" && isLoading,
-                                  isDisabled: _isPartialAmountEntered() ||
-                                      balanceAmount <= 0 ||
-                                      (_processingPaymentMethod != null &&
-                                          _processingPaymentMethod != "Pay Later"),
-                                  onTap: () async {
-                                    //  Pay Later ignores the keypad entirely — no _selectPaymentMethod(),
-                                    // no _handlePay(). This is the fix for the "please select payment" error.
-                                    await _handlePayLaterPayment();
-                                  },
                                 ),
 
-                                // _buildPaymentModeButton(
-                                //   TextConstants.ebtText,
-                                //   Image.asset(
-                                //     'assets/ebt.png',
-                                //     width: ResponsiveLayout.getIconSize(24),
-                                //     height: ResponsiveLayout.getIconSize(24),
-                                //     fit: BoxFit.contain,
-                                //   ),
-                                //   gradient: const LinearGradient(
-                                //     colors: [
-                                //       Color(0xFF84A2CB),
-                                //       Color(0xFF84A2CB)
-                                //     ],
-                                //   ),
-                                //   borderColor: const Color(0xFF84A2CB),
-                                //   iconColor: Colors.white,
-                                //   isLoading: _processingPaymentMethod ==
-                                //       TextConstants.ebtText &&
-                                //       isLoading,
-                                //   isDisabled:
-                                //   _processingPaymentMethod != null &&
-                                //       _processingPaymentMethod !=
-                                //           TextConstants.ebtText,
-                                //   // onTap: () {
-                                //   //   // 1️⃣ Check if there is any EBT left
-                                //   //   if (ebtTotal <= 0) {
-                                //   //     setState(() => _amountErrorText =
-                                //   //     "No EBT balance available");
-                                //   //     return;
-                                //   //   }
-                                //   //
-                                //   //   // 2️⃣ Determine the maximum allowed amount
-                                //   //   final allowedAmount =
-                                //   //   balanceAmount.clamp(0.0, ebtTotal);
-                                //   //
-                                //   //   if (allowedAmount <= 0) {
-                                //   //     setState(() => _amountErrorText =
-                                //   //     "Cannot pay with EBT, balance is zero");
-                                //   //     return;
-                                //   //   }
-                                //   //
-                                //   //   // 3️⃣ Respect user-entered partial amount when present.
-                                //   //   final enteredAmount = double.tryParse(
-                                //   //     amountController.text
-                                //   //         .replaceAll(
-                                //   //         TextConstants.currencySymbol,
-                                //   //         '')
-                                //   //         .trim(),
-                                //   //   ) ??
-                                //   //       0.0;
-                                //   //
-                                //   //   final amountToUse = enteredAmount > 0
-                                //   //       ? enteredAmount.clamp(
-                                //   //       0.0, allowedAmount)
-                                //   //       : allowedAmount;
-                                //   //
-                                //   //   if (amountToUse <= 0) {
-                                //   //     setState(() => _amountErrorText =
-                                //   //         TextConstants.amountValidation);
-                                //   //     return;
-                                //   //   }
-                                //   //
-                                //   //   // 4️⃣ Select EBT only (manual amount entry by user)
-                                //   //   _selectPaymentMethod(
-                                //   //     TextConstants.ebtText,
-                                //   //   );
-                                //   //
-                                //   //   // If user already entered amount, submit like Cash flow.
-                                //   //   if (enteredAmount > 0) {
-                                //   //     final normalizedAmount = amountToUse;
-                                //   //     setState(() {
-                                //   //       _rawAmount =
-                                //   //           (normalizedAmount * 100).round();
-                                //   //       amountController.text =
-                                //   //       '${TextConstants.currencySymbol}${normalizedAmount.toStringAsFixed(2)}';
-                                //   //       _isAmountEntered = true;
-                                //   //       _amountErrorText = null;
-                                //   //     });
-                                //   //     _handlePay();
-                                //   //     return;
-                                //   //   }
-                                //   //
-                                //   //   // Otherwise keep EBT amount user-driven.
-                                //   //   setState(() {
-                                //   //     _rawAmount = 0;
-                                //   //     amountController.text =
-                                //   //     '${TextConstants.currencySymbol}0.00';
-                                //   //     _isAmountEntered = false;
-                                //   //     _amountErrorText = null;
-                                //   //   });
-                                //   // },
-                                //   onTap: () async {
-                                //     //  Check if there is any EBT left
-                                //     if (ebtTotal <= 0) {
-                                //       setState(() => _amountErrorText = "No EBT balance available");
-                                //       return;
-                                //     }
-                                //
-                                //     //  Determine the maximum allowed amount
-                                //     final allowedAmount = balanceAmount.clamp(0.0, ebtTotal);
-                                //
-                                //     if (allowedAmount <= 0) {
-                                //       setState(() =>
-                                //       _amountErrorText = "Cannot pay with EBT, balance is zero");
-                                //       return;
-                                //     }
-                                //
-                                //     //  Respect user-entered partial amount when present.
-                                //     final enteredAmount = double.tryParse(
-                                //       amountController.text
-                                //           .replaceAll(TextConstants.currencySymbol, '')
-                                //           .trim(),
-                                //     ) ??
-                                //         0.0;
-                                //
-                                //     final amountToUse = enteredAmount > 0
-                                //         ? enteredAmount.clamp(0.0, allowedAmount)
-                                //         : allowedAmount;
-                                //
-                                //     if (amountToUse <= 0) {
-                                //       setState(
-                                //               () => _amountErrorText = TextConstants.amountValidation);
-                                //       return;
-                                //     }
-                                //
-                                //     //  Select EBT and fill amount
-                                //     _selectPaymentMethod(TextConstants.ebtText);
-                                //
-                                //     setState(() {
-                                //       _rawAmount = (amountToUse * 100).round();
-                                //       amountController.text =
-                                //       '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
-                                //       _isAmountEntered = true;
-                                //       _amountErrorText = null;
-                                //     });
-                                //
-                                //     //  Call EBT API (same as card API flow)
-                                //     await _handleEbtCardPaymentViaAPI();
-                                //   },
-                                // ),
-
-                                // ==================== EBT PAYMENT BUTTON ====================
-                                _buildPaymentModeButton(
-                                  TextConstants.ebtText,
-                                  Image.asset(
-                                    'assets/ebt.png',
-                                    width: ResponsiveLayout.getIconSize(24),
-                                    height: ResponsiveLayout.getIconSize(24),
-                                    fit: BoxFit.contain,
+                                Expanded(
+                                  child: _buildPaymentModeButton(
+                                    TextConstants.card,
+                                    Image.asset(
+                                      'assets/card.png',
+                                      width: ResponsiveLayout.getIconSize(24),
+                                      height: ResponsiveLayout.getIconSize(24),
+                                      fit: BoxFit.contain,
+                                    ),
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFFA484C8),
+                                        Color(0xFFA484C8),
+                                      ],
+                                    ),
+                                    borderColor: const Color(0xFFA484C8),
+                                    iconColor: const Color(0xFFA484C8),
+                                    isLoading: false,
+                                    isDisabled: false,
+                                    onTap: () async {
+                                      _selectPaymentMethod(
+                                        TextConstants.card,
+                                        maxAllowedAmount: balanceAmount,
+                                      );
+                                      await _handleCardPaymentViaAPI();
+                                    },
                                   ),
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF84A2CB),
-                                      Color(0xFF84A2CB)
-                                    ],
-                                  ),
-                                  borderColor: const Color(0xFF84A2CB),
-                                  iconColor: Colors.white,
-                                  isLoading: _processingPaymentMethod == TextConstants.ebtText && isLoading,
-
-                                  //  KEY CHANGE: Disable when no EBT balance
-                                  isDisabled: ebtTotal <= 0 ||
-                                      (_processingPaymentMethod != null &&
-                                          _processingPaymentMethod != TextConstants.ebtText),
-
-                                  onTap: () async {
-                                    // Check if there is any EBT left
-                                    if (ebtTotal <= 0) {
-                                      setState(() => _amountErrorText = "No EBT balance available");
-                                      return;
-                                    }
-
-                                    // Determine the maximum allowed amount
-                                    final allowedAmount = balanceAmount.clamp(0.0, ebtTotal);
-
-                                    if (allowedAmount <= 0) {
-                                      setState(() =>
-                                      _amountErrorText = "Cannot pay with EBT, balance is zero");
-                                      return;
-                                    }
-
-                                    // Respect user-entered partial amount when present.
-                                    final enteredAmount = double.tryParse(
-                                      amountController.text
-                                          .replaceAll(TextConstants.currencySymbol, '')
-                                          .trim(),
-                                    ) ??
-                                        0.0;
-
-                                    final amountToUse = enteredAmount > 0
-                                        ? enteredAmount.clamp(0.0, allowedAmount)
-                                        : allowedAmount;
-
-                                    if (amountToUse <= 0) {
-                                      setState(
-                                              () => _amountErrorText = TextConstants.amountValidation);
-                                      return;
-                                    }
-
-                                    // Select EBT and fill amount
-                                    _selectPaymentMethod(TextConstants.ebtText);
-
-                                    setState(() {
-                                      _rawAmount = (amountToUse * 100).round();
-                                      amountController.text =
-                                      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
-                                      _isAmountEntered = true;
-                                      _amountErrorText = null;
-                                    });
-
-                                    // Call EBT API (same as card API flow)
-                                    await _handleEbtCardPaymentViaAPI();
-                                  },
                                 ),
 
+                                Expanded(
+                                  child: _buildPaymentModeButton(
+                                    "Pay Later",
+                                    Image.asset(
+                                      'assets/wallet.png',
+                                      width: ResponsiveLayout.getIconSize(24),
+                                      height: ResponsiveLayout.getIconSize(24),
+                                      fit: BoxFit.contain,
+                                    ),
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFFCCB985),
+                                        Color(0xFFCCB985),
+                                      ],
+                                    ),
+                                    borderColor: const Color(0xFFCCB985),
+                                    iconColor: const Color(0xFFCCB985),
+                                    isLoading:
+                                    _processingPaymentMethod == "Pay Later" && isLoading,
+                                    isDisabled: _isPartialAmountEntered() ||
+                                        balanceAmount <= 0 ||
+                                        (_processingPaymentMethod != null &&
+                                            _processingPaymentMethod != "Pay Later"),
+                                    onTap: () async {
+                                      await _handlePayLaterPayment();
+                                    },
+                                  ),
+                                ),
 
+                                if (ebtTotal > 0 && _hasEbtItemsInOrder)
+                                  Expanded(
+                                    child: _buildPaymentModeButton(
+                                      TextConstants.ebtText,
+                                      Image.asset(
+                                        'assets/ebt.png',
+                                        width: ResponsiveLayout.getIconSize(24),
+                                        height: ResponsiveLayout.getIconSize(24),
+                                        fit: BoxFit.contain,
+                                      ),
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFF84A2CB),
+                                          Color(0xFF84A2CB),
+                                        ],
+                                      ),
+                                      borderColor: const Color(0xFF84A2CB),
+                                      iconColor: Colors.white,
+                                      isLoading: _processingPaymentMethod ==
+                                          TextConstants.ebtText &&
+                                          isLoading,
+                                      isDisabled: _processingPaymentMethod != null &&
+                                          _processingPaymentMethod != TextConstants.ebtText,
+                                      onTap: () async {
+                                        if (ebtTotal <= 0) {
+                                          setState(() {
+                                            _amountErrorText = "No EBT balance available";
+                                          });
+                                          return;
+                                        }
+
+                                        final allowedAmount =
+                                        balanceAmount.clamp(0.0, ebtTotal);
+
+                                        if (allowedAmount <= 0) {
+                                          setState(() {
+                                            _amountErrorText =
+                                            "Cannot pay with EBT, balance is zero";
+                                          });
+                                          return;
+                                        }
+
+                                        final enteredAmount = double.tryParse(
+                                          amountController.text
+                                              .replaceAll(
+                                              TextConstants.currencySymbol, '')
+                                              .trim(),
+                                        ) ??
+                                            0.0;
+
+                                        final amountToUse = enteredAmount > 0
+                                            ? enteredAmount.clamp(0.0, allowedAmount)
+                                            : allowedAmount;
+
+                                        if (amountToUse <= 0) {
+                                          setState(() {
+                                            _amountErrorText =
+                                                TextConstants.amountValidation;
+                                          });
+                                          return;
+                                        }
+
+                                        _selectPaymentMethod(TextConstants.ebtText);
+
+                                        setState(() {
+                                          _rawAmount = (amountToUse * 100).round();
+                                          amountController.text =
+                                          '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+                                          _isAmountEntered = true;
+                                          _amountErrorText = null;
+                                        });
+
+                                        await _handleEbtCardPaymentViaAPI();
+                                      },
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -7716,7 +7584,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 // ======================================
                       try {
                         await const MethodChannel(
-                          'com.example.flutter_customer_display/sunmi_display',
+                          'com.alekta.pinakapos/sunmi_display',
                         ).invokeMethod(
                           'showCustomerData',
                           {
@@ -7756,18 +7624,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         );
                       }
                     } catch (e) {
-                      print("❌ ERROR: $e");
+                      print("Print the error : $e");
 
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              "Failed: ${e.toString()}",
-                            ),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
+
                     } finally {
                       if (mounted) {
                         setState(() => isAddLoading = false);
@@ -10434,363 +10293,152 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                   // Payment mode buttons - make flexible
                   Expanded(
-                    flex: 2,
-                    child: Container(
-                      width: double.infinity,
+                    // fit: FlexFit.loose,
+                    child: Padding(
                       padding: EdgeInsets.all(ResponsiveLayout.getPadding(8)),
-                      decoration: BoxDecoration(
-                        color: themeHelper.themeMode == ThemeMode.dark
-                            ? const Color(0xFF303136)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(
-                          ResponsiveLayout.getRadius(8),
-                        ),
-                        border: Border.all(
-                          color: const Color(0x2E4C5F7D), // #4C5F7D2E
-                          width: 2, // adjust as needed
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: themeHelper.themeMode == ThemeMode.dark
-                                ? Colors.black.withOpacity(0.3)
-                                : Colors.black12,
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            // Net Payable
-                            Container(
+                      child: Column(
+                        children: [
+                          /// Net Payable
+                          Expanded(
+                            child: Container(
                               width: double.infinity,
-                              padding: EdgeInsets.all(
-                                  ResponsiveLayout.getPadding(8)),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.start,
-                                children: [
-                                  // Net Payable
-                                  Container(
-                                    padding: const EdgeInsets.only(
-                                      top: 6,
-                                      right: 6,
-                                      bottom: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? const Color(
-                                          0xFF091B34) // dark background
-                                          : const Color(
-                                          0xFFF4FCF7), // light mode background
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border(
-                                        top: BorderSide(
-                                          color: themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                              ? const Color(0xFF091B34)
-                                              : const Color(0xFF3EAE4C),
-                                          width: 1,
-                                        ),
-                                        right: BorderSide(
-                                          color: themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                              ? const Color(0xFF091B34)
-                                              : const Color(0xFF3EAE4C),
-                                          width: 1,
-                                        ),
-                                        bottom: BorderSide(
-                                          color: themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                              ? const Color(0xFF091B34)
-                                              : const Color(0xFF3EAE4C),
-                                          width: 1,
-                                        ),
-                                        left: BorderSide
-                                            .none, // 🚫 no left border
-                                      ),
-                                    ),
-                                    child: _buildAmountDisplay(
-                                      TextConstants.netPayable,
-                                      '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}',
-                                      leftBarColor: const Color(0xFF3EAE4C),
-                                      amountColor: themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? Colors.white
-                                          : Colors.black,
-                                    ),
-                                  ),
-
-                                  SizedBox(
-                                      height: ResponsiveLayout.getHeight(8)),
-
-                                  // Balance Amount
-                      // If there's a remaining payment balance, show only that
-                                  if (_currentPaymentRemainingBalance != null &&
-                                      _currentPaymentRemainingBalance! > 0)
-                                    Column(
-                                      children: [
-                                        SizedBox(
-                                            height:
-                                            ResponsiveLayout.getHeight(10)),
-                                        Container(
-                                          padding: const EdgeInsets.only(
-                                            top: 6,
-                                            right: 6,
-                                            bottom: 6,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: themeHelper.themeMode ==
-                                                ThemeMode.dark
-                                                ? const Color(0xFF091B34)
-                                                : const Color(0xFFE6F3FF),
-                                            borderRadius:
-                                            BorderRadius.circular(6),
-                                            border: Border(
-                                              top: BorderSide(
-                                                color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                    ? const Color(0xFF091B34)
-                                                    : const Color(0xFF3B7DDD),
-                                                width: 1,
-                                              ),
-                                              right: BorderSide(
-                                                color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                    ? const Color(0xFF091B34)
-                                                    : const Color(0xFF3B7DDD),
-                                                width: 1,
-                                              ),
-                                              bottom: BorderSide(
-                                                color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                    ? const Color(0xFF091B34)
-                                                    : const Color(0xFF3B7DDD),
-                                                width: 1,
-                                              ),
-                                              left: BorderSide.none,
-                                            ),
-                                          ),
-                                          child: _buildPaymentAmountDisplay(
-                                            // "After ${_lastPaymentDetails?['method'] ?? 'Payment'}",
-                                            "Balance Amount",
-
-                                            '${TextConstants.currencySymbol}${_currentPaymentRemainingBalance!.toStringAsFixed(2)}',
-                                            leftBarColor:
-                                            const Color(0xFF3B7DDD),
-                                            amountColor:
-                                            themeHelper.themeMode ==
-                                                ThemeMode.dark
-                                                ? Colors.white
-                                                : Colors.black,
-                                            isPaymentBalance: true,
-                                          ),
-                                        ),
-                                      ],
-                                    )
-// Otherwise show the main balance
-                                  else
-                                    Container(
-                                      padding: const EdgeInsets.only(
-                                        top: 6,
-                                        right: 6,
-                                        bottom: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: themeHelper.themeMode ==
-                                            ThemeMode.dark
-                                            ? const Color(0xFF091B34)
-                                            : const Color(0xFFFCF4F4),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border(
-                                          top: BorderSide(
-                                            color: themeHelper.themeMode ==
-                                                ThemeMode.dark
-                                                ? const Color(0xFF091B34)
-                                                : const Color(0xFFE85C43),
-                                            width: 1,
-                                          ),
-                                          right: BorderSide(
-                                            color: themeHelper.themeMode ==
-                                                ThemeMode.dark
-                                                ? const Color(0xFF091B34)
-                                                : const Color(0xFFE85C43),
-                                            width: 1,
-                                          ),
-                                          bottom: BorderSide(
-                                            color: themeHelper.themeMode ==
-                                                ThemeMode.dark
-                                                ? const Color(0xFF091B34)
-                                                : const Color(0xFFE85C43),
-                                            width: 1,
-                                          ),
-                                          left: BorderSide.none,
-                                        ),
-                                      ),
-                                      child: _buildPaymentAmountDisplay(
-                                        TextConstants.balanceAmount,
-                                        balanceAmount < 0
-                                            ? '-${TextConstants.currencySymbol}${balanceAmount.abs().toStringAsFixed(2)}'
-                                            : '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
-                                        leftBarColor: const Color(0xFFE85C43),
-                                        amountColor: themeHelper.themeMode ==
-                                            ThemeMode.dark
-                                            ? Colors.white
-                                            : Colors.black,
-                                      ),
-                                    ),
-
-                                  SizedBox(
-                                      height: ResponsiveLayout.getHeight(15)),
-                                  // EBT Amount
-
-                                  // EBT Amount
-                                  Container(
-                                    padding: const EdgeInsets.only(
-                                      top: 6,
-                                      right: 6,
-                                      bottom: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? const Color(0xFF091B34)
-                                          : const Color(0xFFF4F7FC),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border(
-                                        top: BorderSide(
-                                          color: themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                              ? const Color(0xFF091B34)
-                                              : const Color(0xFF3B7DDD),
-                                          width: 1,
-                                        ),
-                                        right: BorderSide(
-                                          color: themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                              ? const Color(0xFF091B34)
-                                              : const Color(0xFF3B7DDD),
-                                          width: 1,
-                                        ),
-                                        bottom: BorderSide(
-                                          color: themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                              ? const Color(0xFF091B34)
-                                              : const Color(0xFF3B7DDD),
-                                          width: 1,
-                                        ),
-                                        left: BorderSide.none,
-                                      ),
-                                    ),
-                                    child: _buildAmountDisplay(
-                                      TextConstants.EBTAmount,
-                                          () {
-                                        // Compute display EBT proportionally when merchant discount reduces net payable
-                                        final double originalEbt = widget.ebtAmount;
-                                        if (originalEbt <= 0) {
-                                          return ebtTotal < 0
-                                              ? '-${TextConstants.currencySymbol}${ebtTotal.abs().toStringAsFixed(2)}'
-                                              : '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
-                                        }
-                                        final double originalNetPayable = widget.netPayable > 0
-                                            ? widget.netPayable
-                                            : (widget.grossTotal + widget.orderTax);
-                                        if (originalNetPayable <= 0) {
-                                          return ebtTotal < 0
-                                              ? '-${TextConstants.currencySymbol}${ebtTotal.abs().toStringAsFixed(2)}'
-                                              : '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
-                                        }
-                                        // If computedNetPayable has changed significantly (merchant discount applied),
-                                        // show proportional EBT based on current net payable
-                                        if ((computedNetPayable - originalNetPayable).abs() > 0.01) {
-                                          final double ebtRatio = originalEbt / originalNetPayable;
-                                          final double proportionalEbt = (computedNetPayable * ebtRatio)
-                                              .clamp(0.0, originalEbt);
-                                          final double alreadyPaidEbt = payByEbt;
-                                          final double displayEbt =
-                                          (proportionalEbt - alreadyPaidEbt).clamp(0.0, double.infinity);
-                                          return displayEbt < 0
-                                              ? '-${TextConstants.currencySymbol}${displayEbt.abs().toStringAsFixed(2)}'
-                                              : '${TextConstants.currencySymbol}${displayEbt.toStringAsFixed(2)}';
-                                        }
-                                        return ebtTotal < 0
-                                            ? '-${TextConstants.currencySymbol}${ebtTotal.abs().toStringAsFixed(2)}'
-                                            : '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
-                                      }(),
-                                      leftBarColor: const Color(0xFF3B7DDD),
-                                      amountColor: themeHelper.themeMode ==
-                                          ThemeMode.dark
-                                          ? Colors.white
-                                          : Colors.black,
-                                    ),
-                                  ),
-
-                                  SizedBox(
-                                      height: ResponsiveLayout.getHeight(15)),
-
-                                  // // EBT Amount
-                                  // Container(
-                                  //   padding: const EdgeInsets.only(
-                                  //     top: 6,
-                                  //     right: 6,
-                                  //     bottom: 6,
-                                  //   ),
-                                  //   decoration: BoxDecoration(
-                                  //     color: themeHelper.themeMode == ThemeMode.dark
-                                  //         ? const Color(0xFF091B34)
-                                  //         : const Color(0xFFF4F7FC),
-                                  //     borderRadius: BorderRadius.circular(6),
-                                  //     border: Border(
-                                  //       top: BorderSide(
-                                  //         color: themeHelper.themeMode == ThemeMode.dark
-                                  //             ? const Color(0xFF091B34)
-                                  //             : const Color(0xFF3B7DDD),
-                                  //         width: 1,
-                                  //       ),
-                                  //       right: BorderSide(
-                                  //         color: themeHelper.themeMode == ThemeMode.dark
-                                  //             ? const Color(0xFF091B34)
-                                  //             : const Color(0xFF3B7DDD),
-                                  //         width: 1,
-                                  //       ),
-                                  //       bottom: BorderSide(
-                                  //         color: themeHelper.themeMode == ThemeMode.dark
-                                  //             ? const Color(0xFF091B34)
-                                  //             : const Color(0xFF3B7DDD),
-                                  //         width: 1,
-                                  //       ),
-                                  //       left: BorderSide.none, // 🚫 no left border
-                                  //     ),
-                                  //   ),
-                                  //   child: _buildAmountDisplay(
-                                  //     TextConstants.EBTAmount,
-                                  //     ebtTotal < 0
-                                  //         ? '-${TextConstants.currencySymbol}${ebtTotal.abs().toStringAsFixed(2)}'
-                                  //         : '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
-                                  //     leftBarColor: const Color(0xFF3B7DDD),
-                                  //     amountColor: themeHelper.themeMode == ThemeMode.dark
-                                  //         ? Colors.white
-                                  //         : Colors.black,
-                                  //   ),
-                                  //
-                                  // ),
-                                ],
+                              padding: const EdgeInsets.only(top: 6, right: 6, bottom: 6),
+                              decoration: BoxDecoration(
+                                color: themeHelper.themeMode == ThemeMode.dark
+                                    ? const Color(0xFF091B34)
+                                    : const Color(0xFFF4FCF7),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border(
+                                  top: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3EAE4C)),
+                                  right: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3EAE4C)),
+                                  bottom: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3EAE4C)),
+                                  left: BorderSide.none,
+                                ),
                               ),
-                            )
+                              child: _buildAmountDisplay(
+                                TextConstants.netPayable,
+                                '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}',
+                                leftBarColor: const Color(0xFF3EAE4C),
+                                amountColor: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black,
+                                // Dynamic font size
+                                labelFontSize: _hasEbtItemsInOrder ? 11 : 18,     // ← was ebtTotal > 0
+                                amountFontSize: _hasEbtItemsInOrder ? 12 : 25,
+                              ),
+                            ),
+                          ),
+
+                          SizedBox(height: ResponsiveLayout.getHeight(10)),
+
+
+                          /// Balance Amount - Extra Large & Bold when no EBT
+                          Expanded(
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.only(top: 6, right: 6, bottom: 6),
+                              decoration: BoxDecoration(
+                                color: themeHelper.themeMode == ThemeMode.dark
+                                    ? const Color(0xFF091B34)
+                                    : (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0)
+                                    ? const Color(0xFFE6F3FF)
+                                    : const Color(0xFFFCF4F4),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border(
+                                  top: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0) ? const Color(0xFF3B7DDD) : const Color(0xFFE85C43)),
+                                  right: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0) ? const Color(0xFF3B7DDD) : const Color(0xFFE85C43)),
+                                  bottom: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0) ? const Color(0xFF3B7DDD) : const Color(0xFFE85C43)),
+                                  left: BorderSide.none,
+                                ),
+                              ),
+                              child: _currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0
+                                  ? _buildPaymentAmountDisplay(
+                                "Balance Amount",
+                                '${TextConstants.currencySymbol}${_currentPaymentRemainingBalance!.toStringAsFixed(2)}',
+                                leftBarColor: const Color(0xFF3B7DDD),
+                                amountColor: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black,
+                                isPaymentBalance: true,
+                                labelFontSize: _hasEbtItemsInOrder ? 11 : 14,     // ← was ebtTotal > 0
+                                amountFontSize: _hasEbtItemsInOrder ? 13 : 27,    // ← was ebtTotal > 0
+                                amountFontWeight: FontWeight.w900,             // Extra Bold
+                              )
+                                  : _buildPaymentAmountDisplay(
+                                TextConstants.balanceAmount,
+                                balanceAmount < 0
+                                    ? '-${TextConstants.currencySymbol}${balanceAmount.abs().toStringAsFixed(2)}'
+                                    : '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
+                                leftBarColor: const Color(0xFFE85C43),
+                                amountColor: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black,
+                                labelFontSize: _hasEbtItemsInOrder ? 11 : 14,     // ← was ebtTotal > 0
+                                amountFontSize: _hasEbtItemsInOrder ? 13 : 27,          // Bigger
+                                amountFontWeight: FontWeight.w900,                // Extra Bold
+                              ),
+                            ),
+                          ),
+
+                          if (ebtTotal > 0 && hasEbtItem) ...[
+                            SizedBox(height: ResponsiveLayout.getHeight(10)),
+                            /// EBT (smaller fonts when 3 items are shown)
+                            Expanded(
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.only(top: 6, right: 6, bottom: 6),
+                                decoration: BoxDecoration(
+                                  color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFFF4F7FC),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border(
+                                    top: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3B7DDD)),
+                                    right: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3B7DDD)),
+                                    bottom: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3B7DDD)),
+                                    left: BorderSide.none,
+                                  ),
+                                ),
+                                child: _buildAmountDisplay(
+                                  TextConstants.EBTAmount,
+                                  (() {
+                                    final double originalEbt = widget.ebtAmount;
+
+                                    if (originalEbt <= 0) {
+                                      return '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
+                                    }
+
+                                    final double originalNetPayable = widget.netPayable > 0
+                                        ? widget.netPayable
+                                        : (widget.grossTotal + widget.orderTax);
+
+                                    if (originalNetPayable <= 0) {
+                                      return '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
+                                    }
+
+                                    if ((computedNetPayable - originalNetPayable).abs() > 0.01) {
+                                      final ratio = originalEbt / originalNetPayable;
+                                      final proportionalEbt =
+                                      (computedNetPayable * ratio).clamp(0.0, originalEbt);
+
+                                      final displayEbt =
+                                      (proportionalEbt - payByEbt).clamp(0.0, double.infinity);
+
+                                      return '${TextConstants.currencySymbol}${displayEbt.toStringAsFixed(2)}';
+                                    }
+
+                                    return '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
+                                  })(),
+                                  leftBarColor: const Color(0xFF3B7DDD),
+                                  amountColor: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black,
+                                  labelFontSize: 11,
+                                  amountFontSize: 12,
+                                ),
+                              ),
+                            ),
                           ],
-                        ),
+                        ],
                       ),
                     ),
                   ),
+
                   SizedBox(height: ResponsiveLayout.getHeight(10)),
 
                   // Payment options - make flexible
                   Expanded(
-                    flex: 2, // Give less space to payment options
+                    // flex: 2, // Give less space to payment options
                     child: Container(
                       width: double.infinity,
                       padding:
@@ -11205,7 +10853,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   //   }
   // }
 
-///above code was working code
+  ///above code was working code
   ///
 
   Future<bool> _syncAndShowCouponPopup() async {
@@ -12577,65 +12225,59 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       String amount, {
         required Color leftBarColor,
         Color? amountColor = Colors.black,
+        double labelFontSize = 11,
+        double amountFontSize = 12,
       }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
     return Container(
-      width: MediaQuery.of(context).size.width * 0.240, // fixed width
-      height: ResponsiveLayout.getHeight(40), // fixed height
+      width: MediaQuery.of(context).size.width * 0.240,
+      height: ResponsiveLayout.getHeight(40),
       alignment: Alignment.centerLeft,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // 🔴 LEFT INDICATOR BAR (VERTICALLY CENTERED)
           Container(
             width: 4,
-            height: ResponsiveLayout.getHeight(
-                40), // slightly taller for visual effect
+            height: ResponsiveLayout.getHeight(45),
             decoration: BoxDecoration(
               color: leftBarColor,
               borderRadius: const BorderRadius.only(
                 topRight: Radius.circular(8),
                 bottomRight: Radius.circular(8),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: leftBarColor.withOpacity(0.45),
-                  blurRadius: 8,
-                  offset: const Offset(1, 2),
-                ),
-              ],
             ),
           ),
-
           const SizedBox(width: 10),
-
-          // 📄 TEXT CONTENT
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                label,
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(11),
+                  fontSize: ResponsiveLayout.getFontSize(labelFontSize),
                   fontWeight: FontWeight.w500,
                   color: themeHelper.themeMode == ThemeMode.dark
                       ? Colors.white
                       : const Color(0xFF333333),
                 ),
+                child: Text(label),
               ),
               const SizedBox(height: 4),
-              Text(
-                amount,
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(12),
+                  fontSize: ResponsiveLayout.getFontSize(amountFontSize),
                   fontWeight: FontWeight.w700,
                   color: amountColor ??
                       (themeHelper.themeMode == ThemeMode.dark
                           ? Colors.white
                           : const Color(0xFF222222)),
                 ),
+                child: Text(amount),
               ),
             ],
           ),
@@ -12787,7 +12429,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             child: Opacity(
               opacity: isEnabled ? 1.0 : 0.5,
               child: Container(
-                width: ResponsiveLayout.getWidth(178),
+                width: double.infinity,
                 height: ResponsiveLayout.getHeight(54),
                 margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
                 decoration: BoxDecoration(
@@ -14970,8 +14612,20 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // -------------------------------
     var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
     var storeId = "${merchantDetails?[AppDBConst.storeId]}";
-    var storePhone = "${merchantDetails?[AppDBConst.storePhone]}";
-
+    // var storePhone = "${merchantDetails?[AppDBConst.storePhone]}";
+// === CUSTOMER CONTACT (Mobile) ===
+    String customerMobile = '';
+    if (mobileController.text.isNotEmpty) {
+      customerMobile = mobileController.text.trim();
+    } else {
+      // Fallback from Hive / offline order
+      final box = StorageProvider.offlineOrders;
+      final key = (orderId ?? widget.offlineOrderId ?? 0).toString();
+      final raw = await box.get(key);
+      if (raw is Map) {
+        customerMobile = (raw['customer_phone'] ?? raw['mobile'] ?? raw['loyaltyContact'] ?? '').toString().trim();
+      }
+    }
     var storeDetails = await AssetDBHelper.instance.getStoreDetails();
     var storeName = "${storeDetails?.name}";
     var address = "${storeDetails?.address},";
@@ -15028,7 +14682,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     ]);
     bytes += ticket.row([
       PosColumn(
-          text: "Phone: $storePhone",
+          text: "Phone: $customerMobile",
           width: 12,
           styles: PosStyles(align: PosAlign.center)),
     ]);
@@ -15968,7 +15622,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       String amount, {
         required Color leftBarColor,
         Color? amountColor = Colors.black,
-        bool isPaymentBalance = false, // NEW: Add this flag
+        bool isPaymentBalance = false,
+        double labelFontSize = 11,
+        double amountFontSize = 12,
+        FontWeight amountFontWeight = FontWeight.w700,   // ← This was missing
       }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
@@ -15979,7 +15636,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // 🔴 LEFT INDICATOR BAR
+          // LEFT INDICATOR BAR
           Container(
             width: 4,
             height: ResponsiveLayout.getHeight(45),
@@ -16001,7 +15658,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
           const SizedBox(width: 10),
 
-          // 📄 TEXT CONTENT
+          // TEXT CONTENT
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -16009,7 +15666,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(11),
+                  fontSize: ResponsiveLayout.getFontSize(labelFontSize),
                   fontWeight: FontWeight.w500,
                   color: themeHelper.themeMode == ThemeMode.dark
                       ? Colors.white
@@ -16020,12 +15677,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Text(
                 amount,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(12),
-                  fontWeight: FontWeight.w700,
-                  color: amountColor ??
-                      (themeHelper.themeMode == ThemeMode.dark
-                          ? Colors.white
-                          : const Color(0xFF222222)),
+                  fontSize: ResponsiveLayout.getFontSize(amountFontSize),
+                  fontWeight: amountFontWeight,           // ← Now working
+                  color: amountColor ?? (themeHelper.themeMode == ThemeMode.dark
+                      ? Colors.white
+                      : const Color(0xFF222222)),
                 ),
               ),
             ],

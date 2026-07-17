@@ -745,7 +745,7 @@ class NestedGridWidget extends StatelessWidget {
                                   onItemAdded: () async {
                                           print(" Weighted product added successfully!");
                                           print("$item['loyalty_points']");
-                                          onItemTapped(index, variantAdded: true);
+                                          onItemTapped(index, variantAdded: false);
                                         },
                               );
                               return;
@@ -817,7 +817,7 @@ class NestedGridWidget extends StatelessWidget {
                                   },
                                 );
 
-                                onItemTapped(index, variantAdded: true);
+                                onItemTapped(index, variantAdded: false);
                                 return; //  VERY IMPORTANT — stop popup here
                               }
 
@@ -1193,7 +1193,7 @@ class NestedGridWidget extends StatelessWidget {
                                       loyaltyPoints: variantLoyaltyPoints,  // ✅ Pass variant's loyalty points
                                       onItemAdded: () async {
                                         print("✅ Variant item added successfully!");
-                                        onItemTapped(index, variantAdded: true);
+                                        onItemTapped(index, variantAdded: false);
                                       },
                                     );
                                   },
@@ -1238,7 +1238,7 @@ class NestedGridWidget extends StatelessWidget {
                                 onItemAdded: () async {
                                   print(" Simple product added successfully!");
                                   print("print : $loyaltyPoints");
-                                  onItemTapped(index, variantAdded: true);
+                                  onItemTapped(index, variantAdded: false);
                                 },
                               );
                             }
@@ -1267,20 +1267,20 @@ class NestedGridWidget extends StatelessWidget {
                         },
                         child: _getCardWidget(
                           Padding(
-                            padding: const EdgeInsets.all(10.0),
+                            padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 4.0), // Reduced padding
                             child: Row(
                               children: [
-                                const SizedBox(width: 7),
+                                const SizedBox(width: 5),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                    mainAxisAlignment: MainAxisAlignment.start,
                                     children: [
                                       Text(
                                         item["fast_key_item_name"],
                                         style: TextStyle(
                                           fontSize: 12,
-                                          fontWeight: FontWeight.bold,
+                                          fontWeight: FontWeight.w600,
                                           color: themeHelper.themeMode == ThemeMode.dark
                                               ? ThemeNotifier.textDark
                                               : ThemeNotifier.textLight,
@@ -1594,8 +1594,8 @@ Future<List<Map<String, dynamic>>> _fetchVariationsFromApiNestedGrid(
         "image": (map["image"] is Map && map["image"]["src"] != null)
             ? map["image"]["src"]
             : (map["image"] is String ? map["image"] : ""),
-        "meta_data": metaData,  // ✅ Store meta_data
-        "loyalty_points": loyaltyPoints,  // ✅ Store loyalty points
+        "meta_data": metaData,
+        "loyalty_points": loyaltyPoints,
       };
     })
         .where((v) => v["id"] != null)

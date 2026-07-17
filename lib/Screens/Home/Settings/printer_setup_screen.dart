@@ -559,8 +559,9 @@ class _PrinterSetupState extends State<PrinterSetup> {
                     ))
                         .toList(),
                   ),
+                  // FIXED: Show IP address and port fields for both Windows and Android when network/WiFi is selected
                   Visibility(
-                    visible: defaultPrinterType == PrinterType.network && Platform.isWindows,
+                    visible: defaultPrinterType == PrinterType.network && (Platform.isWindows || Platform.isAndroid),
                     child: Padding(
                       padding: const EdgeInsets.only(top: 10.0),
                       child: TextFormField(
@@ -575,7 +576,7 @@ class _PrinterSetupState extends State<PrinterSetup> {
                     ),
                   ),
                   Visibility(
-                    visible: defaultPrinterType == PrinterType.network && Platform.isWindows,
+                    visible: defaultPrinterType == PrinterType.network && (Platform.isWindows || Platform.isAndroid),
                     child: Padding(
                       padding: const EdgeInsets.only(top: 10.0),
                       child: TextFormField(
@@ -590,7 +591,7 @@ class _PrinterSetupState extends State<PrinterSetup> {
                     ),
                   ),
                   Visibility(
-                    visible: defaultPrinterType == PrinterType.network && Platform.isWindows,
+                    visible: defaultPrinterType == PrinterType.network && (Platform.isWindows || Platform.isAndroid),
                     child: Padding(
                       padding: const EdgeInsets.only(top: 10.0),
                       child: OutlinedButton(

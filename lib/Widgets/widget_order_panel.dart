@@ -2980,7 +2980,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           children: [
             // 🔹 Main Order Panel (Card + Tabs)
             Container(
-              width: MediaQuery.of(context).size.width * 0.31,
+              width: MediaQuery.of(context).size.width * 0.38,
               padding: const EdgeInsets.fromLTRB(2, 0, 10, 10),
               child: Card(
                 elevation: 4,

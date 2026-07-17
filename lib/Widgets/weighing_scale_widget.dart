@@ -22,11 +22,7 @@ class WeightProvider extends ChangeNotifier {
   bool   get isPaused        => _paused;
   bool   get suppressUpdates => _suppressUpdates;
 
-  // ── Called by TopBar's USB EventChannel stream ──────────────────────────
-  // Pass the raw values exactly as UsbSerialManager emits them:
-  //   weight  → the numeric value (in nativeUnit)
-  //   unit    → 'kg' | 'lb' | 'g' | 'oz'
-  //   stable  → from parseWeight()
+
   void updateFromUsb({
     required double weight,
     required String unit,
@@ -127,9 +123,7 @@ class WeightProvider extends ChangeNotifier {
       '${(kg * 2.20462).toStringAsFixed(2)} lb';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AutoWeightPriceDialog
-// ─────────────────────────────────────────────────────────────────────────────
+
 class AutoWeightPriceDialog extends StatefulWidget {
   final String productName;
   final double unitPrice;
@@ -250,7 +244,7 @@ class _AutoWeightPriceDialogState extends State<AutoWeightPriceDialog> {
         _isManualEntry = true;
       } else {
         _manualWeight  = 0.0;
-        _isManualEntry = text.isNotEmpty;
+        _isManualEntry = true;
       }
     });
   }
@@ -513,9 +507,7 @@ class _ScaleStatusChip extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _InfoLabel  (unchanged)
-// ─────────────────────────────────────────────────────────────────────────────
+
 class _InfoLabel extends StatelessWidget {
   final String label;
   final String value;
@@ -549,9 +541,6 @@ class _InfoLabel extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _FieldBox — read-only calculated price box  (unchanged)
-// ─────────────────────────────────────────────────────────────────────────────
 class _FieldBox extends StatelessWidget {
   final String label;
   final String value;
@@ -601,11 +590,6 @@ class _FieldBox extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _EditableWeightBox
-// Updated: shows live/manual state via border colour; has a clear button
-// to return from manual mode back to live scale reading.
-// ─────────────────────────────────────────────────────────────────────────────
 class _EditableWeightBox extends StatelessWidget {
   final String                label;
   final TextEditingController controller;
