@@ -2609,7 +2609,7 @@ class NavigationBar extends StatelessWidget {
             ),
           );
         } catch (e) {
-          if (kDebugMode) print("⚠️ Close-shift navigation failed: $e");
+          if (kDebugMode) print(" Close-shift navigation failed: $e");
         }
       }
 

@@ -49,6 +49,8 @@ class FastKeyRepository {  // Build #1.0.15
 
     if (kDebugMode) {
       print("FastKeyRepository - GET Raw Response: $response");
+      print("fast keysttttt------------------");
+
     }
 
     if (response is String) {
@@ -108,6 +110,8 @@ class FastKeyRepository {  // Build #1.0.15
 
     if (kDebugMode) {
       print("FastKeyRepository - UPDATE Raw Response: $response");
+      print("fast keysuuuuuuu------------------");
+
     }
 
     if (response is String) {

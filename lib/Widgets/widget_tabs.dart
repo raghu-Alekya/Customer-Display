@@ -439,10 +439,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   }
 
   Future<void> _loadTaxes() async {
+    if (!mounted) return;
     setState(() => _isTaxLoading = true);
 
     _taxList = await _orderRepository.getAllTaxes();
 
+    // ✅ FIX: without this, if the sidebar navigates away (e.g. tapping Refund)
+    // while getAllTaxes() is still in flight, this setState fires on a disposed
+    // widget → "Null check operator used on a null value" (your crash log).
+    if (!mounted) return;
     setState(() => _isTaxLoading = false);
   }
 
@@ -491,6 +496,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       if (kDebugMode)
         print(
             "#### _loadTaxSlabs: Loaded ${taxes.length} taxes: ${taxes.map((t) => t.toMap()).toList()},  widget.barcode: -${widget.barcode},");
+      // ✅ FIX: guard against setState after disposal (same class of crash as _loadTaxes)
+      if (!mounted) return;
       setState(() {
         _taxSlabOptions = taxes.map((tax) => tax.name).toSet().toList();
         if (_taxSlabOptions.isNotEmpty) {
@@ -505,6 +512,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       });
     } catch (e) {
       if (kDebugMode) print("#### _loadTaxSlabs: Error loading tax slabs: $e");
+      if (!mounted) return;
       setState(() {
         _taxSlabOptions = [];
         _selectedTaxSlab = '';
@@ -524,6 +532,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   void _loadCashbackLimit() async {
     final config = await CashbackHelper.getCashbackConfig();
 
+    // ✅ FIX: guard against setState after disposal
+    if (!mounted) return;
     if (config != null &&
         config["cash_back_service"] != null &&
         config["cash_back_service"]["max_cashback"] != null) {
@@ -542,6 +552,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   // Fetch order ID and total from OrderHelper (use loadData for offline orders)
   Future<void> _loadOrderData() async {
     await _orderHelper.loadData();
+    // ✅ FIX: guard against setState after disposal
+    if (!mounted) return;
     setState(() {
       orderId = _orderHelper.activeOrderId;
       if (kDebugMode) {

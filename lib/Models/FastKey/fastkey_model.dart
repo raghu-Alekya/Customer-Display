@@ -1,26 +1,5 @@
 import 'fastkey_product_model.dart';
 
-// //Using for Fast Key Screen Horizontal List Scroll
-// class FastKeyModel { // Build #1.0.19: No need
-//   late int id; // Build #1.0.11
-//   late String name; //Build #1.0.4
-//   late String itemCount;
-//   late String imageAsset;
-//
-//   FastKeyModel({
-//     required this.id,
-//     required this.name,
-//     required this.itemCount,
-//     required this.imageAsset,
-//   });
-// }
-
-/// ==============================================
-/// 1. FAST KEY CREATION AND LISTING MODELS
-/// ==============================================
-
-/// API: POST /fastkeys/create
-/// Creates a new FastKey
 class FastKeyRequest {  // Build #1.0.15
   final String fastkeyTitle;
   final int fastkeyIndex;

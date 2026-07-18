@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../../Constants/text.dart';
 import '../../Helper/api_response.dart';
@@ -147,6 +148,7 @@ class FastKeyProductBloc {
   }
 
   // GET: Fetch products by FastKey ID
+  // GET: Fetch products by FastKey ID
   Future<void> fetchProductsByFastKeyId(
       int fastKeyId, int fastKeyServerId) async {
     if (_getProductsController.isClosed) return;
@@ -154,7 +156,7 @@ class FastKeyProductBloc {
     getProductsSink.add(APIResponse.loading(TextConstants.loading));
     try {
       final response =
-          await _repository.getProductsByFastKeyId(fastKeyServerId);
+      await _repository.getProductsByFastKeyId(fastKeyServerId);
 
       if (kDebugMode) {
         print(
@@ -180,10 +182,10 @@ class FastKeyProductBloc {
         for (var product in response.products) {
           ///Naveen: add few paramter as product_id, sl_number, and make price as string only
           var tagg = product.tags?.firstWhere(
-              (element) => element.name == TextConstants.age_restricted,
+                  (element) => element.name == TextConstants.age_restricted,
               orElse: () => Tags());
           var hasAgeRestriction =
-              tagg?.name?.contains(TextConstants.age_restricted);
+          tagg?.name?.contains(TextConstants.age_restricted);
           if (kDebugMode) {
             print(
                 "FastkeyBloc: fetchProductsByFastKeyId New Product added, hasAgeRestriction $hasAgeRestriction for product ${product.name} ${product.productId}, minAge: ${tagg?.slug ?? "0"}");
@@ -197,8 +199,11 @@ class FastKeyProductBloc {
             product.productId,
             minAge: int.parse(tagg?.slug ?? "0"),
             slNumber: product.slNumber,
-            hasVariant:
-                product.hasVariant, // Build #1.0.157: save hasVariant into DB
+            hasVariant: product.hasVariant, // Build #1.0.157: save hasVariant into DB
+            // 🔥 FIX: Add these missing parameters
+            tagsJson: jsonEncode(product.tags?.map((tag) => tag.toJson()).toList() ?? []),
+            metaDataJson: jsonEncode(product.metaData ?? []),
+            // loyaltyPoints: product.loyaltyPoints ?? 0,
           );
         }
       } else {
@@ -209,10 +214,10 @@ class FastKeyProductBloc {
         // var i=0;
         for (var product in response.products) {
           var tagg = product.tags?.firstWhere(
-              (element) => element.name == TextConstants.age_restricted,
+                  (element) => element.name == TextConstants.age_restricted,
               orElse: () => Tags());
           var hasAgeRestriction =
-              tagg?.name?.contains(TextConstants.age_restricted);
+          tagg?.name?.contains(TextConstants.age_restricted);
           if (kDebugMode) {
             print(
                 "FastkeyBloc: fetchProductsByFastKeyId product already present and updating, hasAgeRestriction $hasAgeRestriction, minAge: ${tagg?.slug ?? "0"}");
@@ -224,11 +229,15 @@ class FastKeyProductBloc {
             AppDBConst.fastKeySlNumber: product.slNumber,
             AppDBConst.fastKeyItemImage: product.image,
             AppDBConst.fastKeyProductId:
-                product.productId, // Build #1.0.19: Updated parameters
+            product.productId, // Build #1.0.19: Updated parameters
             AppDBConst.fastKeyItemMinAge: int.parse(tagg?.slug ?? "0"),
             AppDBConst.fastKeyItemHasVariant: product.hasVariant ?? false
                 ? 1
                 : 0, // Build #1.0.157: save hasVariant into DB
+            // 🔥 FIX: Add these missing fields to the update map
+            AppDBConst.fastKeyItemTags: jsonEncode(product.tags?.map((tag) => tag.toJson()).toList() ?? []),
+            AppDBConst.fastKeyItemMetaData: jsonEncode(product.metaData ?? []),
+            // AppDBConst.fastKeyItemLoyaltyPoints: product.loyaltyPoints ?? 0,
           };
           await fastKeyDBHelper.updateFastKeyProductItemByProductId(
             fastKeyId,

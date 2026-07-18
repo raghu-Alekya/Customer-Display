@@ -42,7 +42,7 @@ class CompletedOrdersRepository {
       },
     );
     if (kDebugMode) {
-      print("completed Status Code: ${response.statusCode}");
+      print("completed orders Status Codeeeeeee: ${response.statusCode}");
       print("Body: ${response.body}");
     }
 

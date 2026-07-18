@@ -166,7 +166,7 @@ class FastKeyBloc {
         }
         for (var product in fastkey.products ?? []) {
           var tagg = product.tags?.firstWhere(
-              (element) => element.name == TextConstants.age_restricted,
+                  (element) => element.name == TextConstants.age_restricted,
               orElse: () => Tags());
           var hasAgeRestriction =
               tagg?.name?.contains(TextConstants.age_restricted) ?? false;
@@ -183,6 +183,13 @@ class FastKeyBloc {
             minAge: int.parse(tagg?.slug ?? "0"),
             slNumber: product.slNumber,
             hasVariant: product.hasVariant ?? false,
+            // 🔥 FIX: these were missing here — same pattern already used correctly
+            // in fetchProductsByFastKeyId. This is why every item written at
+            // login/startup landed in SQLite with fast_key_item_tags = '[]',
+            // even though the raw API response (e.g. Jamun → "Produce" tag) had
+            // the data. Nothing else in this method is touched.
+            tagsJson: jsonEncode(product.tags?.map((tag) => tag.toJson()).toList() ?? []),
+            metaDataJson: jsonEncode(product.metaData ?? []),
           );
         }
       }

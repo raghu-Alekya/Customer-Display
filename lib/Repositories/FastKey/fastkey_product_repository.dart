@@ -48,6 +48,8 @@ class FastKeyProductRepository {  // Build #1.0.15
     if (cachedData != null) {
       if (kDebugMode) {
         print("✅ Loaded FastKey $fastKeyId from CACHE");
+        print("fast keyssssss------------------");
+
       }
       return FastKeyProductsResponse.fromJson(cachedData);
     }

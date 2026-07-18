@@ -1127,13 +1127,26 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
   void didUpdateWidget(OrderScreenPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Always refresh when instructed by parent
-    if (widget.fetchOrders) {
+    // ✅ FIX: previously this called fetchOrdersData() on every rebuild where
+    // widget.fetchOrders was true — and since the parent passes
+    // fetchOrders: !isLoading (true almost all the time), that meant nearly
+    // every parent setState() re-triggered a fetch here. Each new fetch bumps
+    // _fetchOrdersDataSeq, which silently cancels the previous still-in-flight
+    // fetch before it can call setState with real data — so if the parent
+    // rebuilds faster than one fetch cycle, no fetch ever completes and the
+    // panel gets stuck showing default/zero values (Order Status: '',
+    // Woo refundTotal: null) until something breaks the rebuild loop, like
+    // backgrounding the app.
+    final bool fetchJustTurnedOn = widget.fetchOrders && !oldWidget.fetchOrders;
+    final bool orderChanged = widget.activeOrderId != oldWidget.activeOrderId;
+
+    if (fetchJustTurnedOn || orderChanged) {
       fetchOrdersData();
       return;
     }
 
-    // Refresh when the activeOrderId changes
+    // Original behavior preserved as a fallback (kept for parity, though the
+    // condition above now covers the activeOrderId-change case already).
     if (mounted && widget.activeOrderId != oldWidget.activeOrderId) {
       fetchOrdersData();
     }

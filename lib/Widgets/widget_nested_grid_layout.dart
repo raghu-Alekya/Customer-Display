@@ -75,6 +75,48 @@ class NestedGridWidget extends StatelessWidget {
     return int.tryParse(idRaw?.toString() ?? "");
   }
 
+  // ── 🔧 FIX: Robust tag parser ──────────────────────────────────────────────
+  // `fast_key_item_tags` (and `tags`) can arrive in TWO shapes:
+  //   1) an already-decoded List<Map>            (normal / hydrated path)
+  //   2) a raw JSON-encoded String straight from SQLite (cold start / first
+  //      tap, before any decode step has touched the item)
+  //
+  // Every tag-reading spot in this file used to do `if (source is List)`
+  // ONLY. When tags were still a raw JSON string (case 2), that check
+  // silently failed, `tags` resolved to an empty list, and NOTHING using
+  // tags worked correctly on first load: EBT badge, variant icon,
+  // "variable" price detection, and — the one you reported — the
+  // "produce" tag (weighed items) detection in the tap handler. No error
+  // was thrown, it just silently fell back to "simple product" behavior.
+  //
+  // This helper is now the SINGLE source of truth for reading tags in this
+  // widget, and it handles both shapes.
+  static List<Map<String, dynamic>> _parseNestedTags(dynamic raw) {
+    if (raw == null) return const [];
+    if (raw is List) {
+      return raw
+          .whereType<Map>()
+          .map((t) => Map<String, dynamic>.from(t))
+          .toList();
+    }
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          return decoded
+              .whereType<Map>()
+              .map((t) => Map<String, dynamic>.from(t))
+              .toList();
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print("⚠️ NestedGridWidget: failed to decode tags string: $e");
+        }
+      }
+    }
+    return const [];
+  }
+
 
   /// One product-add flow at a time across the grid (fast taps otherwise queue heavy async work).
   static bool _productTapInFlight = false;
@@ -105,6 +147,21 @@ class NestedGridWidget extends StatelessWidget {
 
   Future<Map<String, dynamic>?> _getCachedProductFromIsar(int productId) async {
     if (!_productMetaCache.containsKey(productId)) {
+      // 🔧 FIX: On cold start / first tab open, TopBar's merged Isar/Hive
+      // product cache may not be ready yet. Ingesting before it's ready means
+      // this product's tags/meta_data (produce, EBT, variable-price, age
+      // restriction) resolve to nothing, and the tap silently falls back to
+      // "simple product" behavior. FastKeyScreen used to guard against this
+      // (_awaitMergedProductCacheReadyForFastKeys) but that code path is now
+      // dead — NestedGridWidget is what actually owns the tap flow, so the
+      // guard needs to live here instead.
+      try {
+        await TopBar.waitForFirstMergedProductCacheReload()
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {
+        // timed out / errored — proceed with whatever is available rather
+        // than blocking the tap forever
+      }
       await _ingestNestedProductMetaFromMerged();
     }
     return _productMetaCache[productId];
@@ -161,37 +218,32 @@ class NestedGridWidget extends StatelessWidget {
     return false;
   }
 
+  // 🔧 FIX: was `if (tagsRaw is List)` only — now uses _parseNestedTags so a
+  // raw JSON-string tags column (cold start / first tap) is handled too.
   bool _isProductEbtEligible(Map<String, dynamic> item) {
     if (_truthyEbtNested(item["is_ebt_eligible"])) return true;
     if (_ebtMetaNested(item["meta_data"])) return true;
 
-    final dynamic tagsRaw = item["fast_key_item_tags"] ?? item["tags"];
-    if (tagsRaw is List) {
-      for (final t in tagsRaw) {
-        if (t is Map) {
-          final name = (t["name"] ?? "").toString().toLowerCase();
-          final slug = (t["slug"] ?? "").toString().toLowerCase();
-          if (name.contains("ebt") || slug.contains("ebt")) return true;
-        }
-      }
+    final tags =
+    _parseNestedTags(item["fast_key_item_tags"] ?? item["tags"]);
+    for (final t in tags) {
+      final name = (t["name"] ?? "").toString().toLowerCase();
+      final slug = (t["slug"] ?? "").toString().toLowerCase();
+      if (name.contains("ebt") || slug.contains("ebt")) return true;
     }
 
     return false;
   }
 
+  // 🔧 FIX: was `if (tagsRaw is List)` only — now uses _parseNestedTags.
   bool _isVariableProduct(Map<String, dynamic> item) {
-    final dynamic tagsRaw = item["fast_key_item_tags"] ?? item["tags"];
-    if (tagsRaw is List) {
-      return tagsRaw.any((t) {
-        if (t is Map) {
-          final name = (t["name"] ?? "").toString().toLowerCase();
-          final slug = (t["slug"] ?? "").toString().toLowerCase();
-          return name.contains("variable") || slug.contains("variable");
-        }
-        return false;
-      });
-    }
-    return false;
+    final tags =
+    _parseNestedTags(item["fast_key_item_tags"] ?? item["tags"]);
+    return tags.any((t) {
+      final name = (t["name"] ?? "").toString().toLowerCase();
+      final slug = (t["slug"] ?? "").toString().toLowerCase();
+      return name.contains("variable") || slug.contains("variable");
+    });
   }
 
 
@@ -352,7 +404,7 @@ class NestedGridWidget extends StatelessWidget {
                     rawEbtFlag == 'true';
 
                 final String itemTypeStr =
-                    (item['type'] ?? '').toString().toLowerCase();
+                (item['type'] ?? '').toString().toLowerCase();
                 final dynamic hvDb = item['fast_key_item_has_variant'];
                 final bool hasVariantFromApiRow = hvDb == 1 ||
                     hvDb == true ||
@@ -386,6 +438,26 @@ class NestedGridWidget extends StatelessWidget {
                         onTap: () async {
                           if (_productTapInFlight) return;
                           _productTapInFlight = true;
+
+                          // ─────────────────────────────────────────────────────────────
+                          // 🔍 NEW: DEBUG PRINTS WHEN ITEM IS TAPPED
+                          // ─────────────────────────────────────────────────────────────
+                          print("🔍 [NestedGridWidget] ITEM TAPPED → Index: $itemIndex");
+                          print("📦 Full Item Data: ${jsonEncode(item)}"); // Pretty print full item
+
+                          // Parse and print tags
+                          final tags = _parseNestedTags(item["fast_key_item_tags"] ?? item["tags"]);
+                          print("🏷️ Has Tags: ${tags.isNotEmpty}");
+                          if (tags.isNotEmpty) {
+                            print("📋 Tags Count: ${tags.length}");
+                            for (final tag in tags) {
+                              print("   • Tag: ${tag['name']} | Slug: ${tag['slug']}");
+                            }
+                          } else {
+                            print("⚠️ No tags found in item or cache");
+                          }
+                          print("────────────────────────────────────────────────────");
+
                           // if (orderHelper?.activeOrderId == null) {
                           //   print("⛔ No active order → Show popup and block product adding");
                           //
@@ -426,21 +498,49 @@ class NestedGridWidget extends StatelessWidget {
                             final cachedProduct =
                             productId > 0 ? await _getCachedProductFromIsar(productId) : null;
 
-                            // 🏷 Collect tags from item first, then from cache
-                            final List<Map<String, dynamic>> tags = [];
-                            void addTags(dynamic source) {
-                              if (source is List) {
-                                for (final t in source) {
-                                  if (t is Map) {
-                                    tags.add(Map<String, dynamic>.from(t));
-                                  }
-                                }
-                              }
+                            // 🏷 Collect tags from item first, then from cache.
+                            // 🔧 FIX: previously this used a local `addTags()`
+                            // closure that only accepted `List` sources. If
+                            // `fast_key_item_tags` was still a raw JSON string
+                            // (which happens on cold start / first tap before
+                            // any prep step has decoded it), `tags` silently
+                            // ended up empty and every tag-dependent check
+                            // below (produce/weighed, variable-price, EBT,
+                            // variant) fell back to "simple product" with no
+                            // error printed. Now uses _parseNestedTags, which
+                            // handles both List and JSON-string shapes.
+                            // ─────────────────────────────────────────────────────
+                            // ✅ NEW: Prioritize FastKey API data (same as FastKeyScreen)
+                            // ─────────────────────────────────────────────────────
+                            List<Map<String, dynamic>> tags = [];
+
+                            // 1. Direct from FastKey item (best source)
+                            tags = _parseNestedTags(item["fast_key_item_tags"] ?? item["tags"]);
+
+                            // 2. Fallback to cached product
+                            if (tags.isEmpty) {
+                              tags = _parseNestedTags(cachedProduct?["tags"] ?? cachedProduct?["fast_key_item_tags"]);
                             }
 
-                            addTags(item["fast_key_item_tags"]);
-                            if (tags.isEmpty) {
-                              addTags(cachedProduct?["tags"]);
+                            // 3. Final safety net
+                            if (tags.isEmpty && item["meta_data"] is List) {
+                              // Sometimes tags come inside meta_data in some responses
+                              tags = _parseNestedTags(item["meta_data"]);
+                            }
+
+                            
+                            if (tags.isNotEmpty) {
+                              print("🏷️ Tags: ${tags.map((t) => "${t['name'] ?? ''} (${t['slug'] ?? ''})").toList()}");
+                            } else {
+                              print("⚠️ No tags found even after all fallbacks");
+                            }
+
+                            if (kDebugMode) {
+                              print(
+                                  "🏷️ [NestedGrid] TAP → product=$productId "
+                                      "rawTagsType=${item["fast_key_item_tags"]?.runtimeType} "
+                                      "parsedTagCount=${tags.length} "
+                                      "tags=${tags.map((t) => t["name"] ?? t["slug"] ?? "").toList()}");
                             }
 
                             // ✅ DECLARE HERE (VERY IMPORTANT)
@@ -507,16 +607,16 @@ class NestedGridWidget extends StatelessWidget {
                                 hvDb == 1 || hvDb == true || hvDb == '1';
 
                             final String typeStr =
-                                (item["type"] ?? cachedProduct?["type"] ?? "")
-                                    .toString()
-                                    .toLowerCase();
+                            (item["type"] ?? cachedProduct?["type"] ?? "")
+                                .toString()
+                                .toLowerCase();
 
                             final bool hasVariants =
                                 hasVariantFromApiRow ||
-                                (cachedProduct?["has_variants"] == true) ||
-                                typeStr == "variable" ||
-                                (item["variations"] != null &&
-                                    item["variations"].isNotEmpty);
+                                    (cachedProduct?["has_variants"] == true) ||
+                                    typeStr == "variable" ||
+                                    (item["variations"] != null &&
+                                        item["variations"].isNotEmpty);
 
                             // 🔞 Detect min age (field OR tags)
                             final dynamic minAgeSource =
@@ -692,10 +792,21 @@ class NestedGridWidget extends StatelessWidget {
                               return slug.contains("produce") || name.contains("produce");
                             });
 
+                            // 🔧 FIX: diagnostic print so it's obvious in logs
+                            // whether the produce tag was actually detected —
+                            // this was previously impossible to tell from the
+                            // logs when `tags` silently came back empty.
+                            if (kDebugMode) {
+                              print(
+                                  "🧺 [NestedGrid] hasProduceTag=$hasProduceTag "
+                                      "product=$productId tagCount=${tags.length}");
+                            }
+
                             if (hasProduceTag) {
                               final weightProvider = Provider.of<WeightProvider>(context, listen: false);
 
-                              // Parse current weight from display text
+                              // weightText already holds the value in the scale's native unit (kg here) —
+                              // same as TopBar. Do NOT apply an lb→kg conversion on top of it.
                               double liveWeight = 0.0;
                               try {
                                 final parts = weightProvider.weightText.trim().split(' ');
@@ -704,22 +815,10 @@ class NestedGridWidget extends StatelessWidget {
                                 }
                               } catch (_) {}
 
-                              // Convert lb to kg (adjust if your scale uses different unit)
-                              final double weightKg = liveWeight > 0 ? liveWeight * 0.453592 : 0.0;
-
-                              // Fallback
-                              final double weightToUse = weightKg > 0.00001 ? weightKg : 0.0001;
+                              // Fallback only if scale hasn't reported anything yet
+                              final double weightToUse = liveWeight > 0.00001 ? liveWeight : 0.0001;
 
                               final double finalPrice = productPrice * weightToUse;
-
-                              // if (weightKg <= 0.0001 && mounted) {
-                              //   ScaffoldMessenger.of(context).showSnackBar(
-                              //     const SnackBar(
-                              //       content: Text('Scale not detected — using 100g default'),
-                              //       duration: Duration(seconds: 2),
-                              //     ),
-                              //   );
-                              // }
 
                               // Add the item
                               await orderHelper.addItemToOrder(
@@ -742,15 +841,13 @@ class NestedGridWidget extends StatelessWidget {
                                     ? List<Map<String, dynamic>>.from(item['meta_data'])
                                     : null,
                                 loyaltyPoints: loyaltyPoints,
-                                  onItemAdded: () async {
-                                          print(" Weighted product added successfully!");
-                                          print("$item['loyalty_points']");
-                                          onItemTapped(index, variantAdded: false);
-                                        },
+                                onItemAdded: () async {
+                                  print(" Weighted product added successfully!");
+                                  onItemTapped(index, variantAdded: false);
+                                },
                               );
                               return;
                             }
-
 
 
 
@@ -1059,7 +1156,7 @@ class NestedGridWidget extends StatelessWidget {
                               // 🔥 Same as category screen: fetch WooCommerce variations when cache is empty
                               if (offlineVariations.isEmpty && productId > 0) {
                                 final fetched =
-                                    await _fetchVariationsFromApiNestedGrid(productId);
+                                await _fetchVariationsFromApiNestedGrid(productId);
                                 if (fetched.isNotEmpty) {
                                   offlineVariations = fetched;
                                   try {
@@ -1069,7 +1166,7 @@ class NestedGridWidget extends StatelessWidget {
                                       {
                                         "variations": fetched,
                                         "timestamp":
-                                            DateTime.now().toIso8601String(),
+                                        DateTime.now().toIso8601String(),
                                       },
                                     );
                                   } catch (_) {}
@@ -1524,7 +1621,7 @@ Future<String> _getAuthTokenForNestedGrid() async {
   final result = await db.query(
     AppDBConst.userTable,
     where:
-        '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+    '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
     orderBy: '${AppDBConst.userId} DESC',
     limit: 1,
   );

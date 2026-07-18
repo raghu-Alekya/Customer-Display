@@ -394,7 +394,6 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     try {
       if (kDebugMode) print("🔄 Syncing FastKey items from API...");
 
-      // 1. Get all FastKey tabs for the user
       final tabsUrl = Uri.parse(
         '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}'
             'fast-keys?user_id=$userId',
@@ -414,25 +413,63 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
       }
 
       final tabsData = jsonDecode(tabsResponse.body);
-      final List<dynamic> fastKeys = tabsData['fast_keys'] ?? [];
+
+      // ✅ FIX: root key is "fastkeys", not "fast_keys"
+      final List<dynamic> fastKeys = tabsData['fastkeys'] ?? [];
 
       if (fastKeys.isEmpty) {
         if (kDebugMode) print('ℹ️ No FastKey tabs found');
         return;
       }
 
-      // 2. For each FastKey tab, fetch and update items
       for (final fastKey in fastKeys) {
-        final int fastKeyServerId = fastKey['id'];
-        await _syncFastKeyItems(token, fastKeyServerId);
+        // ✅ FIX: id field is "fastkey_id", not "id"
+        final int fastKeyServerId = fastKey['fastkey_id'];
+
+        // ✅ FIX: products (with tags/meta_data) are already embedded —
+        // no separate /items endpoint call needed/exists for this shape
+        final List<dynamic> products = fastKey['products'] ?? [];
+        await _syncFastKeyItemsFromProducts(fastKeyServerId, products);
       }
 
       if (kDebugMode) print("✅ FastKey sync completed");
-
     } catch (e) {
       if (kDebugMode) print('❌ FastKey sync error: $e');
     }
   }
+
+  Future<void> _syncFastKeyItemsFromProducts(
+      int fastKeyServerId, List<dynamic> products) async {
+    try {
+      final db = await DBHelper.instance.database;
+
+      final tabResult = await db.query(
+        AppDBConst.fastKeyTable,
+        where: '${AppDBConst.fastKeyServerId} = ?',
+        whereArgs: [fastKeyServerId],
+      );
+
+      if (tabResult.isEmpty) {
+        if (kDebugMode) print('⚠️ FastKey tab not found: $fastKeyServerId');
+        return;
+      }
+
+      final int localTabId = tabResult.first[AppDBConst.fastKeyId] as int;
+
+      // _updateFastKeyItemsInDb already reads item['product_id'],
+      // item['tags'], item['meta_data'], item['name'], item['price'],
+      // item['sku'], item['is_variant'], item['has_variants'], item['sl_number']
+      // — all match the "products" objects in this response exactly.
+      await _updateFastKeyItemsInDb(localTabId, fastKeyServerId, products);
+
+      if (kDebugMode) {
+        print('✅ Updated ${products.length} items for FastKey $fastKeyServerId');
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Error syncing FastKey items: $e');
+    }
+  }
+
 
   /// Sync items for a specific FastKey tab
   Future<void> _syncFastKeyItems(String token, int fastKeyServerId) async {

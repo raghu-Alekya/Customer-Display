@@ -585,11 +585,19 @@ class OrderBloc { // Build #1.0.25 - added by naveen
 
       // Convert List<OrderList> to List<get_orders.OrderModel>
       final orderModels = response.ordersData; //Build #1.0.134
+      //  FIX: re-check isClosed after the await. If the screen that owns this
+      // OrderBloc got disposed while fetchTotalOrdersCount() was awaiting (e.g.
+      // an instant sidebar navigation), dispose() will have already closed this
+      // controller — without this guard, .add() below throws "Bad state: Cannot
+      // add new events after calling close" (your crash log).
+      if (_fetchTotalOrdersController.isClosed) return;
       // Emit UI first; syncOrdersFromApi can be slow (Isar per order) and must not block the list.
       fetchTotalOrdersSink.add(APIResponse.completed(response));
       final OrderHelper orderHelper = OrderHelper();
       unawaited(orderHelper.syncOrdersFromApi(orderModels));
     } catch (e, s) {
+      // ✅ FIX: same guard for the error path
+      if (_fetchTotalOrdersController.isClosed) return;
       if (e.toString().contains('Unauthorised')) {
         fetchTotalOrdersSink.add(APIResponse.error("Unauthorised. Session is expired."));
       }else {
@@ -598,6 +606,8 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       }
     }
   }
+
+
   ///"Used only for test fetching single order API"
   Future<void> fetchOrder({required String orderId}) async { //Build #1.0.54: updated
     if (_fetchOrdersController.isClosed) return;

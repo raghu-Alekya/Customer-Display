@@ -1,6 +1,3 @@
-// import 'line_item_model.dart';
-// import 'coupon_model.dart';
-
 class CompletedOrder {
   final int orderId;
   final String status;
