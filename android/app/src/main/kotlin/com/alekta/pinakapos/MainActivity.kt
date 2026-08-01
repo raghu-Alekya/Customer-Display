@@ -1005,40 +1005,24 @@ class MainActivity : FlutterActivity() {
 
         fun updateHeaderPoints(points: Int) {
             Handler(Looper.getMainLooper()).post {
-
                 availablePoints = points
-
-                val headerPoints =
-                    findViewById<TextView>(R.id.customer_points)
-
+                val headerPoints = findViewById<TextView>(R.id.customer_points)
                 if (headerPoints != null) {
                     headerPoints.text = points.toString()
                     headerPoints.visibility = View.VISIBLE
                     headerPoints.invalidate()
                     headerPoints.requestLayout()
-
-                    Log.d(
-                        "CustomerDisplay",
-                        "HEADER POINTS UPDATED DIRECT FROM API = ${headerPoints.text}"
-                    )
+                    Log.d("CustomerDisplay", "HEADER POINTS UPDATED DIRECT FROM API = ${headerPoints.text}")
                 } else {
-                    Log.e(
-                        "CustomerDisplay",
-                        "customer_points header not found"
-                    )
+                    Log.e("CustomerDisplay", "customer_points header not found")
                 }
             }
         }
 
         fun restoreSummaryAfterRedeemRemoval() {
             Handler(Looper.getMainLooper()).post {
-
-                val summaryContainer =
-                    findViewById<LinearLayout>(R.id.summary_container)
-
-                val redeemRow =
-                    findViewById<LinearLayout>(R.id.redeem_row)
-
+                val summaryContainer = findViewById<LinearLayout>(R.id.summary_container)
+                val redeemRow = findViewById<LinearLayout>(R.id.redeem_row)
                 summaryContainer?.visibility = View.VISIBLE
                 redeemRow?.visibility = View.GONE
 
@@ -1049,31 +1033,18 @@ class MainActivity : FlutterActivity() {
                     .trim()
 
                 val currentNet = currentNetText.toDoubleOrNull() ?: 0.0
-
                 val restoredNet = currentNet + redeemedAmount
-
                 this.redeemedAmount = 0.0
-
                 netPayableView.text = "Total : ${formatCurrency(restoredNet)}"
-
-                Log.d(
-                    "CustomerDisplay",
-                    "Restored net payable = $restoredNet"
-                )
+                Log.d("CustomerDisplay", "Restored net payable = $restoredNet")
             }
         }
 
         fun hideRedeemSummary() {
-
             Log.d("CustomerDisplay", "hideRedeemSummary called")
-
             this.redeemedAmount = 0.0
-            val redeemRow =
-                findViewById<LinearLayout>(R.id.redeem_row)
-
-            val redeemValue =
-                findViewById<TextView>(R.id.value_redeem_amount)
-
+            val redeemRow = findViewById<LinearLayout>(R.id.redeem_row)
+            val redeemValue = findViewById<TextView>(R.id.value_redeem_amount)
             redeemRow?.visibility = View.GONE
             redeemValue?.text = formatCurrency(0.0)
         }
@@ -1116,14 +1087,12 @@ class MainActivity : FlutterActivity() {
             currentStoreLogoUrl = storeLogoUrl
             currentStoreBaseUrl = storeBaseUrl ?: ""
 
-            // Update the welcome text with dynamic store name
             welcomeText.text = if (storeName.isNotEmpty()) {
                 "Welcome to $storeName"
             } else {
                 "👋 Welcome to Pinaka"
             }
 
-            // Make sure the text is visible and properly styled
             welcomeText.visibility = View.VISIBLE
             welcomeText.invalidate()
             welcomeText.requestLayout()
@@ -1153,7 +1122,6 @@ class MainActivity : FlutterActivity() {
                 Log.d("CustomerDisplay", "✅ Using default Welcome logo")
             }
 
-            // Also update the store info text in the customer layout if it exists
             val storeInfoText = findViewById<TextView>(R.id.store_info_text)
             if (storeInfoText != null && storeName.isNotEmpty()) {
                 storeInfoText.text = storeName
@@ -1325,7 +1293,6 @@ class MainActivity : FlutterActivity() {
                 val logoView = findViewById<ImageView>(R.id.welcome_logo)
                 slideshowImageView = findViewById(R.id.slideshow_image)
 
-                // Set the dynamic welcome text
                 welcomeText.text = if (storeName.isNotEmpty()) {
                     "Welcome to $storeName"
                 } else {
@@ -1335,7 +1302,6 @@ class MainActivity : FlutterActivity() {
 
                 footerText.visibility = if (storeName.isNotEmpty()) View.VISIBLE else View.GONE
 
-                // Load logo
                 if (!storeLogoUrl.isNullOrEmpty()) {
                     Thread {
                         try {
@@ -1368,6 +1334,10 @@ class MainActivity : FlutterActivity() {
             } else {
                 formatter.format(value)
             }
+        }
+
+        fun dpToPx(dp: Int): Int {
+            return (dp * context.resources.displayMetrics.density).toInt()
         }
 
         private fun bindOrderViews() {
@@ -1470,7 +1440,6 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // ==================== HELPER FUNCTIONS (Moved to class level) ====================
         private fun appendText(emailInput: EditText, value: String) {
             val currentText = emailInput.text.toString()
             emailInput.setText(currentText + value)
@@ -1518,9 +1487,7 @@ class MainActivity : FlutterActivity() {
             if (isRedeemPopupOpen) {
                 Log.d("CustomerDisplay", "Redeem popup open for same order → skip refresh")
                 if (isCustomerLayoutActive) {
-//                    try {
-//                        orderIdView.text = "#$orderId"
-//                    } catch (_) {}
+                    // Keep as is
                 }
                 return
             }
@@ -1556,13 +1523,10 @@ class MainActivity : FlutterActivity() {
             val customKeypad = findViewById<GridLayout>(R.id.custom_keypad)
             val addButton = findViewById<Button>(R.id.btn_add_customer)
 
-            // restore contact
             emailInput.setText(loyaltyContact)
-            // always prevent Android keyboard
             emailInput.showSoftInputOnFocus = false
 
             if (!phoneInputUnlocked) {
-                // BEFORE CHECKOUT → FULLY DISABLE
                 customKeypad.visibility = View.GONE
                 emailInput.isEnabled = false
                 emailInput.isFocusable = false
@@ -1571,11 +1535,10 @@ class MainActivity : FlutterActivity() {
                 emailInput.isCursorVisible = false
                 emailInput.isLongClickable = false
                 emailInput.clearFocus()
-                emailInput.setOnTouchListener { _, _ -> true } // block touch completely
+                emailInput.setOnTouchListener { _, _ -> true }
                 addButton.isEnabled = false
                 addButton.alpha = 0.5f
             } else {
-                // AFTER CHECKOUT → ENABLE
                 emailInput.isEnabled = true
                 emailInput.isFocusable = false
                 emailInput.isFocusableInTouchMode = false
@@ -1608,7 +1571,6 @@ class MainActivity : FlutterActivity() {
                 )
             }
 
-            // Use class-level helper functions
             setupKey(emailInput, R.id.key_0, "0")
             setupKey(emailInput, R.id.key_1, "1")
             setupKey(emailInput, R.id.key_2, "2")
@@ -1648,9 +1610,6 @@ class MainActivity : FlutterActivity() {
 
             itemsContainer.removeAllViews()
 
-            // -------------------------------------------------
-            // CASE A: Empty cart
-            // -------------------------------------------------
             if (items.isEmpty() || grossTotal == 0.0) {
                 Log.d("CustomerDisplay", "📢 Empty cart → hide summary")
                 Log.d("CustomerDisplay", "🆔 EMPTY ORDER ID = $orderId")
@@ -1713,35 +1672,13 @@ class MainActivity : FlutterActivity() {
                 return
             }
 
-            // -------------------------------------------------
-            // CASE B: Items exist → Show list
-            // -------------------------------------------------
-            // -----------------------------------------------------
             orderIdView.text = "#$orderId"
-
-// Always use the latest value received
             this.availablePoints = availablePoints
-
-// Update UI
             pointsView.text = this.availablePoints.toString()
 
-            Log.d(
-                "CustomerDisplay",
-                "HEADER POINTS UPDATED = ${this.availablePoints}"
-            )
-
-            Log.d(
-                "CustomerDisplay",
-                "HEADER POINTS = ${this.availablePoints}"
-            )
-
-            Log.d(
-                "CustomerDisplay",
-                "HEADER POINTS FROM updateCustomerData = $availablePoints"
-            )
+            Log.d("CustomerDisplay", "HEADER POINTS UPDATED = ${this.availablePoints}")
 
             val itemsHeader = findViewById<LinearLayout>(R.id.items_header)
-// ✅ Show header only when real items exist
             val hasRealItems = items.any {
                 val n = it["name"] as? String ?: ""
                 !n.equals("Payout", true) && !n.equals("Cashback", true)
@@ -1752,53 +1689,53 @@ class MainActivity : FlutterActivity() {
 
             for ((index, item) in items.withIndex()) {
                 val name = (item["name"] as? String) ?: ""
+                val isWeighted = (item["type"] as? String)?.equals("weighted", ignoreCase = true) == true
+                val itemType = (item["type"] as? String)?.lowercase() ?: ""
 
-                val qty: Int = when {
-                    item["qty"] is Number -> (item["qty"] as Number).toInt()
-                    item["quantity"] is Number -> (item["quantity"] as Number).toInt()
-                    item["items_count"] is Number -> (item["items_count"] as Number).toInt()
-                    item["itemCount"] is Number -> (item["itemCount"] as Number).toInt()
-                    item["count"] is Number -> (item["count"] as Number).toInt()
-                    item["item_count"] is Number -> (item["item_count"] as Number).toInt()
-                    item["qty"] != null -> item["qty"].toString().toDoubleOrNull()?.toInt() ?: 1
-                    item["quantity"] != null -> item["quantity"].toString().toDoubleOrNull()?.toInt() ?: 1
-                    item["items_count"] != null -> item["items_count"].toString().toDoubleOrNull()?.toInt() ?: 1
-                    item["itemCount"] != null -> item["itemCount"].toString().toDoubleOrNull()?.toInt() ?: 1
-                    item["count"] != null -> item["count"].toString().toDoubleOrNull()?.toInt() ?: 1
-                    item["item_count"] != null -> item["item_count"].toString().toDoubleOrNull()?.toInt() ?: 1
-                    else -> 1
-                }
-                val price = (item["price"] as? Number)?.toDouble() ?: 0.0
-                val originalPrice = (item["original_price"] as? Number)?.toDouble() ?: price
-                val autoDiscount = (item["auto_discount"] as? Number)?.toDouble() ?: 0.0
-                val comboDiscount = (item["combo_discount"] as? Number)?.toDouble() ?: 0.0
-                val multipackDiscount = (item["multipack_discount"] as? Number)?.toDouble() ?: 0.0
-                val discountType = (item["discount_type"] as? String)?.trim()?.lowercase() ?: ""
-
-                val discountValue: Double = when {
-                    discountType.contains("multipack") ->
-                        if (multipackDiscount > 0) multipackDiscount else autoDiscount
-                    discountType.contains("combo") || discountType.contains("mixmatch") ->
-                        if (comboDiscount > 0) comboDiscount else autoDiscount
-                    discountType.contains("auto") -> autoDiscount
-                    else -> when {
-                        multipackDiscount > 0 -> multipackDiscount
-                        comboDiscount > 0 -> comboDiscount
-                        else -> autoDiscount
-                    }
+                val unitPrice: Double = when {
+                    item["unit_price"] is Number -> (item["unit_price"] as Number).toDouble()
+                    item["price"] is Number -> (item["price"] as Number).toDouble()
+                    else -> 0.0
                 }
 
-                val hasDiscount = discountValue > 0
-                val originalTotal = price * qty
-                val discountedTotal = originalTotal - discountValue
+                val weightQty: Double = when {
+                    item["weight_qty"] is Number -> (item["weight_qty"] as Number).toDouble()
+                    item["weight"] is Number -> (item["weight"] as Number).toDouble()
+                    else -> 1.0
+                }
 
-                Log.d("CustomerDisplay", "ITEM[$name] type=$discountType auto=$autoDiscount combo=$comboDiscount multi=$multipackDiscount → resolved=$discountValue hasDiscount=$hasDiscount")
+                val qty: Double = when {
+                    item["qty"] is Number -> (item["qty"] as Number).toDouble()
+                    item["quantity"] is Number -> (item["quantity"] as Number).toDouble()
+                    else -> 1.0
+                }
+
+                // Calculate original total correctly based on item type
+                val originalTotal = if (isWeighted || itemType.contains("weighted")) {
+                    unitPrice * weightQty
+                } else {
+                    unitPrice * qty
+                }
+
+                val discountValue = (item["auto_discount"] as? Number)?.toDouble() ?: 0.0
+                val finalTotal = originalTotal - discountValue
+
+                Log.d("CustomerDisplay", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                Log.d("CustomerDisplay", "📦 ITEM: $name")
+                Log.d("CustomerDisplay", "   ├─ isWeighted: $isWeighted")
+                Log.d("CustomerDisplay", "   ├─ itemType: $itemType")
+                Log.d("CustomerDisplay", "   ├─ unitPrice: $unitPrice")
+                Log.d("CustomerDisplay", "   ├─ weightQty: $weightQty")
+                Log.d("CustomerDisplay", "   ├─ qty: $qty")
+                Log.d("CustomerDisplay", "   ├─ originalTotal (calculated): $originalTotal")
+                Log.d("CustomerDisplay", "   ├─ discountValue: $discountValue")
+                Log.d("CustomerDisplay", "   └─ finalTotal: $finalTotal")
+                Log.d("CustomerDisplay", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
                 if (!name.equals("Payout", true) && !name.equals("Cashback", true)) {
-                    totalItemCount += qty
+                    totalItemCount += 1
                 }
 
-                // ===== ROW =====
                 val row = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
@@ -1810,7 +1747,6 @@ class MainActivity : FlutterActivity() {
                     setBackgroundColor(Color.WHITE)
                 }
 
-                // ===== ITEM COLUMN (1.6f) =====
                 val itemColumn = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1.6f)
@@ -1824,70 +1760,42 @@ class MainActivity : FlutterActivity() {
                 }
                 itemColumn.addView(nameView)
 
-                val rawType = discountType.trim().lowercase()
-                val (displayText, displayColor) = when {
-                    rawType.contains("mixmatch") || rawType.contains("mix_match") ->
-                        "COMBO DISCOUNT" to Color.parseColor("#FF9800")
-                    rawType.contains("multipack") || rawType.contains("multi_pack") ->
-                        "MULTIPACK DISCOUNT" to Color.parseColor("#2196F3")
-                    rawType.contains("auto") ->
-                        "AUTO DISCOUNT" to Color.RED
-                    multipackDiscount > 0 ->
-                        "MULTIPACK DISCOUNT" to Color.parseColor("#2196F3")
-                    comboDiscount > 0 ->
-                        "COMBO DISCOUNT" to Color.parseColor("#FF9800")
-                    autoDiscount > 0 ->
-                        "AUTO DISCOUNT" to Color.RED
-                    else ->
-                        "DISCOUNT" to Color.RED
+                val priceColumn = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.END
+                    layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
                 }
 
-                if (hasDiscount && showDiscountDetails) {
-                    val discountText = TextView(context).apply {
-                        text = "$displayText -${formatCurrency(discountValue)}"
-                        textSize = 14f
-                        setTextColor(displayColor)
-                    }
-                    itemColumn.addView(discountText)
-                }
-
-                // ===== QTY × PRICE (1.0f) =====
+                // FIXED: Weight is now rounded to 3 decimal places
                 val qtyPriceView = TextView(context).apply {
                     layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
                     gravity = Gravity.START
                     textSize = 18f
                     setTextColor(Color.DKGRAY)
-                    text = if (
-                        name.equals("Payout", true) ||
-                        name.equals("Cashback", true)
-                    ) "" else "$qty × ${formatCurrency(price)}"
-                }
 
-                // ===== PRICE COLUMN =====
-                val priceColumn = LinearLayout(context).apply {
-                    orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.END
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        marginStart = dpToPx(6)
+                    text = when {
+                        name.equals("Payout", true) || name.equals("Cashback", true) -> ""
+                        isWeighted || itemType.contains("weighted") -> {
+                            // Round weight to 3 decimal places
+                            val roundedWeight = String.format(Locale.US, "%.3f", weightQty)
+                            String.format(Locale.US, "%.2f × %s lb",
+                                unitPrice, roundedWeight)
+                        }
+                        else -> {
+                            "$qty × ${formatCurrency(unitPrice)}"
+                        }
                     }
                 }
 
                 val finalPriceView = TextView(context).apply {
-                    text = formatCurrency(
-                        if (hasDiscount && showDiscountDetails) discountedTotal else originalTotal
-                    )
+                    text = formatCurrency(finalTotal)
                     textSize = 17f
                     setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(
-                        if (name.equals("Payout", true)) Color.RED else Color.BLACK
-                    )
+                    setTextColor(if (name.equals("Payout", true)) Color.RED else Color.BLACK)
                 }
                 priceColumn.addView(finalPriceView)
 
-                if (hasDiscount && showDiscountDetails) {
+                if (discountValue > 0) {
                     val originalPriceView = TextView(context).apply {
                         text = formatCurrency(originalTotal)
                         textSize = 16f
@@ -1902,19 +1810,17 @@ class MainActivity : FlutterActivity() {
                 row.addView(priceColumn)
                 itemsContainer.addView(row)
 
-                // ===== Divider =====
                 if (index < items.size - 1) {
-                    itemsContainer.addView(View(context).apply {
+                    val divider = View(context).apply {
                         layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            1
+                            LinearLayout.LayoutParams.MATCH_PARENT, 1
                         )
                         setBackgroundColor(Color.LTGRAY)
-                    })
+                    }
+                    itemsContainer.addView(divider)
                 }
             }
 
-            // ===== TOTALS =====
             grossView.text = formatCurrency(grossTotal)
             val actualDiscount = kotlin.math.abs(discount)
             discountView.text = "-${formatCurrency(actualDiscount)}"
@@ -1934,7 +1840,7 @@ class MainActivity : FlutterActivity() {
             netPayableView.text = "Total : ${formatCurrency(netPayable)}"
 
             if (summaryEnabled && this.redeemedAmount > 0) {
-                showRedeemSummary(redeemedAmount)
+                showRedeemSummary(this.redeemedAmount)
             } else {
                 redeemRow.visibility = View.GONE
             }
@@ -1956,10 +1862,6 @@ class MainActivity : FlutterActivity() {
                 "CustomerDisplay",
                 "✔ Order #$orderId totals updated, Total Items: $totalItemCount, Final Payable: $netPayable"
             )
-        }
-
-        private fun dpToPx(dp: Int): Int {
-            return (dp * context.resources.displayMetrics.density).toInt()
         }
 
         fun showRedeemSummary(amount: Double) {
@@ -1989,25 +1891,16 @@ class MainActivity : FlutterActivity() {
         }
 
         fun updateRedeemPopupPoints(points: Int) {
-
             Handler(Looper.getMainLooper()).post {
-
                 Log.d("CustomerDisplay", "UPDATING API POINTS = $points")
-
                 this.availablePoints = points
-
                 redeemPointsTextView?.let {
                     it.text = "Available Points: $points"
                     it.visibility = View.VISIBLE
                 }
-
                 pointsView.text = points.toString()
                 pointsView.visibility = View.VISIBLE
-
-                Log.d(
-                    "CustomerDisplay",
-                    "MAIN HEADER POINTS UPDATED = ${pointsView.text}"
-                )
+                Log.d("CustomerDisplay", "MAIN HEADER POINTS UPDATED = ${pointsView.text}")
             }
         }
 
@@ -2029,27 +1922,22 @@ class MainActivity : FlutterActivity() {
 
                 popupView.tag = "redeem_popup"
 
-                redeemPointsTextView =
-                    popupView.findViewById<TextView>(R.id.txt_points)
-
+                redeemPointsTextView = popupView.findViewById<TextView>(R.id.txt_points)
                 redeemPointsTextView?.visibility = View.VISIBLE
                 redeemPointsTextView?.text = "Fetching points..."
-                popupView.findViewById<Button>(R.id.btn_ok)
-                    .setOnClickListener {
-                        isRedeemPopupOpen = false
+                popupView.findViewById<Button>(R.id.btn_ok).setOnClickListener {
+                    isRedeemPopupOpen = false
+                    root.removeView(popupView)
+                    redeemPointsTextView = null
 
-                        root.removeView(popupView)
-                        redeemPointsTextView = null
-
-                        MethodChannel(
-                            mainActivity.flutterEngine!!
-                                .dartExecutor.binaryMessenger,
-                            "com.alekta.pinakapos/sunmi_display"
-                        ).invokeMethod(
-                            "customerDisplayPopupClosed",
-                            null
-                        )
-                    }
+                    MethodChannel(
+                        mainActivity.flutterEngine!!.dartExecutor.binaryMessenger,
+                        "com.alekta.pinakapos/sunmi_display"
+                    ).invokeMethod(
+                        "customerDisplayPopupClosed",
+                        null
+                    )
+                }
                 root.addView(popupView)
             }
         }

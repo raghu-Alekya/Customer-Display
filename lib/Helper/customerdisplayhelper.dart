@@ -325,10 +325,31 @@ class CustomerDisplayHelper {
       // ------------------ BUILD PARSED ITEMS LIST ------------------
       final parsedItems = [
         ...products.map((item) {
-          final qty =
-              int.tryParse(item["quantity"]?.toString() ?? "1") ?? 1;
+          // final qty =
+          //     int.tryParse(item["quantity"]?.toString() ?? "1") ?? 1;
+          //
+          // final unitPrice = _getUnitPrice(item);
+
+
+          final String itemTypeForQty =
+          (item["type"] ?? item["item_type"] ?? "").toString().toLowerCase();
+
+          double qty;
+          if (itemTypeForQty.contains("weighted")) {
+            final dynamic rawWeight = item["weight_qty"] ??
+                item["weightQty"] ??
+                item["weight"] ??
+                item["quantity"] ??
+                1;
+            qty = (rawWeight is num)
+                ? rawWeight.toDouble()
+                : double.tryParse(rawWeight.toString()) ?? 1.0;
+          } else {
+            qty = double.tryParse(item["quantity"]?.toString() ?? "1") ?? 1.0;
+          }
 
           final unitPrice = _getUnitPrice(item);
+
 
           final pid = item["product_id"]?.toString() ?? "";
 

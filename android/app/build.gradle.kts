@@ -31,12 +31,13 @@ android {
     defaultConfig {
         applicationId = "com.alekta.pinakapos"
         minSdk = 30
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
-    // ✅ FIX: SIGNING CONFIG (NOW keystoreProperties EXISTS)
+    // FIX: SIGNING CONFIG (NOW keystoreProperties EXISTS)
+
     signingConfigs {
         create("release") {
             keyAlias = keystoreProperties["keyAlias"] as? String
@@ -49,7 +50,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             isShrinkResources = false
         }

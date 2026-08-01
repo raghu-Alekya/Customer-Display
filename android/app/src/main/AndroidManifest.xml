@@ -5,7 +5,11 @@
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-feature android:name="android.hardware.usb.host" />
-    <uses-permission android:name="android.permission.USB_PERMISSION" />
+    <!-- NOTE: android.permission.USB_PERMISSION is NOT a real Android platform
+         permission (there is no such manifest permission for USB host access).
+         It was a harmless no-op left over from a tutorial and has been removed.
+         Runtime USB access is granted per-device via UsbManager.requestPermission()
+         / the user consent dialog, not via a manifest <uses-permission>. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
@@ -47,11 +51,12 @@
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
             </intent-filter>
 
-            <!-- USB Device filter metadata - THIS IS CRUCIAL -->
+            <!-- USB Device filter metadata — scoped to scanner/scale/serial
+                 peripherals ONLY. Printer VID/PID is intentionally NOT in
+                 this file; see device_filter_printer.xml below. -->
             <meta-data
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
-                android:resource="@xml/device_filter" />
-
+                android:resource="@xml/device_filter_peripherals" />
         </activity>
 
         <!-- Flutter embedding version -->
@@ -59,7 +64,10 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- USB Receiver for handling USB events -->
+        <!-- USB Receiver for handling USB events — thermal printer plugin.
+             Scoped to device_filter_printer.xml ONLY, so it no longer fires
+             for the scanner/scale/display and no longer races MainActivity
+             for the permission dialog on those devices. -->
         <receiver
             android:name="com.codingdevs.thermal_printer.usb.UsbReceiver"
             android:exported="false">
@@ -69,10 +77,10 @@
                 <action android:name="com.flutter_pos_printer.USB_PERMISSION" />
             </intent-filter>
 
-            <!-- USB Device filter for receiver -->
+            <!-- USB Device filter for receiver — printer-only, see note above -->
             <meta-data
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
-                android:resource="@xml/device_filter" />
+                android:resource="@xml/device_filter_printer" />
         </receiver>
 
     </application>

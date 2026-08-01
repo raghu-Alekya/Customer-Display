@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- XPrinter XP-N160I -->
+    <usb-device vendor-id="22339" product-id="1155"/>
+</resources>

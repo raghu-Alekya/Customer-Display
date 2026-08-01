@@ -10,6 +10,7 @@ import 'package:pinaka_pos/Database/printer_db_helper.dart';
 import 'package:pinaka_pos/Preferences/pinaka_preferences.dart';
 import 'package:pinaka_pos/Utilities/result_utility.dart';
 import 'package:sunmi_printer_plus/core/sunmi/sunmi_drawer.dart';
+import 'package:sunmi_printer_plus/sunmi_printer_plus.dart';
 import 'package:sunmi_printer_plus/sunmi_printer_plus_platform_interface.dart';
 import 'package:thermal_printer/esc_pos_utils_platform/src/capability_profile.dart';
 import 'package:thermal_printer/esc_pos_utils_platform/src/enums.dart';
@@ -42,10 +43,10 @@ class PrinterSettings {
     //
     //New code
     try {
-      // var sunmi = SunmiPrinterPlus();
-      // sunmi.openDrawer();
-      // bool isOpen = await sunmi.isDrawerOpen();
-      // SunmiDrawer.openDrawer();
+      var sunmi = SunmiPrinterPlus();
+      sunmi.openDrawer();
+      bool isOpen = await sunmi.isDrawerOpen();
+      SunmiDrawer.openDrawer();
       var result = await SunmiPrinterPlusPlatform.instance.openDrawer();
       if (kDebugMode) {
         print("Drawer is open $result");

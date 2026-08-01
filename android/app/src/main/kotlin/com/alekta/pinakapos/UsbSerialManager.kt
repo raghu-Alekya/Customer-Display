@@ -11,7 +11,6 @@
 //import android.util.Log
 //import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 //import com.hoho.android.usbserial.driver.FtdiSerialDriver
-//import com.hoho.android.usbserial.driver.ProbeTable
 //import com.hoho.android.usbserial.driver.UsbSerialPort
 //import com.hoho.android.usbserial.driver.UsbSerialProber
 //import io.flutter.plugin.common.EventChannel
@@ -36,19 +35,26 @@
 //) {
 //    companion object {
 //        private const val TAG = "UsbSerialManager"
+//
 //        // Datalogic Magellan VID — used as SCANNER
 //        private const val MAGELLAN_VID = 0x05F9
 //        private val MAGELLAN_PIDS = intArrayOf(0x2205, 0x2601, 0x2602)
+//
 //        // FTDI VID 1027 (0x0403) — used as SCALE
 //        private const val FTDI_VID = 0x0403
 //        private const val FTDI_PID_SCALE_1 = 0xB0C2
 //        private const val FTDI_PID_SCALE_2 = 0xB0C1
 //        private val FTDI_SCALE_PIDS = intArrayOf(FTDI_PID_SCALE_1, FTDI_PID_SCALE_2)
+//
 //        private const val BAUD_RATE = 9600
 //        private const val READ_TIMEOUT_MS = 500
 //        private const val MAX_LOG_LINES = 200
 //        private const val WEIGHT_POLL_INTERVAL_MS = 300L
 //        private const val WEIGHT_EMIT_DEBOUNCE_MS = 200L
+//
+//        // SharedPreferences — stores VID:PID pairs the user has previously granted
+//        private const val PREFS_NAME = "usb_permissions"
+//        private const val PREFS_GRANTED_KEY = "granted_device_ids"
 //    }
 //
 //    /** Dedicated executor for scale USB writes — never blocks the Android main thread. */
@@ -67,6 +73,27 @@
 //    private val rawLog = mutableListOf<String>()
 //    private var permissionReceiver: PermissionBroadcastReceiver? = null
 //    private var lastLoggedDevices = setOf<String>()
+//
+//    // FIX 1: Queue devices waiting for permission — show dialogs one at a time
+//    private val permissionQueue = ArrayDeque<UsbDevice>()
+//
+//    // FIX 2: SharedPreferences to remember previously-granted VID:PID pairs
+//    private val prefs by lazy {
+//        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//    }
+//
+//    private fun rememberGrantedDevice(device: UsbDevice) {
+//        val existing = prefs.getStringSet(PREFS_GRANTED_KEY, mutableSetOf()) ?: mutableSetOf()
+//        val updated = existing.toMutableSet()
+//        updated.add("${device.vendorId}:${device.productId}")
+//        prefs.edit().putStringSet(PREFS_GRANTED_KEY, updated).apply()
+//        Log.i(TAG, "Remembered permission for VID=0x${device.vendorId.toString(16)} PID=0x${device.productId.toString(16)}")
+//    }
+//
+//    private fun wasGrantedBefore(device: UsbDevice): Boolean {
+//        val existing = prefs.getStringSet(PREFS_GRANTED_KEY, emptySet()) ?: emptySet()
+//        return existing.contains("${device.vendorId}:${device.productId}")
+//    }
 //
 //    private val usbReceiver = object : BroadcastReceiver() {
 //        override fun onReceive(context: Context?, intent: Intent?) {
@@ -148,6 +175,9 @@
 //    fun stopListening() {
 //        Log.i(TAG, "Stop listening")
 //        listening = false
+//        // Clear permission queue when stopping
+//        permissionQueue.clear()
+//        pendingPermissions.clear()
 //        for ((key, info) in deviceConnections.toMap()) {
 //            closePort(info, key)
 //            deviceConnections.remove(key)
@@ -162,6 +192,9 @@
 //            startListening()
 //            return
 //        }
+//        // Clear queues so restart is clean
+//        permissionQueue.clear()
+//        pendingPermissions.clear()
 //        for ((key, info) in deviceConnections.toMap()) {
 //            closePort(info, key)
 //            deviceConnections.remove(key)
@@ -215,7 +248,6 @@
 //    private fun getDeviceType(device: UsbDevice): DeviceType {
 //        val vid = device.vendorId
 //        val pid = device.productId
-//
 //        return when {
 //            vid == FTDI_VID && FTDI_SCALE_PIDS.contains(pid) -> DeviceType.SCALE
 //            vid == FTDI_VID -> DeviceType.SCALE
@@ -240,15 +272,35 @@
 //        if (deviceConnections[key] != null) return
 //        if (pendingPermissions.contains(device.deviceId)) return
 //
-//        if (!usbManager.hasPermission(device)) {
-//            Log.i(TAG, "Requesting permission: ${device.deviceId}")
-//            pendingPermissions.add(device.deviceId)
-//            emitStatus("connecting", "Requesting permission...")
-//            usbManager.requestPermission(device, createPermissionIntent())
+//        // FIX 2: Android persists USB permission across app restarts (until device
+//        // is unplugged or app is uninstalled). hasPermission() returns true on restart
+//        // if the user previously clicked OK — so we go straight to openDevice(), no dialog.
+//        if (usbManager.hasPermission(device)) {
+//            Log.i(TAG, "Permission already held, opening directly: ${device.deviceName}")
+//            openDevice(device)
 //            return
 //        }
 //
-//        openDevice(device)
+//        // FIX 2: Even if Android dropped the runtime permission (rare — some OEM ROMs
+//        // clear permissions on reboot), we remember the grant in SharedPreferences and
+//        // log it so you can see in Logcat when this happens.
+//        if (wasGrantedBefore(device)) {
+//            Log.i(TAG, "Previously granted (prefs), re-requesting permission: ${device.deviceName}")
+//        }
+//
+//        // FIX 1: If a permission dialog is already on screen, queue this device.
+//        // Android silently drops a second requestPermission() while one is pending.
+//        if (pendingPermissions.isNotEmpty()) {
+//            Log.i(TAG, "Permission dialog in progress — queuing: ${device.deviceName}")
+//            if (permissionQueue.none { it.deviceId == device.deviceId }) {
+//                permissionQueue.addLast(device)
+//            }
+//            return
+//        }
+//
+//        pendingPermissions.add(device.deviceId)
+//        emitStatus("connecting", "Requesting permission...")
+//        usbManager.requestPermission(device, createPermissionIntent())
 //    }
 //
 //    private fun createPermissionIntent(): android.app.PendingIntent {
@@ -260,13 +312,46 @@
 //        if (device != null) {
 //            pendingPermissions.remove(device.deviceId)
 //        }
+//
 //        if (!granted || device == null) {
 //            Log.w(TAG, "Permission denied")
 //            emitStatus("error", "Permission denied")
+//            // Even on denial, process next queued device
+//            processNextInPermissionQueue()
 //            return
 //        }
+//
+//        // FIX 2: Persist this grant — next restart hasPermission() will be true
+//        // and we won't need to show a dialog at all
+//        rememberGrantedDevice(device)
+//
 //        if (listening) {
 //            openDevice(device)
+//        }
+//
+//        // FIX 1: Show permission dialog for the next queued device
+//        processNextInPermissionQueue()
+//    }
+//
+//    // FIX 1: Works through the queue one device at a time after each permission result
+//    private fun processNextInPermissionQueue() {
+//        if (!listening) return
+//        while (permissionQueue.isNotEmpty()) {
+//            val next = permissionQueue.removeFirst()
+//            if (deviceConnections[next.deviceName] != null) continue
+//            if (pendingPermissions.contains(next.deviceId)) continue
+//
+//            if (usbManager.hasPermission(next)) {
+//                // Permission already held (e.g. OS auto-granted) — open directly
+//                openDevice(next)
+//                continue
+//            }
+//
+//            Log.i(TAG, "Processing queued permission for: ${next.deviceName}")
+//            pendingPermissions.add(next.deviceId)
+//            emitStatus("connecting", "Requesting permission...")
+//            usbManager.requestPermission(next, createPermissionIntent())
+//            break // Stop here — wait for this result before showing the next dialog
 //        }
 //    }
 //
@@ -276,42 +361,54 @@
 //        Log.i(TAG, "Opening ${deviceType.name}: $key")
 //
 //        val conn = usbManager.openDevice(device) ?: run {
-//            Log.e(TAG, "Failed to open device")
+//            Log.e(TAG, "Failed to open device: $key")
 //            emitStatus("error", "Failed to open device")
 //            return
 //        }
 //
 //        val prober = getCustomProber()
 //        val driver = prober.probeDevice(device) ?: run {
-//            Log.e(TAG, "No driver found")
+//            Log.e(TAG, "No driver found for $key")
 //            conn.close()
 //            emitStatus("error", "No compatible driver")
 //            return
 //        }
 //
+//        // FIX 3: Try ALL ports on the driver, not just ports[0].
+//        // Some USB-serial adapters expose multiple ports dynamically;
+//        // the active port is not guaranteed to be index 0 on every device or OS version.
 //        val ports = driver.ports
 //        if (ports.isEmpty()) {
-//            Log.e(TAG, "No ports available")
+//            Log.e(TAG, "No ports available for $key")
 //            conn.close()
 //            emitStatus("error", "No ports available")
 //            return
 //        }
 //
-//        val port = ports[0]
+//        Log.i(TAG, "Device $key has ${ports.size} port(s) — trying each until one opens successfully")
 //
-//        try {
-//            port.open(conn)
-//            if (deviceType == DeviceType.SCALE) {
-//                port.setParameters(BAUD_RATE, 7, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_EVEN)
-//                port.setDTR(true)
-//                port.setRTS(true)
-//            } else {
-//                port.setParameters(BAUD_RATE, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
+//        var openedPort: UsbSerialPort? = null
+//        for ((index, candidate) in ports.withIndex()) {
+//            try {
+//                candidate.open(conn)
+//                if (deviceType == DeviceType.SCALE) {
+//                    candidate.setParameters(BAUD_RATE, 7, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_EVEN)
+//                    candidate.setDTR(true)
+//                    candidate.setRTS(true)
+//                } else {
+//                    candidate.setParameters(BAUD_RATE, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
+//                }
+//                Log.i(TAG, "Port $index opened successfully for ${deviceType.name}: $key")
+//                openedPort = candidate
+//                break
+//            } catch (e: Exception) {
+//                Log.w(TAG, "Port $index failed for $key (${e.message}) — trying next port if available")
+//                try { candidate.close() } catch (_: Exception) {}
 //            }
-//            Log.i(TAG, "Port configured: ${deviceType.name}")
-//        } catch (e: Exception) {
-//            Log.e(TAG, "Port configuration failed", e)
-//            try { port.close() } catch (_: Exception) {}
+//        }
+//
+//        if (openedPort == null) {
+//            Log.e(TAG, "All ${ports.size} port(s) failed for $key")
 //            conn.close()
 //            emitStatus("error", "Port config failed")
 //            return
@@ -319,7 +416,7 @@
 //
 //        val info = ConnectionInfo(
 //            connection = conn,
-//            port = port,
+//            port = openedPort,
 //            stopRead = AtomicBoolean(false),
 //            deviceType = deviceType
 //        )
@@ -332,10 +429,10 @@
 //        if (deviceType == DeviceType.SCALE) {
 //            scaleIoExecutor.execute {
 //                try {
-//                    port.write("W\r".toByteArray(), 500)
+//                    openedPort.write("W\r".toByteArray(), 500)
 //                    Thread.sleep(200)
 //                    val readBuffer = ByteArray(256)
-//                    val bytesRead = port.read(readBuffer, READ_TIMEOUT_MS)
+//                    val bytesRead = openedPort.read(readBuffer, READ_TIMEOUT_MS)
 //                    if (bytesRead > 0) {
 //                        val rawData = String(readBuffer.take(bytesRead).toByteArray())
 //                        Log.d("SCALE_RAW", rawData)
@@ -693,7 +790,7 @@
 //            if (info != null) {
 //                val now = System.currentTimeMillis()
 //                val sameWeight = !info.lastEmittedWeight.isNaN() &&
-//                    kotlin.math.abs(w - info.lastEmittedWeight) < 0.001
+//                        kotlin.math.abs(w - info.lastEmittedWeight) < 0.001
 //                if (sameWeight && now - info.lastWeightEmitMs < WEIGHT_EMIT_DEBOUNCE_MS) {
 //                    return
 //                }
@@ -746,6 +843,7 @@
 //}
 //
 //const val ACTION_USB_PERMISSION = "com.alekta.pinakapos"
+
 
 
 package com.alekta.pinakapos
@@ -802,6 +900,12 @@ class UsbSerialManager(
         private const val WEIGHT_POLL_INTERVAL_MS = 300L
         private const val WEIGHT_EMIT_DEBOUNCE_MS = 200L
 
+        // FIX 4: If a USB permission dialog never resolves (e.g. hub glitch,
+        // OEM ROM swallows the broadcast, device silently detaches mid-request),
+        // pendingPermissions would otherwise stay populated forever and block
+        // every other device queued behind it. This timeout clears it out.
+        private const val PERMISSION_TIMEOUT_MS = 20_000L
+
         // SharedPreferences — stores VID:PID pairs the user has previously granted
         private const val PREFS_NAME = "usb_permissions"
         private const val PREFS_GRANTED_KEY = "granted_device_ids"
@@ -843,6 +947,28 @@ class UsbSerialManager(
     private fun wasGrantedBefore(device: UsbDevice): Boolean {
         val existing = prefs.getStringSet(PREFS_GRANTED_KEY, emptySet()) ?: emptySet()
         return existing.contains("${device.vendorId}:${device.productId}")
+    }
+
+    // FIX 5: On terminals provisioned as Device Owner (or signed as a system app),
+    // UsbManager exposes a hidden grantPermission(UsbDevice) method that bypasses
+    // the consent dialog entirely and is not subject to the per-object identity
+    // problem that causes hasPermission() to sometimes miss across a reboot.
+    // On a normal (non-provisioned) install this always throws SecurityException
+    // and we silently fall back to the existing requestPermission() dialog flow —
+    // so this is purely additive and changes nothing for non-provisioned builds.
+    private fun tryGrantPermissionSilently(device: UsbDevice): Boolean {
+        return try {
+            val method = usbManager.javaClass.getMethod("grantPermission", UsbDevice::class.java)
+            method.invoke(usbManager, device)
+            val granted = usbManager.hasPermission(device)
+            if (granted) {
+                Log.i(TAG, "Silently granted permission (device owner/system) for ${device.deviceName}")
+            }
+            granted
+        } catch (e: Exception) {
+            // Expected on non-provisioned installs — not an error.
+            false
+        }
     }
 
     private val usbReceiver = object : BroadcastReceiver() {
@@ -1031,6 +1157,14 @@ class UsbSerialManager(
             return
         }
 
+        // FIX 5: Try a silent OS-level grant first (Device Owner / system app only).
+        // No-op / instantly-fails on a normal consumer install.
+        if (tryGrantPermissionSilently(device)) {
+            rememberGrantedDevice(device)
+            openDevice(device)
+            return
+        }
+
         // FIX 2: Even if Android dropped the runtime permission (rare — some OEM ROMs
         // clear permissions on reboot), we remember the grant in SharedPreferences and
         // log it so you can see in Logcat when this happens.
@@ -1048,9 +1182,27 @@ class UsbSerialManager(
             return
         }
 
+        requestPermissionFor(device)
+    }
+
+    /** Centralizes the requestPermission() call + timeout watchdog so both
+     *  tryConnect() and processNextInPermissionQueue() behave identically. */
+    private fun requestPermissionFor(device: UsbDevice) {
         pendingPermissions.add(device.deviceId)
         emitStatus("connecting", "Requesting permission...")
         usbManager.requestPermission(device, createPermissionIntent())
+
+        // FIX 4: watchdog — if onPermissionResult never fires for this device,
+        // unblock the queue instead of stalling every device behind it forever.
+        val deviceId = device.deviceId
+        mainHandler.postDelayed({
+            if (pendingPermissions.contains(deviceId)) {
+                Log.w(TAG, "Permission request timed out for deviceId=$deviceId — clearing and moving on")
+                pendingPermissions.remove(deviceId)
+                emitStatus("error", "Permission request timed out")
+                processNextInPermissionQueue()
+            }
+        }, PERMISSION_TIMEOUT_MS)
     }
 
     private fun createPermissionIntent(): android.app.PendingIntent {
@@ -1097,10 +1249,14 @@ class UsbSerialManager(
                 continue
             }
 
+            if (tryGrantPermissionSilently(next)) {
+                rememberGrantedDevice(next)
+                openDevice(next)
+                continue
+            }
+
             Log.i(TAG, "Processing queued permission for: ${next.deviceName}")
-            pendingPermissions.add(next.deviceId)
-            emitStatus("connecting", "Requesting permission...")
-            usbManager.requestPermission(next, createPermissionIntent())
+            requestPermissionFor(next)
             break // Stop here — wait for this result before showing the next dialog
         }
     }

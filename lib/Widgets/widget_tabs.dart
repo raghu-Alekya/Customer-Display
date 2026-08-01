@@ -4621,11 +4621,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       await offlineBox.put(key, updatedOrder);
       try {
         await CustomerDisplayHelper.updateCustomerDisplay(
-          orderId,
+          ensuredOrderId,
           summaryEnabled: false,
         );
-
-        print("📺 Customer display updated after payout");
+        print("📺 Customer display updated after custom item addition");
       } catch (e) {
         print("❌ Customer display update failed: $e");
       }
