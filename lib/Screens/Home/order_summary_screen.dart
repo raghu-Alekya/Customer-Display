@@ -54,6 +54,10 @@ import '../../Widgets/scanner_guard.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_payment_dialog.dart';
 import '../../Widgets/widget_topbar.dart';
+import '../../mqtt_server/cart_item.dart';
+import '../../mqtt_server/cart_state.dart';
+import '../../mqtt_server/cfd_store_payload.dart';
+import '../../mqtt_server/store_messaging_service.dart';
 import '../../services/CustomerDisplayService.dart';
 import '../../services/customer_services.dart';
 
@@ -630,6 +634,281 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
   Map<String, dynamic>? _selectedPayLaterUser;  // ← ADD THIS LINE
   bool _isPayLaterSelected = false;
+  // static int _cfdSequence = 0;
+  bool _suppressCfdSync = false;
+
+  // int _computeTotalItems() {
+  //   //   return orderItems.fold(0, (sum, item) {
+  //   //     final name = item['item_name']?.toString().toLowerCase() ?? '';
+  //   //     if (name == 'payout' || name == 'cashback') {
+  //   //       return sum;
+  //   //     }
+  //   //     final qty = int.tryParse(item['items_count']?.toString() ?? '1') ?? 1;
+  //   //     return sum + qty;
+  //   //   });
+  //   // }
+     // Push current Order Summary totals + items to CFD (MQTT + native).
+  /// Call after: coupon apply, coupon remove, customer number add, merchant discount change.
+  /// Push current Order Summary state to CFD (MQTT + native).
+  /// Call after coupon apply/remove, customer number, merchant discount, etc.
+  // Future<void> _syncCfdFromOrderSummary() async {
+  //   final int? id = widget.offlineOrderId ?? widget.orderId ?? orderId;
+  //   if (id == null || id <= 0) {
+  //     if (kDebugMode) print('⚠️ CFD sync skipped – no order id');
+  //     return;
+  //   }
+  //
+  //   try {
+  //     // ── Native secondary display ────────────────────────────────────
+  //     await CustomerDisplayHelper.updateCustomerDisplay(
+  //       id,
+  //       summaryEnabled: true,
+  //     );
+  //
+  //     // ── MQTT CFD ────────────────────────────────────────────────────
+  //     try {
+  //       final messaging =
+  //       Provider.of<StoreMessagingService>(context, listen: false);
+  //
+  //       final store = await CfdStorePayload.load();
+  //
+  //       final List<CartItem> items = orderItems
+  //           .map((e) => CartItem.fromOrderItem(Map<String, dynamic>.from(e)))
+  //           .toList();
+  //
+  //       // POS stores coupon as negative (e.g. -7.00). CFD expects positive discount.
+  //       final double couponAbs = discount.abs();
+  //       final double mDiscAbs = merchantDiscount.abs();
+  //       final double net = (grossTotal - couponAbs - mDiscAbs);
+  //       final double netPay = computedNetPayable;
+  //       final int itemCount = _computeTotalItems();
+  //
+  //       final state = CartState(
+  //         sessionId: 'ORDER-$id',
+  //         sequence: 0,
+  //         screen: 'CART',
+  //         items: items,
+  //         tax: tax,
+  //         message: null,
+  //         orderId: id,
+  //         subtotalOverride: grossTotal,
+  //         orderDiscount: couponAbs,          // ← coupon amount (positive)
+  //         merchantDiscount: mDiscAbs,
+  //         cashbackFee: cashbackFee,
+  //         netPayable: netPay,                // ← Net Payable (bottom total)
+  //         totalItems: itemCount,
+  //         orderDate: _displayDate.isNotEmpty
+  //             ? _displayDate
+  //             : widget.formattedDate,
+  //         orderTime: _displayTime.isNotEmpty
+  //             ? _displayTime
+  //             : widget.formattedTime,
+  //         summaryEnabled: true,              // ← MUST be true for bottom panel
+  //         storeId: store.storeId,
+  //         storeName: store.storeName,
+  //         storeLogoUrl: store.storeLogoUrl,
+  //         storeBaseUrl: store.storeBaseUrl,
+  //         slideshowUrls: store.slideshowUrls,
+  //       );
+  //
+  //       await messaging.publishState(state);
+  //
+  //       if (kDebugMode) {
+  //         print(
+  //           '📤 [CFD] coupon apply → gross=$grossTotal coupon=$couponAbs '
+  //               'tax=$tax netPayable=$netPay items=$itemCount summary=true',
+  //         );
+  //       }
+  //     } catch (e) {
+  //       if (kDebugMode) print('⚠️ MQTT CFD publish failed: $e');
+  //     }
+  //   } catch (e, st) {
+  //     if (kDebugMode) {
+  //       print('❌ _syncCfdFromOrderSummary: $e');
+  //       print(st);
+  //     }
+  //   }
+  // }
+
+  Future<void> _publishMqttThankYouThenWelcome() async {
+    try {
+      final messaging =
+      Provider.of<StoreMessagingService>(context, listen: false);
+      final store = await CfdStorePayload.load();
+
+      // ── 1) THANK YOU (empty cart – no old items) ──
+      final thankYou = CartState(
+        sessionId: 'ORDER-${orderId ?? 0}',
+        sequence: CfdSequence.next(),
+        screen: 'THANK_YOU',
+        items: const [],
+        tax: 0,
+        message: null,
+        orderId: orderId,
+        subtotalOverride: 0,
+        orderDiscount: 0,
+        merchantDiscount: 0,
+        cashbackFee: 0,
+        netPayable: 0,
+        totalItems: 0,
+        orderDate: '',
+        orderTime: '',
+        summaryEnabled: false,
+        storeId: store.storeId,
+        storeName: store.storeName,
+        storeLogoUrl: store.storeLogoUrl,
+        storeBaseUrl: store.storeBaseUrl,
+        slideshowUrls: store.slideshowUrls,
+        loyaltyContact: '',
+        availablePoints: 0,
+      );
+      await messaging.publishState(thankYou);
+
+      if (kDebugMode) {
+        print('📤 [MQTT] THANK_YOU published for order ${orderId ?? 0}');
+      }
+
+      // Hold so CFD can show Thank You
+      await Future.delayed(const Duration(seconds: 3));
+
+      // ── 2) WELCOME with store name (no items) ──
+      final welcome = CartState(
+        sessionId: 'ORDER-0',
+        sequence: CfdSequence.next(),
+        screen: 'WELCOME', // or 'IDLE' – both map to Welcome layout on CFD
+        items: const [],
+        tax: 0,
+        message: null,
+        orderId: null,
+        subtotalOverride: 0,
+        orderDiscount: 0,
+        merchantDiscount: 0,
+        cashbackFee: 0,
+        netPayable: 0,
+        totalItems: 0,
+        orderDate: '',
+        orderTime: '',
+        summaryEnabled: false,
+        storeId: store.storeId,
+        storeName: store.storeName, // "Welcome to {storeName}"
+        storeLogoUrl: store.storeLogoUrl,
+        storeBaseUrl: store.storeBaseUrl,
+        slideshowUrls: store.slideshowUrls,
+        loyaltyContact: '',
+        availablePoints: 0,
+      );
+      await messaging.publishState(welcome);
+
+      if (kDebugMode) {
+        print(
+          '📤 [MQTT] WELCOME published → store="${store.storeName}"',
+        );
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        print('⚠️ _publishMqttThankYouThenWelcome failed: $e');
+        print(st);
+      }
+    }
+  }
+
+  Future<void> _syncCfdFromOrderSummary() async {
+    final int? id = widget.offlineOrderId ?? widget.orderId ?? orderId;
+    if (id == null || id <= 0) return;
+
+    try {
+      // Optional native first – MQTT must win after this
+      try {
+        await CustomerDisplayHelper.updateCustomerDisplay(
+          id,
+          summaryEnabled: true,
+        );
+      } catch (_) {}
+
+      final messaging =
+      Provider.of<StoreMessagingService>(context, listen: false);
+      final store = await CfdStorePayload.load();
+
+      final List<CartItem> items = orderItems
+          .map((e) => CartItem.fromOrderItem(Map<String, dynamic>.from(e)))
+          .toList();
+
+      // EXACT values shown on Order Summary screen (not Hive)
+      final double couponAbs = discount.abs();           // e.g. 7.00
+      final double mDiscAbs = merchantDiscount.abs();    // e.g. 12.39
+      final double netPay = computedNetPayable;          // e.g. 115.07
+      final int itemCount = _computeTotalItems();
+
+      String loyaltyContact = mobileController.text.trim();
+      int availablePts = availablePoints;
+      try {
+        final box = StorageProvider.offlineOrders;
+        final raw = await box.get(id.toString());
+        if (raw is Map) {
+          final order = Map<String, dynamic>.from(raw);
+          if (loyaltyContact.isEmpty) {
+            loyaltyContact = (order['loyaltyContact'] ?? '').toString();
+          }
+          availablePts = int.tryParse(
+              (order['available_points'] ?? availablePoints).toString()) ??
+              availablePoints;
+        }
+      } catch (_) {}
+
+      final state = CartState(
+        sessionId: 'ORDER-$id',
+        sequence: CfdSequence.next(),
+        screen: 'CART',
+        items: items,
+        tax: tax,
+        message: null,
+        orderId: id,
+        subtotalOverride: grossTotal,      // 123.95
+        orderDiscount: couponAbs,          // 7.00  → CFD Coupon row
+        merchantDiscount: mDiscAbs,        // 12.39 → CFD Merchant Discount row
+        cashbackFee: cashbackFee,          // 1.00
+        netPayable: netPay,                // 115.07
+        totalItems: itemCount,
+        orderDate:
+        _displayDate.isNotEmpty ? _displayDate : widget.formattedDate,
+        orderTime:
+        _displayTime.isNotEmpty ? _displayTime : widget.formattedTime,
+        summaryEnabled: true,
+        storeId: store.storeId,
+        storeName: store.storeName,
+        storeLogoUrl: store.storeLogoUrl,
+        storeBaseUrl: store.storeBaseUrl,
+        slideshowUrls: store.slideshowUrls,
+        loyaltyContact: loyaltyContact,
+        availablePoints: availablePts,
+      );
+
+      await messaging.publishState(state); // LAST – must win
+
+      if (kDebugMode) {
+        print(
+          '📤 [CFD] OrderSummary → gross=$grossTotal '
+              'coupon=$couponAbs mDisc=$mDiscAbs tax=$tax '
+              'cbFee=$cashbackFee net=$netPay',
+        );
+      }
+    } catch (e, st) {
+      if (kDebugMode) print('❌ _syncCfdFromOrderSummary: $e\n$st');
+    }
+  }
+
+  int _computeTotalItems() {
+    return orderItems.fold(0, (sum, item) {
+      final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+      final String itemNameLower = (item['item_name'] ?? '').toString().toLowerCase();
+
+      if (itemType.contains('discount') || itemNameLower.contains('merchant discount')) {
+        return sum;
+      }
+      final qty = int.tryParse(item['items_count']?.toString() ?? '1') ?? 1;
+      return sum + qty;
+    });
+  }
 
   PaymentMode _paymentModeFromMethod(dynamic method) {
     final String m = (method ?? '').toString().trim().toLowerCase();
@@ -1979,7 +2258,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // ✅ STEP 3: RESET DISPLAY (FINAL STATE)
       await CustomerDisplayService.resetDisplay();
-
+      unawaited(_publishMqttThankYouThenWelcome());
       print("✅ Payment complete → display reset");
       // ✅ SHOW SUCCESS SNACKBAR
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2851,6 +3130,22 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         mobileController.text = contact;
       });
+
+      // FIX: persist points + contact to Hive so later calls to
+      // CustomerDisplayHelper.updateCustomerDisplay() (e.g. after applying
+      // or removing a coupon) don't reset available points back to 0.
+      try {
+        final rawLatest = await offlineBox.get(localKey);
+        if (rawLatest is Map) {
+          final latestOrder = Map<String, dynamic>.from(rawLatest);
+          latestOrder["loyaltyContact"] = contact;
+          latestOrder["available_points"] = pts;
+          await offlineBox.put(localKey, latestOrder);
+          print("💾 [Loyalty] Persisted available_points=$pts to Hive for order $localKey");
+        }
+      } catch (e) {
+        print("⚠️ [Loyalty] Failed to persist available_points to Hive: $e");
+      }
     } catch (e) {
       print("ERROR: $e");
     }
@@ -3602,6 +3897,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         widget.offlineOrderId!,
         summaryEnabled: true,
       );
+      // Skip intermediate CFD publishes during coupon apply/remove (prevents flicker)
+      if (_suppressCfdSync) return;
+
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      if (widget.offlineOrderId != null) {
+        // Single path only — _syncCfdFromOrderSummary updates native + MQTT
+        unawaited(_syncCfdFromOrderSummary());
+      }
     }
   }
 
@@ -3819,6 +4123,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           widget.offlineOrderId!,
           summaryEnabled: true,
         );
+        if (merchantDiscountChanged || netPayableChanged) {
+          // Skip intermediate CFD publishes during coupon apply/remove (prevents flicker)
+          if (_suppressCfdSync) return;
+          // Single path only — avoid double native + MQTT publish
+          if (widget.offlineOrderId != null || orderId != null) {
+            unawaited(_syncCfdFromOrderSummary());
+          }
+        }
       }
     }
   }
@@ -5543,6 +5855,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         await CustomerDisplayService.showThankYou();
         await orderHelper.setActiveOrder(null);
         await CustomerDisplayService.resetDisplay();
+        unawaited(_publishMqttThankYouThenWelcome());
 
         _showPaymentDialog(
           context,
@@ -5811,7 +6124,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         await CustomerDisplayService.showThankYou();
         await orderHelper.setActiveOrder(null);
         await CustomerDisplayService.resetDisplay();
-
+        unawaited(_publishMqttThankYouThenWelcome());
         final boxData = await box.get(orderKey);
         final cr = boxData is Map ? boxData["coupon_response"] : null;
         final couponResponse = cr is Map
@@ -7789,6 +8102,321 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 const SizedBox(width: 18),
 
                 // ---------------- ADD / CANCEL BUTTON (SAME LOGIC) ----------------
+//                 InkWell(
+//                   onTap: isButtonDisabled
+//                       ? null
+//                       : () async {
+//                     // ---------- CANCEL ----------
+//                     if (showCustomerInput) {
+//                       // Only allow cancel if not disabled
+//                       if (isPaymentDone || redeemedValue > 0) return;
+//
+//                       setState(() {
+//                         mobileController.clear();
+//                         showCustomerInput = false;
+//                         isPhoneValid = false;
+//                         isEmailValid = false;
+//                         isRedeemActive = false;
+//                         // Enable field again
+//                         isCustomerFieldDisabled = false;
+//                       });
+//
+//                       final offlineBox = StorageProvider.offlineOrders;
+//                       final localKey = widget.offlineOrderId?.toString();
+//
+//                       if (localKey != null) {
+//                         final existing = await offlineBox.get(localKey);
+//                         if (existing != null) {
+//                           final d = Map<String, dynamic>.from(
+//                               existing is Map ? existing : {});
+//                           d["loyaltyContact"] = "";
+//                           await offlineBox.put(localKey, d);
+//                         }
+//                       }
+//
+//                       final localOrderId = widget.offlineOrderId;
+//                       if (localOrderId != null) {
+//                         await CustomerDisplayHelper.updateCustomerDisplay(
+//                           localOrderId,
+//                           summaryEnabled: true,
+//                         );
+//                       }
+//                       return;
+//                     }
+//
+//                     // ---------- ADD ----------
+//                     // ---------- ADD ----------
+//                     if (!(isPhoneValid || isEmailValid)) return;
+//
+//                     // ✅ Close keyboard immediately
+//                     FocusManager.instance.primaryFocus?.unfocus();
+//
+//                     setState(() => isAddLoading = true);
+//
+//                     final contact = mobileController.text.trim();
+//
+//                     try {
+//                       // ======================================
+//                       // 1️⃣ LOAD OFFLINE ORDER FROM HIVE
+//                       // ======================================
+//                       final offlineBox = StorageProvider.offlineOrders;
+//
+//                       final localKey = widget.offlineOrderId?.toString();
+//
+//                       if (localKey == null) {
+//                         throw Exception("Offline order not found");
+//                       }
+//
+//                       final existing = await offlineBox.get(localKey);
+//
+//                       if (existing == null) {
+//                         throw Exception("Order data missing");
+//                       }
+//
+//                       final offlineOrder =
+//                       Map<String, dynamic>.from(existing);
+//
+//                       print("🟡 OFFLINE ORDER LOADED");
+//
+//                       // ======================================
+//                       // 2️⃣ SYNC ORDER WITH BACKEND
+//                       // ======================================
+//                       final syncResponse =
+//                       await orderBloc.syncSingleOfflineOrder(
+//                         offlineOrder,
+//                       );
+//
+//                       print("✅ SYNC RESPONSE points: $syncResponse");
+//
+//                       if (syncResponse == null) {
+//                         throw Exception("Sync failed");
+//                       }
+//
+//                       // ======================================
+//                       // 3️⃣ GET WOO ORDER ID
+//                       // ======================================
+//                       final int syncedOrderId = syncResponse["id"] ?? 0;
+//
+//                       if (syncedOrderId == 0) {
+//                         throw Exception("Backend order id missing");
+//                       }
+//
+//                       print("🟢 WOO ORDER ID lo: $syncedOrderId");
+//
+//                       // ======================================
+//                       // 4️⃣ CALL CREATE CUSTOMER API
+//                       // ======================================
+//                       final rawResponse =
+//                       await orderBloc.addLoyaltyPoints(
+//                         orderId: syncedOrderId,
+//                         contact: contact,
+//                       );
+//
+//                       print("🌐 CUSTOMER RESPONSE: $rawResponse");
+//
+//                       final result = jsonDecode(rawResponse);
+//
+//                       print("✅ FULL CUSTOMER RESULT: $result");
+//
+//                       if (result == null) {
+//                         throw Exception("Empty customer response");
+//                       }
+//
+//                       if (result["success"] == false) {
+//                         throw Exception(
+//                           result["message"] ?? "Customer API failed",
+//                         );
+//                       }
+//
+//                       final data = result["data"] ?? {};
+//
+//                       final pts = int.tryParse(
+//                         data["available_points"]?.toString() ?? "0",
+//                       ) ??
+//                           0;
+//                       // ======================================
+//                       // 5️⃣ UPDATE UI
+//                       // ======================================
+//                       setState(() {
+//                         loyaltyData = data;
+//                         availablePoints = pts;
+//                         isRedeemActive = true;
+//                         showCustomerInput = true;
+//
+//                         // Disable field after successful add
+//                         isCustomerFieldDisabled = true;
+//                       });
+//
+//                       print(
+//                           "AFTER ADD -> isCustomerFieldDisabled = $isCustomerFieldDisabled");
+//                       // ======================================
+//                       // 6️⃣ SAVE CONTACT LOCALLY
+//                       // ======================================
+//                       offlineOrder["loyaltyContact"] = contact;
+//                       offlineOrder["available_points"] = pts; // FIX: persist so it survives later refreshes
+//
+//                       await offlineBox.put(localKey, offlineOrder);
+//
+//                       // ======================================
+//                       // 7️⃣ UPDATE CUSTOMER DISPLAY
+//                       // ======================================
+//                       // ======================================
+// // 7️⃣ DO NOT REFRESH CUSTOMER DISPLAY
+// // ======================================
+// //                       try {
+// //                         await const MethodChannel(
+// //                           'com.alekta.pinakapos/sunmi_display',
+// //                         ).invokeMethod(
+// //                           'showCustomerData',
+// //                           {
+// //                             'orderId': int.tryParse(localKey) ?? 0,
+// //                             'items': List<Map<String, dynamic>>.from(
+// //                               offlineOrder['products'] ?? [],
+// //                             ),
+// //
+// //                             'grossTotal': grossTotal,
+// //                             'discount': discount,
+// //                             'merchantDiscount': merchantDiscount,
+// //                             'netTotal': NetTotal,
+// //                             'tax': tax,
+// //                             'netPayable': computedNetPayable,
+// //                             'orderDate': offlineOrder['order_date'] ?? '',
+// //                             'orderTime': offlineOrder['order_time'] ?? '',
+// //                             'cashbackFee':
+// //                             (offlineOrder['cashback_fee'] as num?)
+// //                                 ?.toDouble() ??
+// //                                 0.0,
+// //                             'loyaltyContact': contact,
+// //                             'availablePoints': pts,
+// //                             'summaryEnabled': true,
+// //                           },
+// //                         );
+// //                       } on PlatformException catch (e) {
+// //                         if (e.code != 'NO_DISPLAY') {
+// //                           rethrow;
+// //                         }
+// //                       }
+//
+//                       try {
+//                         // Use the SAME item list/count logic as Order Summary's
+//                         // _computeTotalItems(), so the customer display's count
+//                         // matches exactly (excludes merchant-discount rows only).
+//                         final List<Map<String, dynamic>> rawDisplayProducts =
+//                         List<Map<String, dynamic>>.from(
+//                           offlineOrder['products'] ?? [],
+//                         );
+//
+//                         final List<Map<String, dynamic>> filteredDisplayProducts =
+//                         rawDisplayProducts.where((p) {
+//                           final t = (p['item_type'] ?? p['type'] ?? '')
+//                               .toString()
+//                               .toLowerCase();
+//                           final n = (p['item_name'] ??
+//                               p['name'] ??
+//                               '')
+//                               .toString()
+//                               .toLowerCase();
+//                           return !(t.contains('discount') ||
+//                               n.contains('merchant discount'));
+//                         }).toList();
+//
+//                         // final int totalItemsForDisplay =
+//                         // filteredDisplayProducts.fold<int>(0, (sum, p) {
+//                         //   final qty = int.tryParse(
+//                         //     (p['items_count'] ??
+//                         //         p['quantity'] ??
+//                         //         p['qty'] ??
+//                         //         1)
+//                         //         .toString(),
+//                         //   ) ??
+//                         //       1;
+//                         //   return sum + qty;
+//                         // });
+//                         final int totalItemsForDisplay = _computeTotalItems();
+//
+//                         await const MethodChannel(
+//                           'com.alekta.pinakapos/sunmi_display',
+//                         ).invokeMethod(
+//                           'showCustomerData',
+//                           {
+//                             'orderId': int.tryParse(localKey) ?? 0,
+//                             'items': filteredDisplayProducts,
+//                             'totalItems': totalItemsForDisplay,
+//
+//                             'grossTotal': grossTotal,
+//                             'discount': discount,
+//                             'merchantDiscount': merchantDiscount,
+//                             'netTotal': NetTotal,
+//                             'tax': tax,
+//                             'netPayable': computedNetPayable,
+//                             'orderDate': offlineOrder['order_date'] ?? '',
+//                             'orderTime': offlineOrder['order_time'] ?? '',
+//                             'cashbackFee':
+//                             (offlineOrder['cashback_fee'] as num?)
+//                                 ?.toDouble() ??
+//                                 0.0,
+//                             'loyaltyContact': contact,
+//                             'availablePoints': pts,
+//                             'summaryEnabled': true,
+//                           },
+//                         );
+//                       } on PlatformException catch (e) {
+//                         if (e.code != 'NO_DISPLAY') {
+//                           rethrow;
+//                         }
+//                       }
+//                       if (mounted) {
+//                         ScaffoldMessenger.of(context).showSnackBar(
+//                           const SnackBar(
+//                             content: Text("Customer Added Successfully!"),
+//                             backgroundColor: Colors.green,
+//                             duration: Duration(seconds: 1),
+//                           ),
+//                         );
+//                       }
+//                     } catch (e) {
+//                       print("Print the error : $e");
+//
+//
+//                     } finally {
+//                       if (mounted) {
+//                         setState(() => isAddLoading = false);
+//                       }
+//                     }
+//                   },
+//                   child: Container(
+//                     height: 44,
+//                     width: 126,
+//                     alignment: Alignment.center,
+//                     decoration: BoxDecoration(
+//                       color: isButtonDisabled
+//                           ? Colors.grey.shade400 // 🔒 Disabled / Pending
+//                           : showCustomerInput
+//                           ? Colors.red // ❌ Cancel
+//                           : const Color(0xFF3B4259), // ➕ Add
+//                       borderRadius: BorderRadius.circular(6),
+//                     ),
+//                     child: isAddLoading
+//                         ? const SizedBox(
+//                       height: 16,
+//                       width: 16,
+//                       child: CircularProgressIndicator(
+//                         strokeWidth: 2,
+//                         color: Colors.white,
+//                       ),
+//                     )
+//                         : Text(
+//                       showCustomerInput ? '× Cancel' : '+ Add',
+//                       style: const TextStyle(
+//                         color: Colors.white,
+//                         fontSize: 13,
+//                         fontWeight: FontWeight.w600,
+//                       ),
+//                     ),
+//                   ),
+//                 )
+
+                // ---------------- ADD / CANCEL BUTTON (SAME LOGIC) ----------------
                 InkWell(
                   onTap: isButtonDisabled
                       ? null
@@ -7806,6 +8434,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         isRedeemActive = false;
                         // Enable field again
                         isCustomerFieldDisabled = false;
+                        // FIX: reset points in UI state when cancelling
+                        availablePoints = 0;
+                        loyaltyData = null;
                       });
 
                       final offlineBox = StorageProvider.offlineOrders;
@@ -7817,12 +8448,70 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           final d = Map<String, dynamic>.from(
                               existing is Map ? existing : {});
                           d["loyaltyContact"] = "";
+                          d["available_points"] = 0; // FIX: clear persisted points too
                           await offlineBox.put(localKey, d);
                         }
                       }
 
                       final localOrderId = widget.offlineOrderId;
                       if (localOrderId != null) {
+                        // FIX: push the cleared contact/points straight to the
+                        // customer display, same channel/shape as the ADD flow,
+                        // so it doesn't keep showing the old number/points.
+                        try {
+                          final List<Map<String, dynamic>> rawDisplayProducts =
+                          List<Map<String, dynamic>>.from(
+                            offlineOrder?['products'] ?? [],
+                          );
+
+                          final List<Map<String, dynamic>> filteredDisplayProducts =
+                          rawDisplayProducts.where((p) {
+                            final t = (p['item_type'] ?? p['type'] ?? '')
+                                .toString()
+                                .toLowerCase();
+                            final n = (p['item_name'] ??
+                                p['name'] ??
+                                '')
+                                .toString()
+                                .toLowerCase();
+                            return !(t.contains('discount') ||
+                                n.contains('merchant discount'));
+                          }).toList();
+
+                          final int totalItemsForDisplay = _computeTotalItems();
+
+                          await const MethodChannel(
+                            'com.alekta.pinakapos/sunmi_display',
+                          ).invokeMethod(
+                            'showCustomerData',
+                            {
+                              'orderId': localOrderId,
+                              'items': filteredDisplayProducts,
+                              'totalItems': totalItemsForDisplay,
+
+                              'grossTotal': grossTotal,
+                              'discount': discount,
+                              'merchantDiscount': merchantDiscount,
+                              'netTotal': NetTotal,
+                              'tax': tax,
+                              'netPayable': computedNetPayable,
+                              'orderDate': offlineOrder?['order_date'] ?? '',
+                              'orderTime': offlineOrder?['order_time'] ?? '',
+                              'cashbackFee':
+                              (offlineOrder?['cashback_fee'] as num?)
+                                  ?.toDouble() ??
+                                  0.0,
+                              'loyaltyContact': '',
+                              'availablePoints': 0,
+                              'summaryEnabled': true,
+                            },
+                          );
+                        } on PlatformException catch (e) {
+                          if (e.code != 'NO_DISPLAY') {
+                            rethrow;
+                          }
+                        }
+                        unawaited(_syncCfdFromOrderSummary());
                         await CustomerDisplayHelper.updateCustomerDisplay(
                           localOrderId,
                           summaryEnabled: true,
@@ -7940,6 +8629,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       // 6️⃣ SAVE CONTACT LOCALLY
                       // ======================================
                       offlineOrder["loyaltyContact"] = contact;
+                      offlineOrder["available_points"] = pts; // FIX: persist so it survives later refreshes
 
                       await offlineBox.put(localKey, offlineOrder);
 
@@ -7949,16 +8639,86 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       // ======================================
 // 7️⃣ DO NOT REFRESH CUSTOMER DISPLAY
 // ======================================
+//                       try {
+//                         await const MethodChannel(
+//                           'com.alekta.pinakapos/sunmi_display',
+//                         ).invokeMethod(
+//                           'showCustomerData',
+//                           {
+//                             'orderId': int.tryParse(localKey) ?? 0,
+//                             'items': List<Map<String, dynamic>>.from(
+//                               offlineOrder['products'] ?? [],
+//                             ),
+//
+//                             'grossTotal': grossTotal,
+//                             'discount': discount,
+//                             'merchantDiscount': merchantDiscount,
+//                             'netTotal': NetTotal,
+//                             'tax': tax,
+//                             'netPayable': computedNetPayable,
+//                             'orderDate': offlineOrder['order_date'] ?? '',
+//                             'orderTime': offlineOrder['order_time'] ?? '',
+//                             'cashbackFee':
+//                             (offlineOrder['cashback_fee'] as num?)
+//                                 ?.toDouble() ??
+//                                 0.0,
+//                             'loyaltyContact': contact,
+//                             'availablePoints': pts,
+//                             'summaryEnabled': true,
+//                           },
+//                         );
+//                       } on PlatformException catch (e) {
+//                         if (e.code != 'NO_DISPLAY') {
+//                           rethrow;
+//                         }
+//                       }
+
                       try {
+                        // Use the SAME item list/count logic as Order Summary's
+                        // _computeTotalItems(), so the customer display's count
+                        // matches exactly (excludes merchant-discount rows only).
+                        final List<Map<String, dynamic>> rawDisplayProducts =
+                        List<Map<String, dynamic>>.from(
+                          offlineOrder['products'] ?? [],
+                        );
+
+                        final List<Map<String, dynamic>> filteredDisplayProducts =
+                        rawDisplayProducts.where((p) {
+                          final t = (p['item_type'] ?? p['type'] ?? '')
+                              .toString()
+                              .toLowerCase();
+                          final n = (p['item_name'] ??
+                              p['name'] ??
+                              '')
+                              .toString()
+                              .toLowerCase();
+                          return !(t.contains('discount') ||
+                              n.contains('merchant discount'));
+                        }).toList();
+
+                        // final int totalItemsForDisplay =
+                        // filteredDisplayProducts.fold<int>(0, (sum, p) {
+                        //   final qty = int.tryParse(
+                        //     (p['items_count'] ??
+                        //         p['quantity'] ??
+                        //         p['qty'] ??
+                        //         1)
+                        //         .toString(),
+                        //   ) ??
+                        //       1;
+                        //   return sum + qty;
+                        // });
+                        final int totalItemsForDisplay = _computeTotalItems();
+
                         await const MethodChannel(
                           'com.alekta.pinakapos/sunmi_display',
                         ).invokeMethod(
                           'showCustomerData',
                           {
                             'orderId': int.tryParse(localKey) ?? 0,
-                            'items': List<Map<String, dynamic>>.from(
-                              offlineOrder['products'] ?? [],
-                            ),
+                            'items': filteredDisplayProducts,
+                            'totalItems': totalItemsForDisplay,
+
                             'grossTotal': grossTotal,
                             'discount': discount,
                             'merchantDiscount': merchantDiscount,
@@ -7981,6 +8741,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           rethrow;
                         }
                       }
+                      unawaited(_syncCfdFromOrderSummary());
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
@@ -8137,16 +8898,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final theme = Theme.of(context);
 
-    int totalItems = orderItems.fold(0, (sum, item) {
-      final name = item['item_name']?.toString().toLowerCase() ?? '';
-
-      if (name == 'payout' || name == 'cashback') {
-        return sum;
-      }
-
-      final qty = int.tryParse(item['items_count']?.toString() ?? '1') ?? 1;
-      return sum + qty;
-    });
+    int totalItems = _computeTotalItems();
 
     return Align(
       alignment: Alignment.centerLeft,
@@ -9765,6 +10517,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     } catch (e) {
       print("⚠️ Failed to save redeem to Hive: $e");
     }
+    unawaited(_syncCfdFromOrderSummary());
 
     print("✅ REDEEM APPLIED SUCCESSFULLY!");
     print("   Redeemed     : -${actualRedeem.toStringAsFixed(2)}");
@@ -9879,6 +10632,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // clear hive
       await removeOfflineOrderRedeem(localKey);
 
+      // FIX: removeOfflineOrderRedeem() only strips redeemed_value/points keys;
+      // it doesn't touch available_points. Re-persist the latest available
+      // points + contact right after, so subsequent
+      // CustomerDisplayHelper.updateCustomerDisplay() calls (e.g. triggered by
+      // applying/removing a coupon) don't show 0 available points.
+      try {
+        final rawLatest = await offlineBox.get(localKey);
+        if (rawLatest is Map) {
+          final latestOrder = Map<String, dynamic>.from(rawLatest);
+          latestOrder["loyaltyContact"] = contact;
+          latestOrder["available_points"] = updatedPoints;
+          await offlineBox.put(localKey, latestOrder);
+          print("💾 [Loyalty] Persisted available_points=$updatedPoints to Hive for order $localKey");
+        }
+      } catch (e) {
+        print("⚠️ [Loyalty] Failed to persist available_points to Hive: $e");
+      }
+
 // tell android immediately
       await customerDisplayChannel.invokeMethod(
         "customerDisplayResult",
@@ -9889,6 +10660,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           "removeRedeem": true,
         },
       );
+      unawaited(_syncCfdFromOrderSummary());
 
 // then refresh full display
 //       await CustomerDisplayHelper.updateCustomerDisplay(
@@ -11883,6 +12655,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final int safeOrderId = int.tryParse(orderKey) ?? widget.orderId ?? 0;
 
       final double restoredTax = widget.orderTax;
+      _suppressCfdSync = true;
 
       // ================= RESET VALUES =================
       setState(() {
@@ -11979,6 +12752,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           safeOrderId,
           summaryEnabled: true,
         );
+        _suppressCfdSync = false;
+        if (safeOrderId > 0) {
+          // One publish with final totals only
+          await _syncCfdFromOrderSummary();
+        }
       }
 
       // ================= SUCCESS =================
@@ -12334,7 +13112,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (!widget.itemPricesAlreadyAdjusted) {
         await _recalculateGrossAndNetFromLineItemDiscounts();
       }
-
+      // Suppress CFD until ALL totals (discount, tax, merchant, net) are final
+      _suppressCfdSync = true;
       // Step 4: Final totals update
       setState(() {
         NetTotal = grossTotal + discount + merchantDiscount;
@@ -12348,13 +13127,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         merchantDiscountPercentage = originalMerchantDiscountPercentage;
       });
 
-      // // ✅ Update offlineOrder with restored merchant discount values
+      // //  Update offlineOrder with restored merchant discount values
       // offlineOrder["merchantDiscount"] = originalMerchantDiscount;
       // offlineOrder["merchantDiscountPercentage"] = originalMerchantDiscountPercentage;
       // offlineOrder["merchantDiscountType"] = originalMerchantDiscountType;
       // await box.put(orderKey, offlineOrder);
       //
-      // // ✅ Update customer display
+      // //  Update customer display
       // if (localOrderId != null) {
       //   await CustomerDisplayHelper.updateCustomerDisplay(
       //     localOrderId,
@@ -12365,7 +13144,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final rawLatestForDisplay = await box.get(orderKey);
       if (rawLatestForDisplay != null) {
         final latestOrder = Map<String, dynamic>.from(rawLatestForDisplay);
-
         final double positiveMerchantDiscount = originalMerchantDiscount.abs();
         latestOrder["merchantDiscount"] = positiveMerchantDiscount;
         latestOrder["merchant_discount"] = positiveMerchantDiscount;
@@ -12376,13 +13154,28 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         offlineOrder = latestOrder;
       }
 
-      // ✅ Update customer display
+// Single source of truth for CFD – do NOT call Helper again after this
+      await _syncCfdFromOrderSummary();
+
+      // // ✅ Update customer display
+      // if (localOrderId != null) {
+      //   await CustomerDisplayHelper.updateCustomerDisplay(
+      //     localOrderId,
+      //     summaryEnabled: true,
+      //   );
+      // }
+
       if (localOrderId != null) {
-        await CustomerDisplayHelper.updateCustomerDisplay(
-          localOrderId,
-          summaryEnabled: true,
-        );
+        // await CustomerDisplayHelper.updateCustomerDisplay(
+        //   localOrderId,
+        //   summaryEnabled: true,
+        // );
+
+        await CustomerDisplayHelper.updateCustomerDisplay(localOrderId, summaryEnabled: true);
+
       }
+      _suppressCfdSync = false;
+      await _syncCfdFromOrderSummary();
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -13751,8 +14544,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
     }
 
+    /// MQTT only: Thank You → Welcome (store name). Clears old cart on CFD.
+
     // ── Helper: background work (non-blocking) ───────────────
     void doBackgroundWork() {
+      unawaited(orderHelper.setActiveOrder(null));
+      unawaited(orderHelper.clearPersistedCartSelection());
+
       Future(() async {
         if (orderId != null && orderId! > 0) {
           final allPayments = await LocalPaymentDBHelper.instance
@@ -13783,21 +14581,71 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           print("❌ doBackgroundWork: sync failed: $e");
         }
 
-        // Update customer display
+        // MQTT: Thank You → Welcome after full payment path
         try {
-          final storeInfo = PinakaPreferences.getLoggedInStore();
-          if (storeInfo.isNotEmpty) {
-            await CustomerDisplayHelper.updateWelcomeWithStore(
-              storeInfo['storeId'] ?? '0',
-              storeInfo['storeName'] ?? 'Store',
-              storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
-              storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
-            );
-          } else {
-            await CustomerDisplayService.showWelcome();
-          }
+          // Capture messaging before async gap if needed – or call helper
+          // Helper uses context; if called from Future after navigate, prefer inline publish.
+          final store = await CfdStorePayload.load();
+          final messaging =
+          Provider.of<StoreMessagingService>(context, listen: false);
+
+          final thankYou = CartState(
+            sessionId: 'ORDER-${orderId ?? 0}',
+            sequence: CfdSequence.next(),
+            screen: 'THANK_YOU',
+            items: const [],
+            tax: 0,
+            message: null,
+            orderId: orderId,
+            subtotalOverride: 0,
+            orderDiscount: 0,
+            merchantDiscount: 0,
+            cashbackFee: 0,
+            netPayable: 0,
+            totalItems: 0,
+            orderDate: '',
+            orderTime: '',
+            summaryEnabled: false,
+            storeId: store.storeId,
+            storeName: store.storeName,
+            storeLogoUrl: store.storeLogoUrl,
+            storeBaseUrl: store.storeBaseUrl,
+            slideshowUrls: store.slideshowUrls,
+            loyaltyContact: '',
+            availablePoints: 0,
+          );
+          await messaging.publishState(thankYou);
+
+          await Future.delayed(const Duration(seconds: 3));
+
+          final welcome = CartState(
+            sessionId: 'ORDER-0',
+            sequence: CfdSequence.next(),
+            screen: 'WELCOME',
+            items: const [],
+            tax: 0,
+            message: null,
+            orderId: null,
+            subtotalOverride: 0,
+            orderDiscount: 0,
+            merchantDiscount: 0,
+            cashbackFee: 0,
+            netPayable: 0,
+            totalItems: 0,
+            orderDate: '',
+            orderTime: '',
+            summaryEnabled: false,
+            storeId: store.storeId,
+            storeName: store.storeName,
+            storeLogoUrl: store.storeLogoUrl,
+            storeBaseUrl: store.storeBaseUrl,
+            slideshowUrls: store.slideshowUrls,
+            loyaltyContact: '',
+            availablePoints: 0,
+          );
+          await messaging.publishState(welcome);
         } catch (e) {
-          print(">>> customer display error: $e");
+          if (kDebugMode) print('⚠️ MQTT thank-you/welcome failed: $e');
         }
       });
     }
@@ -17469,6 +18317,158 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   ///Use this function to change status to complete the order after payment
   ///it is used called by no receipt and print receipt on order payment completed - print button tap
+  // void changeStatusToCompletedAndExit(bool isReceipt,
+  //     {String selectedOption = TextConstants.print}) {
+  //   if (kDebugMode) {
+  //     print(
+  //         "OrderSummaryScreen _showReceiptDialog Done call print receipt = $isReceipt");
+  //   }
+  //
+  //   if (kDebugMode) {
+  //     print(
+  //         "changeStatusToCompletedAndExit called with isReceipt=$isReceipt, selectedOption=$selectedOption");
+  //   } else if (selectedOption == TextConstants.sms) {
+  //     // SMS receipt
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text(TextConstants.smsConfiguration),
+  //         backgroundColor: Colors.red,
+  //         duration: const Duration(seconds: 1),
+  //       ),
+  //     );
+  //   }
+  //
+  //   // If user navigates back to this screen later, make sure we don't keep
+  //   // the keypad/EBT highlight from the previous payment flow.
+  //   selectedPaymentMethod = TextConstants.cash;
+  //   _rawAmount = 0;
+  //   amountController.text = '${TextConstants.currencySymbol}0.00';
+  //   _isAmountEntered = false;
+  //   _amountErrorText = null;
+  //
+  //   // ✅ Update Hive with latest merchant discount before final sync
+  //   _updateHiveWithLatestMerchantDiscount().then((_) {
+  //     // Background sync after updating Hive
+  //     Future(() async {
+  //       try {
+  //         await _syncCurrentOfflineOrder();
+  //         print("✅ Background: Final sync completed");
+  //       } catch (e) {
+  //         print("❌ Background: Final sync failed: $e");
+  //       }
+  //     });
+  //   });
+  //
+  //   Navigator.of(context).pop(); // Dismiss the receipt dialog
+  //
+  //   if (kDebugMode) {
+  //     print("changeStatusToCompletedAndExit -> 3:");
+  //   }
+  //
+  //   ///Completed order
+  //   OrderHelper.isOrderPanelLoaded = false;
+  //   OrderHelper.notifyOrderPanelToRefresh();
+  //   Navigator.pushReplacement(
+  //     result: TextConstants.refresh,
+  //     context,
+  //     MaterialPageRoute(builder: (_) => POSHomeScreen()),
+  //   );
+  //
+  //   ScaffoldMessenger.of(context).showSnackBar(
+  //     SnackBar(
+  //       content: Text(
+  //         TextConstants.orderCompleted,
+  //         style: const TextStyle(color: Colors.white),
+  //       ),
+  //       backgroundColor: Colors.green,
+  //       duration: const Duration(seconds: 1),
+  //     ),
+  //   );
+  // }
+
+  void doBackgroundWork() {
+    // Capture before the async gap / navigation so context is still valid.
+    final messaging = Provider.of<StoreMessagingService>(context, listen: false);
+
+    Future(() async {
+      if (orderId != null && orderId! > 0) {
+        final allPayments = await LocalPaymentDBHelper.instance
+            .getPaymentsByOrderId(orderId!);
+        final bool isNegativeOrder = computedNetPayable <= 0;
+        for (final p in allPayments) {
+          if (p.status == PaymentDbStatus.pending) {
+            if (p.amount > 0 || isNegativeOrder) {
+              await LocalPaymentDBHelper.instance
+                  .updateStatus(p.id, PaymentDbStatus.completed);
+            }
+          }
+        }
+      }
+
+      await _updateHiveWithLatestMerchantDiscount();
+
+      try {
+        await _syncCurrentOfflineOrder();
+      } catch (e) {
+        if (kDebugMode) print("❌ doBackgroundWork: sync failed: $e");
+      }
+
+      // FIX: tell the MQTT-driven CFD to go idle. Previously only the
+      // native secondary display was refreshed here — the Customer
+      // Display flutter app (StoreMessagingService/MQTT) was never
+      // notified, so it kept showing the last paid order forever
+      // whenever this full-payment path was used instead of
+      // changeStatusToCompletedAndExit().
+      try {
+        final store = await CfdStorePayload.load();
+        final idleState = CartState(
+          sessionId: 'ORDER-0',
+          sequence: CfdSequence.next(),
+          screen: 'IDLE',
+          items: const [],
+          tax: 0,
+          message: null,
+          orderId: null,
+          subtotalOverride: 0,
+          orderDiscount: 0,
+          merchantDiscount: 0,
+          cashbackFee: 0,
+          netPayable: 0,
+          totalItems: 0,
+          orderDate: '',
+          orderTime: '',
+          summaryEnabled: false,
+          storeId: store.storeId,
+          storeName: store.storeName,
+          storeLogoUrl: store.storeLogoUrl,
+          storeBaseUrl: store.storeBaseUrl,
+          slideshowUrls: store.slideshowUrls,
+          loyaltyContact: '',
+          availablePoints: 0,
+        );
+        await messaging.publishState(idleState);
+      } catch (e) {
+        if (kDebugMode) print('⚠️ CFD idle publish failed: $e');
+      }
+
+      try {
+        final storeInfo = PinakaPreferences.getLoggedInStore();
+        if (storeInfo.isNotEmpty) {
+          await CustomerDisplayHelper.updateWelcomeWithStore(
+            storeInfo['storeId'] ?? '0',
+            storeInfo['storeName'] ?? 'Store',
+            storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
+            storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
+          );
+        } else {
+          await CustomerDisplayService.showWelcome();
+        }
+      } catch (e) {
+        if (kDebugMode) print(">>> customer display error: $e");
+      }
+    });
+  }
+
   void changeStatusToCompletedAndExit(bool isReceipt,
       {String selectedOption = TextConstants.print}) {
     if (kDebugMode) {
@@ -17490,36 +18490,61 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       );
     }
 
-    // If user navigates back to this screen later, make sure we don't keep
-    // the keypad/EBT highlight from the previous payment flow.
-    selectedPaymentMethod = TextConstants.cash;
-    _rawAmount = 0;
-    amountController.text = '${TextConstants.currencySymbol}0.00';
-    _isAmountEntered = false;
-    _amountErrorText = null;
+    // ── Clear CFD immediately (last order must not stick) ──
+    unawaited(() async {
+      try {
+        final messaging =
+        Provider.of<StoreMessagingService>(context, listen: false);
+        final store = await CfdStorePayload.load();
+        final idleState = CartState(
+          sessionId: 'ORDER-0',
+          sequence: CfdSequence.next(),
+          screen: 'IDLE',
+          items: const [],
+          tax: 0,
+          message: null,
+          orderId: null,
+          subtotalOverride: 0,
+          orderDiscount: 0,
+          merchantDiscount: 0,
+          cashbackFee: 0,
+          netPayable: 0,
+          totalItems: 0,
+          orderDate: '',
+          orderTime: '',
+          summaryEnabled: false,
+          storeId: store.storeId,
+          storeName: store.storeName,
+          storeLogoUrl: store.storeLogoUrl,
+          storeBaseUrl: store.storeBaseUrl,
+          slideshowUrls: store.slideshowUrls,
+          loyaltyContact: '',
+          availablePoints: 0,
+        );
+        await messaging.publishState(idleState);
+        await CustomerDisplayService.showWelcome();
+      } catch (_) {}
+    }());
 
-    // ✅ Update Hive with latest merchant discount before final sync
+    // Clear active order so RightOrderPanel does not reload finished cart
+    unawaited(OrderHelper().setActiveOrder(null));
+    unawaited(OrderHelper().clearPersistedCartSelection());
+
     _updateHiveWithLatestMerchantDiscount().then((_) {
-      // Background sync after updating Hive
       Future(() async {
         try {
           await _syncCurrentOfflineOrder();
-          print("✅ Background: Final sync completed");
         } catch (e) {
           print("❌ Background: Final sync failed: $e");
         }
       });
     });
 
-    Navigator.of(context).pop(); // Dismiss the receipt dialog
+    Navigator.of(context).pop(); // receipt dialog if open
 
-    if (kDebugMode) {
-      print("changeStatusToCompletedAndExit -> 3:");
-    }
-
-    ///Completed order
     OrderHelper.isOrderPanelLoaded = false;
     OrderHelper.notifyOrderPanelToRefresh();
+
     Navigator.pushReplacement(
       result: TextConstants.refresh,
       context,
@@ -17537,6 +18562,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     );
   }
+
 
   // void showVoidExitConfirmation(BuildContext context, bool isPartial) {
   //   if (kDebugMode) {

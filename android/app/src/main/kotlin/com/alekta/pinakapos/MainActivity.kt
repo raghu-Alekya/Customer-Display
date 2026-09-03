@@ -1732,9 +1732,11 @@ class MainActivity : FlutterActivity() {
                 Log.d("CustomerDisplay", "   └─ finalTotal: $finalTotal")
                 Log.d("CustomerDisplay", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-                if (!name.equals("Payout", true) && !name.equals("Cashback", true)) {
-                    totalItemCount += 1
-                }
+//                if (!name.equals("Payout", true) && !name.equals("Cashback", true)) {
+//                    totalItemCount += qty.toInt()
+//                }
+
+                totalItemCount += qty.toInt()
 
                 val row = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL

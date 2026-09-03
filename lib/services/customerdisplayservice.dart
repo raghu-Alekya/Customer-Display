@@ -21,16 +21,11 @@ class CustomerDisplayService {
       print("📢 [CustomerDisplayService] showThankYou() called");
       await _platform.invokeMethod('showThankYou');
       print("✅ [CustomerDisplayService] Thank You screen displayed");
-
-      // Revert to welcome automatically
-      // Future.delayed(Duration(seconds: delaySeconds), () async {
-      //   print("🔄 [CustomerDisplayService] Reverting to welcome screen");
-      //   await showWelcome();
-      // });
     } catch (e) {
       print("⚠️ [CustomerDisplayService] Failed to show Thank You: $e");
     }
   }
+
   static Future<void> resetDisplay() async {
     try {
       print("📢 [CustomerDisplayService] resetDisplay() called");
@@ -46,7 +41,7 @@ class CustomerDisplayService {
     required String storeId,
     required String storeName,
     String? storeLogoUrl,
-    String? storeBaseUrl, // new optional param
+    String? storeBaseUrl,
   }) async {
     try {
       print(
@@ -76,9 +71,8 @@ class CustomerDisplayService {
     required double tax,
     required double netPayable,
     required double cashbackFee,
-    // required double redeemedAmount,
-
     double redeemedAmount = 0.0,
+    int availablePoints = 0,
     String loyaltyContact = "",
     String orderDate = '',
     String orderTime = '',
@@ -90,14 +84,15 @@ class CustomerDisplayService {
     double discountValue = 0.0,
   }) async {
     try {
-      print("📢 showCustomerData called");
+      print("📢 showCustomerData() called, availablePoints=$availablePoints");
 
       final safeItems = items.map((item) {
         return {
           "name": item["name"] ?? "Unknown",
           "qty": item["qty"] ?? 0,
           "price": item["price"] ?? 0.0,
-          "original_price": item["original_price"] ?? item["price"] ?? 0.0,
+          "original_price":
+          item["original_price"] ?? item["price"] ?? 0.0,
           "auto_discount": item["auto_discount"] ?? 0.0,
           "combo_discount": item["combo_discount"] ?? 0.0,
           "multipack_discount": item["multipack_discount"] ?? 0.0,
@@ -117,6 +112,7 @@ class CustomerDisplayService {
         "netPayable": netPayable,
         "cashbackFee": cashbackFee,
         "redeemedAmount": redeemedAmount,
+        "availablePoints": availablePoints,
         "orderDate": orderDate,
         "orderTime": orderTime,
         "storeId": storeId,
@@ -131,32 +127,5 @@ class CustomerDisplayService {
       print("Customer display error: $e");
     }
   }
-/// 🔹 Update redeem / summary state on customer display
-// static Future<void> customerDisplayResult({
-//   required bool success,
-//   required double redeemedAmount,
-//   required int points,
-//   String message = "",
-// }) async {
-//   try {
-//     print(
-//       "📢 customerDisplayResult → "
-//           "success=$success, redeemedAmount=$redeemedAmount, points=$points",
-//     );
-//
-//     await _platform.invokeMethod(
-//       'customerDisplayResult',
-//       {
-//         "success": success,
-//         "redeemedAmount": redeemedAmount,
-//         "points": points,
-//         "message": message,
-//       },
-//     );
-//
-//     print("✅ customerDisplayResult sent");
-//   } catch (e) {
-//     print("⚠️ customerDisplayResult error: $e");
-//   }
-// }
+
 }

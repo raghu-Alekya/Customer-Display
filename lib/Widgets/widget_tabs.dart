@@ -32,6 +32,10 @@ import '../Repositories/Assets/asset_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
 import '../Utilities/svg_images_utility.dart';
+import '../mqtt_server/cart_item.dart';
+import '../mqtt_server/cart_state.dart';
+import '../mqtt_server/cfd_store_payload.dart';
+import '../mqtt_server/store_messaging_service.dart';
 import 'OrderPopupHelper.dart';
 import 'widget_custom_num_pad.dart';
 import 'package:http/http.dart' as http;
@@ -92,6 +96,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   String _payoutAmount = "";
   double _maxCashbackLimit = 0.0;
   late final OrderRepository _orderRepository;
+  DateTime? _lastCfdPushAt;
+  bool _cfdPushInFlight = false;
 
   // Adding a separate state variable for selected tab
   late int _selectedTabIndex;
@@ -166,6 +172,406 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       return '';
     }
   }
+
+  /// Instant CFD update (native + MQTT) after Apps tab changes.
+  /// Does not change existing order logic — only publishes what is already in Hive.
+  // Future<void> _pushCfdAfterAppsChange(int orderId) async {
+  //   if (orderId <= 0) return;
+  //
+  //   // 1) Native secondary display
+  //   try {
+  //     CustomerDisplayHelper.skipNextPendingOrderRefresh = false;
+  //     await CustomerDisplayHelper.updateCustomerDisplay(
+  //       orderId,
+  //       summaryEnabled: false,
+  //     );
+  //   } catch (e) {
+  //     if (kDebugMode) print('⚠️ Native CFD update failed: $e');
+  //   }
+  //
+  //   // 2) MQTT CFD (same payload shape as RightOrderPanel)
+  //   try {
+  //     final messaging =
+  //     Provider.of<StoreMessagingService>(context, listen: false);
+  //     final box = StorageProvider.offlineOrders;
+  //     final raw = await box.get(orderId.toString());
+  //     if (raw is! Map) return;
+  //
+  //     final order = Map<String, dynamic>.from(raw);
+  //     final products = (order['products'] as List? ?? [])
+  //         .map((e) => Map<String, dynamic>.from(e as Map))
+  //         .toList();
+  //     final payouts = (order['payouts'] as List? ?? [])
+  //         .map((e) => Map<String, dynamic>.from(e as Map))
+  //         .toList();
+  //     final cashbacks = (order['cashbacks'] as List? ?? [])
+  //         .map((e) => Map<String, dynamic>.from(e as Map))
+  //         .toList();
+  //
+  //     // Build display lines: products + payout + cashback as cart items
+  //     final List<CartItem> items = [];
+  //
+  //     for (final p in products) {
+  //       items.add(CartItem.fromOrderItem({
+  //         ...p,
+  //         'item_name': p['name'] ?? p[AppDBConst.itemName] ?? '',
+  //         'item_price': p['price'] ?? p[AppDBConst.itemPrice] ?? 0,
+  //         'items_count': p['quantity'] ?? p[AppDBConst.itemCount] ?? 1,
+  //         'item_type': p[AppDBConst.itemType] ?? p['type'] ?? 'product',
+  //         'product_id': p['product_id'] ?? p['id'] ?? 0,
+  //         'weight_qty': p['weight_qty'] ?? p['weightQty'] ?? 0,
+  //         'unit_price': p['unit_price'] ?? p['regular_price'] ?? p['price'] ?? 0,
+  //       }));
+  //     }
+  //     for (final p in payouts) {
+  //       final amt = (p['amount'] as num?)?.toDouble() ?? 0.0;
+  //       items.add(CartItem.fromOrderItem({
+  //         'item_name': p['product_name'] ?? 'Payout',
+  //         'item_price': amt,
+  //         'items_count': 1,
+  //         'item_type': 'payout',
+  //         'product_id': p['payout_product_id'] ?? 0,
+  //       }));
+  //     }
+  //     for (final c in cashbacks) {
+  //       final amt = (c['amount'] as num?)?.toDouble() ?? 0.0;
+  //       items.add(CartItem.fromOrderItem({
+  //         'item_name': c['product_name'] ?? 'Cashback',
+  //         'item_price': amt,
+  //         'items_count': 1,
+  //         'item_type': 'cashback',
+  //         'product_id': c['cashback_product_id'] ?? 0,
+  //       }));
+  //     }
+  //
+  //     final double gross =
+  //         (order['gross_total'] as num?)?.toDouble() ??
+  //             items.fold(0.0, (s, i) => s + i.lineTotal);
+  //     final double mDisc =
+  //     ((order['merchantDiscount'] as num?)?.toDouble() ?? 0.0).abs();
+  //     final double orderDisc =
+  //     ((order['orderDiscount'] as num?)?.toDouble() ?? 0.0).abs();
+  //     final double tax =
+  //         (order['order_tax'] as num?)?.toDouble() ??
+  //             (order['tax_discount'] as num?)?.toDouble() ??
+  //             0.0;
+  //     final double cbFee =
+  //         (order['cashbackFee'] as num?)?.toDouble() ??
+  //             (order[AppDBConst.orderCashbackFee] as num?)?.toDouble() ??
+  //             0.0;
+  //     final double netPay = (order['net_payable'] as num?)?.toDouble() ??
+  //         (gross + tax + cbFee - mDisc - orderDisc);
+  //
+  //     final store = await CfdStorePayload.load();
+  //     final loyaltyContact = (order['loyaltyContact'] ?? '').toString();
+  //     final availablePoints =
+  //         int.tryParse((order['available_points'] ?? '0').toString()) ?? 0;
+  //
+  //     final state = CartState(
+  //       sessionId: 'ORDER-$orderId',
+  //       sequence: CfdSequence.next(),
+  //       screen: items.isEmpty ? 'IDLE' : 'CART',
+  //       items: items,
+  //       tax: tax,
+  //       message: null,
+  //       orderId: orderId,
+  //       subtotalOverride: gross,
+  //       orderDiscount: orderDisc,
+  //       merchantDiscount: mDisc,
+  //       cashbackFee: cbFee,
+  //       netPayable: netPay,
+  //       totalItems: items.fold(0, (s, i) => s + i.qty),
+  //       orderDate: '',
+  //       orderTime: '',
+  //       summaryEnabled: false,
+  //       storeId: store.storeId,
+  //       storeName: store.storeName,
+  //       storeLogoUrl: store.storeLogoUrl,
+  //       storeBaseUrl: store.storeBaseUrl,
+  //       slideshowUrls: store.slideshowUrls,
+  //       loyaltyContact: loyaltyContact,
+  //       availablePoints: availablePoints,
+  //     );
+  //
+  //     await messaging.publishState(state);
+  //
+  //     if (kDebugMode) {
+  //       print(
+  //         '📤 [Apps→CFD] orderId=$orderId items=${items.length} '
+  //             'gross=$gross mDisc=$mDisc cbFee=$cbFee net=$netPay',
+  //       );
+  //     }
+  //   } catch (e, s) {
+  //     if (kDebugMode) print('⚠️ MQTT CFD publish failed: $e\n$s');
+  //   }
+  // }
+
+  Future<void> _pushCfdAfterAppsChange(int orderId) async {
+    if (orderId <= 0) return;
+
+    // ── Debounce guard ──────────────────────────────────────────────
+    // Something downstream (native display update / order panel
+    // refresh notifier) is re-triggering this function dozens of
+    // times for a single item add, flooding the local MQTT broker
+    // and desyncing the CFD's packet parser (RangeError in its log).
+    // Collapse rapid repeat calls into a single publish.
+    final now = DateTime.now();
+    if (_cfdPushInFlight) {
+      if (kDebugMode) print('🔇 CFD push already in flight — skipping');
+      return;
+    }
+    if (_lastCfdPushAt != null &&
+        now.difference(_lastCfdPushAt!) < const Duration(milliseconds: 400)) {
+      if (kDebugMode) print('🔇 CFD push debounced (too soon after last push)');
+      return;
+    }
+
+    _cfdPushInFlight = true;
+    _lastCfdPushAt = now;
+
+    try {
+      try {
+        CustomerDisplayHelper.skipNextPendingOrderRefresh = false;
+      } catch (_) {}
+
+      // ... existing body: native update + MQTT publishState(...) ...
+      // (single publish only — no extra delayed second call)
+    } finally {
+      _cfdPushInFlight = false;
+    }
+  }
+
+  Future<void> _publishCfdFromHiveOnce(int orderId) async {
+    // 1) Native secondary display
+    try {
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        orderId,
+        summaryEnabled: false,
+      );
+    } catch (e) {
+      if (kDebugMode) print('⚠️ Native CFD update failed: $e');
+    }
+
+    // 2) MQTT — same shape + rules as _publishMqttCart
+    try {
+      final messaging =
+      Provider.of<StoreMessagingService>(context, listen: false);
+
+      final box = StorageProvider.offlineOrders;
+      final raw = await box.get(orderId.toString());
+
+      if (raw is! Map) {
+        final store = await CfdStorePayload.load();
+        final idleState = CartState(
+          sessionId: 'ORDER-0',
+          sequence: CfdSequence.next(),
+          screen: 'IDLE',
+          items: const [],
+          tax: 0,
+          message: null,
+          orderId: null,
+          subtotalOverride: 0,
+          orderDiscount: 0,
+          merchantDiscount: 0,
+          cashbackFee: 0,
+          netPayable: 0,
+          totalItems: 0,
+          orderDate: '',
+          orderTime: '',
+          summaryEnabled: false,
+          storeId: store.storeId,
+          storeName: store.storeName,
+          storeLogoUrl: store.storeLogoUrl,
+          storeBaseUrl: store.storeBaseUrl,
+          slideshowUrls: store.slideshowUrls,
+          loyaltyContact: '',
+          availablePoints: 0,
+        );
+        await messaging.publishState(idleState);
+        if (kDebugMode) {
+          print('📤 [Apps→CFD] no Hive data → soft IDLE orderId=$orderId');
+        }
+        return;
+      }
+
+      final order = Map<String, dynamic>.from(raw);
+
+      final products = (order['products'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      final payouts = (order['payouts'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      final cashbacks = (order['cashbacks'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      final List<CartItem> items = [];
+
+      for (final p in products) {
+        final int productId = int.tryParse(
+          (p['product_id'] ??
+              p['id'] ??
+              p['fast_key_product_id'] ??
+              p['server_item_id'] ??
+              0)
+              .toString(),
+        ) ??
+            0;
+
+        final double unitPrice = double.tryParse(
+          (p['unit_price'] ??
+              p['regular_price'] ??
+              p['price'] ??
+              p[AppDBConst.itemPrice] ??
+              0)
+              .toString(),
+        ) ??
+            0.0;
+
+        final double linePrice = double.tryParse(
+          (p[AppDBConst.itemPrice] ??
+              p['sales_price'] ??
+              p['price'] ??
+              unitPrice)
+              .toString(),
+        ) ??
+            unitPrice;
+
+        final int qty = int.tryParse(
+          (p['quantity'] ?? p[AppDBConst.itemCount] ?? 1).toString(),
+        ) ??
+            1;
+
+        final double weightQty = double.tryParse(
+          (p['weight_qty'] ?? p['weightQty'] ?? 0).toString(),
+        ) ??
+            0.0;
+
+        items.add(CartItem.fromOrderItem({
+          ...p,
+          'item_name': p['name'] ?? p[AppDBConst.itemName] ?? '',
+          'item_price': linePrice,
+          'items_count': qty,
+          'item_type': p[AppDBConst.itemType] ?? p['type'] ?? 'product',
+          'product_id': productId,
+          'productId': productId,
+          'weight_qty': weightQty,
+          'unit_price': unitPrice > 0 ? unitPrice : linePrice,
+        }));
+      }
+
+      for (final p in payouts) {
+        final rawAmt = (p['amount'] as num?)?.toDouble() ?? 0.0;
+        final amt = rawAmt.abs();
+        if (amt <= 0) continue;
+
+        final int payoutProductId = int.tryParse(
+          (p['payout_product_id'] ?? p['product_id'] ?? 0).toString(),
+        ) ??
+            0;
+
+        items.add(CartItem.fromOrderItem({
+          'item_name': p['product_name'] ?? p['name'] ?? 'Payout',
+          'item_price': amt,
+          'items_count': 1,
+          'item_type': 'payout',
+          'product_id': payoutProductId,
+          'productId': payoutProductId,
+          'item_image': p['product_image'] ?? '',
+        }));
+      }
+
+      for (final c in cashbacks) {
+        final amt = ((c['amount'] as num?)?.toDouble() ?? 0.0).abs();
+        if (amt <= 0) continue;
+
+        final int cashbackProductId = int.tryParse(
+          (c['cashback_product_id'] ?? c['product_id'] ?? 0).toString(),
+        ) ??
+            0;
+
+        items.add(CartItem.fromOrderItem({
+          'item_name': c['product_name'] ?? c['name'] ?? 'Cashback',
+          'item_price': amt,
+          'items_count': 1,
+          'item_type': 'cashback',
+          'product_id': cashbackProductId,
+          'productId': cashbackProductId,
+          'item_image': c['product_image'] ?? '',
+        }));
+      }
+
+      final String loyaltyContact =
+      (order['loyaltyContact'] ?? '').toString();
+      final int availablePoints =
+          int.tryParse((order['available_points'] ?? '0').toString()) ?? 0;
+
+      final double orderDisc =
+      ((order['orderDiscount'] as num?)?.toDouble() ?? 0.0).abs();
+      final double mDisc = ((order['merchantDiscount'] as num?)?.toDouble() ??
+          (order['merchant_discount'] as num?)?.toDouble() ??
+          0.0)
+          .abs();
+      final double tax = (order['order_tax'] as num?)?.toDouble() ??
+          (order['tax_discount'] as num?)?.toDouble() ??
+          0.0;
+      final double cbFee = (order['cashbackFee'] as num?)?.toDouble() ??
+          (order['cashback_fee'] as num?)?.toDouble() ??
+          (order[AppDBConst.orderCashbackFee] as num?)?.toDouble() ??
+          0.0;
+
+      final double gross = (order['gross_total'] as num?)?.toDouble() ??
+          items.fold(0.0, (s, i) => s + i.lineTotal);
+
+      final double netPay = (order['net_payable'] as num?)?.toDouble() ??
+          (gross + tax + cbFee - mDisc - orderDisc);
+
+      final int itemCount = items.fold(0, (s, i) => s + i.qty);
+
+      final store = await CfdStorePayload.load();
+
+      final state = CartState(
+        sessionId: 'ORDER-$orderId',
+        sequence: CfdSequence.next(),
+        screen: 'CART',
+        items: items,
+        tax: tax,
+        message: null,
+        orderId: orderId,
+        subtotalOverride: gross,
+        orderDiscount: orderDisc,
+        merchantDiscount: mDisc,
+        cashbackFee: cbFee,
+        netPayable: netPay,
+        totalItems: itemCount,
+        orderDate: '',
+        orderTime: '',
+        summaryEnabled: false,
+        storeId: store.storeId,
+        storeName: store.storeName,
+        storeLogoUrl: store.storeLogoUrl,
+        storeBaseUrl: store.storeBaseUrl,
+        slideshowUrls: store.slideshowUrls,
+        loyaltyContact: loyaltyContact,
+        availablePoints: availablePoints,
+      );
+
+      await messaging.publishState(state);
+
+      if (kDebugMode) {
+        print(
+          '📤 [Apps→CFD] orderId=$orderId screen=${state.screen} '
+              'items=${items.length} gross=$gross mDisc=$mDisc '
+              'cbFee=$cbFee net=$netPay payouts=${payouts.length} '
+              'cashbacks=${cashbacks.length}',
+        );
+      }
+    } catch (e, s) {
+      if (kDebugMode) print('⚠️ MQTT CFD publish failed: $e\n$s');
+    }
+  }
+
 
 // ==================== FINAL FIXED: FETCH CUSTOM ITEM TEMPLATE ====================
 //   Future<void> _fetchCustomItemTemplate() async {
@@ -3200,6 +3606,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   //   }
   // }
 
+
   Future<void> _handleAddDiscount() async {
     print("🟦 [DISCOUNT] START ---- _handleAddDiscount() ----");
 
@@ -3425,7 +3832,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       };
 
       await offlineBox.put(key, updatedOrder);
-
+      await _pushCfdAfterAppsChange(orderId);
       print("💾 Discount saved successfully");
       print("   • Type:        ${updatedOrder['merchantDiscountType']}");
       print("   • Percentage:  ${updatedOrder['merchantDiscountPercentage']}%");
@@ -3903,21 +4310,22 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 """);
       }
 
-      // -------------------------------------------------------
-      // ✔ UI feedback
-      // -------------------------------------------------------
-      // ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-      //   SnackBar(
-      //     content: Text("Cashback ₹${cashbackAmount.toStringAsFixed(2)} applied"),
-      //     backgroundColor: Colors.green,
-      //   ),
-      // );
+
+      try {
+        CustomerDisplayHelper.skipNextPendingOrderRefresh = false; // ✅ NEW: guard against a stale skip flag eating this explicit update
+        await CustomerDisplayHelper.updateCustomerDisplay(orderId, summaryEnabled: false);
+        print("📺 Customer display updated after cashback addition");
+      } catch (e) {
+        print("❌ Customer display update failed after cashback: $e");
+      }
+
 
       setState(() {
         _cashbackAmount = "";
         _isCashbackLoading = false;
       });
-
+      await offlineBox.put(key, updatedOrder);
+      await _pushCfdAfterAppsChange(orderId);
       await _orderHelper.loadData();
       await _loadOrderData();
       OrderHelper.notifyOrderPanelToRefresh();
@@ -4251,6 +4659,202 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   /////// working weighing items
 
 
+  // Future<void> _handleAddCustomItem() async {
+  //   if (kDebugMode) print("🟢 [CUSTOM ITEM] START");
+  //
+  //   // ── VALIDATION FIRST ─────────────────
+  //   final String enteredName = _customItemNameController.text.trim();
+  //
+  //   if (enteredName.isEmpty) {
+  //     ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //       const SnackBar(
+  //         content: Text("Please enter item name"),
+  //         backgroundColor: Colors.red,
+  //         duration: Duration(seconds: 2),
+  //       ),
+  //     );
+  //     return;
+  //   }
+  //
+  //   if (_selectedCategoryName.trim() == "Select Category" ||
+  //       _selectedCategoryName.trim().isEmpty ||
+  //       !_categoriesList.any((cat) =>
+  //       cat['name']?.toString().trim() == _selectedCategoryName.trim())) {
+  //
+  //     setState(() {
+  //       _customItemPrice = "0.00";
+  //       _customItemPriceController.text = "${TextConstants.currencySymbol}0.00";
+  //       _isEnteringItemPrice = false;
+  //     });
+  //
+  //     ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //       const SnackBar(
+  //         content: Text("Please select a category before adding"),
+  //         backgroundColor: Colors.orange,
+  //         duration: Duration(seconds: 2),
+  //       ),
+  //     );
+  //     return;
+  //   }
+  //
+  //   final orderHelper = OrderHelper();
+  //   final int? ensuredOrderId = await orderHelper.ensureOrderExists();
+  //
+  //   if (ensuredOrderId == null) {
+  //     ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //       const SnackBar(content: Text("Failed to create order"), backgroundColor: Colors.red),
+  //     );
+  //     return;
+  //   }
+  //
+  //   // ── Price Validation ────────────────────────────────────────
+  //   final cleanedPrice = _customItemPrice.replaceAll(RegExp(r'[^0-9.]'), '');
+  //   final double? price = double.tryParse(cleanedPrice);
+  //   if (price == null || price <= 0) {
+  //     ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //       const SnackBar(content: Text("Please enter valid price"), backgroundColor: Colors.red),
+  //     );
+  //     return;
+  //   }
+  //
+  //   setState(() => _isCustomItemLoading = true);
+  //
+  //   try {
+  //     final box = StorageProvider.offlineOrders;
+  //     final key = ensuredOrderId.toString();
+  //     final rawOrder = await box.get(key) ?? {};
+  //     final orderData = Map<String, dynamic>.from(rawOrder);
+  //
+  //     List<dynamic> products = (orderData["products"] ?? [])
+  //         .map((e) => Map<String, dynamic>.from(e))
+  //         .toList();
+  //
+  //     // ── Use the name user actually typed ─────────────────────
+  //     final String baseItemName = enteredName;
+  //     final int selectedProductId = _customItemsList.isNotEmpty
+  //         ? (_customItemsList.first['id'] ?? 60303)
+  //         : 60303;
+  //
+  //     // ── Find selected category ───────────────────────────────
+  //     final selectedCategory = _categoriesList.firstWhere(
+  //           (cat) => (cat['name']?.toString() ?? "").trim() == _selectedCategoryName.trim(),
+  //       orElse: () => _categoriesList.isNotEmpty ? _categoriesList.first : {},
+  //     );
+  //
+  //     final int selectedCategoryId = int.tryParse(selectedCategory['id']?.toString() ?? '0') ?? 0;
+  //     final double categoryTaxPercent = double.tryParse(
+  //         selectedCategory['pos_tax_percent']?.toString() ?? '0') ?? 0.0;
+  //
+  //     final String posTaxClass = selectedCategory['pos_tax_class']?.toString() ?? "standard";
+  //     final String posTaxPercent = selectedCategory['pos_tax_percent']?.toString() ?? "0";
+  //
+  //     String taxSlug = selectedCategory['pos_tax_slug']?.toString() ?? '';
+  //     if (taxSlug.isEmpty) {
+  //       final rawClass = selectedCategory['pos_tax_class']?.toString() ?? '';
+  //       taxSlug = rawClass.toLowerCase().replaceAll(' ', '-');
+  //     }
+  //
+  //     final bool isTaxable = categoryTaxPercent > 0 && taxSlug.isNotEmpty;
+  //     final String taxStatus = isTaxable ? "taxable" : "none";
+  //     final String taxClass = isTaxable ? taxSlug : "";
+  //
+  //     // ── Build item using manual name ─────────────────────────
+  //     final normalizedSku = _skuController.text.trim().isNotEmpty
+  //         ? normalizeSku(_skuController.text)
+  //         : "C-${DateTime.now().millisecondsSinceEpoch}";
+  //
+  //     final String displayName = "$_selectedCategoryName - $baseItemName";
+  //
+  //     final customItem = {
+  //       "server_item_id": selectedProductId,
+  //       "product_id": selectedProductId,
+  //       "variation_id": 0,
+  //       "type": "simple",
+  //       "name": displayName,
+  //       "price": price,
+  //       "sku": normalizedSku,
+  //       "categories": [],
+  //       "tags": [],
+  //       "selected_category_id": selectedCategoryId,
+  //       "selected_category_name": _selectedCategoryName,
+  //       "selected_category_tax_slug": taxSlug,
+  //       "pos_tax_class": posTaxClass,
+  //       "pos_tax_percent": posTaxPercent,
+  //       "tax_status": taxStatus,
+  //       "tax_class": taxClass,
+  //       "tax_rate": categoryTaxPercent,
+  //       "tax_percent": categoryTaxPercent,
+  //       "applied_tax": "$_selectedCategoryName Tax",
+  //       "quantity": 1,
+  //       "item_image": "assets/custom.png",
+  //       "product_image": "assets/custom.png",
+  //       AppDBConst.itemType: "custom",
+  //       AppDBConst.itemName: displayName,
+  //       AppDBConst.itemPrice: price,
+  //       AppDBConst.itemSumPrice: price,
+  //       AppDBConst.itemCount: 1,
+  //     };
+  //
+  //     products.add(customItem);
+  //
+  //     // Recalculate totals
+  //     double grossTotal = 0.0;
+  //     for (var p in products) {
+  //       final itemPrice = (p[AppDBConst.itemPrice] ?? p["price"] ?? 0.0) as num;
+  //       final qty = (p["quantity"] ?? 1) as num;
+  //       grossTotal += itemPrice * qty;
+  //     }
+  //
+  //     orderData["products"] = products;
+  //     orderData["gross_total"] = grossTotal;
+  //     orderData["net_total"] = grossTotal;
+  //     orderData["net_payable"] = grossTotal;
+  //
+  //     await box.put(key, orderData);
+  //     await StorageProvider.productCache.put("sku_$normalizedSku", {"products": [customItem]});
+  //     await _pushCfdAfterAppsChange(ensuredOrderId);
+  //     // safety re-push after panel has a moment to load Hive
+  //     await Future.delayed(const Duration(milliseconds: 150));
+  //     await _pushCfdAfterAppsChange(ensuredOrderId);
+  //     // ── Reset UI after success ───────────────────────────────
+  //     setState(() {
+  //       _isCustomItemLoading = false;
+  //       _customItemPrice = "0.00";
+  //       _customItemPriceController.text = "${TextConstants.currencySymbol}0.00";
+  //       _customItemNameController.clear();   // ← Clear Name
+  //       _skuController.clear();              // ← Clear SKU
+  //       _isEnteringItemPrice = false;
+  //       _selectedCategoryName = "Select Category";
+  //     });
+  //
+  //     await _orderHelper.loadData();
+  //     await _loadOrderData();
+  //     OrderHelper.notifyOrderPanelToRefresh();
+  //     widget.refreshOrderList?.call();
+  //
+  //     print("✅ SUCCESS: Added → $displayName");
+  //
+  //     ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //       SnackBar(
+  //         content: Text("$displayName added successfully!"),
+  //         backgroundColor: Colors.green,
+  //         duration: const Duration(seconds: 2),
+  //       ),
+  //     );
+  //
+  //   } catch (e, stack) {
+  //     print("❌ Custom Item Error: $e");
+  //     print("Stack: $stack");
+  //     setState(() => _isCustomItemLoading = false);
+  //
+  //     ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
+  //       SnackBar(
+  //         content: Text("Error adding custom item: $e"),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //   }
+  // }
   Future<void> _handleAddCustomItem() async {
     if (kDebugMode) print("🟢 [CUSTOM ITEM] START");
 
@@ -4272,10 +4876,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         _selectedCategoryName.trim().isEmpty ||
         !_categoriesList.any((cat) =>
         cat['name']?.toString().trim() == _selectedCategoryName.trim())) {
-
       setState(() {
         _customItemPrice = "0.00";
-        _customItemPriceController.text = "${TextConstants.currencySymbol}0.00";
+        _customItemPriceController.text =
+        "${TextConstants.currencySymbol}0.00";
         _isEnteringItemPrice = false;
       });
 
@@ -4294,7 +4898,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
     if (ensuredOrderId == null) {
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        const SnackBar(content: Text("Failed to create order"), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text("Failed to create order"),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -4304,7 +4911,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
     final double? price = double.tryParse(cleanedPrice);
     if (price == null || price <= 0) {
       ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-        const SnackBar(content: Text("Please enter valid price"), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text("Please enter valid price"),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -4329,20 +4939,28 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
       // ── Find selected category ───────────────────────────────
       final selectedCategory = _categoriesList.firstWhere(
-            (cat) => (cat['name']?.toString() ?? "").trim() == _selectedCategoryName.trim(),
-        orElse: () => _categoriesList.isNotEmpty ? _categoriesList.first : {},
+            (cat) =>
+        (cat['name']?.toString() ?? "").trim() ==
+            _selectedCategoryName.trim(),
+        orElse: () =>
+        _categoriesList.isNotEmpty ? _categoriesList.first : {},
       );
 
-      final int selectedCategoryId = int.tryParse(selectedCategory['id']?.toString() ?? '0') ?? 0;
+      final int selectedCategoryId =
+          int.tryParse(selectedCategory['id']?.toString() ?? '0') ?? 0;
       final double categoryTaxPercent = double.tryParse(
-          selectedCategory['pos_tax_percent']?.toString() ?? '0') ?? 0.0;
+          selectedCategory['pos_tax_percent']?.toString() ?? '0') ??
+          0.0;
 
-      final String posTaxClass = selectedCategory['pos_tax_class']?.toString() ?? "standard";
-      final String posTaxPercent = selectedCategory['pos_tax_percent']?.toString() ?? "0";
+      final String posTaxClass =
+          selectedCategory['pos_tax_class']?.toString() ?? "standard";
+      final String posTaxPercent =
+          selectedCategory['pos_tax_percent']?.toString() ?? "0";
 
       String taxSlug = selectedCategory['pos_tax_slug']?.toString() ?? '';
       if (taxSlug.isEmpty) {
-        final rawClass = selectedCategory['pos_tax_class']?.toString() ?? '';
+        final rawClass =
+            selectedCategory['pos_tax_class']?.toString() ?? '';
         taxSlug = rawClass.toLowerCase().replaceAll(' ', '-');
       }
 
@@ -4392,7 +5010,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       // Recalculate totals
       double grossTotal = 0.0;
       for (var p in products) {
-        final itemPrice = (p[AppDBConst.itemPrice] ?? p["price"] ?? 0.0) as num;
+        final itemPrice =
+        (p[AppDBConst.itemPrice] ?? p["price"] ?? 0.0) as num;
         final qty = (p["quantity"] ?? 1) as num;
         grossTotal += itemPrice * qty;
       }
@@ -4403,23 +5022,34 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       orderData["net_payable"] = grossTotal;
 
       await box.put(key, orderData);
-      await StorageProvider.productCache.put("sku_$normalizedSku", {"products": [customItem]});
+      await StorageProvider.productCache
+          .put("sku_$normalizedSku", {"products": [customItem]});
+
+      // Sync POS panel first so Hive + active order are ready for CFD
+      await _orderHelper.loadData();
+      await _loadOrderData();
+      OrderHelper.notifyOrderPanelToRefresh();
+      widget.refreshOrderList?.call();
+
+      // Clear any stale skip so native CFD accepts this update
+      try {
+        CustomerDisplayHelper.skipNextPendingOrderRefresh = false;
+      } catch (_) {}
+
+      await _pushCfdAfterAppsChange(ensuredOrderId);
+
 
       // ── Reset UI after success ───────────────────────────────
       setState(() {
         _isCustomItemLoading = false;
         _customItemPrice = "0.00";
-        _customItemPriceController.text = "${TextConstants.currencySymbol}0.00";
-        _customItemNameController.clear();   // ← Clear Name
-        _skuController.clear();              // ← Clear SKU
+        _customItemPriceController.text =
+        "${TextConstants.currencySymbol}0.00";
+        _customItemNameController.clear(); // ← Clear Name
+        _skuController.clear(); // ← Clear SKU
         _isEnteringItemPrice = false;
         _selectedCategoryName = "Select Category";
       });
-
-      await _orderHelper.loadData();
-      await _loadOrderData();
-      OrderHelper.notifyOrderPanelToRefresh();
-      widget.refreshOrderList?.call();
 
       print("✅ SUCCESS: Added → $displayName");
 
@@ -4430,7 +5060,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
           duration: const Duration(seconds: 2),
         ),
       );
-
     } catch (e, stack) {
       print("❌ Custom Item Error: $e");
       print("Stack: $stack");
@@ -4444,7 +5073,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       );
     }
   }
-
   ///  Converts any deeply nested Map/List from Hive into JSON-safe Map<String, dynamic>
   dynamic _convertToJsonSafe(dynamic value) {
     if (value == null) return null;
@@ -4610,42 +5238,41 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         total += (p["price"] ?? 0) * (p["quantity"] ?? 1);
       }
 
+      final double newGross = total + (-payoutAmount);
 
       final updatedOrder = {
         ...existingOrder,
         "products": products,
         "payouts": payouts,
-        "gross_total": total + (-payoutAmount),
+        "gross_total": newGross,
+        "net_total": newGross,
+        "net_payable": newGross,
       };
 
       await offlineBox.put(key, updatedOrder);
+
+      // Sync POS panel first so Hive + active order are ready for CFD
+      await _orderHelper.loadData();
+      await _loadOrderData();
+      OrderHelper.notifyOrderPanelToRefresh();
+      widget.refreshOrderList?.call();
+
+      // Clear any stale skip so native CFD accepts this update
       try {
-        await CustomerDisplayHelper.updateCustomerDisplay(
-          ensuredOrderId,
-          summaryEnabled: false,
-        );
-        print("📺 Customer display updated after custom item addition");
-      } catch (e) {
-        print("❌ Customer display update failed: $e");
-      }
+        CustomerDisplayHelper.skipNextPendingOrderRefresh = false;
+      } catch (_) {}
 
+      // Push CFD (native + MQTT) — works from IDLE
+      await _pushCfdAfterAppsChange(orderId);
 
-      // ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-      //   SnackBar(
-      //     content: Text("Payout of ₹${payoutAmount.toStringAsFixed(2)} added successfully"),
-      //     backgroundColor: Colors.green,
-      //   ),
-      // );
+      // Second push after short delay so CFD catches post-panel refresh
+      await Future.delayed(const Duration(milliseconds: 180));
+      await _pushCfdAfterAppsChange(orderId);
 
       setState(() {
         _payoutAmount = "";
         _isPayoutLoading = false;
       });
-
-      await _orderHelper.loadData();
-      await _loadOrderData();
-      OrderHelper.notifyOrderPanelToRefresh();
-      widget.refreshOrderList?.call();
 
       print("✅ [PAYOUT] DONE ---- _handleAddPayout() ----");
     } catch (e, s) {

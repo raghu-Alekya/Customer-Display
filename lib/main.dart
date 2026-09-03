@@ -58,9 +58,14 @@ import 'Widgets/navigation_services.dart';
 import 'Widgets/offline_order_sync_service.dart';
 import 'Widgets/weighing_scale_widget.dart';
 import 'Utilities/global_utility.dart';
+import 'mqtt_server/cart_provider.dart';
+import 'mqtt_server/cart_state.dart';
+import 'mqtt_server/cfd_store_payload.dart';
+import 'mqtt_server/store_messaging_service.dart';
+
+
 
 void main() async {
-
   WidgetsFlutterBinding.ensureInitialized(); // Ensure Flutter services are ready
 
   // Initialize Isar first
@@ -70,7 +75,6 @@ void main() async {
     [DiscountRuleIsarSchema],
     directory: (await getApplicationDocumentsDirectory()).path,
   );
-
 
   // 1️⃣ First → initialize base URL
   await UrlHelper.initializeBaseUrl();
@@ -87,20 +91,23 @@ void main() async {
   } else {
     print("⚠ No user token found — skipping cashback API");
   }
+
   /// Build #1.0.187: Required -> Disable device back button completely
-  /// This block locks the app to hides system overlays (e.g., status bar, navigation bar) if enableHardwareBackButton is false
   if (!Misc.enableHardwareBackButton) {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
   }
 
   ThemeNotifier themeNotifier = ThemeNotifier();
   await themeNotifier.initializeThemeMode();
+
   // Build #1.0.9 : By default dark theme getting selected on launch even after changing from settings
   await UrlHelper.initializeBaseUrl();
   await DBHelper.instance.database;
+
   final deviceDetails = await GlobalUtility.getDeviceDetails();
   // CustomerService.setPosIdFromDevice(deviceDetails['device_id']);
   // await CustomerService.connect();
+
   final storeInfo = PinakaPreferences.getLoggedInStore();
   if (storeInfo.isNotEmpty) {
     await CustomerDisplayHelper.updateWelcomeWithStore(
@@ -117,17 +124,12 @@ void main() async {
   final httpClient = http.Client();
 
   final inventoryTagRemoteDataSource = Inventory_Tag_Remote_Data_Source_Impl(httpClient);
-
   final inventoryTagRepository = Inventory_Tag_Repository_Impl(inventoryTagRemoteDataSource);
-
   final inventoryTagUseCase = Inventory_Tag_Get_Tags_UseCase(inventoryTagRepository);
 
-//////Inventory_Tax_Get
-
+  //////Inventory_Tax_Get
   final inventoryTaxRemoteDataSource = Inventory_Tax_Remote_Data_Source_Impl(httpClient);
-
   final inventoryTaxRepository = Inventory_Tax_Repository_Impl(inventoryTaxRemoteDataSource);
-
   final inventoryTaxUseCase = Inventory_Tax_Get_UseCase(inventoryTaxRepository);
 
   // Inventory Categories
@@ -140,102 +142,144 @@ void main() async {
   final inventoryAttributesRepository = InventoryAttributesRepositoryImpl(remoteDataSource: inventoryAttributesRemoteDataSource);
   final inventoryAttributesUseCase = InventoryAttributesGetUseCase(repository: inventoryAttributesRepository);
 
-
-  //  InventoryGetProductTypes setup
+  // InventoryGetProductTypes setup
   final inventoryProductTypesRemoteDataSource = InventoryGetProductTypesRemoteDataSourceImpl(client: httpClient);
   final inventoryProductTypesRepository = InventoryGetProductTypesRepositoryImpl(remoteDataSource: inventoryProductTypesRemoteDataSource);
   final inventoryProductTypesUseCase = InventoryGetProductTypesGetUseCase(repository: inventoryProductTypesRepository);
 
-  //  Create the remote data source
-//   final inventoryAttributeItemsRemoteDataSource =
-//   InventoryAttributeItemsRemoteDataSourceImpl(
-//     client: http.Client(),
-//   );
-//
-// // Create the repository and inject the remote data source
-//   final inventoryAttributeItemsRepository = InventoryAttributeItemsRepositoryImpl(
-//     remoteDataSource: inventoryAttributeItemsRemoteDataSource,
-//   );
-
-//  Create the use case and inject the repository
-//   final inventoryAttributeItemsUseCase = GetInventoryAttributeItemsUseCase(
-//     repository: inventoryAttributeItemsRepository,
-//   );
-
   // Add Product WooCommerce setup
-
   final addProductRemoteDataSource = AddProductInventoryTaxRemoteDataSource();
   final addProductRepository = AddProductInventoryTaxRepositoryImpl(remoteDataSource: addProductRemoteDataSource);
   final addProductUseCase = AddProductInventoryTaxGetUseCase(repository: addProductRepository);
   final addProductBloc = AddProductInventoryTaxBloc(addProductUseCase: addProductUseCase);
 
-  // runApp(
-  //   ChangeNotifierProvider(
-  //     create: (_) => themeNotifier,
-  //     child: const MyApp(),
-  //   ),
-  // );
+  final messagingService = StoreMessagingService(
+    merchantId: 'M1001',
+    storeId: 'S001',
+    terminalId: 'POS01',
+    brokerUsername: 'pinaka_cfd',
+    brokerToken: 'generated-device-token',
+  );
 
+  try {
+    await messagingService.startBroker();
+    await messagingService.startPublisher();
+    await messagingService.startMdnsAdvertisement();
+    print(
+      '✅ MQTT Broker + Publisher + mDNS started — isReady=${messagingService.isReady}',
+    );
+  } catch (e) {
+    print('❌ Failed to start MQTT (app continues): $e');
+  }
+
+  final posIp = await messagingService.getDeviceLocalIp();
+  if (posIp != null) {
+    print('========================================');
+    print('📱 POS DEVICE IP ADDRESS → $posIp');
+    print('   CFD fallback: $posIp:1883');
+    print('   mDNS: _pinaka-pos._tcp  name=PINAKA-POS01');
+    print('========================================');
+  } else {
+    print('❌ Could not detect POS IP address');
+  }
+
+  // Native secondary display welcome
+  // final storeInfo = PinakaPreferences.getLoggedInStore();
+  if (storeInfo.isNotEmpty) {
+    await CustomerDisplayHelper.updateWelcomeWithStore(
+      storeInfo['storeId']!,
+      storeInfo['storeName']!,
+      storeLogoUrl: storeInfo['storeLogoUrl'],
+      storeBaseUrl: storeInfo['storeBaseUrl'],
+    );
+  } else {
+    await CustomerDisplayService.showWelcome();
+  }
+
+  // MQTT CFD welcome (logo + name + banners)
+  try {
+    final store = await CfdStorePayload.load();
+    await messagingService.publishState(
+      CartState(
+        sessionId: 'WELCOME',
+        sequence: 0,
+        screen: 'WELCOME',
+        items: const [],
+        storeId: store.storeId,
+        storeName: store.storeName,
+        storeLogoUrl: store.storeLogoUrl,
+        storeBaseUrl: store.storeBaseUrl,
+        slideshowUrls: store.slideshowUrls,
+      ),
+    );
+    print(
+      '📤 MQTT WELCOME published → store=${store.storeName} '
+          'logo=${store.storeLogoUrl} banners=${store.slideshowUrls.length}',
+    );
+  } catch (e) {
+    print('⚠️ MQTT welcome publish failed: $e');
+  }
+  // ====================================================================
 
   runApp(
-      MultiRepositoryProvider(
-        providers: [
-          RepositoryProvider<CompletedOrdersRepository>(
-            create: (_) => CompletedOrdersRepository(
-              baseUrl: "https://merchantretail.alektasolutions.com",
-            ),
-          ),
-        ],
-        child:
-        MultiBlocProvider(
-          providers: [
-            // ✅ ADD THIS
-            BlocProvider<CompletedOrdersBloc>(
-              create: (context) => CompletedOrdersBloc(
-                context.read<CompletedOrdersRepository>(),
-              ),
-            ),
-            BlocProvider<Inventory_Tag_Bloc>(
-              create: (_) => Inventory_Tag_Bloc(inventoryTagUseCase),
-            ),
-
-            BlocProvider<Inventory_Tax_Bloc>(
-              create: (_) => Inventory_Tax_Bloc(inventoryTaxUseCase),
-            ),
-
-            BlocProvider<InventoryCategoriesBloc>(
-              create: (_) => InventoryCategoriesBloc(getCategoriesUseCase: inventoryCategoriesUseCase),
-            ),
-
-            BlocProvider<InventoryAttributesBloc>(
-              create: (_) => InventoryAttributesBloc(getUseCase: inventoryAttributesUseCase),
-            ),
-            BlocProvider<InventoryGetProductTypesBloc>(
-              create: (_) =>
-                  InventoryGetProductTypesBloc(useCase: inventoryProductTypesUseCase),
-            ),
-
-            // BlocProvider<InventoryAttributeItemsBloc>(
-            //   create: (_) => InventoryAttributeItemsBloc(getItemsUseCase: inventoryAttributeItemsUseCase),
-            // ),
-
-
-            // Add Product Bloc
-            BlocProvider<AddProductInventoryTaxBloc>(create: (_) => addProductBloc),
-            //ChangeNotifierProvider(create: (_) => WeightProvider())
-            ChangeNotifierProvider(create: (_) => WeightProvider())
-
-
-          ],
-          child: ChangeNotifierProvider(
-            create: (_) => themeNotifier,
-            child: const MyApp(),
+    MultiRepositoryProvider(
+      providers: [
+        RepositoryProvider<CompletedOrdersRepository>(
+          create: (_) => CompletedOrdersRepository(
+            baseUrl: "https://merchantretail.alektasolutions.com",
           ),
         ),
-      ));
+        // ========== NEW: Provide the messaging service ==========
+        RepositoryProvider<StoreMessagingService>.value(
+          value: messagingService,
+        ),
+        // ========================================================
+      ],
+      child: MultiBlocProvider(
+        providers: [
+          BlocProvider<CompletedOrdersBloc>(
+            create: (context) => CompletedOrdersBloc(
+              context.read<CompletedOrdersRepository>(),
+            ),
+          ),
+          BlocProvider<Inventory_Tag_Bloc>(
+            create: (_) => Inventory_Tag_Bloc(inventoryTagUseCase),
+          ),
+          BlocProvider<Inventory_Tax_Bloc>(
+            create: (_) => Inventory_Tax_Bloc(inventoryTaxUseCase),
+          ),
+          BlocProvider<InventoryCategoriesBloc>(
+            create: (_) => InventoryCategoriesBloc(getCategoriesUseCase: inventoryCategoriesUseCase),
+          ),
+          BlocProvider<InventoryAttributesBloc>(
+            create: (_) => InventoryAttributesBloc(getUseCase: inventoryAttributesUseCase),
+          ),
+          BlocProvider<InventoryGetProductTypesBloc>(
+            create: (_) => InventoryGetProductTypesBloc(useCase: inventoryProductTypesUseCase),
+          ),
+          BlocProvider<AddProductInventoryTaxBloc>(create: (_) => addProductBloc),
+          ChangeNotifierProvider(create: (_) => WeightProvider()),
 
+          // ========== NEW: CartProvider for MQTT publishing ==========
+          ChangeNotifierProvider(
+            create: (_) => CartProvider(
+              messagingService: messagingService,
+              sessionId: 'SALE-${DateTime.now().millisecondsSinceEpoch}',
+            ),
+          ),
+
+          RepositoryProvider<StoreMessagingService>.value(value: messagingService),
+
+          // ==========================================================
+        ],
+        child: ChangeNotifierProvider(
+          create: (_) => themeNotifier,
+          child: const MyApp(),
+        ),
+      ),
+    ),
+  );
 }
-
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -243,34 +287,28 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
-    return SafeArea(  //Build #1.0.2 : Fixed - status bar overlapping with design
+    return SafeArea(
       child: MaterialApp(
         navigatorKey: navigatorKey,
         debugShowCheckedModeBanner: false,
         theme: ThemeNotifier.lightTheme.copyWith(
-          // Add Poppins to your existing light theme
           textTheme: GoogleFonts.interTextTheme(ThemeNotifier.lightTheme.textTheme),
         ),
         darkTheme: ThemeNotifier.darkTheme.copyWith(
-          // Add Poppins to your existing dark theme
           textTheme: GoogleFonts.interTextTheme(ThemeNotifier.darkTheme.textTheme),
         ),
         themeMode: themeHelper.themeMode,
         builder: (context, child) {
-          // Widget error = const Text('...rendering error...');
-
-          // final scale = MediaQuery.of(context).textScaleFactor.clamp(0.9, 1.0);
           final scale = MediaQuery.of(context)
               .textScaler
               .clamp(minScaleFactor: 0.9, maxScaleFactor: 1.0);
           return MediaQuery(
-            // data: MediaQuery.of(context).copyWith(textScaleFactor: scale ), child: child!, //set desired text scale factor here
             data: MediaQuery.of(context).copyWith(textScaler: scale),
-            child: child!, //set desired text scale factor here
+            child: child!,
           );
         },
-        home: PopScope( // Build #1.0.187: Fixed - prevents back navigation / hardware back button
-          canPop: Misc.enableHardwareBackButton, // Build #1.0.189: Added misc boolean value for enable/disable device back button
+        home: PopScope(
+          canPop: Misc.enableHardwareBackButton,
           child: Scaffold(
             body: SplashScreen(),
           ),
@@ -279,6 +317,8 @@ class MyApp extends StatelessWidget {
     );
   }
 }
+
+
 //
 // import 'package:flutter/material.dart';
 // import 'package:flutter_bloc/flutter_bloc.dart';

@@ -3269,8 +3269,8 @@ class OrderHelper {
           'multipack_discount_total': 0.0,
           'combo_discount_total': 0.0,
           'item_tax': 0.0,
-          'meta_data': metaData ?? [],        // ✅ NEW — persists loyalty points meta
-          'loyalty_points': loyaltyPoints ?? 0, // ✅ NEW — persists computed loyalty points
+          'meta_data': metaData ?? [],           // ✅ persists loyalty points meta
+          'loyalty_points': loyaltyPoints ?? 0,   // ✅ persists computed loyalty points
         };
 
         // Add weight fields for weighted items
@@ -3294,43 +3294,17 @@ class OrderHelper {
       await saveOfflineOrder(orderId, updatedOrder);
       print('[Cart] addItemToOrder saved ${products.length} line(s) in ${sw.elapsedMilliseconds}ms');
 
-      final double subtotal = (updatedOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
-      final double tax = (updatedOrder['order_tax'] as num?)?.toDouble() ?? 0.0;
-      final double total = (updatedOrder['net_payable'] as num?)?.toDouble() ?? 0.0;
-
       // Refresh UI
       notifyOrderPanelToRefresh();
       if (onItemAdded != null) onItemAdded();
       print('[Cart] addItemToOrder DONE "${name}" total ${sw.elapsedMilliseconds}ms');
 
-      // Update customer display (fire-and-forget)
-      unawaited(() async {
-        try {
-          await const MethodChannel(
-            'com.alekta.pinakapos/sunmi_display',
-          ).invokeMethod(
-            'showCustomerData',
-            {
-              'orderId': orderId,
-              'items': products,
-              'grossTotal': subtotal,
-              'discount': (updatedOrder['discount'] as num?)?.toDouble() ?? 0.0,
-              'merchantDiscount': (updatedOrder['merchant_discount'] as num?)?.toDouble() ?? 0.0,
-              'netTotal': (updatedOrder['net_total'] as num?)?.toDouble() ?? subtotal,
-              'tax': tax,
-              'netPayable': total,
-              'orderDate': updatedOrder['order_date']?.toString() ?? '',
-              'orderTime': updatedOrder['order_time']?.toString() ?? '',
-              'cashbackFee': (updatedOrder['cashback_fee'] as num?)?.toDouble() ?? 0.0,
-              'loyaltyContact': updatedOrder['loyalty_contact']?.toString() ?? '',
-              'availablePoints': (updatedOrder['available_points'] as num?)?.toInt() ?? 0,
-              'summaryEnabled': false,
-            },
-          );
-        } catch (e) {
-          print("Customer display unavailable: $e");
-        }
-      }());
+      try {
+        CustomerDisplayHelper.skipNextPendingOrderRefresh = false;
+        await CustomerDisplayHelper.updateCustomerDisplay(orderId);
+      } catch (e) {
+        print("❌ Customer display update failed in addItemToOrder: $e");
+      }
 
     } finally {
       _activeAdds.remove(key);

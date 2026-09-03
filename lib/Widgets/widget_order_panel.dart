@@ -68,6 +68,10 @@ import '../Repositories/Orders/order_repository.dart';
 import '../Screens/Home/add_screen.dart';
 import '../Screens/Home/edit_product_screen.dart';
 import '../Utilities/svg_images_utility.dart';
+import '../mqtt_server/cart_item.dart';
+import '../mqtt_server/cart_state.dart';
+import '../mqtt_server/cfd_store_payload.dart';
+import '../mqtt_server/store_messaging_service.dart';
 import '../services/CustomerDisplayService.dart';
 import '../services/customer_services.dart';
 import 'ManualPriceDialog.dart';
@@ -109,6 +113,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   static const MethodChannel customerDisplayChannel =
   MethodChannel('com.alekta.pinakapos/sunmi_display');
+  int? _activeOrderId;
 
   Future<void> _agentDebugLog({
     required String hypothesisId,
@@ -181,6 +186,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   VoidCallback? _orderPanelFullRefreshListener;
   bool _isNewTabDisabled = false;
   bool _isSwitchingOrder = false;
+  bool _summaryEnabledForActiveOrder = false;
+  int? _summaryLockedOrderId;
 
   /// True only after restore + fetch complete; prevents showing stale order items when switching from Orders/Apps.
   bool _initialRestoreDone = false;
@@ -205,9 +212,314 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     );
   }
 
+  //
+  // Future<void> _publishMqttCart({
+  //   bool isPayment = false,
+  //   double? grossTotal,
+  //   double? orderTax,
+  //   double? orderDiscount,
+  //   double? merchantDiscount,
+  //   double? cashbackFee,
+  //   double? netPayable,
+  //   int? totalItemsCount,
+  //   bool? summaryEnabled,
+  //   String? orderDate,
+  //   String? orderTime,
+  // }) async {
+  //   try {
+  //     final messaging =
+  //     Provider.of<StoreMessagingService>(context, listen: false);
+  //
+  //     final int? activeId = orderHelper.activeOrderId;
+  //
+  //     // Keep sticky in sync with active order
+  //     if (activeId == null) {
+  //       _summaryEnabledForActiveOrder = false;
+  //       _summaryLockedOrderId = null;
+  //     } else if (_summaryLockedOrderId != null &&
+  //         activeId != _summaryLockedOrderId) {
+  //       // Different order → drop sticky
+  //       _summaryEnabledForActiveOrder = false;
+  //       _summaryLockedOrderId = null;
+  //     }
+  //
+  //     // Explicit true from caller locks sticky for this order
+  //     if (summaryEnabled == true && activeId != null) {
+  //       _summaryEnabledForActiveOrder = true;
+  //       _summaryLockedOrderId = activeId;
+  //     }
+  //     // Explicit false unlocks
+  //     if (summaryEnabled == false) {
+  //       _summaryEnabledForActiveOrder = false;
+  //       _summaryLockedOrderId = null;
+  //     }
+  //
+  //     final bool effectiveSummary = summaryEnabled ??
+  //         (_summaryEnabledForActiveOrder &&
+  //             activeId != null &&
+  //             activeId == _summaryLockedOrderId);
+  //
+  //     final List<CartItem> items =
+  //     orderItems.map((item) => CartItem.fromOrderItem(item)).toList();
+  //
+  //     final double tax = orderTax ?? 0.0;
+  //     final double disc = orderDiscount ?? 0.0;
+  //     final double mDisc = merchantDiscount ?? 0.0;
+  //     final double cbFee = cashbackFee ?? this.cashbackFee;
+  //     final double gross =
+  //         grossTotal ?? items.fold(0.0, (s, i) => s + i.lineTotal);
+  //     final double payable =
+  //         netPayable ?? (gross + tax + cbFee - disc - mDisc);
+  //     final int itemCount =
+  //         totalItemsCount ?? items.fold(0, (s, i) => s + i.qty);
+  //
+  //     final store = await CfdStorePayload.load();
+  //
+  //     final state = CartState(
+  //       sessionId: 'ORDER-${activeId ?? 0}',
+  //       sequence: 0,
+  //       screen: isPayment
+  //           ? 'PAYMENT'
+  //           : (items.isEmpty ? 'IDLE' : 'CART'),
+  //       items: items,
+  //       tax: tax,
+  //       message: isPayment ? 'Please complete payment' : null,
+  //       orderId: activeId,
+  //       subtotalOverride: gross,
+  //       orderDiscount: disc,
+  //       merchantDiscount: mDisc,
+  //       cashbackFee: cbFee,
+  //       netPayable: payable,
+  //       totalItems: itemCount,
+  //       orderDate: orderDate ?? widget.formattedDate,
+  //       orderTime: orderTime ?? widget.formattedTime,
+  //       summaryEnabled: effectiveSummary,
+  //       storeId: store.storeId,
+  //       storeName: store.storeName,
+  //       storeLogoUrl: store.storeLogoUrl,
+  //       storeBaseUrl: store.storeBaseUrl,
+  //       slideshowUrls: store.slideshowUrls,
+  //     );
+  //
+  //     await messaging.publishState(state);
+  //
+  //     if (kDebugMode) {
+  //       print(
+  //         '📤 MQTT → orderId=$activeId screen=${state.screen} '
+  //             'summary=$effectiveSummary sticky=$_summaryEnabledForActiveOrder '
+  //             'lockedId=$_summaryLockedOrderId items=${items.length}',
+  //       );
+  //     }
+  //   } catch (e, s) {
+  //     if (kDebugMode) print('MQTT publish error: $e\n$s');
+  //   }
+  // }
+  //
 
-  // Helper to extract loyalty points from product metadata
-// Helper to extract loyalty points from product metadata
+  Future<void> _publishMqttCart({
+    bool isPayment = false,
+    double? grossTotal,
+    double? orderTax,
+    double? orderDiscount,
+    double? merchantDiscount,
+    double? cashbackFee,
+    double? netPayable,
+    int? totalItemsCount,
+    bool? summaryEnabled,
+    String? orderDate,
+    String? orderTime,
+    bool forceIdle = false, // true ONLY from delete confirm
+  }) async {
+    try {
+      final messaging =
+      Provider.of<StoreMessagingService>(context, listen: false);
+
+      final int? activeId = orderHelper.activeOrderId;
+
+      // ============================================================
+      // DELETE CONFIRM ONLY → publishIdleClear (state + /cmd)
+      // ============================================================
+      if (forceIdle) {
+        _summaryEnabledForActiveOrder = false;
+        _summaryLockedOrderId = null;
+
+        await messaging.publishIdleClear();
+
+        if (kDebugMode) {
+          print(
+            '📤 MQTT → IDLE via publishIdleClear (delete confirm) '
+                'activeId=$activeId orderItems=${orderItems.length}',
+          );
+        }
+        return;
+      }
+
+      // ============================================================
+      // Soft IDLE (empty cart / no order) — NOT publishIdleClear
+      // ============================================================
+      // final bool shouldIdle =
+      //     !isPayment && (activeId == null || orderItems.isEmpty);
+
+
+      final bool shouldIdle = !isPayment && activeId == null;
+
+      if (shouldIdle) {
+        _summaryEnabledForActiveOrder = false;
+        _summaryLockedOrderId = null;
+
+        final store = await CfdStorePayload.load();
+        final idleState = CartState(
+          sessionId: 'ORDER-0',
+          sequence: CfdSequence.next(),
+          screen: 'IDLE',
+          items: const [],
+          tax: 0,
+          message: null,
+          orderId: null,
+          subtotalOverride: 0,
+          orderDiscount: 0,
+          merchantDiscount: 0,
+          cashbackFee: 0,
+          netPayable: 0,
+          totalItems: 0,
+          orderDate: '',
+          orderTime: '',
+          summaryEnabled: false,
+          storeId: store.storeId,
+          storeName: store.storeName,
+          storeLogoUrl: store.storeLogoUrl,
+          storeBaseUrl: store.storeBaseUrl,
+          slideshowUrls: store.slideshowUrls,
+          loyaltyContact: '',
+          availablePoints: 0,
+        );
+
+        await messaging.publishState(idleState);
+
+        if (kDebugMode) {
+          print(
+            '📤 MQTT → IDLE (soft) shouldIdle=$shouldIdle '
+                'forceIdle=$forceIdle activeId=$activeId '
+                'orderItems=${orderItems.length}',
+          );
+        }
+        return;
+      }
+
+      // ============================================================
+      // NORMAL CART / PAYMENT (unchanged)
+      // ============================================================
+      String loyaltyContact = '';
+      int availablePoints = 0;
+      double hiveOrderDiscount = 0.0;
+      double hiveMerchantDiscount = 0.0;
+      double hiveOrderTax = 0.0;
+      double hiveCashbackFee = 0.0;
+
+      if (activeId != null) {
+        final box = StorageProvider.offlineOrders;
+        final raw = await box.get(activeId.toString());
+        if (raw != null) {
+          final order = Map<String, dynamic>.from(raw);
+          loyaltyContact = (order['loyaltyContact'] ?? '').toString();
+          availablePoints =
+              int.tryParse((order['available_points'] ?? '0').toString()) ?? 0;
+          hiveOrderDiscount =
+              (order['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+          hiveMerchantDiscount =
+              (order['merchantDiscount'] as num?)?.toDouble() ??
+                  (order['merchant_discount'] as num?)?.toDouble() ??
+                  0.0;
+          hiveOrderTax = (order['order_tax'] as num?)?.toDouble() ??
+              (order['tax_discount'] as num?)?.toDouble() ??
+              0.0;
+          hiveCashbackFee = (order['cashbackFee'] as num?)?.toDouble() ??
+              (order['cashback_fee'] as num?)?.toDouble() ??
+              0.0;
+        }
+      }
+
+      final List<CartItem> items =
+      orderItems.map((item) => CartItem.fromOrderItem(item)).toList();
+
+      final double tax = orderTax ?? hiveOrderTax;
+      final double disc = (orderDiscount ?? hiveOrderDiscount).abs();
+      final double mDisc = (merchantDiscount ?? hiveMerchantDiscount).abs();
+      final double cbFee = cashbackFee ??
+          (hiveCashbackFee != 0 ? hiveCashbackFee : this.cashbackFee);
+      final double gross =
+          grossTotal ?? items.fold(0.0, (s, i) => s + i.lineTotal);
+      final double payable =
+          netPayable ?? (gross + tax + cbFee - disc - mDisc);
+      final int itemCount =
+          totalItemsCount ?? items.fold(0, (s, i) => s + i.qty);
+
+      if (activeId == null) {
+        _summaryEnabledForActiveOrder = false;
+        _summaryLockedOrderId = null;
+      } else if (_summaryLockedOrderId != null &&
+          activeId != _summaryLockedOrderId) {
+        _summaryEnabledForActiveOrder = false;
+        _summaryLockedOrderId = null;
+      }
+      if (summaryEnabled == true && activeId != null) {
+        _summaryEnabledForActiveOrder = true;
+        _summaryLockedOrderId = activeId;
+      }
+      if (summaryEnabled == false) {
+        _summaryEnabledForActiveOrder = false;
+        _summaryLockedOrderId = null;
+      }
+
+      final bool effectiveSummary = summaryEnabled == false
+          ? false
+          : (summaryEnabled == true ||
+          (_summaryEnabledForActiveOrder &&
+              activeId != null &&
+              activeId == _summaryLockedOrderId));
+
+      final store = await CfdStorePayload.load();
+
+      final state = CartState(
+        sessionId: 'ORDER-${activeId ?? 0}',
+        sequence: CfdSequence.next(),
+        screen: isPayment ? 'PAYMENT' : 'CART',
+        items: items,
+        tax: tax,
+        message: isPayment ? 'Please complete payment' : null,
+        orderId: activeId,
+        subtotalOverride: gross,
+        orderDiscount: disc,
+        merchantDiscount: mDisc,
+        cashbackFee: cbFee,
+        netPayable: payable,
+        totalItems: itemCount,
+        orderDate: orderDate ?? widget.formattedDate,
+        orderTime: orderTime ?? widget.formattedTime,
+        summaryEnabled: effectiveSummary,
+        storeId: store.storeId,
+        storeName: store.storeName,
+        storeLogoUrl: store.storeLogoUrl,
+        storeBaseUrl: store.storeBaseUrl,
+        slideshowUrls: store.slideshowUrls,
+        loyaltyContact: loyaltyContact,
+        availablePoints: availablePoints,
+      );
+
+      await messaging.publishState(state);
+
+      if (kDebugMode) {
+        print(
+          '📤 MQTT → orderId=$activeId screen=${state.screen} '
+              'summary=$effectiveSummary disc=$disc tax=$tax items=${items.length}',
+        );
+      }
+    } catch (e, s) {
+      if (kDebugMode) print('MQTT publish error: $e\n$s');
+    }
+  }
+
+
   int _extractLoyaltyPoints(Map<String, dynamic> productMap) {
     if (productMap == null) {
       print('⚠️ [Loyalty] productMap is null');
@@ -321,6 +633,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   Future<void> _clearAllOrderData() async {
     if (!mounted) return;
 
+    final int? previousOrderId = orderHelper.activeOrderId;
+
     setState(() {
       orderItems = [];
       tabs = [];
@@ -328,18 +642,26 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       _currentOrderVersion++;
       _isSwitchingOrder = true;
       _initialRestoreDone = false;
+      _summaryEnabledForActiveOrder = false;
+      _summaryLockedOrderId = null;
     });
 
-    await orderHelper.clearPersistedCartSelection(); // your existing helper
+    await orderHelper.clearPersistedCartSelection();
     await orderHelper.setActiveOrder(null);
 
-    // Clear Hive cache for this order
-    final box = StorageProvider.offlineOrders;
-    if (orderHelper.activeOrderId != null) {
-      await box.delete(orderHelper.activeOrderId.toString());
+    if (previousOrderId != null) {
+      final box = StorageProvider.offlineOrders;
+      await box.delete(previousOrderId.toString());
     }
 
     OrderHelper.isOrderPanelLoaded = false;
+
+    // MQTT only — CFD Welcome
+    try {
+      await _publishMqttCart(forceIdle: true);
+    } catch (e) {
+      if (kDebugMode) print('MQTT idle publish error (clearAll): $e');
+    }
 
     if (mounted) {
       setState(() => _isSwitchingOrder = false);
@@ -349,6 +671,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   @override
   void initState() {
     super.initState();
+    _activeOrderId = orderHelper.activeOrderId;
+
     NativeUsbScanBridge.registerHandler(_onNativeUsbBarcode);
     _categoryRepository = CategoryRepository();
     WidgetsBinding.instance.addObserver(this);
@@ -413,8 +737,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             orderHelper.activeOrderId!,
             summaryEnabled: false,
           );
+          unawaited(_publishMqttCart(
+            summaryEnabled: _summaryEnabledForActiveOrder ? true : null,
+            // pass live totals when you have them; otherwise sticky keeps panel
+          ));
         } else {
           await CustomerDisplayService.showWelcome();
+          unawaited(_publishMqttCart());               // will publish IDLE because items.isEmpty
         }
       }
     });
@@ -488,8 +817,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           await CustomerDisplayHelper.updateCustomerDisplay(
             orderHelper.activeOrderId!,
           );
+          unawaited(_publishMqttCart());
         } else {
           await CustomerDisplayService.showWelcome();
+          unawaited(_publishMqttCart());
         }
       }
       return;
@@ -523,7 +854,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             helper.activeOrderId!,
           );
         } else {
-          print("🖥️ No active order → Welcome screen");
+          print(" No active order → Welcome screen");
           await CustomerDisplayService.showWelcome();
         }
       }
@@ -690,16 +1021,60 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           newActiveId,
           summaryEnabled: false,
         );
+        unawaited(_publishMqttCart());
+
       } else {
+        // No visible orders left (last order was paid / completed)
         await orderHelper.setActiveOrder(null);
+        await orderHelper.clearPersistedCartSelection();
 
         if (mounted) {
           setState(() {
-            orderItems.clear();
+            orderItems = [];
+            tabs = [];
+            _listVersion++;
+            _currentOrderVersion++;
+            _summaryEnabledForActiveOrder = false;
+            _summaryLockedOrderId = null;
           });
         }
 
-        print("✅ No active orders remaining");
+        print("✅ No active orders remaining → CFD Welcome");
+
+        // Force CFD to empty / Welcome (MQTT + native)
+        try {
+          final messaging =
+          Provider.of<StoreMessagingService>(context, listen: false);
+          final store = await CfdStorePayload.load();
+          final idleState = CartState(
+            sessionId: 'ORDER-0',
+            sequence: CfdSequence.next(),
+            screen: 'IDLE', // CustomerDisplay maps IDLE → Welcome
+            items: const [],
+            tax: 0,
+            message: null,
+            orderId: null,
+            subtotalOverride: 0,
+            orderDiscount: 0,
+            merchantDiscount: 0,
+            cashbackFee: 0,
+            netPayable: 0,
+            totalItems: 0,
+            orderDate: '',
+            orderTime: '',
+            summaryEnabled: false,
+            storeId: store.storeId,
+            storeName: store.storeName,
+            storeLogoUrl: store.storeLogoUrl,
+            storeBaseUrl: store.storeBaseUrl,
+            slideshowUrls: store.slideshowUrls,
+            loyaltyContact: '',
+            availablePoints: 0,
+          );
+          await messaging.publishState(idleState);
+        } catch (e) {
+          if (kDebugMode) print('MQTT idle publish error: $e');
+        }
 
         await CustomerDisplayService.showWelcome();
       }
@@ -786,11 +1161,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     orderBloc.fetchOrders();
   }
 
-  // Build #1.0.10: Fetches order items for the active order
+
   // Future<void> fetchOrderItems() async {
-  //
   //   final int requestId = ++_fetchOrderItemsRequestId;
-  //
   //   final activeId = orderHelper.activeOrderId;
   //
   //   // FIX: Immediately clear orderItems when there is no active order
@@ -805,61 +1178,21 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   //     return;
   //   }
   //
-  //   // #region agent log
-  //   unawaited(_agentDebugLog(
-  //     hypothesisId: "H3",
-  //     location: "widget_order_panel.dart:fetchOrderItems:start",
-  //     message: "fetchOrderItems entry",
-  //     data: {
-  //       "activeOrderId": activeId,
-  //       "tabCount": tabs.length,
-  //       "hasActiveTab":
-  //       activeId != null && tabs.any((t) => t['orderId'] == activeId),
-  //     },
-  //   ));
-  //   // #endregion
-  //
-  //   // Tabs can lag behind activeOrderId (e.g. while _getOrderTabs runs, or offline-only).
-  //   // Never clear the cart just because the tab bar has not caught up yet.
-  //   if (!_tabsContainActiveOrder(activeId)) {
-  //     if (kDebugMode) {
-  //       print(
-  //         "⚠️ fetchOrderItems — active order not in tab bar; still loading by id: $activeId",
-  //       );
-  //     }
-  //   }
-  //
   //   if (kDebugMode) {
   //     print("##### DEBUG: fetchOrderItems 112233");
   //   }
   //   if (orderHelper.activeOrderId != null) {
   //     if (kDebugMode) {
-  //       print(
-  //           "##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
+  //       print("##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
   //     }
   //     try {
   //       final int oid = orderHelper.activeOrderId!;
-  //       // 1️⃣ Prefer offline storage; 2️⃣ SQLite — run both reads in parallel when offline may be empty.
+  //       // 1️⃣ Prefer offline storage
   //       final Future<List<Map<String, dynamic>>> offlineFuture =
   //       orderHelper.getOrderItemsFromOffline(oid);
-  //       final Future<List<Map<String, dynamic>>> ordersFuture =
-  //       orderHelper.getOrderById(oid);
   //       final offlineItems = await offlineFuture;
+  //
   //       if (requestId != _fetchOrderItemsRequestId) return;
-  //       // #region agent log
-  //       unawaited(_agentDebugLog(
-  //         hypothesisId: "H3",
-  //         location: "widget_order_panel.dart:fetchOrderItems:offlineRead",
-  //         message: "offline items read",
-  //         data: {
-  //           "activeOrderId": orderHelper.activeOrderId,
-  //           "offlineItemCount": offlineItems.length,
-  //           "firstItemKeys": offlineItems.isNotEmpty
-  //               ? offlineItems.first.keys.take(8).toList()
-  //               : <String>[],
-  //         },
-  //       ));
-  //       // #endregion
   //
   //       // FIX: Verify that active order hasn't changed while fetching
   //       if (orderHelper.activeOrderId != oid) {
@@ -878,11 +1211,89 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   //               .map((e) => Map<String, dynamic>.from(e))
   //               .toList();
   //
+  //           // ✅ FIX: Map offline items with proper weight fields
+  //           final List<Map<String, dynamic>> mappedItems = [];
+  //
   //           for (int i = 0; i < offlineItems.length; i++) {
   //             final displayItem = Map<String, dynamic>.from(offlineItems[i]);
   //             final itemType = (displayItem['item_type'] ?? '').toString().toLowerCase();
+  //
+  //             // ✅ FIX: For weighted items, ensure weight fields are copied from stored products
+  //             if (itemType.contains('weighted')) {
+  //               // Find matching product in Hive to get weight fields
+  //               final itemName = (displayItem['item_name'] ?? '').toString();
+  //               final itemPrice = double.tryParse(displayItem['item_price']?.toString() ?? '0') ?? 0.0;
+  //
+  //               // Try to match by name and price
+  //               final match = storedProducts.firstWhere((p) {
+  //                 final pName = (p['name'] ?? '').toString();
+  //                 final pPrice = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+  //                 return pName == itemName && (pPrice - itemPrice).abs() < 0.01;
+  //               }, orElse: () => {});
+  //
+  //               if (match.isNotEmpty) {
+  //                 // ✅ CRITICAL FIX: Copy weight fields from stored product
+  //                 final weightQty = (match['weight_qty'] as num?)?.toDouble() ??
+  //                     (match['weightQty'] as num?)?.toDouble() ??
+  //                     (match['weight'] as num?)?.toDouble() ??
+  //                     0.0;
+  //
+  //                 // Get unit price from stored product or calculate
+  //                 final unitPrice = (match['unit_price'] as num?)?.toDouble() ??
+  //                     (match['regular_price'] as num?)?.toDouble() ??
+  //                     (match['sales_price'] as num?)?.toDouble() ??
+  //                     itemPrice;
+  //
+  //                 displayItem['weight_qty'] = weightQty;
+  //                 displayItem['weightQty'] = weightQty;
+  //                 displayItem['weight'] = weightQty;
+  //                 displayItem['unit_price'] = unitPrice;
+  //                 displayItem['regular_price'] = unitPrice;
+  //
+  //                 // Also update the price to match the stored product's price
+  //                 displayItem['item_price'] = match['price'] ?? itemPrice;
+  //
+  //                 final loyalty = (displayItem['loyalty_points'] as num?)?.toInt() ??
+  //                     (displayItem['loyaltyPoints'] as num?)?.toInt() ?? 0;
+  //                 displayItem['loyalty_points'] = loyalty;
+  //                 displayItem['loyaltyPoints'] = loyalty; // for consistency
+  //
+  //                 print('🟢 fetchOrderItems: Fixed weight for "$itemName" → weightQty=$weightQty, unitPrice=$unitPrice');
+  //               } else {
+  //                 // Fallback: try to find by SKU
+  //                 final itemSku = (displayItem['sku'] ?? '').toString();
+  //                 if (itemSku.isNotEmpty) {
+  //                   final skuMatch = storedProducts.firstWhere((p) {
+  //                     final pSku = (p['sku'] ?? '').toString();
+  //                     return pSku == itemSku;
+  //                   }, orElse: () => {});
+  //
+  //                   if (skuMatch.isNotEmpty) {
+  //                     final weightQty = (skuMatch['weight_qty'] as num?)?.toDouble() ??
+  //                         (skuMatch['weightQty'] as num?)?.toDouble() ??
+  //                         (skuMatch['weight'] as num?)?.toDouble() ??
+  //                         0.0;
+  //
+  //                     final unitPrice = (skuMatch['unit_price'] as num?)?.toDouble() ??
+  //                         (skuMatch['regular_price'] as num?)?.toDouble() ??
+  //                         (skuMatch['sales_price'] as num?)?.toDouble() ??
+  //                         itemPrice;
+  //
+  //                     displayItem['weight_qty'] = weightQty;
+  //                     displayItem['weightQty'] = weightQty;
+  //                     displayItem['weight'] = weightQty;
+  //                     displayItem['unit_price'] = unitPrice;
+  //                     displayItem['regular_price'] = unitPrice;
+  //                     displayItem['item_price'] = skuMatch['price'] ?? itemPrice;
+  //
+  //                     print('🟢 fetchOrderItems: Fixed weight via SKU for "$itemName" → weightQty=$weightQty');
+  //                   }
+  //                 }
+  //               }
+  //             }
+  //
+  //             // Handle custom item tax fields
   //             if (itemType.contains('custom')) {
-  //               // Find matching product in Hive to get tax fields
   //               final itemName = (displayItem['item_name'] ?? '').toString().toLowerCase();
   //               final itemPrice = double.tryParse(displayItem['item_price']?.toString() ?? '0') ?? 0.0;
   //               final match = storedProducts.firstWhere((p) {
@@ -902,27 +1313,30 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   //                 displayItem['tax_rate'] = taxRate;
   //                 displayItem['tax_class'] = match['tax_class'] ?? match['selected_category_tax_slug'] ?? '';
   //                 displayItem['item_tax'] = itemTax;
-  //                 offlineItems[i] = displayItem;
   //               }
   //             }
+  //
+  //             mappedItems.add(displayItem);
   //           }
-  //         }
   //
-  //         await orderHelper.loadData();
-  //         if (requestId != _fetchOrderItemsRequestId) return;
-  //         if (orderHelper.activeOrderId != oid) return;
+  //           await orderHelper.loadData();
+  //           if (requestId != _fetchOrderItemsRequestId) return;
+  //           if (orderHelper.activeOrderId != oid) return;
   //
-  //         if (mounted) {
-  //           setState(() {
-  //             if (requestId != _fetchOrderItemsRequestId) return;
-  //             orderItems = List<Map<String, dynamic>>.from(offlineItems);
-  //             _listVersion++;
-  //             _currentOrderVersion++;
-  //           });
+  //           if (mounted) {
+  //             setState(() {
+  //               if (requestId != _fetchOrderItemsRequestId) return;
+  //               orderItems = List<Map<String, dynamic>>.from(mappedItems);
+  //               _listVersion++;
+  //               _currentOrderVersion++;
+  //             });
+  //           }
+  //           return;
   //         }
-  //         return;
   //       }
+  //
   //       // 2️⃣ Fallback to SQLite (synced/API orders)
+  //       final ordersFuture = orderHelper.getOrderById(oid);
   //       var orders = await ordersFuture;
   //       if (requestId != _fetchOrderItemsRequestId) return;
   //       // FIX: Double-check active order ID again after await
@@ -930,8 +1344,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   //
   //       if (orders.isEmpty) {
   //         if (kDebugMode) {
-  //           print(
-  //               "##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
+  //           print("##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
   //         }
   //         await orderHelper.clearPersistedCartSelection();
   //         if (mounted) {
@@ -946,10 +1359,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   //       var order = orders.first;
   //       if (kDebugMode) {
   //         print("##### DEBUG: fetchOrderItems - Retrieved ${order.length}");
-  //         print(
-  //             "##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
-  //         print(
-  //             "##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
+  //         print("##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
+  //         print("##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
   //       }
   //       List<Map<String, dynamic>> items =
   //       await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
@@ -957,15 +1368,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   //       if (orderHelper.activeOrderId != oid) return;
   //
   //       if (kDebugMode) {
-  //         print(
-  //             "##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
+  //         print("##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
   //       }
   //
   //       if (mounted) {
   //         setState(() {
   //           if (requestId != _fetchOrderItemsRequestId) return;
-  //           orderItems =
-  //           List<Map<String, dynamic>>.from(items); // Create mutable copy
+  //           orderItems = List<Map<String, dynamic>>.from(items); // Create mutable copy
   //           _listVersion++; // Build 1.0.214: Increment version when items change
   //         });
   //       }
@@ -997,8 +1406,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final int requestId = ++_fetchOrderItemsRequestId;
     final activeId = orderHelper.activeOrderId;
 
-    // FIX: Immediately clear orderItems when there is no active order
-    if (orderHelper.activeOrderId == null) {
+    if (activeId == null) {
       if (mounted) {
         setState(() {
           orderItems = [];
@@ -1006,70 +1414,66 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           _currentOrderVersion++;
         });
       }
+      unawaited(_publishMqttCart());
+      unawaited(CustomerDisplayService.showWelcome());
       return;
     }
 
     if (kDebugMode) {
-      print("##### DEBUG: fetchOrderItems 112233");
+      print("##### DEBUG: fetchOrderItems - activeOrderId: $activeId");
     }
-    if (orderHelper.activeOrderId != null) {
-      if (kDebugMode) {
-        print("##### DEBUG: order panel fetchOrderItems - Fetching items for activeOrderId: ${orderHelper.activeOrderId}");
-      }
-      try {
-        final int oid = orderHelper.activeOrderId!;
-        // 1️⃣ Prefer offline storage
-        final Future<List<Map<String, dynamic>>> offlineFuture =
-        orderHelper.getOrderItemsFromOffline(oid);
-        final offlineItems = await offlineFuture;
+
+    try {
+      final int oid = activeId;
+      final offlineBox = StorageProvider.offlineOrders;
+
+      // 🔑 FIX: this is the real signal for "does this order exist
+      // offline", NOT offlineItems.isEmpty. A 0-item order (new tab,
+      // last item deleted, or the order you just created via "New")
+      // still exists as a key in the box — it just has no products yet.
+      final bool existsOffline = await offlineBox.containsKey(oid.toString());
+
+      if (existsOffline) {
+        final offlineItems = await orderHelper.getOrderItemsFromOffline(oid);
 
         if (requestId != _fetchOrderItemsRequestId) return;
+        if (orderHelper.activeOrderId != oid) return;
 
-        // FIX: Verify that active order hasn't changed while fetching
-        if (orderHelper.activeOrderId != oid) {
-          if (kDebugMode) print("⚠️ Active order changed during fetch, discarding results");
-          return;
-        }
+        List<Map<String, dynamic>> mappedItems = [];
 
         if (offlineItems.isNotEmpty) {
-          // ── Re-seed tax fields for custom items so buildCurrentOrder
-          // displays correct tax without needing to re-derive from Hive ──
-          final offlineBox = StorageProvider.offlineOrders;
           final rawOrder = await offlineBox.get(oid.toString());
+
           if (rawOrder != null) {
             final orderMap = Map<String, dynamic>.from(rawOrder);
             final storedProducts = (orderMap['products'] as List? ?? [])
                 .map((e) => Map<String, dynamic>.from(e))
                 .toList();
 
-            // ✅ FIX: Map offline items with proper weight fields
-            final List<Map<String, dynamic>> mappedItems = [];
-
             for (int i = 0; i < offlineItems.length; i++) {
               final displayItem = Map<String, dynamic>.from(offlineItems[i]);
-              final itemType = (displayItem['item_type'] ?? '').toString().toLowerCase();
+              final itemType =
+              (displayItem['item_type'] ?? '').toString().toLowerCase();
 
-              // ✅ FIX: For weighted items, ensure weight fields are copied from stored products
               if (itemType.contains('weighted')) {
-                // Find matching product in Hive to get weight fields
                 final itemName = (displayItem['item_name'] ?? '').toString();
-                final itemPrice = double.tryParse(displayItem['item_price']?.toString() ?? '0') ?? 0.0;
+                final itemPrice = double.tryParse(
+                    displayItem['item_price']?.toString() ?? '0') ??
+                    0.0;
 
-                // Try to match by name and price
                 final match = storedProducts.firstWhere((p) {
                   final pName = (p['name'] ?? '').toString();
-                  final pPrice = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
-                  return pName == itemName && (pPrice - itemPrice).abs() < 0.01;
+                  final pPrice =
+                      double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+                  return pName == itemName &&
+                      (pPrice - itemPrice).abs() < 0.01;
                 }, orElse: () => {});
 
                 if (match.isNotEmpty) {
-                  // ✅ CRITICAL FIX: Copy weight fields from stored product
                   final weightQty = (match['weight_qty'] as num?)?.toDouble() ??
                       (match['weightQty'] as num?)?.toDouble() ??
                       (match['weight'] as num?)?.toDouble() ??
                       0.0;
-
-                  // Get unit price from stored product or calculate
                   final unitPrice = (match['unit_price'] as num?)?.toDouble() ??
                       (match['regular_price'] as num?)?.toDouble() ??
                       (match['sales_price'] as num?)?.toDouble() ??
@@ -1080,156 +1484,114 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                   displayItem['weight'] = weightQty;
                   displayItem['unit_price'] = unitPrice;
                   displayItem['regular_price'] = unitPrice;
-
-                  // Also update the price to match the stored product's price
                   displayItem['item_price'] = match['price'] ?? itemPrice;
-
-                  final loyalty = (displayItem['loyalty_points'] as num?)?.toInt() ??
-                      (displayItem['loyaltyPoints'] as num?)?.toInt() ?? 0;
-                  displayItem['loyalty_points'] = loyalty;
-                  displayItem['loyaltyPoints'] = loyalty; // for consistency
-
-                  print('🟢 fetchOrderItems: Fixed weight for "$itemName" → weightQty=$weightQty, unitPrice=$unitPrice');
-                } else {
-                  // Fallback: try to find by SKU
-                  final itemSku = (displayItem['sku'] ?? '').toString();
-                  if (itemSku.isNotEmpty) {
-                    final skuMatch = storedProducts.firstWhere((p) {
-                      final pSku = (p['sku'] ?? '').toString();
-                      return pSku == itemSku;
-                    }, orElse: () => {});
-
-                    if (skuMatch.isNotEmpty) {
-                      final weightQty = (skuMatch['weight_qty'] as num?)?.toDouble() ??
-                          (skuMatch['weightQty'] as num?)?.toDouble() ??
-                          (skuMatch['weight'] as num?)?.toDouble() ??
-                          0.0;
-
-                      final unitPrice = (skuMatch['unit_price'] as num?)?.toDouble() ??
-                          (skuMatch['regular_price'] as num?)?.toDouble() ??
-                          (skuMatch['sales_price'] as num?)?.toDouble() ??
-                          itemPrice;
-
-                      displayItem['weight_qty'] = weightQty;
-                      displayItem['weightQty'] = weightQty;
-                      displayItem['weight'] = weightQty;
-                      displayItem['unit_price'] = unitPrice;
-                      displayItem['regular_price'] = unitPrice;
-                      displayItem['item_price'] = skuMatch['price'] ?? itemPrice;
-
-                      print('🟢 fetchOrderItems: Fixed weight via SKU for "$itemName" → weightQty=$weightQty');
-                    }
-                  }
                 }
               }
 
-              // Handle custom item tax fields
               if (itemType.contains('custom')) {
-                final itemName = (displayItem['item_name'] ?? '').toString().toLowerCase();
-                final itemPrice = double.tryParse(displayItem['item_price']?.toString() ?? '0') ?? 0.0;
+                final itemName =
+                (displayItem['item_name'] ?? '').toString().toLowerCase();
+                final itemPrice = double.tryParse(
+                    displayItem['item_price']?.toString() ?? '0') ??
+                    0.0;
+
                 final match = storedProducts.firstWhere((p) {
                   final pName = (p['name'] ?? '').toString().toLowerCase();
-                  final pPrice = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
-                  return pName == itemName && (pPrice - itemPrice).abs() < 0.01;
+                  final pPrice =
+                      double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+                  return pName == itemName &&
+                      (pPrice - itemPrice).abs() < 0.01;
                 }, orElse: () => {});
 
                 if (match.isNotEmpty) {
                   final taxRate = double.tryParse(
                       match['tax_rate']?.toString() ??
-                          match['tax_percent']?.toString() ?? '0') ?? 0.0;
-                  final qty = int.tryParse(displayItem['items_count']?.toString() ?? '1') ?? 1;
+                          match['tax_percent']?.toString() ??
+                          '0') ??
+                      0.0;
+                  final qty = int.tryParse(
+                      displayItem['items_count']?.toString() ?? '1') ??
+                      1;
                   final itemTax = taxRate > 0
                       ? roundTaxHalfUp(((itemPrice * taxRate) / 100) * qty)
                       : 0.0;
                   displayItem['tax_rate'] = taxRate;
-                  displayItem['tax_class'] = match['tax_class'] ?? match['selected_category_tax_slug'] ?? '';
+                  displayItem['tax_class'] = match['tax_class'] ??
+                      match['selected_category_tax_slug'] ??
+                      '';
                   displayItem['item_tax'] = itemTax;
                 }
               }
 
               mappedItems.add(displayItem);
             }
-
-            await orderHelper.loadData();
-            if (requestId != _fetchOrderItemsRequestId) return;
-            if (orderHelper.activeOrderId != oid) return;
-
-            if (mounted) {
-              setState(() {
-                if (requestId != _fetchOrderItemsRequestId) return;
-                orderItems = List<Map<String, dynamic>>.from(mappedItems);
-                _listVersion++;
-                _currentOrderVersion++;
-              });
-            }
-            return;
+          } else {
+            mappedItems = List<Map<String, dynamic>>.from(offlineItems);
           }
         }
+        // else: offlineItems is [] — a legitimate empty-cart order.
+        // mappedItems stays [] and we STILL fall through to setState +
+        // publish below, instead of dropping into the SQLite fallback.
 
-        // 2️⃣ Fallback to SQLite (synced/API orders)
-        final ordersFuture = orderHelper.getOrderById(oid);
-        var orders = await ordersFuture;
-        if (requestId != _fetchOrderItemsRequestId) return;
-        // FIX: Double-check active order ID again after await
-        if (orderHelper.activeOrderId != oid) return;
-
-        if (orders.isEmpty) {
-          if (kDebugMode) {
-            print("##### DEBUG: fetchOrderItems - No order found for activeOrderId: ${orderHelper.activeOrderId}, clearing items");
-          }
-          await orderHelper.clearPersistedCartSelection();
-          if (mounted) {
-            setState(() {
-              orderItems = []; // Clear items if no order exists
-            });
-          }
-          await _getOrderTabs(); // Refresh tabs to reflect no active order
-          return;
-        }
-
-        var order = orders.first;
-        if (kDebugMode) {
-          print("##### DEBUG: fetchOrderItems - Retrieved ${order.length}");
-          print("##### DEBUG: fetchOrderItems - Retrieved order: ${order[AppDBConst.orderServerId]}");
-          print("##### DEBUG: fetchOrderItems - Retrieved items: ${order[AppDBConst.itemProductId]}");
-        }
-        List<Map<String, dynamic>> items =
-        await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
+        await orderHelper.loadData();
         if (requestId != _fetchOrderItemsRequestId) return;
         if (orderHelper.activeOrderId != oid) return;
-
-        if (kDebugMode) {
-          print("##### DEBUG: fetchOrderItems - Retrieved ${items.length} items: $items");
-        }
 
         if (mounted) {
           setState(() {
             if (requestId != _fetchOrderItemsRequestId) return;
-            orderItems = List<Map<String, dynamic>>.from(items); // Create mutable copy
-            _listVersion++; // Build 1.0.214: Increment version when items change
+            orderItems = List<Map<String, dynamic>>.from(mappedItems);
+            _listVersion++;
+            _currentOrderVersion++;
           });
         }
-      } catch (e, s) {
-        if (kDebugMode) {
-          print("##### ERROR: fetchOrderItems failed - $e, Stack: $s");
-        }
+
+        // Always publish — even for 0 items — so the CFD shows THIS
+        // order (empty cart) instead of falling back to Welcome.
+        unawaited(_publishMqttCart());
+        return;
+      }
+
+      // 2️⃣ Fallback → SQLite (only when the order truly isn't offline)
+      final orders = await orderHelper.getOrderById(oid);
+      if (requestId != _fetchOrderItemsRequestId) return;
+      if (orderHelper.activeOrderId != oid) return;
+
+      if (orders.isEmpty) {
+        await orderHelper.clearPersistedCartSelection();
         if (mounted) {
-          setState(() {
-            orderItems = []; // Clear items on error
-          });
+          setState(() => orderItems = []);
         }
+        await _getOrderTabs();
+        unawaited(_publishMqttCart());
+        return;
       }
-    } else {
-      if (kDebugMode) {
-        print("##### DEBUG: fetchOrderItems - No active order, clearing items");
-      }
-      setState(() => _isLoading = false); // Build #1.0.104: Hide loader
+
+      final order = orders.first;
+      final items =
+      await orderHelper.getOrderItems(order[AppDBConst.orderServerId]);
+
+      if (requestId != _fetchOrderItemsRequestId) return;
+      if (orderHelper.activeOrderId != oid) return;
+
       if (mounted) {
         setState(() {
-          orderItems = []; // Clear items if no active order
-          _listVersion++; // Build 1.0.214: Increment version when items change
+          if (requestId != _fetchOrderItemsRequestId) return;
+          orderItems = List<Map<String, dynamic>>.from(items);
+          _listVersion++;
+          _currentOrderVersion++;
         });
       }
+
+      unawaited(_publishMqttCart());
+    } catch (e, s) {
+      if (kDebugMode) {
+        print("##### ERROR: fetchOrderItems failed - $e\n$s");
+      }
+      if (mounted) {
+        setState(() => orderItems = []);
+      }
+      unawaited(_publishMqttCart());
     }
   }
 
@@ -1251,6 +1613,137 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     return value; // primitives
   }
 
+  // Future<void> _initializeTabController() async {
+  //   if (kDebugMode) print("##### _initializeTabController");
+  //   if (!mounted) return;
+  //
+  //   if (tabs.isEmpty) {
+  //     orderHelper.activeOrderId = null;
+  //     if (mounted) setState(() => orderItems = []);
+  //     final storeInfo = PinakaPreferences.getLoggedInStore();
+  //     if (storeInfo.isNotEmpty) {
+  //       await CustomerDisplayHelper.updateWelcomeWithStore(
+  //         storeInfo['storeId']!,
+  //         storeInfo['storeName']!,
+  //         storeLogoUrl: storeInfo['storeLogoUrl'],
+  //         storeBaseUrl: storeInfo['storeBaseUrl'],
+  //       );
+  //     } else {
+  //       await CustomerDisplayService.showWelcome();
+  //     }
+  //     return;
+  //   }
+  //
+  //   // 1️⃣ Calculate Default Index BEFORE creating controller
+  //   int defaultIndex = 0;
+  //   if (orderHelper.activeOrderId != null) {
+  //     final idx = tabs.indexWhere(
+  //           (t) => _normalizeOrderId(t["orderId"]) == orderHelper.activeOrderId,
+  //     );
+  //     if (idx != -1) {
+  //       defaultIndex = idx;
+  //     } else {
+  //       defaultIndex = 0;
+  //       final fallbackOrderId = _normalizeOrderId(tabs[0]["orderId"]) ?? 0;
+  //       if (fallbackOrderId != 0) {
+  //         await orderHelper.setActiveOrder(fallbackOrderId);
+  //         await orderHelper.saveLastActiveOrderId(fallbackOrderId);
+  //       }
+  //     }
+  //   }
+  //
+  //   // 2️⃣ Initialize TabController
+  //   _tabController?.dispose();
+  //   _tabController = TabController(
+  //     length: tabs.length,
+  //     vsync: this,
+  //     initialIndex: defaultIndex,
+  //   );
+  //
+  //   // 3️⃣ Tab listener – now clears orderItems immediately for responsive UI
+  //   // _tabController!.addListener(() async {
+  //   //   if (!_tabController!.indexIsChanging &&
+  //   //       mounted &&
+  //   //       _tabController!.index < tabs.length) {
+  //   //     final selectedIndex = _tabController!.index;
+  //   //     final selectedOrderId = _normalizeOrderId(tabs[selectedIndex]["orderId"]);
+  //   //     if (selectedOrderId == null) return;
+  //   //
+  //   //     // If already on the same order, do nothing
+  //   //     if (selectedOrderId == orderHelper.activeOrderId) return;
+  //   //
+  //   //     // Increment request ID to ignore stale responses
+  //   //     final int requestId = ++_fetchOrderItemsRequestId;
+  //   //
+  //   //     // Clear UI immediately – totals will become zero until fetch completes
+  //   //     setState(() {
+  //   //       _isSwitchingOrder = true;
+  //   //       _currentOrderVersion++;
+  //   //       orderItems = [];        // ← clears old items → totals become zero
+  //   //       _listVersion++;
+  //   //     });
+  //   //
+  //   //     await orderHelper.setActiveOrder(selectedOrderId);
+  //   //     await orderHelper.saveLastActiveOrderId(selectedOrderId);
+  //   //
+  //   //     // Only fetch if this request is still the latest
+  //   //     if (requestId == _fetchOrderItemsRequestId && mounted) {
+  //   //       await fetchOrderItems(); // this will repopulate orderItems
+  //   //     }
+  //   //
+  //   //     if (mounted) {
+  //   //       setState(() => _isSwitchingOrder = false);
+  //   //       unawaited(CustomerDisplayHelper.updateCustomerDisplay(selectedOrderId));
+  //   //     }
+  //   //   }
+  //   // });
+  //   _tabController!.addListener(() async {
+  //     if (!_tabController!.indexIsChanging &&
+  //         mounted &&
+  //         _tabController!.index < tabs.length) {
+  //       final selectedIndex = _tabController!.index;
+  //       final selectedOrderId = _normalizeOrderId(tabs[selectedIndex]["orderId"]);
+  //       if (selectedOrderId == null) return;
+  //
+  //       if (selectedOrderId == orderHelper.activeOrderId) return;
+  //
+  //       final int requestId = ++_fetchOrderItemsRequestId;
+  //
+  //       setState(() {
+  //         _isSwitchingOrder = true;
+  //         _currentOrderVersion++;
+  //         orderItems = [];
+  //         _listVersion++;
+  //       });
+  //
+  //       await orderHelper.setActiveOrder(selectedOrderId);
+  //       await orderHelper.saveLastActiveOrderId(selectedOrderId);
+  //
+  //       if (requestId == _fetchOrderItemsRequestId && mounted) {
+  //         await fetchOrderItems();
+  //       }
+  //
+  //       if (mounted) {
+  //         setState(() => _isSwitchingOrder = false);
+  //
+  //         // Native secondary display
+  //         unawaited(CustomerDisplayHelper.updateCustomerDisplay(selectedOrderId));
+  //
+  //         // MQTT CFD – THIS WAS MISSING
+  //         unawaited(_publishMqttCart());
+  //       }
+  //     }
+  //   });
+  //   // 4️⃣ Final UI sync
+  //   if (mounted) {
+  //     final activeTabOrderId = _normalizeOrderId(tabs[defaultIndex]["orderId"]) ?? 0;
+  //     if (activeTabOrderId != 0) {
+  //       CustomerDisplayHelper.updateCustomerDisplay(activeTabOrderId);
+  //     }
+  //     setState(() {});
+  //   }
+  // }
+
   Future<void> _initializeTabController() async {
     if (kDebugMode) print("##### _initializeTabController");
     if (!mounted) return;
@@ -1258,6 +1751,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     if (tabs.isEmpty) {
       orderHelper.activeOrderId = null;
       if (mounted) setState(() => orderItems = []);
+
       final storeInfo = PinakaPreferences.getLoggedInStore();
       if (storeInfo.isNotEmpty) {
         await CustomerDisplayHelper.updateWelcomeWithStore(
@@ -1269,10 +1763,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       } else {
         await CustomerDisplayService.showWelcome();
       }
+
+      // MQTT → IDLE / WELCOME
+      unawaited(_publishMqttCart());
       return;
     }
 
-    // 1️⃣ Calculate Default Index BEFORE creating controller
+    // 1️⃣ Calculate default index
     int defaultIndex = 0;
     if (orderHelper.activeOrderId != null) {
       final idx = tabs.indexWhere(
@@ -1290,7 +1787,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
     }
 
-    // 2️⃣ Initialize TabController
+    // 2️⃣ Create TabController
     _tabController?.dispose();
     _tabController = TabController(
       length: tabs.length,
@@ -1298,73 +1795,70 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       initialIndex: defaultIndex,
     );
 
-    // 3️⃣ Tab listener – now clears orderItems immediately for responsive UI
     _tabController!.addListener(() async {
       if (!_tabController!.indexIsChanging &&
           mounted &&
           _tabController!.index < tabs.length) {
         final selectedIndex = _tabController!.index;
-        final selectedOrderId = _normalizeOrderId(tabs[selectedIndex]["orderId"]);
+        final selectedOrderId =
+        _normalizeOrderId(tabs[selectedIndex]["orderId"]);
         if (selectedOrderId == null) return;
 
-        // If already on the same order, do nothing
+        // Already on this order → do nothing
         if (selectedOrderId == orderHelper.activeOrderId) return;
 
-        // Increment request ID to ignore stale responses
-        final int requestId = ++_fetchOrderItemsRequestId;
-
-        // Clear UI immediately – totals will become zero until fetch completes
+        // Clear UI immediately
         setState(() {
           _isSwitchingOrder = true;
           _currentOrderVersion++;
-          orderItems = [];        // ← clears old items → totals become zero
+          orderItems = [];
           _listVersion++;
         });
 
+        // Switch active order
         await orderHelper.setActiveOrder(selectedOrderId);
         await orderHelper.saveLastActiveOrderId(selectedOrderId);
 
-        // Only fetch if this request is still the latest
-        if (requestId == _fetchOrderItemsRequestId && mounted) {
-          await fetchOrderItems(); // this will repopulate orderItems
-        }
+        // ⭐ ALWAYS fetch fresh items for the new order
+        await fetchOrderItems();
 
         if (mounted) {
           setState(() => _isSwitchingOrder = false);
-          unawaited(CustomerDisplayHelper.updateCustomerDisplay(selectedOrderId));
+
+          // Update native secondary display (with current orderItems)
+          unawaited(
+            CustomerDisplayHelper.updateCustomerDisplay(selectedOrderId),
+          );
+
+          // Publish MQTT state – orderItems now reflects the correct cart (may be empty)
+          unawaited(_publishMqttCart());
         }
       }
     });
 
     // 4️⃣ Final UI sync
     if (mounted) {
-      final activeTabOrderId = _normalizeOrderId(tabs[defaultIndex]["orderId"]) ?? 0;
+      final activeTabOrderId =
+          _normalizeOrderId(tabs[defaultIndex]["orderId"]) ?? 0;
       if (activeTabOrderId != 0) {
-        CustomerDisplayHelper.updateCustomerDisplay(activeTabOrderId);
+        unawaited(
+          CustomerDisplayHelper.updateCustomerDisplay(activeTabOrderId),
+        );
+        unawaited(_publishMqttCart());
       }
       setState(() {});
     }
   }
 
-
-
-  Future<void> addNewTab() async {Future<void> addNewTab() async {
+  Future<void> addNewTab() async {
     if (_isNewTabDisabled) return;
 
-    setState(() {
-      _isNewTabDisabled = true;
-    });
-
+    setState(() => _isNewTabDisabled = true);
     Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        setState(() => _isNewTabDisabled = false);
-      }
+      if (mounted) setState(() => _isNewTabDisabled = false);
     });
 
-    if (kDebugMode) {
-      print("##### DEBUG: addNewTab - Creating new order");
-    }
-
+    if (kDebugMode) print("##### DEBUG: addNewTab - Creating new order");
     showLogs = true;
     logString += "##### DEBUG: addNewTab - Creating new order \n ";
 
@@ -1377,21 +1871,17 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
           if (response.status == Status.COMPLETED) {
             setState(() => _isLoading = false);
-
             final orderId = response.data!.id;
+            if (kDebugMode) print("##### Order created: $orderId");
 
-            if (kDebugMode) {
-              print("##### Order created: $orderId");
-            }
-
-            // ✅ Save order locally
             await orderHelper.createOrder(serverOrderId: orderId);
-
-            // ✅ Set active order
             await orderHelper.setActiveOrder(orderId);
             await orderHelper.saveLastActiveOrderId(orderId);
 
-            // 🔥🔥🔥 ADD THIS BLOCK (IMPORTANT)
+            // Reset sticky-summary flags for the fresh order
+            _summaryEnabledForActiveOrder = false;
+            _summaryLockedOrderId = null;
+
             await CustomerDisplayService.showCustomerData(
               orderId: orderId,
               items: [],
@@ -1409,9 +1899,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               discountType: "NONE",
               discountValue: 0.0,
             );
-            // 🔥🔥🔥 END FIX
 
-            // ✅ Add tab
             setState(() {
               tabs.add({
                 "title": "$orderId",
@@ -1420,14 +1908,33 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               });
             });
 
-            _initializeTabController();
+            await _initializeTabController();
             _tabController?.index = tabs.length - 1;
             _scrollToSelectedTab();
 
             await fetchOrderItems();
-
-            // Optional: keep this (will refresh if data comes later)
             await CustomerDisplayHelper.updateCustomerDisplay(orderId);
+
+            // 🔴 Await this instead of unawaited — the CFD needs the CART
+            // state for this new empty order as soon as possible, before
+            // any other publish (e.g. from _initializeTabController's
+            // listener) can race it.
+            await _publishMqttCart(
+              summaryEnabled: false,
+              grossTotal: 0.0,
+              orderTax: 0.0,
+              orderDiscount: 0.0,
+              merchantDiscount: 0.0,
+              cashbackFee: 0.0,
+              netPayable: 0.0,
+              totalItemsCount: 0,
+              orderDate: widget.formattedDate,
+              orderTime: widget.formattedTime,
+            );
+
+            if (kDebugMode) {
+              print("MQTT published for NEW orderId=$orderId (empty cart)");
+            }
 
             if (Misc.showDebugSnackBar) {
               _scaffoldMessenger.showSnackBar(
@@ -1440,7 +1947,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             }
           } else if (response.status == Status.ERROR) {
             setState(() => _isLoading = false);
-
             _scaffoldMessenger.showSnackBar(
               SnackBar(
                 content: Text(response.message ?? "Failed to create order"),
@@ -1454,131 +1960,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     logString += await orderBloc.createOrder();
     setState(() {});
   }
-  if (_isNewTabDisabled) return; // 🔒 hard guard
 
-  setState(() {
-    _isNewTabDisabled = true;
-  });
-
-  // 🔓 auto-unlock after 3 seconds
-  Future.delayed(const Duration(seconds: 3), () {
-    if (mounted) {
-      setState(() => _isNewTabDisabled = false);
-    }
-  });
-  // Create new order if none exists
-  if (kDebugMode) {
-    print("##### DEBUG: addNewTab - Creating new order");
-  }
-  showLogs = true;
-  logString += "##### DEBUG: addNewTab - Creating new order \n ";
-
-  /// Build #1.0.128: No need here , now we are handling from Order repository class
-  // final prefs = await SharedPreferences.getInstance();
-  // final shiftId = prefs.getString(TextConstants.shiftId);
-  //
-  // //Build #1.0.78: Validation required : if shift id is empty show toast or alert user to start the shift first
-  // if (shiftId == null || shiftId.isEmpty) {
-  //   if (kDebugMode) print("####### _createOrder() : shiftId -> $shiftId");
-  //   ScaffoldMessenger.of(context).showSnackBar(
-  //     SnackBar(
-  //       content: Text("Please start your shift before creating an order."),
-  //       backgroundColor: Colors.green,
-  //       duration: const Duration(seconds: 2),
-  //     ),
-  //   );
-  // }
-  setState(() => _isLoading = true); // Show loader
-  // String deviceId = await getDeviceId();
-  // OrderMetaData device = OrderMetaData(key: OrderMetaData.posDeviceId, value: deviceId);
-  // OrderMetaData placedBy = OrderMetaData(key: OrderMetaData.posPlacedBy, value: '${orderHelper.activeUserId ?? 1}');
-  // OrderMetaData shiftIdValue = OrderMetaData(key: OrderMetaData.shiftId, value: shiftId!);
-  // List<OrderMetaData> metaData = [device, placedBy, shiftIdValue];
-
-  _updateOrderSubscription?.cancel();
-  _updateOrderSubscription =
-      orderBloc.createOrderStream.listen((response) async {
-        if (!mounted) return;
-
-        if (response.status == Status.COMPLETED) {
-          setState(() => _isLoading = false); // Hide loader
-          if (kDebugMode) {
-            print(
-                "##### DEBUG: addNewTab - Order created successfully, serverOrderId: ${response.data!.id}");
-          }
-          // Persist to SQLite so order panel shows this order
-          await orderHelper.createOrder(serverOrderId: response.data!.id);
-          setState(() {
-            tabs.add({
-              "title": "${response.data!.id}",
-              "subtitle": "Tab ${tabs.length + 1}",
-              "orderId": response.data!.id as Object,
-            });
-          });
-
-          _initializeTabController();
-          _tabController?.index = tabs.length - 1;
-          _scrollToSelectedTab();
-          await fetchOrderItems();
-
-          if (Misc.showDebugSnackBar) {
-            // Build #1.0.254
-            _scaffoldMessenger.showSnackBar(
-              SnackBar(
-                content: Text("Order created successfully"),
-                backgroundColor: Colors.green,
-                duration: const Duration(seconds: 2),
-              ),
-            );
-          }
-        } else if (response.status == Status.ERROR) {
-          if (response.message!.contains('Unauthorised')) {
-            if (kDebugMode) {
-              print(
-                  "categories screen 2  ---- Unauthorised : ${response.message!}");
-            }
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                Navigator.pushReplacement(context,
-                    MaterialPageRoute(builder: (context) => LoginScreen()));
-
-                if (kDebugMode) {
-                  print("message 2 --- ${response.message}");
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content:
-                    Text("Unauthorised. Session is expired on this device."),
-                    backgroundColor: Colors.red,
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              }
-            });
-          } else {
-            setState(() => _isLoading = false); //Build #1.0.99: Hide loader
-            if (kDebugMode) {
-              print(
-                  "##### ERROR: addNewTab - Failed to create order: ${response.message}");
-            }
-            _scaffoldMessenger.showSnackBar(
-              SnackBar(
-                content: Text(response.message ?? "Failed to create order"),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 2),
-              ),
-            );
-          }
-        }
-      });
-
-  logString += await orderBloc.createOrder(); // Build #1.0.128
-  setState(() {});
-  }
-
-  // =============================================================
-// GLOBAL HELPER — FIXES ALL MAP<dynamic, dynamic> ERRORS
-// =============================================================
   dynamic deepCast(dynamic source) {
     if (source is Map) {
       return source.map(
@@ -3165,7 +3547,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                     width: 1.0,
                                   ),
                                   boxShadow: _isNewTabDisabled
-                                      ? [] // 🔕 no shadow when disabled
+                                      ? [] //  no shadow when disabled
                                       : [
                                     BoxShadow(
                                       color: themeHelper.themeMode ==
@@ -3481,6 +3863,300 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     );
   }
 
+//   Future<void> removeTab(int index) async {
+//     if (tabs.isEmpty) {
+//       print("❌ removeTab called but tabs is empty");
+//       return;
+//     }
+//
+//     final int orderId = tabs[index]["orderId"] as int;
+//     final bool isRemovedTabActive = orderId == orderHelper.activeOrderId;
+//
+//     print("\n================= 🗑 REMOVE TAB START =================");
+//     print("👉 Removing Tab Index: $index");
+//     print("👉 Removing Order ID: $orderId");
+//     print("👉 Is Active Order Being Removed? $isRemovedTabActive");
+//     print("======================================================\n");
+//
+//     setState(() => _isLoading = true);
+//
+//     try {
+//       final offlineBox = StorageProvider.offlineOrders;
+//       final deletedBox = StorageProvider.deletedOrders;
+//
+//       print(
+//           "📦 Offline Orders Box Contains ID? ${await offlineBox.containsKey(orderId.toString())}");
+//
+//       final bool isOfflineOrder =
+//       await offlineBox.containsKey(orderId.toString());
+//       if (isOfflineOrder) {
+//         print("\n🟡 OFFLINE ORDER DETECTED — Performing Offline Delete Flow");
+//         await OrderRepository().saveOfflineOrderTotals(orderId);
+//
+//         // ⭐ 1️⃣ READ ORDER DATA BEFORE DELETE
+//         final orderData = await offlineBox.get(orderId.toString());
+//         print("📤 Original Offline Order Data:\n$orderData");
+//
+//         if (orderData == null) {
+//           print("⚠️ orderData is NULL — cannot sync or backup!");
+//           return;
+//         }
+//
+//         // ⭐ 2️⃣ Sync attempt BEFORE deleting locally
+//         print("🌐 Attempting to sync deleted offline order to backend…");
+//
+//         final result =
+//         await OrderRepository().syncOfflineDeletedOrders([orderData]);
+//         final bool syncSuccess = result["success"] == true;
+//         final int? syncedWooId = result["wooOrderId"];
+//
+// // ******************************************************************
+// // 🔥 ALWAYS SAVE CASHBACK + TAX + WOO ORDER ID IN orderExtras BOX
+// // ******************************************************************
+//         final extrasBox = StorageProvider.orderExtras;
+//
+// // 1️⃣ Resolve Woo Order ID correctly (supports all key formats)
+//         // if server returned Woo Order ID → use it
+//         final wooOrderId = (syncedWooId ??
+//             orderData["woo_order_id"] ??
+//             orderData["wooOrderId"] ??
+//             orderId)
+//             .toString();
+//
+// // 2️⃣ Resolve Cashback Fee from ALL possible key names
+//         final cashbackFee = (orderData["cashbackFee"] ??
+//             orderData["order_cashback_fee"] ??
+//             orderData["cashback_fee"] ??
+//             orderData["cashbackFeeTotal"] ??
+//             orderData["cashback"] ??
+//             0)
+//             .toDouble();
+//
+//        // 3️⃣ Resolve Tax (all supported variations)
+//         final tax = (orderData["tax"] ??
+//             orderData["wooTax"] ??
+//             orderData["order_tax"] ??
+//             orderData["totalTax"] ??
+//             0)
+//             .toDouble();
+//
+// // 4️⃣ Save final extras
+//         await extrasBox.put(wooOrderId, {
+//           "woo_order_id": wooOrderId,
+//           "local_offline_id": orderId,
+//           "cashback_fee": cashbackFee,
+//           "tax": tax,
+//           "synced": syncSuccess,
+//           "saved_at": DateTime.now().toIso8601String(),
+//         });
+//
+//         print("💾 SAVED TO orderExtras BOX:");
+//         print("   WooID: $wooOrderId");
+//         print("   Cashback Fee: $cashbackFee");
+//         print("   Tax: $tax");
+//         print("   Synced: $syncSuccess");
+//         print("📦 Current orderExtras: ${await extrasBox.get(wooOrderId)}");
+// // ******************************************************************
+//
+//         if (syncSuccess) {
+//           print("✅ Deleted order synced successfully → No Hive backup needed");
+//
+//           await offlineBox.delete(orderId.toString());
+//           await orderHelper.deleteOrder(orderId);
+//
+//           // ── FIX: clear stale items immediately so they never flash on the next tab ──
+//           setState(() {
+//             tabs.removeAt(index);
+//             orderItems = [];           // ← ADD THIS
+//             _isSwitchingOrder = true;  // ← ADD THIS
+//             _currentOrderVersion++;    // ← ADD THIS
+//             _listVersion++;            // ← ADD THIS
+//           });
+//
+//           if (tabs.isEmpty) {
+//             orderHelper.activeOrderId = null;
+//             print("🧹 No tabs left → FINAL display reset");
+//             await CustomerDisplayService.resetDisplay();
+//             await _initializeTabController();
+//             if (mounted) setState(() {
+//               _isLoading = false;
+//               _isSwitchingOrder = false;  // ← ADD THIS
+//             });
+//             return;
+//           }
+//
+//           // ── after removing, switch active order and fetch fresh items ──
+//           final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
+//           final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
+//
+//           if (isRemovedTabActive) {
+//             await orderHelper.setActiveOrder(newActiveOrderId);
+//             await orderHelper.saveLastActiveOrderId(newActiveOrderId);
+//           }
+//
+//
+//           await _initializeTabController();
+//
+//           // ── FIX: only load items if offline data exists for this order ──
+//           if (await offlineBox.containsKey(newActiveOrderId.toString())) {
+//             await fetchOrderItems();
+//           } else {
+//             if (mounted) setState(() => orderItems = []);
+//           }
+//
+//           if (mounted) setState(() {
+//             _isLoading = false;
+//             _isSwitchingOrder = false;  // ← ADD THIS
+//           });
+//           return;
+//         }
+//         // ❌ Sync failed → store in deletedOrders
+//         print("⚠️ Sync FAILED → Storing in deletedOrders Hive box...");
+//
+//         final userData = await UserDbHelper().getUserData();
+//         final currentUserId = userData?[AppDBConst.userId];
+//         final currentUserName = userData?[AppDBConst.username] ?? "";
+//         final currentShiftId = await UserDbHelper().getUserShiftId();
+//
+//         final enhancedDeletedOrder = {
+//           ...orderData,
+//           "deleted_order_id": orderId,
+//           "client_order_id": orderId.toString(),
+//           "deleted_by_user_id": currentUserId,
+//           "deleted_by_user_name": currentUserName,
+//           "deleted_shift_id": currentShiftId,
+//           "deleted_at": DateTime.now().toIso8601String(),
+//         };
+//         await deletedBox.put(orderId.toString(), enhancedDeletedOrder);
+//
+//         // Delete from offline and UI cleanup
+//         await offlineBox.delete(orderId.toString());
+//         await orderHelper.deleteOrder(orderId);
+//
+//         orderHelper.orders.removeWhere((o) =>
+//         o[AppDBConst.orderServerId] == orderId ||
+//             o[AppDBConst.orderId] == orderId);
+//         orderHelper.orderIds.remove(orderId);
+//
+//         setState(() {
+//           tabs.removeAt(index);
+//           for (int i = 0; i < tabs.length; i++) {
+//             tabs[i]["subtitle"] = "Tab ${i + 1}";
+//           }
+//         });
+//
+//         if (tabs.isEmpty) {
+//           orderHelper.activeOrderId = null;
+//           orderItems = [];
+//           await _initializeTabController();
+//           setState(() => _isLoading = false);
+//           return;
+//         }
+//
+//         final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
+//         final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
+//
+//         if (isRemovedTabActive) {
+//           await orderHelper.setActiveOrder(newActiveOrderId);
+//           await orderHelper.saveLastActiveOrderId(newActiveOrderId);
+//         }
+// // Safety: if panel has no tabs, never leave old cart on CFD
+//         if (tabs.isEmpty && mounted) {
+//           unawaited(_publishMqttCart()); // items empty → screen IDLE
+//           unawaited(CustomerDisplayService.showWelcome());
+//         }
+//
+//         if (mounted) {
+//           setState(() => _isLoading = false);
+//         }
+//
+//         _tabController!.index = newIndex;
+//
+//         setState(() => _isLoading = false);
+//         return;
+//       }
+//
+//       // ============================================================
+//       // ===============  ONLINE ORDER DELETE AREA  ================
+//       // ============================================================
+//
+//       print("\n🔵 ONLINE ORDER DETECTED — Calling API to cancel order…");
+//
+//       final int serverOrderId = orderId;
+//
+//       _updateOrderSubscription?.cancel();
+//       _updateOrderSubscription =
+//           orderBloc.changeOrderStatusStream.listen((response) async {
+//             if (!mounted) return;
+//
+//             print("🌐 Server Cancel Status: ${response.status}");
+//
+//             if (response.status == Status.COMPLETED) {
+//               print("✅ Server confirmed order cancellation");
+//
+//               await orderHelper.deleteOrder(orderId);
+//               orderHelper.cancelledOrderId = serverOrderId;
+//
+//               print("🧹 Removing order tab from UI…");
+//               setState(() {
+//                 tabs.removeAt(index);
+//                 for (int i = 0; i < tabs.length; i++) {
+//                   tabs[i]["subtitle"] = "Tab ${i + 1}";
+//                 }
+//               });
+//
+//               if (tabs.isEmpty) {
+//                 print("❗ All tabs closed after delete");
+//                 orderHelper.activeOrderId = null;
+//                 orderItems = [];
+//                 await _initializeTabController();
+//                 setState(() => _isLoading = false);
+//                 return;
+//               }
+//
+//               final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
+//               final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
+//
+//               print(
+//                   "🔄 New active tab index: $newIndex, OrderId: $newActiveOrderId");
+//
+//               if (isRemovedTabActive) {
+//                 print("🔄 Updating active order due to removal");
+//                 await orderHelper.setActiveOrder(newActiveOrderId);
+//                 await orderHelper.saveLastActiveOrderId(newActiveOrderId);
+//               }
+//
+//               print("🔧 Reinitializing tab controller…");
+//               await _initializeTabController();
+//
+//               if (await offlineBox.containsKey(newActiveOrderId.toString())) {
+//                 print("📥 Loading offline items for new order");
+//                 await fetchOrderItems();
+//               } else {
+//                 print("⚠️ No offline items found for this order");
+//                 setState(() => orderItems = []);
+//               }
+//
+//               _tabController!.index = newIndex;
+//
+//               print(
+//                   "================= 🗑 REMOVE TAB END (ONLINE) ================\n");
+//
+//               setState(() => _isLoading = false);
+//             }
+//           });
+//
+//       print("🌐 Sending cancel order request to server…");
+//       await orderBloc.changeOrderStatus(
+//         orderId: serverOrderId,
+//         status: TextConstants.cancelled,
+//       );
+//     } catch (e) {
+//       print("❌ ERROR in removeTab(): $e");
+//       setState(() => _isLoading = false);
+//     }
+//   }
+
   Future<void> removeTab(int index) async {
     if (tabs.isEmpty) {
       print("❌ removeTab called but tabs is empty");
@@ -3496,52 +4172,45 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     print("👉 Is Active Order Being Removed? $isRemovedTabActive");
     print("======================================================\n");
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+    });
 
     try {
       final offlineBox = StorageProvider.offlineOrders;
       final deletedBox = StorageProvider.deletedOrders;
 
-      print(
-          "📦 Offline Orders Box Contains ID? ${await offlineBox.containsKey(orderId.toString())}");
-
       final bool isOfflineOrder =
       await offlineBox.containsKey(orderId.toString());
+
+      // ============================================================
+      // OFFLINE ORDER DELETE
+      // ============================================================
       if (isOfflineOrder) {
         print("\n🟡 OFFLINE ORDER DETECTED — Performing Offline Delete Flow");
         await OrderRepository().saveOfflineOrderTotals(orderId);
 
-        // ⭐ 1️⃣ READ ORDER DATA BEFORE DELETE
         final orderData = await offlineBox.get(orderId.toString());
-        print("📤 Original Offline Order Data:\n$orderData");
-
         if (orderData == null) {
           print("⚠️ orderData is NULL — cannot sync or backup!");
+          if (mounted) setState(() => _isLoading = false);
           return;
         }
 
-        // ⭐ 2️⃣ Sync attempt BEFORE deleting locally
         print("🌐 Attempting to sync deleted offline order to backend…");
-
         final result =
         await OrderRepository().syncOfflineDeletedOrders([orderData]);
         final bool syncSuccess = result["success"] == true;
         final int? syncedWooId = result["wooOrderId"];
 
-// ******************************************************************
-// 🔥 ALWAYS SAVE CASHBACK + TAX + WOO ORDER ID IN orderExtras BOX
-// ******************************************************************
+        // Save extras
         final extrasBox = StorageProvider.orderExtras;
-
-// 1️⃣ Resolve Woo Order ID correctly (supports all key formats)
-        // if server returned Woo Order ID → use it
         final wooOrderId = (syncedWooId ??
             orderData["woo_order_id"] ??
             orderData["wooOrderId"] ??
             orderId)
             .toString();
 
-// 2️⃣ Resolve Cashback Fee from ALL possible key names
         final cashbackFee = (orderData["cashbackFee"] ??
             orderData["order_cashback_fee"] ??
             orderData["cashback_fee"] ??
@@ -3550,7 +4219,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             0)
             .toDouble();
 
-       // 3️⃣ Resolve Tax (all supported variations)
         final tax = (orderData["tax"] ??
             orderData["wooTax"] ??
             orderData["order_tax"] ??
@@ -3558,7 +4226,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             0)
             .toDouble();
 
-// 4️⃣ Save final extras
         await extrasBox.put(wooOrderId, {
           "woo_order_id": wooOrderId,
           "local_offline_id": orderId,
@@ -3568,139 +4235,165 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           "saved_at": DateTime.now().toIso8601String(),
         });
 
-        print("💾 SAVED TO orderExtras BOX:");
-        print("   WooID: $wooOrderId");
-        print("   Cashback Fee: $cashbackFee");
-        print("   Tax: $tax");
-        print("   Synced: $syncSuccess");
-        print("📦 Current orderExtras: ${await extrasBox.get(wooOrderId)}");
-// ******************************************************************
+        // UI: remove tab immediately
+        setState(() {
+          tabs.removeAt(index);
+          orderItems = [];
+          _isSwitchingOrder = true;
+          _currentOrderVersion++;
+          _listVersion++;
+          _summaryEnabledForActiveOrder = false;
+          _summaryLockedOrderId = null;
+        });
 
+        // Last tab → clear active + MQTT IDLE immediately
+        if (tabs.isEmpty) {
+          orderHelper.activeOrderId = null;
+          _activeOrderId = null;
+          await orderHelper.setActiveOrder(null);
+          await orderHelper.clearPersistedCartSelection();
+
+          if (syncSuccess) {
+            await offlineBox.delete(orderId.toString());
+            await orderHelper.deleteOrder(orderId);
+          } else {
+            // backup then delete local
+            final userData = await UserDbHelper().getUserData();
+            final currentUserId = userData?[AppDBConst.userId];
+            final currentUserName = userData?[AppDBConst.username] ?? "";
+            final currentShiftId = await UserDbHelper().getUserShiftId();
+
+            final enhancedDeletedOrder = {
+              ...orderData,
+              "deleted_order_id": orderId,
+              "client_order_id": orderId.toString(),
+              "deleted_by_user_id": currentUserId,
+              "deleted_by_user_name": currentUserName,
+              "deleted_shift_id": currentShiftId,
+              "deleted_at": DateTime.now().toIso8601String(),
+            };
+            await deletedBox.put(orderId.toString(), enhancedDeletedOrder);
+            await offlineBox.delete(orderId.toString());
+            await orderHelper.deleteOrder(orderId);
+          }
+
+          print("🧹 No tabs left → MQTT forceIdle (Welcome on CFD)");
+          await _publishMqttCart(forceIdle: true);
+
+          await _initializeTabController();
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+              _isSwitchingOrder = false;
+            });
+          }
+          return;
+        }
+
+        // Tabs remain — delete local data
         if (syncSuccess) {
-          print("✅ Deleted order synced successfully → No Hive backup needed");
+          print("✅ Deleted order synced successfully");
+          await offlineBox.delete(orderId.toString());
+          await orderHelper.deleteOrder(orderId);
+        } else {
+          print("⚠️ Sync FAILED → Storing in deletedOrders Hive box...");
+          final userData = await UserDbHelper().getUserData();
+          final currentUserId = userData?[AppDBConst.userId];
+          final currentUserName = userData?[AppDBConst.username] ?? "";
+          final currentShiftId = await UserDbHelper().getUserShiftId();
 
+          final enhancedDeletedOrder = {
+            ...orderData,
+            "deleted_order_id": orderId,
+            "client_order_id": orderId.toString(),
+            "deleted_by_user_id": currentUserId,
+            "deleted_by_user_name": currentUserName,
+            "deleted_shift_id": currentShiftId,
+            "deleted_at": DateTime.now().toIso8601String(),
+          };
+          await deletedBox.put(orderId.toString(), enhancedDeletedOrder);
           await offlineBox.delete(orderId.toString());
           await orderHelper.deleteOrder(orderId);
 
-          // ── FIX: clear stale items immediately so they never flash on the next tab ──
-          setState(() {
-            tabs.removeAt(index);
-            orderItems = [];           // ← ADD THIS
-            _isSwitchingOrder = true;  // ← ADD THIS
-            _currentOrderVersion++;    // ← ADD THIS
-            _listVersion++;            // ← ADD THIS
-          });
-
-          if (tabs.isEmpty) {
-            orderHelper.activeOrderId = null;
-            print("🧹 No tabs left → FINAL display reset");
-            await CustomerDisplayService.resetDisplay();
-            await _initializeTabController();
-            if (mounted) setState(() {
-              _isLoading = false;
-              _isSwitchingOrder = false;  // ← ADD THIS
-            });
-            return;
-          }
-
-          // ── after removing, switch active order and fetch fresh items ──
-          final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
-          final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
-
-          if (isRemovedTabActive) {
-            await orderHelper.setActiveOrder(newActiveOrderId);
-            await orderHelper.saveLastActiveOrderId(newActiveOrderId);
-          }
-
-          await _initializeTabController();
-
-          // ── FIX: only load items if offline data exists for this order ──
-          if (await offlineBox.containsKey(newActiveOrderId.toString())) {
-            await fetchOrderItems();
-          } else {
-            if (mounted) setState(() => orderItems = []);
-          }
-
-          if (mounted) setState(() {
-            _isLoading = false;
-            _isSwitchingOrder = false;  // ← ADD THIS
-          });
-          return;
+          orderHelper.orders.removeWhere((o) =>
+          o[AppDBConst.orderServerId] == orderId ||
+              o[AppDBConst.orderId] == orderId);
+          orderHelper.orderIds.remove(orderId);
         }
-        // ❌ Sync failed → store in deletedOrders
-        print("⚠️ Sync FAILED → Storing in deletedOrders Hive box...");
-
-        final userData = await UserDbHelper().getUserData();
-        final currentUserId = userData?[AppDBConst.userId];
-        final currentUserName = userData?[AppDBConst.username] ?? "";
-        final currentShiftId = await UserDbHelper().getUserShiftId();
-
-        final enhancedDeletedOrder = {
-          ...orderData,
-          "deleted_order_id": orderId,
-          "client_order_id": orderId.toString(),
-          "deleted_by_user_id": currentUserId,
-          "deleted_by_user_name": currentUserName,
-          "deleted_shift_id": currentShiftId,
-          "deleted_at": DateTime.now().toIso8601String(),
-        };
-        await deletedBox.put(orderId.toString(), enhancedDeletedOrder);
-
-        // Delete from offline and UI cleanup
-        await offlineBox.delete(orderId.toString());
-        await orderHelper.deleteOrder(orderId);
-
-        orderHelper.orders.removeWhere((o) =>
-        o[AppDBConst.orderServerId] == orderId ||
-            o[AppDBConst.orderId] == orderId);
-        orderHelper.orderIds.remove(orderId);
 
         setState(() {
-          tabs.removeAt(index);
           for (int i = 0; i < tabs.length; i++) {
             tabs[i]["subtitle"] = "Tab ${i + 1}";
           }
         });
-
-        if (tabs.isEmpty) {
-          orderHelper.activeOrderId = null;
-          orderItems = [];
-          await _initializeTabController();
-          setState(() => _isLoading = false);
-          return;
-        }
 
         final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
         final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
 
         if (isRemovedTabActive) {
           await orderHelper.setActiveOrder(newActiveOrderId);
+          _activeOrderId = newActiveOrderId;
           await orderHelper.saveLastActiveOrderId(newActiveOrderId);
         }
 
         await _initializeTabController();
-        await fetchOrderItems();
 
-        _tabController!.index = newIndex;
+        if (await offlineBox.containsKey(newActiveOrderId.toString())) {
+          await fetchOrderItems();
+        } else {
+          if (mounted) setState(() => orderItems = []);
+        }
 
-        setState(() => _isLoading = false);
+        // Publish remaining cart (not IDLE)
+        await _publishMqttCart();
+
+        if (_tabController != null && newIndex < tabs.length) {
+          _tabController!.index = newIndex;
+        }
+
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _isSwitchingOrder = false;
+          });
+        }
         return;
       }
 
       // ============================================================
-      // ===============  ONLINE ORDER DELETE AREA  ================
+      // ONLINE ORDER DELETE
       // ============================================================
-
       print("\n🔵 ONLINE ORDER DETECTED — Calling API to cancel order…");
-
       final int serverOrderId = orderId;
+
+      // UI: remove tab immediately
+      setState(() {
+        tabs.removeAt(index);
+        orderItems = [];
+        _isSwitchingOrder = true;
+        _currentOrderVersion++;
+        _listVersion++;
+        _summaryEnabledForActiveOrder = false;
+        _summaryLockedOrderId = null;
+      });
+
+      final bool wasLastTab = tabs.isEmpty;
+
+      if (wasLastTab) {
+        orderHelper.activeOrderId = null;
+        _activeOrderId = null;
+        await orderHelper.setActiveOrder(null);
+        await orderHelper.clearPersistedCartSelection();
+
+        // MQTT IDLE immediately (don't wait for API)
+        print("❗ Last tab removed → MQTT forceIdle NOW");
+        await _publishMqttCart(forceIdle: true);
+      }
 
       _updateOrderSubscription?.cancel();
       _updateOrderSubscription =
           orderBloc.changeOrderStatusStream.listen((response) async {
             if (!mounted) return;
-
-            print("🌐 Server Cancel Status: ${response.status}");
 
             if (response.status == Status.COMPLETED) {
               print("✅ Server confirmed order cancellation");
@@ -3708,67 +4401,789 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               await orderHelper.deleteOrder(orderId);
               orderHelper.cancelledOrderId = serverOrderId;
 
-              print("🧹 Removing order tab from UI…");
-              setState(() {
-                tabs.removeAt(index);
-                for (int i = 0; i < tabs.length; i++) {
-                  tabs[i]["subtitle"] = "Tab ${i + 1}";
-                }
-              });
-
-              if (tabs.isEmpty) {
-                print("❗ All tabs closed after delete");
-                orderHelper.activeOrderId = null;
-                orderItems = [];
+              if (wasLastTab || tabs.isEmpty) {
+                // Already published IDLE above; just finish UI
                 await _initializeTabController();
-                setState(() => _isLoading = false);
+                if (mounted) {
+                  setState(() {
+                    _isLoading = false;
+                    _isSwitchingOrder = false;
+                  });
+                }
                 return;
               }
 
               final int newIndex = index >= tabs.length ? tabs.length - 1 : index;
               final int newActiveOrderId = tabs[newIndex]["orderId"] as int;
 
-              print(
-                  "🔄 New active tab index: $newIndex, OrderId: $newActiveOrderId");
-
               if (isRemovedTabActive) {
-                print("🔄 Updating active order due to removal");
                 await orderHelper.setActiveOrder(newActiveOrderId);
+                _activeOrderId = newActiveOrderId;
                 await orderHelper.saveLastActiveOrderId(newActiveOrderId);
               }
 
-              print("🔧 Reinitializing tab controller…");
               await _initializeTabController();
 
               if (await offlineBox.containsKey(newActiveOrderId.toString())) {
-                print("📥 Loading offline items for new order");
                 await fetchOrderItems();
               } else {
-                print("⚠️ No offline items found for this order");
                 setState(() => orderItems = []);
               }
 
-              _tabController!.index = newIndex;
+              await _publishMqttCart();
 
-              print(
-                  "================= 🗑 REMOVE TAB END (ONLINE) ================\n");
+              if (_tabController != null && newIndex < tabs.length) {
+                _tabController!.index = newIndex;
+              }
 
-              setState(() => _isLoading = false);
+              if (mounted) {
+                setState(() {
+                  _isLoading = false;
+                  _isSwitchingOrder = false;
+                });
+              }
+            } else if (response.status == Status.ERROR) {
+              if (mounted) {
+                setState(() => _isLoading = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(response.message ?? "Failed to cancel order"),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
             }
           });
 
-      print("🌐 Sending cancel order request to server…");
       await orderBloc.changeOrderStatus(
         orderId: serverOrderId,
         status: TextConstants.cancelled,
       );
     } catch (e) {
       print("❌ ERROR in removeTab(): $e");
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   int totalItems = 0;
+
+//   Future<void> deleteOfflineItem(Map<String, dynamic> orderItem,
+//       {int? itemIndex}) async {
+//     if (orderHelper.activeOrderId == null) return;
+//
+//     final offlineBox = StorageProvider.offlineOrders;
+//     final String orderKey = orderHelper.activeOrderId.toString();
+//     final rawOfflineOrder = await offlineBox.get(orderKey);
+//
+//     if (rawOfflineOrder == null) return;
+//
+//     final Map<String, dynamic> offlineOrder =
+//     Map<String, dynamic>.from(rawOfflineOrder);
+//
+//     // ============================
+//     // 🛑 CHECK: LAST ITEM + MERCHANT DISCOUNT
+//     // ============================
+//
+//     // ============================
+// // 🛑 CHECK: MERCHANT DISCOUNT WHEN DELETING ITEMS
+// // ============================
+//     double productsTotal =
+//     ((offlineOrder['products'] as List?) ?? []).fold(0.0, (sum, p) {
+//       final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
+//       final qty = int.tryParse(p['quantity']?.toString() ??
+//           p['items_count']?.toString() ??
+//           '1') ??
+//           1;
+//       return sum + (price * qty);
+//     });
+//
+//     double customTotal =
+//     ((offlineOrder['custom_items'] as List?) ?? []).fold(0.0, (sum, c) {
+//       final price = double.tryParse(
+//           c['custom_item_price']?.toString() ??
+//               c['amount']?.toString() ??
+//               c['price']?.toString() ??
+//               '0') ??
+//           0;
+//       final qty = int.tryParse(c['quantity']?.toString() ??
+//           c['items_count']?.toString() ??
+//           '1') ??
+//           1;
+//       return sum + (price * qty);
+//     });
+//
+//     double cashbackTotal =
+//     ((offlineOrder['cashbacks'] as List?) ?? []).fold(0.0, (sum, c) {
+//       final amount = double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
+//       return sum + amount;
+//     });
+//
+//     final double itemPrice = double.tryParse(
+//         orderItem['item_price']?.toString() ??
+//             orderItem[AppDBConst.itemPrice]?.toString() ??
+//             '0') ??
+//         0;
+//
+//     final int itemQty = int.tryParse(orderItem['items_count']?.toString() ??
+//         orderItem[AppDBConst.itemCount]?.toString() ??
+//         '1') ??
+//         1;
+//
+//     final double itemLineTotal = itemPrice * itemQty;
+//
+//     final double currentTotal = productsTotal + customTotal;
+//     final double newTotal = currentTotal - itemLineTotal;
+//     final double merchantDiscount = (offlineOrder['merchantDiscount'] is num)
+//         ? (offlineOrder['merchantDiscount'] as num).toDouble()
+//         : 0.0;
+//
+//     // If no discount → allow delete
+//     // 🔍 Detect type FIRST
+//     final String itemType = (orderItem['item_type'] ?? orderItem['type'] ?? '')
+//         .toString()
+//         .toLowerCase();
+//
+//     final bool isPayout = itemType == 'payout';
+//     final bool isCashback = itemType == 'cashback';
+//
+//     // ✅ Skip merchant discount handling for payout & cashback
+//     if (merchantDiscount > 0 && !isPayout && !isCashback) {
+//       double productsTotal =
+//       ((offlineOrder['products'] as List?) ?? []).fold(0.0, (sum, p) {
+//         final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
+//         final qty = int.tryParse(p['quantity']?.toString() ??
+//             p['items_count']?.toString() ??
+//             '1') ??
+//             1;
+//         return sum + (price * qty);
+//       });
+//
+//       double customTotal =
+//       ((offlineOrder['custom_items'] as List?) ?? []).fold(0.0, (sum, c) {
+//         final price = double.tryParse(c['custom_item_price']?.toString() ??
+//             c['amount']?.toString() ??
+//             c['price']?.toString() ??
+//             '0') ??
+//             0;
+//         final qty = int.tryParse(c['quantity']?.toString() ??
+//             c['items_count']?.toString() ??
+//             '1') ??
+//             1;
+//         return sum + (price * qty);
+//       });
+//
+//       final double currentTotal = productsTotal + customTotal;
+//
+//       final double itemPrice = double.tryParse(
+//           orderItem['item_price']?.toString() ??
+//               orderItem[AppDBConst.itemPrice]?.toString() ??
+//               '0') ??
+//           0;
+//
+//       final int itemQty = int.tryParse(orderItem['items_count']?.toString() ??
+//           orderItem[AppDBConst.itemCount]?.toString() ??
+//           '1') ??
+//           1;
+//
+//       final double itemLineTotal = itemPrice * itemQty;
+//       final double newTotal = currentTotal - itemLineTotal;
+//
+//       if (newTotal < merchantDiscount) {
+//         ScaffoldMessenger.of(context).showSnackBar(
+//           const SnackBar(
+//             content: Text(
+//               "Merchant discount is more than the new order total. Please remove merchant discount first before decreasing items.",
+//             ),
+//             backgroundColor: Colors.red,
+//             duration: Duration(seconds: 2),
+//           ),
+//         );
+//         // Block decreasing / deleting this item until user removes discount.
+//         return;
+//       }
+//     }
+//     if (!isPayout && !isCashback && cashbackTotal > 0) {
+//       if (cashbackTotal > newTotal) {
+//         ScaffoldMessenger.of(context).showSnackBar(
+//           const SnackBar(
+//             backgroundColor: Colors.red,
+//             content: Text(
+//               "Cashback is more than the new order total. Please remove cashback first before deleting items.",
+//             ),
+//           ),
+//         );
+//         return;
+//       }
+//     }
+//     // ============================
+//     // CONTINUE WITH NORMAL DELETE LOGIC
+//     // ============================
+//
+//     // 🔍 Detect type: product / payout / cashback
+//     // final String itemType =
+//     //     (orderItem['item_type'] ?? '').toString().toLowerCase();
+//
+//     final List<Map<String, dynamic>> products =
+//         (offlineOrder['products'] as List?)
+//             ?.map((e) => Map<String, dynamic>.from(e))
+//             .toList() ??
+//             [];
+//
+//     final List<Map<String, dynamic>> customItems =
+//         (offlineOrder['custom_items'] as List?)
+//             ?.map((e) => Map<String, dynamic>.from(e))
+//             .toList() ??
+//             [];
+//
+//     final List<Map<String, dynamic>> payouts =
+//         (offlineOrder['payouts'] as List?)
+//             ?.map((e) => Map<String, dynamic>.from(e))
+//             .toList() ??
+//             [];
+//
+//     final List<Map<String, dynamic>> cashbacks =
+//         (offlineOrder['cashbacks'] as List?)
+//             ?.map((e) => Map<String, dynamic>.from(e))
+//             .toList() ??
+//             [];
+//
+//     // Index-based removal: orderItems = [products..., custom_items..., payouts..., cashbacks...]
+//     final int productsLen = products.length;
+//     final int customLen = customItems.length;
+//     final int payoutsLen = payouts.length;
+//     final bool useIndex = itemIndex != null && itemIndex >= 0;
+//
+//     // 🟦 DELETE PAYOUT
+//     if (itemType == 'payout') {
+//       if (useIndex) {
+//         if (itemIndex! < productsLen) {
+//           products.removeAt(itemIndex);
+//           offlineOrder['products'] = products;
+//         } else {
+//           final payoutsStart = productsLen + customLen;
+//           if (itemIndex >= payoutsStart &&
+//               itemIndex < payoutsStart + payoutsLen) {
+//             payouts.removeAt(itemIndex - payoutsStart);
+//           }
+//         }
+//       } else {
+//         payouts.removeWhere((p) {
+//           final amt1 = double.tryParse(p['amount']?.toString() ?? '0') ?? 0;
+//           final amt2 =
+//               double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+//           return amt1 == amt2;
+//         });
+//       }
+//       offlineOrder['payouts'] = payouts;
+//     }
+//
+//     // 🟪 DELETE CUSTOM ITEM (from custom_items or products with type custom)
+//     else if (itemType.contains('custom')) {
+//       if (useIndex) {
+//         if (itemIndex! < productsLen) {
+//           products.removeAt(itemIndex);
+//         } else if (itemIndex >= productsLen &&
+//             itemIndex < productsLen + customLen) {
+//           customItems.removeAt(itemIndex - productsLen);
+//         }
+//         offlineOrder['products'] = products;
+//         offlineOrder['custom_items'] = customItems;
+//       } else {
+//         final tappedName =
+//         (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '')
+//             .toString()
+//             .toLowerCase();
+//         final tappedPrice = double.tryParse(
+//             orderItem['item_price']?.toString() ??
+//                 orderItem[AppDBConst.itemPrice]?.toString() ??
+//                 '0') ??
+//             0;
+//
+//         customItems.removeWhere((c) {
+//           final name =
+//           (c['custom_item_name'] ?? c['item_name'] ?? c['name'] ?? '')
+//               .toString()
+//               .toLowerCase();
+//           final price = double.tryParse(c['custom_item_price']?.toString() ??
+//               c['amount']?.toString() ??
+//               c['price']?.toString() ??
+//               '0') ??
+//               0;
+//           return name == tappedName && (price - tappedPrice).abs() < 0.001;
+//         });
+//         offlineOrder['custom_items'] = customItems;
+//
+//         products.removeWhere((p) {
+//           final type =
+//           (p['item_type'] ?? p['type'] ?? '').toString().toLowerCase();
+//           if (!type.contains('custom')) return false;
+//           final name =
+//           (p['name'] ?? p['custom_item_name'] ?? p['product_name'] ?? '')
+//               .toString()
+//               .toLowerCase();
+//           final price = double.tryParse(p['price']?.toString() ??
+//               p['custom_item_price']?.toString() ??
+//               '0') ??
+//               0;
+//           return name == tappedName && (price - tappedPrice).abs() < 0.001;
+//         });
+//         offlineOrder['products'] = products;
+//       }
+//     }
+//
+//     // 🟩 DELETE CASHBACK
+//     else if (itemType == 'cashback') {
+//       if (useIndex) {
+//         final cashbacksStart = productsLen + customLen + payoutsLen;
+//
+//         if (itemIndex! >= cashbacksStart &&
+//             itemIndex < cashbacksStart + cashbacks.length) {
+//           cashbacks.removeAt(itemIndex - cashbacksStart);
+//         }
+//       } else {
+//         cashbacks.removeWhere((cb) {
+//           final amt1 = double.tryParse(cb['amount']?.toString() ?? '0') ?? 0;
+//           final amt2 =
+//               double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+//           return (amt1 - amt2).abs() < 0.001;
+//         });
+//       }
+//
+//       offlineOrder['cashbacks'] = cashbacks;
+//       if (cashbacks.isEmpty) {
+//         offlineOrder['cashbackFee'] = 0.0;
+//         offlineOrder['cashback_fee'] = 0.0;
+//       }
+//     }
+//
+//     // 🛒 DELETE PRODUCT (includes variant)
+//     else {
+//       int deletedProductId = -1;
+//       String matchedSku = "";
+//       Map<String, dynamic>? removedProduct;
+//
+//       if (useIndex && itemIndex! < productsLen) {
+//         removedProduct = products.removeAt(itemIndex);
+//         if (removedProduct != null) {
+//           deletedProductId = (removedProduct['product_id'] ??
+//               removedProduct['id'] ??
+//               removedProduct['fast_key_product_id'] ??
+//               removedProduct['serverItemId'] ??
+//               -1) is num
+//               ? ((removedProduct['product_id'] ??
+//               removedProduct['id'] ??
+//               removedProduct['fast_key_product_id'] ??
+//               removedProduct['serverItemId'] ??
+//               -1) as num)
+//               .toInt()
+//               : -1;
+//           matchedSku = (removedProduct['sku'] ??
+//               removedProduct['item_sku'] ??
+//               removedProduct['product_sku'] ??
+//               removedProduct['fast_key_item_sku'] ??
+//               '')
+//               .toString()
+//               .toLowerCase()
+//               .trim();
+//         }
+//       } else {
+//         final orderProductId = (orderItem['product_id'] as num?)?.toInt() ?? -1;
+//         final orderVariationId =
+//             (orderItem['variation_id'] as num?)?.toInt() ?? 0;
+//         final orderSku =
+//         (orderItem['sku'] ?? '').toString().toLowerCase().trim();
+//
+//         bool matchProduct(Map<String, dynamic> p) {
+//           if (orderProductId >= 0) {
+//             final pid = (p['product_id'] ?? p['id'] ?? -1) is num
+//                 ? ((p['product_id'] ?? p['id'] ?? -1) as num).toInt()
+//                 : -1;
+//             final vid = (p['variation_id'] ??
+//                 p['variationId'] ??
+//                 p['item_variation'] ??
+//                 0) is num
+//                 ? ((p['variation_id'] ??
+//                 p['variationId'] ??
+//                 p['item_variation']) as num)
+//                 .toInt()
+//                 : 0;
+//             if (pid == orderProductId && vid == orderVariationId) return true;
+//           }
+//           if (orderSku.isNotEmpty) {
+//             final pSku = (p['sku'] ?? p['item_sku'] ?? '')
+//                 .toString()
+//                 .toLowerCase()
+//                 .trim();
+//             if (pSku == orderSku) return true;
+//           }
+//           final name1 =
+//           (p['name'] ?? p['product_name'] ?? p['fast_key_item_name'] ?? '')
+//               .toString()
+//               .toLowerCase();
+//           final name2 = (orderItem['item_name'] ?? '').toString().toLowerCase();
+//           final price1 = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
+//           final price2 =
+//               double.tryParse(orderItem['item_price']?.toString() ?? '0') ?? 0;
+//           return name1 == name2 && (price1 - price2).abs() < 0.001;
+//         }
+//
+//         products.removeWhere((p) {
+//           final match = matchProduct(p);
+//           if (match) {
+//             deletedProductId = (p['product_id'] ??
+//                 p['id'] ??
+//                 p['fast_key_product_id'] ??
+//                 p['serverItemId'] ??
+//                 -1) is num
+//                 ? ((p['product_id'] ??
+//                 p['id'] ??
+//                 p['fast_key_product_id'] ??
+//                 p['serverItemId'] ??
+//                 -1) as num)
+//                 .toInt()
+//                 : -1;
+//             matchedSku = (p['sku'] ??
+//                 p['item_sku'] ??
+//                 p['product_sku'] ??
+//                 p['fast_key_item_sku'] ??
+//                 '')
+//                 .toString()
+//                 .toLowerCase()
+//                 .trim();
+//           }
+//           return match;
+//         });
+//       }
+//
+//       offlineOrder['products'] = products;
+//
+//       // -------------------------------
+//       // RESET VARIABLE PRICE FLAGS
+//       // -------------------------------
+//       if (deletedProductId != -1) {
+//         offlineOrder.remove("variable_price_added_$deletedProductId");
+//         offlineOrder.remove("selected_price_$deletedProductId");
+//
+//         print(
+//             "🧹 Cleared variable price flags for product → $deletedProductId");
+//       } else {
+//         print("⚠️ Could not determine product_id for cleanup.");
+//       }
+//
+//       // ---------------------------------
+//       // CLEAN MEMORY & HIVE SKU CACHE
+//       // ---------------------------------
+//       if (matchedSku.isNotEmpty) {
+//         print("🔍 Cleaning caches for SKU → $matchedSku");
+//
+//         try {
+//           OrderHelper.removeFromCache(matchedSku);
+//           print("🧠 In-memory product cache cleared → $matchedSku");
+//         } catch (e) {
+//           print("⚠️ Memory cache cleanup failed → $e");
+//         }
+//
+//         try {
+//           final productBox = StorageProvider.productCache;
+//           final cacheKey = "sku_$matchedSku";
+//
+//           if (await productBox.containsKey(cacheKey)) {
+//             await productBox.delete(cacheKey);
+//             print("💽 HIVE productCache cleared → $cacheKey");
+//           } else {
+//             print("💽 No Hive cache entry found for $cacheKey");
+//           }
+//         } catch (e) {
+//           print("⚠️ Hive cache cleanup failed → $e");
+//         }
+//       } else {
+//         print("⚠️ SKU could not be extracted → Cannot clean cache.");
+//       }
+//     }
+//
+//     // Recalculate totals after delete
+//     double productTotal = 0.0;
+//     for (final p in products) {
+//       final qty = int.tryParse(p['quantity']?.toString() ??
+//           p['items_count']?.toString() ??
+//           '1') ??
+//           1;
+//       final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+//       productTotal += price * qty;
+//     }
+//     for (final c in customItems) {
+//       final qty = int.tryParse(c['quantity']?.toString() ??
+//           c['items_count']?.toString() ??
+//           '1') ??
+//           1;
+//       final price = double.tryParse(c['custom_item_price']?.toString() ??
+//           c['amount']?.toString() ??
+//           c['price']?.toString() ??
+//           '0') ??
+//           0.0;
+//       productTotal += price * qty;
+//     }
+//     double payoutsTotal = payouts.fold<double>(0,
+//             (s, p) => s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0));
+//     double cashbacksTotal = cashbacks.fold<double>(0,
+//             (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0));
+//     // final grossTotal = productTotal + payoutsTotal + cashbacksTotal;
+//
+//     final double grossTotal = productTotal + payoutsTotal + cashbacksTotal;
+//     final double orderDiscount =
+//         (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+//     final double merchantDiscountVal =
+//         (offlineOrder['merchantDiscount'] as num?)?.toDouble() ?? 0.0;
+//     final double cashbackFee =
+//         (offlineOrder['cashbackFee'] as num?)?.toDouble() ?? 0.0;
+//
+//     // 🔁 RECOMPUTE ORDER TAX FROM UPDATED ITEMS
+//     double orderTax = 0.0;
+//     final Map<int, double> _hiveTaxRateByProductId = {};
+//     final Map<int, String> _hiveTaxStatusByProductId = {};
+//
+//     for (final p in products) {
+//       final String itemType =
+//       (p['item_type'] ?? p['type'] ?? '').toString().toLowerCase();
+//       final int qty = int.tryParse(p['quantity']?.toString() ??
+//           p['items_count']?.toString() ??
+//           '1') ??
+//           1;
+//       final double price =
+//           double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+//
+//       if (!itemType.contains('custom')) {
+//
+//         // final int productId =
+//         //     int.tryParse((p['product_id'] ?? p['id'])?.toString() ?? '0') ?? 0;
+//         final int productId =
+//             int.tryParse((p['product_id'] ?? p['id'])?.toString() ?? '0') ?? 0;
+//
+//         final double defaultNonEbtTaxRate =_hiveTaxRateByProductId[productId] ?? 0.0;
+//
+//         final bool isEbt = p['is_ebt_eligible'] == true;
+//         final lineTaxStatus =
+//         (p['tax_status'] ?? 'taxable').toString().toLowerCase();
+//         final lineTaxRate =
+//             double.tryParse((p['tax_rate'] ?? '0').toString()) ?? 0.0;
+//         if (isEbt) {
+//           orderTax += 0.0;
+//         } else if (lineTaxStatus == 'taxable' && lineTaxRate > 0) {
+//           orderTax += roundTaxHalfUp(((price * qty) * lineTaxRate) / 100);
+//         } else {
+//           double fallbackTax = getProductTaxFromHive(productId, price, qty);
+//           if (fallbackTax <= 0 && lineTaxStatus != 'none') {
+//             fallbackTax =
+//                 roundTaxHalfUp(((price * qty) * defaultNonEbtTaxRate) / 100);
+//           }
+//           orderTax += fallbackTax;
+//         }
+//       } else {
+//         orderTax += getCustomItemTax(
+//           taxClass: p['tax_class'] ?? '',
+//           unitPrice: price,
+//           qty: qty,
+//           taxes: await _assetDBHelper.getTaxList(),
+//           taxRate: p['tax_rate'],
+//         );
+//       }
+//     }
+//     orderTax = roundTaxHalfUp(orderTax);
+//     offlineOrder['order_tax'] = orderTax;
+//
+//     offlineOrder['gross_total'] = grossTotal;
+//     offlineOrder['net_total'] =
+//         grossTotal - orderDiscount - merchantDiscountVal;
+//     offlineOrder['net_payable'] =
+//         offlineOrder['net_total'] + orderTax + cashbackFee;
+//
+//     // Save updated order back to offline storage
+//     await offlineBox.put(orderKey, offlineOrder);
+//     await orderHelper.loadData();
+//
+//     try {
+//       if (orderHelper.activeOrderId != null) {
+//         CustomerDisplayHelper.skipNextPendingOrderRefresh = false;
+//         await CustomerDisplayHelper.updateCustomerDisplay(orderHelper.activeOrderId!);
+//         print(" Customer display updated after item delete ");
+//         unawaited(_publishMqttCart());
+//       }
+//     } catch (e) {
+//       print("Customer display update failed after delete: $e");
+//     }
+//
+//     // Build products list for customer display
+//     final List productsForDisplay = products.map((p) {
+//       return {
+//         "name": p["name"] ?? p["product_name"] ?? "",
+//         "quantity": p["quantity"] ?? p["items_count"] ?? 1,
+//         "price": p["price"] ?? 0,
+//       };
+//     }).toList();
+//
+//     // OrderHelper.notifyOrderPanelToRefresh();
+//     //
+//     // // 🔁 Refresh UI - rebuild will use updated order from loadData
+//     // if (mounted) {
+//     //   setState(() {
+//     //     orderItems.removeWhere((i) {
+//     //       final it = (i['item_type'] ?? i[AppDBConst.itemType] ?? '')
+//     //           .toString()
+//     //           .toLowerCase();
+//     //       if (it == 'payout') {
+//     //         final amt1 = double.tryParse(i['item_price']?.toString() ??
+//     //             i[AppDBConst.itemPrice]?.toString() ??
+//     //             '0') ??
+//     //             0;
+//     //         final amt2 = double.tryParse(orderItem['item_price']?.toString() ??
+//     //             orderItem[AppDBConst.itemPrice]?.toString() ??
+//     //             '0') ??
+//     //             0;
+//     //         return amt1 == amt2;
+//     //       }
+//     //       if (it == 'cashback') {
+//     //         final amt1 = double.tryParse(i['item_price']?.toString() ??
+//     //             i[AppDBConst.itemPrice]?.toString() ??
+//     //             '0') ??
+//     //             0;
+//     //         final amt2 = double.tryParse(orderItem['item_price']?.toString() ??
+//     //             orderItem[AppDBConst.itemPrice]?.toString() ??
+//     //             '0') ??
+//     //             0;
+//     //         return amt1 == amt2;
+//     //       }
+//     //       if (it.contains('custom')) {
+//     //         final n1 = (i['item_name'] ?? i[AppDBConst.itemName] ?? '')
+//     //             .toString()
+//     //             .toLowerCase();
+//     //         final n2 =
+//     //         (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '')
+//     //             .toString()
+//     //             .toLowerCase();
+//     //         final p1 = double.tryParse(i['item_price']?.toString() ??
+//     //             i[AppDBConst.itemPrice]?.toString() ??
+//     //             '0') ??
+//     //             0;
+//     //         final p2 = double.tryParse(orderItem['item_price']?.toString() ??
+//     //             orderItem[AppDBConst.itemPrice]?.toString() ??
+//     //             '0') ??
+//     //             0;
+//     //         return n1 == n2 && (p1 - p2).abs() < 0.001;
+//     //       }
+//     //       final pid1 = (i['product_id'] as num?)?.toInt() ?? -1;
+//     //       final pid2 = (orderItem['product_id'] as num?)?.toInt() ?? -1;
+//     //       final vid1 = (i['variation_id'] as num?)?.toInt() ?? 0;
+//     //       final vid2 = (orderItem['variation_id'] as num?)?.toInt() ?? 0;
+//     //       final sku1 = (i['sku'] ?? '').toString().toLowerCase();
+//     //       final sku2 = (orderItem['sku'] ?? '').toString().toLowerCase();
+//     //       final n1 = (i['item_name'] ?? i[AppDBConst.itemName] ?? '')
+//     //           .toString()
+//     //           .toLowerCase();
+//     //       final n2 =
+//     //       (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '')
+//     //           .toString()
+//     //           .toLowerCase();
+//     //       final p1 = double.tryParse(i['item_price']?.toString() ??
+//     //           i[AppDBConst.itemPrice]?.toString() ??
+//     //           '0') ??
+//     //           0;
+//     //       final p2 = double.tryParse(orderItem['item_price']?.toString() ??
+//     //           orderItem[AppDBConst.itemPrice]?.toString() ??
+//     //           '0') ??
+//     //           0;
+//     //       if (pid2 >= 0 && pid1 == pid2 && vid1 == vid2) return true;
+//     //       if (sku2.isNotEmpty && sku1 == sku2) return true;
+//     //       return n1 == n2 && (p1 - p2).abs() < 0.001;
+//     //     });
+//     //     _listVersion++;
+//     //   });
+//     // }
+//
+//     OrderHelper.notifyOrderPanelToRefresh();
+//
+// // 🔁 Update local UI state FIRST so orderItems reflects the deletion
+//     if (mounted) {
+//       setState(() {
+//         orderItems.removeWhere((i) {
+//           final it = (i['item_type'] ?? i[AppDBConst.itemType] ?? '')
+//               .toString()
+//               .toLowerCase();
+//           if (it == 'payout') {
+//             final amt1 = double.tryParse(i['item_price']?.toString() ??
+//                 i[AppDBConst.itemPrice]?.toString() ?? '0') ??
+//                 0;
+//             final amt2 = double.tryParse(orderItem['item_price']?.toString() ??
+//                 orderItem[AppDBConst.itemPrice]?.toString() ?? '0') ??
+//                 0;
+//             return amt1 == amt2;
+//           }
+//           if (it == 'cashback') {
+//             final amt1 = double.tryParse(i['item_price']?.toString() ??
+//                 i[AppDBConst.itemPrice]?.toString() ?? '0') ??
+//                 0;
+//             final amt2 = double.tryParse(orderItem['item_price']?.toString() ??
+//                 orderItem[AppDBConst.itemPrice]?.toString() ?? '0') ??
+//                 0;
+//             return amt1 == amt2;
+//           }
+//           if (it.contains('custom')) {
+//             final n1 = (i['item_name'] ?? i[AppDBConst.itemName] ?? '')
+//                 .toString()
+//                 .toLowerCase();
+//             final n2 = (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '')
+//                 .toString()
+//                 .toLowerCase();
+//             final p1 = double.tryParse(i['item_price']?.toString() ??
+//                 i[AppDBConst.itemPrice]?.toString() ?? '0') ??
+//                 0;
+//             final p2 = double.tryParse(orderItem['item_price']?.toString() ??
+//                 orderItem[AppDBConst.itemPrice]?.toString() ?? '0') ??
+//                 0;
+//             return n1 == n2 && (p1 - p2).abs() < 0.001;
+//           }
+//           final pid1 = (i['product_id'] as num?)?.toInt() ?? -1;
+//           final pid2 = (orderItem['product_id'] as num?)?.toInt() ?? -1;
+//           final vid1 = (i['variation_id'] as num?)?.toInt() ?? 0;
+//           final vid2 = (orderItem['variation_id'] as num?)?.toInt() ?? 0;
+//           final sku1 = (i['sku'] ?? '').toString().toLowerCase();
+//           final sku2 = (orderItem['sku'] ?? '').toString().toLowerCase();
+//           final n1 = (i['item_name'] ?? i[AppDBConst.itemName] ?? '')
+//               .toString()
+//               .toLowerCase();
+//           final n2 = (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '')
+//               .toString()
+//               .toLowerCase();
+//           final p1 = double.tryParse(i['item_price']?.toString() ??
+//               i[AppDBConst.itemPrice]?.toString() ?? '0') ??
+//               0;
+//           final p2 = double.tryParse(orderItem['item_price']?.toString() ??
+//               orderItem[AppDBConst.itemPrice]?.toString() ?? '0') ??
+//               0;
+//           if (pid2 >= 0 && pid1 == pid2 && vid1 == vid2) return true;
+//           if (sku2.isNotEmpty && sku1 == sku2) return true;
+//           return n1 == n2 && (p1 - p2).abs() < 0.001;
+//         });
+//         _listVersion++;
+//       });
+//     }
+//
+// // 🔁 NOW publish — orderItems is guaranteed to be the post-delete list
+// // (including the correct empty-cart case, 2 → 0 items).
+//     try {
+//       if (orderHelper.activeOrderId != null) {
+//         CustomerDisplayHelper.skipNextPendingOrderRefresh = false;
+//         await CustomerDisplayHelper.updateCustomerDisplay(orderHelper.activeOrderId!);
+//         print(" Customer display updated after item delete ");
+//         unawaited(_publishMqttCart());
+//       }
+//     } catch (e) {
+//       print("Customer display update failed after delete: $e");
+//     }
+//   }
+
+
+
   Future<void> deleteOfflineItem(Map<String, dynamic> orderItem,
       {int? itemIndex}) async {
     if (orderHelper.activeOrderId == null) return;
@@ -3782,13 +5197,21 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final Map<String, dynamic> offlineOrder =
     Map<String, dynamic>.from(rawOfflineOrder);
 
-    // ============================
-    // 🛑 CHECK: LAST ITEM + MERCHANT DISCOUNT
-    // ============================
+    // ── Compute display date/time from the order (fallback to current) ──
+    String displayDate = DateFormat(TextConstants.dateFormat).format(DateTime.now());
+    String displayTime = DateFormat(TextConstants.timeFormat).format(DateTime.now());
+    if (offlineOrder['created_at'] != null) {
+      try {
+        final createdAt = DateTime.parse(offlineOrder['created_at']);
+        displayDate = DateFormat(TextConstants.dateFormat).format(createdAt);
+        displayTime = DateFormat(TextConstants.timeFormat).format(createdAt);
+      } catch (_) {}
+    }
 
     // ============================
-// 🛑 CHECK: MERCHANT DISCOUNT WHEN DELETING ITEMS
-// ============================
+    // 🛑 MERCHANT DISCOUNT / CASHBACK CHECKS (existing logic)
+    // ============================
+
     double productsTotal =
     ((offlineOrder['products'] as List?) ?? []).fold(0.0, (sum, p) {
       final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
@@ -3839,8 +5262,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         ? (offlineOrder['merchantDiscount'] as num).toDouble()
         : 0.0;
 
-    // If no discount → allow delete
-    // 🔍 Detect type FIRST
     final String itemType = (orderItem['item_type'] ?? orderItem['type'] ?? '')
         .toString()
         .toLowerCase();
@@ -3848,9 +5269,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final bool isPayout = itemType == 'payout';
     final bool isCashback = itemType == 'cashback';
 
-    // ✅ Skip merchant discount handling for payout & cashback
+    // Merchant discount protection
     if (merchantDiscount > 0 && !isPayout && !isCashback) {
-      double productsTotal =
+      double productsTotalRecheck =
       ((offlineOrder['products'] as List?) ?? []).fold(0.0, (sum, p) {
         final price = double.tryParse(p['price']?.toString() ?? '0') ?? 0;
         final qty = int.tryParse(p['quantity']?.toString() ??
@@ -3860,12 +5281,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         return sum + (price * qty);
       });
 
-      double customTotal =
+      double customTotalRecheck =
       ((offlineOrder['custom_items'] as List?) ?? []).fold(0.0, (sum, c) {
-        final price = double.tryParse(c['custom_item_price']?.toString() ??
-            c['amount']?.toString() ??
-            c['price']?.toString() ??
-            '0') ??
+        final price = double.tryParse(
+            c['custom_item_price']?.toString() ??
+                c['amount']?.toString() ??
+                c['price']?.toString() ??
+                '0') ??
             0;
         final qty = int.tryParse(c['quantity']?.toString() ??
             c['items_count']?.toString() ??
@@ -3874,23 +5296,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         return sum + (price * qty);
       });
 
-      final double currentTotal = productsTotal + customTotal;
+      final double currentTotalRecheck = productsTotalRecheck + customTotalRecheck;
+      final double newTotalRecheck = currentTotalRecheck - itemLineTotal;
 
-      final double itemPrice = double.tryParse(
-          orderItem['item_price']?.toString() ??
-              orderItem[AppDBConst.itemPrice]?.toString() ??
-              '0') ??
-          0;
-
-      final int itemQty = int.tryParse(orderItem['items_count']?.toString() ??
-          orderItem[AppDBConst.itemCount]?.toString() ??
-          '1') ??
-          1;
-
-      final double itemLineTotal = itemPrice * itemQty;
-      final double newTotal = currentTotal - itemLineTotal;
-
-      if (newTotal < merchantDiscount) {
+      if (newTotalRecheck < merchantDiscount) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -3900,10 +5309,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             duration: Duration(seconds: 2),
           ),
         );
-        // Block decreasing / deleting this item until user removes discount.
         return;
       }
     }
+
+    // Cashback protection
     if (!isPayout && !isCashback && cashbackTotal > 0) {
       if (cashbackTotal > newTotal) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3917,39 +5327,35 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         return;
       }
     }
+
     // ============================
     // CONTINUE WITH NORMAL DELETE LOGIC
     // ============================
 
-    // 🔍 Detect type: product / payout / cashback
-    // final String itemType =
-    //     (orderItem['item_type'] ?? '').toString().toLowerCase();
-
-    final List<Map<String, dynamic>> products =
+    List<Map<String, dynamic>> products =
         (offlineOrder['products'] as List?)
             ?.map((e) => Map<String, dynamic>.from(e))
             .toList() ??
             [];
 
-    final List<Map<String, dynamic>> customItems =
+    List<Map<String, dynamic>> customItems =
         (offlineOrder['custom_items'] as List?)
             ?.map((e) => Map<String, dynamic>.from(e))
             .toList() ??
             [];
 
-    final List<Map<String, dynamic>> payouts =
+    List<Map<String, dynamic>> payouts =
         (offlineOrder['payouts'] as List?)
             ?.map((e) => Map<String, dynamic>.from(e))
             .toList() ??
             [];
 
-    final List<Map<String, dynamic>> cashbacks =
+    List<Map<String, dynamic>> cashbacks =
         (offlineOrder['cashbacks'] as List?)
             ?.map((e) => Map<String, dynamic>.from(e))
             .toList() ??
             [];
 
-    // Index-based removal: orderItems = [products..., custom_items..., payouts..., cashbacks...]
     final int productsLen = products.length;
     final int customLen = customItems.length;
     final int payoutsLen = payouts.length;
@@ -3979,7 +5385,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       offlineOrder['payouts'] = payouts;
     }
 
-    // 🟪 DELETE CUSTOM ITEM (from custom_items or products with type custom)
+    // 🟪 DELETE CUSTOM ITEM
     else if (itemType.contains('custom')) {
       if (useIndex) {
         if (itemIndex! < productsLen) {
@@ -4037,7 +5443,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     else if (itemType == 'cashback') {
       if (useIndex) {
         final cashbacksStart = productsLen + customLen + payoutsLen;
-
         if (itemIndex! >= cashbacksStart &&
             itemIndex < cashbacksStart + cashbacks.length) {
           cashbacks.removeAt(itemIndex - cashbacksStart);
@@ -4050,7 +5455,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           return (amt1 - amt2).abs() < 0.001;
         });
       }
-
       offlineOrder['cashbacks'] = cashbacks;
       if (cashbacks.isEmpty) {
         offlineOrder['cashbackFee'] = 0.0;
@@ -4159,25 +5563,18 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
       offlineOrder['products'] = products;
 
-      // -------------------------------
-      // RESET VARIABLE PRICE FLAGS
-      // -------------------------------
+      // Reset variable price flags
       if (deletedProductId != -1) {
         offlineOrder.remove("variable_price_added_$deletedProductId");
         offlineOrder.remove("selected_price_$deletedProductId");
-
-        print(
-            "🧹 Cleared variable price flags for product → $deletedProductId");
+        print("🧹 Cleared variable price flags for product → $deletedProductId");
       } else {
         print("⚠️ Could not determine product_id for cleanup.");
       }
 
-      // ---------------------------------
-      // CLEAN MEMORY & HIVE SKU CACHE
-      // ---------------------------------
+      // Clean memory & Hive SKU cache
       if (matchedSku.isNotEmpty) {
         print("🔍 Cleaning caches for SKU → $matchedSku");
-
         try {
           OrderHelper.removeFromCache(matchedSku);
           print("🧠 In-memory product cache cleared → $matchedSku");
@@ -4188,7 +5585,6 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         try {
           final productBox = StorageProvider.productCache;
           final cacheKey = "sku_$matchedSku";
-
           if (await productBox.containsKey(cacheKey)) {
             await productBox.delete(cacheKey);
             print("💽 HIVE productCache cleared → $cacheKey");
@@ -4203,7 +5599,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       }
     }
 
-    // Recalculate totals after delete
+    // ─── Recalculate totals ──────────────────────────────────────────────
+
     double productTotal = 0.0;
     for (final p in products) {
       final qty = int.tryParse(p['quantity']?.toString() ??
@@ -4225,11 +5622,11 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           0.0;
       productTotal += price * qty;
     }
-    double payoutsTotal = payouts.fold<double>(0,
-            (s, p) => s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0));
-    double cashbacksTotal = cashbacks.fold<double>(0,
-            (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0));
-    // final grossTotal = productTotal + payoutsTotal + cashbacksTotal;
+
+    double payoutsTotal = payouts.fold<double>(
+        0, (s, p) => s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0));
+    double cashbacksTotal = cashbacks.fold<double>(
+        0, (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0));
 
     final double grossTotal = productTotal + payoutsTotal + cashbacksTotal;
     final double orderDiscount =
@@ -4239,7 +5636,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     final double cashbackFee =
         (offlineOrder['cashbackFee'] as num?)?.toDouble() ?? 0.0;
 
-    // 🔁 RECOMPUTE ORDER TAX FROM UPDATED ITEMS
+    // ─── Recompute tax ──────────────────────────────────────────────────────
     double orderTax = 0.0;
     final Map<int, double> _hiveTaxRateByProductId = {};
     final Map<int, String> _hiveTaxStatusByProductId = {};
@@ -4251,23 +5648,19 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           p['items_count']?.toString() ??
           '1') ??
           1;
-      final double price =
-          double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+      final double price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
 
       if (!itemType.contains('custom')) {
-
-        // final int productId =
-        //     int.tryParse((p['product_id'] ?? p['id'])?.toString() ?? '0') ?? 0;
         final int productId =
             int.tryParse((p['product_id'] ?? p['id'])?.toString() ?? '0') ?? 0;
-
-        final double defaultNonEbtTaxRate =_hiveTaxRateByProductId[productId] ?? 0.0;
-
+        final double defaultNonEbtTaxRate =
+            _hiveTaxRateByProductId[productId] ?? 0.0;
         final bool isEbt = p['is_ebt_eligible'] == true;
         final lineTaxStatus =
         (p['tax_status'] ?? 'taxable').toString().toLowerCase();
         final lineTaxRate =
             double.tryParse((p['tax_rate'] ?? '0').toString()) ?? 0.0;
+
         if (isEbt) {
           orderTax += 0.0;
         } else if (lineTaxStatus == 'taxable' && lineTaxRate > 0) {
@@ -4294,37 +5687,15 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     offlineOrder['order_tax'] = orderTax;
 
     offlineOrder['gross_total'] = grossTotal;
-    offlineOrder['net_total'] =
-        grossTotal - orderDiscount - merchantDiscountVal;
+    offlineOrder['net_total'] = grossTotal - orderDiscount - merchantDiscountVal;
     offlineOrder['net_payable'] =
         offlineOrder['net_total'] + orderTax + cashbackFee;
 
-    // 💾 Save updated order back to offline storage
+    // ─── Save updated order ────────────────────────────────────────────────
     await offlineBox.put(orderKey, offlineOrder);
     await orderHelper.loadData();
 
-    // Build products list for customer display
-    final List productsForDisplay = products.map((p) {
-      return {
-        "name": p["name"] ?? p["product_name"] ?? "",
-        "quantity": p["quantity"] ?? p["items_count"] ?? 1,
-        "price": p["price"] ?? 0,
-      };
-    }).toList();
-
-    // Send update directly via CustomerService
-    // Do not block UI; display publishing can be slow.
-    // unawaited(CustomerService.publishCartUpdate(
-    //   orderHelper.activeOrderId!,
-    //   productsForDisplay,
-    //   subtotal: grossTotal,
-    //   tax: orderTax,
-    //   total: (offlineOrder['net_payable'] as num?)?.toDouble() ?? 0.0,
-    // ));
-
-    OrderHelper.notifyOrderPanelToRefresh();
-
-    // 🔁 Refresh UI - rebuild will use updated order from loadData
+    // ─── Remove the item from local orderItems (UI) ──────────────────────
     if (mounted) {
       setState(() {
         orderItems.removeWhere((i) {
@@ -4357,8 +5728,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             final n1 = (i['item_name'] ?? i[AppDBConst.itemName] ?? '')
                 .toString()
                 .toLowerCase();
-            final n2 =
-            (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '')
+            final n2 = (orderItem['item_name'] ??
+                orderItem[AppDBConst.itemName] ??
+                '')
                 .toString()
                 .toLowerCase();
             final p1 = double.tryParse(i['item_price']?.toString() ??
@@ -4380,8 +5752,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           final n1 = (i['item_name'] ?? i[AppDBConst.itemName] ?? '')
               .toString()
               .toLowerCase();
-          final n2 =
-          (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '')
+          final n2 = (orderItem['item_name'] ?? orderItem[AppDBConst.itemName] ?? '')
               .toString()
               .toLowerCase();
           final p1 = double.tryParse(i['item_price']?.toString() ??
@@ -4397,8 +5768,42 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           return n1 == n2 && (p1 - p2).abs() < 0.001;
         });
         _listVersion++;
+        _currentOrderVersion++;
       });
     }
+
+    OrderHelper.notifyOrderPanelToRefresh();
+
+    // ─── 🔥 CRITICAL: Publish updated cart AFTER UI rebuild ─────────────
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final int? activeId = orderHelper.activeOrderId;
+      if (activeId == null) return;
+
+      try {
+        // Always publish as CART (never IDLE) with the active order ID
+        // so the customer display shows the empty cart (order header + "No items").
+        await _publishMqttCart(
+          isPayment: false,
+          summaryEnabled: false,
+          grossTotal: grossTotal,
+          orderTax: orderTax,
+          orderDiscount: orderDiscount,
+          merchantDiscount: merchantDiscountVal,
+          cashbackFee: cashbackFee,
+          netPayable: offlineOrder['net_payable'] ?? 0.0,
+          totalItemsCount: orderItems.length, // Will be 0 after removal
+          orderDate: displayDate,
+          orderTime: displayTime,
+        );
+
+        // Also update native secondary display if available
+        await CustomerDisplayHelper.updateCustomerDisplay(activeId);
+        print("✅ Customer display updated after item deletion (empty cart if needed)");
+      } catch (e) {
+        print("❌ Customer display update failed after delete: $e");
+      }
+    });
   }
 
   double getCustomItemTax({
@@ -6925,7 +8330,15 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                               print('🟢 [QTY-UPDATE] Saved order, orderId=, calling CustomerDisplayHelper.updateCustomerDisplay');
 
                                               await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
-
+                                              await _publishMqttCart(
+                                                grossTotal: grossTotal,
+                                                orderTax: orderTax,
+                                                orderDiscount: orderDiscount,
+                                                merchantDiscount: merchantDiscount,
+                                                cashbackFee: cashbackFee,
+                                                netPayable: netPayable,
+                                                totalItemsCount: totalItems,
+                                              );
                                               if (mounted) {
                                                 setState(() => _isLoading = false);
                                               }
@@ -7033,6 +8446,576 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                       width: double.infinity,
                       height: MediaQuery.of(context).size.height * 0.0585,
                       child: ElevatedButton(
+//                         onPressed: (orderItems.isNotEmpty && !_isPayBtnLoading)
+//                             ? () async {
+//                           await enablePhoneInput();
+//                           if (kDebugMode) {
+//                             debugPrint(" CHECK OUT BUTTON CLICKED ");
+//                           }
+//
+//                           setState(() => _isPayBtnLoading = true);
+//                           // 🔥 ADD THIS LINE
+//                           // await Future.delayed(Duration(milliseconds: 100));
+//
+//                           try {
+//                             final int? frozenCheckoutOrderId =
+//                                 orderHelper.activeOrderId;
+//                             if (frozenCheckoutOrderId == null) {
+//                               if (mounted) {
+//                                 setState(() => _isPayBtnLoading = false);
+//                               }
+//                               _showError(
+//                                   'Unable to open payment: no active order.');
+//                               return;
+//                             }
+//
+//                             final List<Map<String, dynamic>>
+//                             workingItems = orderItems
+//                                 .map((e) =>
+//                             Map<String, dynamic>.from(e))
+//                                 .toList();
+//
+//                             int? serverOrderId;
+//
+//                             // =======================================================
+//                             // 🔹 LOAD VALUES FOR SUMMARY
+//                             // =======================================================
+//                             final box = StorageProvider.offlineOrders;
+//                             final hiveKey =
+//                             frozenCheckoutOrderId.toString();
+//
+//                             double totalEbtAfterDiscount = 0.0;
+//
+//                             final boxData = await box.get(hiveKey);
+//                             final double discountAmount = ((boxData is Map
+//                                 ? boxData["discount_amount"]
+//                                 : null) ??
+//                                 0.0)
+//                                 .toDouble();
+//
+//                             // =======================================================
+//                             // 🔹 PREPARE CART FOR ENGINE
+//                             // =======================================================
+//                             final List<Map<String, dynamic>> cartItems =
+//                             orderItems
+//                                 .where((item) =>
+//                             item['product_id'] != null &&
+//                                 (item['product_id'] as int) > 0)
+//                                 .map((item) {
+//                               return {
+//                                 'product_id': item['product_id'],
+//                                 'price': item['item_price'],
+//                                 'qty': item['items_count'],
+//                               };
+//                             }).toList();
+//
+//                             // =======================================================
+//                             // 🔥 CALL DISCOUNT ENGINE
+//                             // =======================================================
+//                             final rawEngineDiscounts =
+//                             await DiscountEngine.applyAll(
+//                                 AppDB.isar, cartItems);
+//
+// // 🔧 Normalize keys to int (CRITICAL FIX)
+//                             final Map<int, EngineDiscountResult>
+//                             engineDiscounts = {
+//                               for (final entry
+//                               in rawEngineDiscounts.entries)
+//                                 int.tryParse(entry.key.toString()) ?? -1:
+//                                 entry.value
+//                             };
+//
+//                             if (kDebugMode) {
+//                               print(
+//                                   "🔥 NORMALIZED ENGINE MAP = $engineDiscounts");
+//                             }
+//
+//                             if (kDebugMode) {
+//                               print(
+//                                   "🔥 ENGINE RESULT MAP = $engineDiscounts");
+//                             }
+//
+//                             // =======================================================
+//                             // 🔥 APPLY + NORMALIZE ENGINE RESULTS (ONCE)
+//                             // =======================================================
+//                             // for (final item in workingItems) {
+//                             //   final pid = int.tryParse(
+//                             //       item['product_id']?.toString() ?? '');
+//                             //   final engineResult = pid != null
+//                             //       ? engineDiscounts[pid]
+//                             //       : null;
+//                             //
+//                             //   item['auto_discount'] =
+//                             //       engineResult?.amount ?? 0.0;
+//                             //   item['discount_type'] =
+//                             //       engineResult?.ruleType ?? '';
+//                             //   item['discount_source'] =
+//                             //   engineResult != null ? 'engine' : '';
+//                             //   item['rule_id'] =
+//                             //       engineResult?.ruleId ?? '';
+//                             // }
+//                             for (final item in workingItems) {
+//                               final pid = int.tryParse(
+//                                   item['product_id']?.toString() ?? '');
+//                               final engineResult = pid != null
+//                                   ? engineDiscounts[pid]
+//                                   : null;
+//
+//                               item['auto_discount'] =
+//                                   engineResult?.amount ?? 0.0;
+//                               item['discount_type'] =
+//                                   engineResult?.ruleType ?? '';
+//                               item['discount_source'] =
+//                               engineResult != null ? 'engine' : '';
+//                               item['rule_id'] =
+//                                   engineResult?.ruleId ?? '';
+//
+//                               // ✅ Seed item_tax from the already-computed panel totals loop
+//                               // so checkout tax fallback has a real value, not 0.0
+//                               final String wItemType = (item['item_type'] ?? '').toString().toLowerCase();
+//                               final bool wIsPayout = wItemType.contains('payout');
+//                               final bool wIsCashback = wItemType.contains('cashback');
+//                               final bool wIsCoupon = wItemType.contains('coupon');
+//                               if (!wIsPayout && !wIsCashback && !wIsCoupon) {
+//                                 double seededTax = ((item['item_tax'] ?? 0) as num).toDouble();
+//                                 if (seededTax <= 0) {
+//                                   final int wProductId = int.tryParse(
+//                                       (item['product_id'] ?? 0).toString()) ?? 0;
+//                                   final double wPrice = ((item['item_price'] ?? 0) as num).toDouble();
+//                                   final int wQty = ((item['items_count'] ?? 1) as num).toInt();
+//                                   final bool wIsEbt = item['is_ebt_eligible'] == true;
+//                                   final String wTaxStatus = (item['tax_status'] ?? 'taxable').toString().toLowerCase();
+//                                   final double wTaxRate = double.tryParse(
+//                                       (item['tax_rate'] ?? item['tax_Rate'] ?? '0').toString()) ?? 0.0;
+//                                   final Map<int, double> _hiveTaxRateByProductId = {};
+//                                   final Map<int, String> _hiveTaxStatusByProductId = {};
+//
+//                                   final double defaultNonEbtTaxRate =
+//                                       _hiveTaxRateByProductId[wProductId] ?? 0.0;
+//
+//                                   if (wIsEbt) {
+//                                     seededTax = 0.0;
+//                                   } else if (wItemType.contains('custom')) {
+//                                     if (wTaxRate > 0) {
+//                                       seededTax = roundTaxHalfUp(((wPrice * wTaxRate) / 100) * wQty);
+//                                     }
+//                                   } else if (wProductId > 0) {
+//                                     if (wTaxStatus == 'taxable' && wTaxRate > 0) {
+//                                       seededTax = ((wPrice * wQty) * wTaxRate) / 100;
+//                                     } else {
+//                                       seededTax = getProductTaxFromHive(wProductId, wPrice, wQty);
+//                                       if (seededTax <= 0 && wTaxStatus != 'none') {
+//                                         seededTax = ((wPrice * wQty) * defaultNonEbtTaxRate) / 100;
+//                                       }
+//                                     }
+//                                   }
+//                                 }
+//                                 item['item_tax'] = seededTax; // ✅ now checkout loop can reliably read this
+//                               }
+//                             }
+//
+//                             // =======================================================
+//                             // 🔹 CALCULATE TAX & TOTALS
+//                             // =======================================================
+//                             double totalTaxAfterDiscount = 0.0;
+//                             final List<Tax> taxList =
+//                             await _assetDBHelper.getTaxList();
+//
+//                             for (final item in workingItems) {
+//                               final int productId = int.tryParse(
+//                                   item['product_id']?.toString() ??
+//                                       '0') ??
+//                                   0;
+//                               final double price =
+//                                   (item['item_price'] as num?)
+//                                       ?.toDouble() ??
+//                                       0.0;
+//                               final int qty =
+//                                   (item['items_count'] as num?)
+//                                       ?.toInt() ??
+//                                       1;
+//                               final double autoDiscount =
+//                                   (item['auto_discount'] as num?)
+//                                       ?.toDouble() ??
+//                                       0.0;
+//
+//                               final double discountedUnitPrice =
+//                                   (price * qty - autoDiscount) / qty;
+//
+//                               double itemTax = 0.0;
+//                               if (productId > 0) {
+//                                 final bool isEbt =
+//                                     item['is_ebt_eligible'] == true;
+//                                 final lineTaxStatus =
+//                                 (item['tax_status'] ?? 'taxable')
+//                                     .toString()
+//                                     .toLowerCase();
+//                                 final lineTaxRate = double.tryParse(
+//                                     (item['tax_rate'] ?? '0')
+//                                         .toString()) ??
+//                                     0.0;
+//                                 if (isEbt) {
+//                                   itemTax = 0.0;
+//                                 } else if (lineTaxStatus == 'taxable' && lineTaxRate > 0) {
+//                                   // Use stored item_tax (now seeded above) as primary, recompute as fallback
+//                                   itemTax = (item['item_tax'] as num?)?.toDouble() ?? 0.0;
+//                                   if (itemTax <= 0) {
+//                                     itemTax = ((discountedUnitPrice * qty) * lineTaxRate) / 100;
+//                                   }
+//                                 } else {
+//                                   itemTax = getProductTaxFromHive(productId, discountedUnitPrice, qty);
+//                                   if (itemTax <= 0 && lineTaxStatus != 'none') {
+//                                     // Fallback to seeded item_tax from panel totals
+//                                     itemTax = (item['item_tax'] as num?)?.toDouble() ?? 0.0;
+//
+//
+//                                     if (itemTax <= 0) {
+//                                       final double defaultNonEbtTaxRate =
+//                                           _hiveTaxRateByProductId[productId] ?? 0.0;
+//
+//                                       itemTax = ((discountedUnitPrice * qty) * defaultNonEbtTaxRate) / 100;
+//                                     }
+//                                   }
+//                                 }
+//                               } else if (item['item_type'] == 'custom') {
+//                                 itemTax = getCustomItemTax(
+//                                   taxClass: item['tax_class'] ?? '',
+//                                   unitPrice: discountedUnitPrice,
+//                                   qty: qty,
+//                                   taxes: taxList,
+//                                   taxRate: item['tax_rate'],
+//                                 );
+//                               }
+//
+//                               totalTaxAfterDiscount += itemTax;
+//                               item['tax_after_discount'] = itemTax;
+//                             }
+//                             totalTaxAfterDiscount =
+//                                 roundTaxHalfUp(totalTaxAfterDiscount);
+//                             for (final item in workingItems) {
+//                               final double price =
+//                                   (item['item_price'] as num?)
+//                                       ?.toDouble() ??
+//                                       0.0;
+//                               final int qty =
+//                                   (item['items_count'] as num?)
+//                                       ?.toInt() ??
+//                                       1;
+//                               final double autoDiscount =
+//                                   (item['auto_discount'] as num?)
+//                                       ?.toDouble() ??
+//                                       0.0;
+//
+//                               final double discountedUnitPrice =
+//                                   (price * qty - autoDiscount) / qty;
+//
+//                               if (item['is_ebt_eligible'] == true) {
+//                                 totalEbtAfterDiscount +=
+//                                     discountedUnitPrice * qty -merchantDiscount;
+//                               }
+//                             }
+//
+//                             double grossAfterDiscount =
+//                             workingItems.fold(0.0, (sum, item) {
+//                               final double price =
+//                                   (item['item_price'] as num?)
+//                                       ?.toDouble() ??
+//                                       0.0;
+//                               final int qty = item['items_count'] ?? 1;
+//                               final double autoDiscount =
+//                                   (item['auto_discount'] as num?)
+//                                       ?.toDouble() ??
+//                                       0.0;
+//                               return sum + ((price * qty) - autoDiscount);
+//                             });
+//                             grossAfterDiscount = double.parse(
+//                                 grossAfterDiscount.toStringAsFixed(2));
+//
+//                             // =======================================================
+//                             // 🔒 FREEZE SNAPSHOT FOR SUMMARY
+//                             // =======================================================
+//                             // final List<Map<String, dynamic>>
+//                             // summaryItems = workingItems
+//                             //     .map((e) =>
+//                             // Map<String, dynamic>.from(e))
+//                             //     .toList();
+//
+//                             // =======================================================
+// // 🔒 FREEZE SNAPSHOT FOR SUMMARY (WITH WEIGHT FIELDS)
+// // =======================================================
+//                             final List<Map<String, dynamic>> summaryItems = workingItems
+//                                 .map((e) {
+//                               final Map<String, dynamic> item = Map<String, dynamic>.from(e);
+//
+//                               // 🔥 PRESERVE WEIGHT FIELDS FOR WEIGHTED ITEMS
+//                               final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+//                               if (itemType.contains('weighted')) {
+//                                 // Copy all weight-related fields from the original item
+//                                 item['weight_qty'] = e['weight_qty'] ?? e['weightQty'] ?? e['weight'] ?? 0.0;
+//                                 item['weightQty'] = e['weightQty'] ?? e['weight_qty'] ?? e['weight'] ?? 0.0;
+//                                 item['weight'] = e['weight'] ?? e['weight_qty'] ?? e['weightQty'] ?? 0.0;
+//                                 item['unit_price'] = e['unit_price'] ?? e['regular_price'] ?? e['item_price'] ?? 0.0;
+//                                 item['regular_price'] = e['regular_price'] ?? e['unit_price'] ?? e['item_price'] ?? 0.0;
+//                                 item['sales_price'] = e['sales_price'] ?? e['item_price'] ?? 0.0;
+//
+//                                 // Calculate and store the line total
+//                                 final double unitPrice = (item['unit_price'] as num?)?.toDouble() ?? 0.0;
+//                                 final double weightQty = (item['weight_qty'] as num?)?.toDouble() ?? 0.0;
+//                                 if (unitPrice > 0 && weightQty > 0) {
+//                                   final double lineTotal = unitPrice * weightQty;
+//                                   item['line_total'] = lineTotal;
+//                                   item['item_price'] = lineTotal; // Ensure the price reflects the total
+//                                   item['item_sum_price'] = lineTotal;
+//                                 }
+//
+//                                 // Debug print to verify
+//                                 print('🟢 SUMMARY ITEM: ${item['item_name']} | '
+//                                     'unitPricePerLb=${item['unit_price']} | '
+//                                     'weightLbs=${item['weight_qty']} | '
+//                                     'lineTotal=${item['line_total']}');
+//                               }
+//
+//                               // Also preserve for non-weighted items
+//                               return item;
+//                             })
+//                                 .toList();
+//
+//                             // =======================================================
+//                             // 🔹 SAVE TO HIVE
+//                             // =======================================================
+//                             final localKey =
+//                             frozenCheckoutOrderId.toString();
+//                             final existingLocal = await box.get(localKey);
+//                             final Map<String, dynamic> updated =
+//                             existingLocal != null
+//                                 ? Map<String, dynamic>.from(
+//                                 existingLocal)
+//                                 : <String, dynamic>{
+//                               'order_id': frozenCheckoutOrderId,
+//                               'id': frozenCheckoutOrderId,
+//                               'products':
+//                               <Map<String, dynamic>>[],
+//                             };
+//
+//                             // Recalculate percentage-based merchant discount w.r.t grossAfterDiscount
+//                             final String mdType = updated['merchantDiscountType']?.toString() ?? 'fixed';
+//                             final double mdPerc = double.tryParse(updated['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
+//                             double recalculatedMerchantDiscount = merchantDiscount;
+//                             if (mdType == 'percentage' && mdPerc > 0) {
+//                               double base = grossAfterDiscount - orderDiscount.abs();
+//                               if (base > 0) {
+//                                 recalculatedMerchantDiscount = (base * mdPerc) / 100.0;
+//                               } else {
+//                                 recalculatedMerchantDiscount = 0.0;
+//                               }
+//                               updated['merchantDiscount'] = recalculatedMerchantDiscount;
+//
+//                               if (updated['discounts'] is List) {
+//                                 final List list = updated['discounts'] as List;
+//                                 final updatedDiscounts = <Map<String, dynamic>>[];
+//                                 for (final item in list) {
+//                                   if (item is Map) {
+//                                     final m = Map<String, dynamic>.from(item);
+//                                     final name = (m['name'] ?? '').toString().toLowerCase();
+//                                     if (name.contains('merchant discount') || name.contains('discount')) {
+//                                       m['discount_amount'] = -recalculatedMerchantDiscount;
+//                                       m['display_amount'] = recalculatedMerchantDiscount;
+//                                       m[AppDBConst.itemPrice] = recalculatedMerchantDiscount;
+//                                       m[AppDBConst.itemSumPrice] = recalculatedMerchantDiscount;
+//                                     }
+//                                     updatedDiscounts.add(m);
+//                                   }
+//                                 }
+//                                 updated['discounts'] = updatedDiscounts;
+//                               }
+//                             }
+//
+//                             double calculatedPerc = 0.0;
+//                             if (mdType == 'percentage' && mdPerc > 0) {
+//                               calculatedPerc = mdPerc;
+//                             } else if (mdType == 'fixed' && recalculatedMerchantDiscount.abs() > 0) {
+//                               double base = grossAfterDiscount - orderDiscount.abs();
+//                               if (base > 0) {
+//                                 calculatedPerc = (recalculatedMerchantDiscount.abs() / base) * 100.0;
+//                               }
+//                             }
+//                             if (calculatedPerc > 0) {
+//                               totalTaxAfterDiscount = totalTaxAfterDiscount * (1 - calculatedPerc / 100.0);
+//                               totalTaxAfterDiscount = roundTaxHalfUp(totalTaxAfterDiscount);
+//                             }
+//
+//                             updated["tax_discount"] = totalTaxAfterDiscount;
+//                             updated["order_tax"] = totalTaxAfterDiscount;
+//
+//                             updated["cashback_fee"] = double.parse(
+//                                 cashbackFee.toStringAsFixed(2));
+//
+//                             updated['net_total'] = grossAfterDiscount - orderDiscount.abs() - recalculatedMerchantDiscount;
+//                             updated['net_payable'] = updated['net_total'] + totalTaxAfterDiscount + cashbackFee;
+//                             merchantDiscount = recalculatedMerchantDiscount;
+//
+// // =======================================================
+// // 🔥 BUILD DISCOUNT LINES (SOURCE OF TRUTH)
+// // =======================================================
+//
+//                             final Map<String, dynamic> discountLines = {};
+//
+//                             for (final item in workingItems) {
+//                               final pid = item['product_id']?.toString();
+//                               if (pid == null || pid == "0") continue;
+//
+//                               discountLines[pid] = {
+//                                 "amount": (item['auto_discount'] ?? 0)
+//                                     .toDouble(),
+//                                 "type": item['discount_type'] ?? "",
+//                                 "source": item['discount_source'] ?? "",
+//                                 "rule_id": item['rule_id'] ?? "",
+//                               };
+//                             }
+//
+// // SAVE ONLY ONCE HERE
+//                             updated['discount_lines'] = discountLines;
+//                             updated['_update_source'] = 'checkout';
+//
+// // 🔥 ONLY WRITE IN WHOLE CHECKOUT
+//                             await box.put(localKey, updated);
+//
+// // DEBUG
+//
+//                             // ===== VERIFY HIVE WRITE =====
+//                             final verifyWrite = await box.get(localKey);
+//
+//                             debugPrint(
+//                                 "\n🟥🟥🟥 VERIFY AFTER SAVE (CHECKOUT) 🟥🟥🟥");
+//                             debugPrint("OrderID: $localKey");
+//
+//                             final items = verifyWrite?['items'] ?? [];
+//                             for (final i in items) {
+//                               debugPrint(
+//                                   "ITEM → ${i['item_name']} | discount_meta=${i['discount_meta']}");
+//                             }
+//
+//                             final products =
+//                                 verifyWrite?['products'] ?? [];
+//                             for (final p in products) {
+//                               debugPrint(
+//                                   "PRODUCT → ${p['name']} | discount_meta=${p['discount_meta']}");
+//                             }
+//
+//                             debugPrint("🟥🟥🟥 END VERIFY 🟥🟥🟥\n");
+//
+//                             final finalStored = await box.get(localKey);
+//                             debugPrint(
+//                                 "🧠 FINAL STORED HIVE ORDER =====================");
+//                             debugPrint(const JsonEncoder.withIndent('  ')
+//                                 .convert(finalStored));
+//                             debugPrint(
+//                                 "===============================================");
+// // DEBUG
+//                             final verify = await box.get(localKey);
+//                             debugPrint("STORED ORDER AFTER SAVE:");
+//                             debugPrint(jsonEncode(verify));
+//
+//                             await CustomerDisplayHelper.updateCustomerDisplay(
+//                               frozenCheckoutOrderId,
+//                               summaryEnabled: true,
+//                             );
+//                             _summaryEnabledForActiveOrder = true;
+//                             _summaryLockedOrderId = frozenCheckoutOrderId;
+//
+//                             await _publishMqttCart(
+//                               isPayment: true,
+//                               summaryEnabled: true,
+//                               grossTotal: grossAfterDiscount,
+//                               orderTax: totalTaxAfterDiscount,
+//                               orderDiscount: orderDiscount.abs(),       // positive
+//                               merchantDiscount: merchantDiscount.abs(), // positive
+//                               cashbackFee: cashbackFee,
+//                               netPayable: (updated['net_payable'] as num?)?.toDouble() ??
+//                                   (grossAfterDiscount + totalTaxAfterDiscount - merchantDiscount.abs()),
+//                               totalItemsCount: totalItems,
+//                               orderDate: displayDate,
+//                               orderTime: displayTime,
+//                             );
+//
+//                             try {
+//                               await CustomerDisplayHelper.updateCustomerDisplay(
+//                                 frozenCheckoutOrderId,
+//                                 summaryEnabled: true,
+//                               );
+//                             } catch (e, s) {
+//                               if (kDebugMode) {
+//                                 print("⚠️ Native customer display update failed (ignored — MQTT already sent): $e\n$s");
+//                               }
+//                             }
+//
+//
+//
+//                             // =======================================================
+//                             // 🔹 NAVIGATE TO SUMMARY SCREEN
+//                             // =======================================================
+//                             final result = await Navigator.push(
+//                               context,
+//                               PageRouteBuilder(
+//                                 pageBuilder: (context, animation,
+//                                     secondaryAnimation) =>
+//                                     OrderSummaryScreen(
+//                                       formattedDate: displayDate,
+//                                       formattedTime: displayTime,
+//                                       orderItems: summaryItems,
+//                                       grossTotal: grossTotal ,
+//                                       orderDiscount: orderDiscount,
+//                                       merchantDiscount: merchantDiscount,
+//                                       orderTax: totalTaxAfterDiscount,
+//                                       netPayable: updated['net_payable'] ?? (grossAfterDiscount +
+//                                           totalTaxAfterDiscount -
+//                                           merchantDiscount),
+//                                       orderId: serverOrderId ??
+//                                           frozenCheckoutOrderId,
+//                                       isOfflineSynced: serverOrderId != null,
+//                                       offlineOrderId: frozenCheckoutOrderId,
+//                                       cashbackFee: cashbackFee,
+//                                       ebtAmount: totalEbtAfterDiscount,
+//                                       discountAmount: discountAmount,
+//                                     ),
+//                                 transitionDuration:
+//                                 const Duration(milliseconds: 220),
+//                                 transitionsBuilder: (context, animation,
+//                                     secondaryAnimation, child) {
+//                                   final curved = CurvedAnimation(
+//                                     parent: animation,
+//                                     curve: Curves.easeOutCubic,
+//                                   );
+//
+//                                   return FadeTransition(
+//                                     opacity: curved,
+//                                     child: SlideTransition(
+//                                       position: Tween<Offset>(
+//                                         begin: const Offset(0.05,
+//                                             0), // slight right → natural feel
+//                                         end: Offset.zero,
+//                                       ).animate(curved),
+//                                       child: child,
+//                                     ),
+//                                   );
+//                                 },
+//                               ),
+//                             );
+//                           } catch (e, s) {
+//                             debugPrint("❌ Error syncing order: $e");
+//                             debugPrint("$s");
+//                             ScaffoldMessenger.of(context).showSnackBar(
+//                               const SnackBar(
+//                                   content: Text("Failed to sync order")),
+//                             );
+//                           } finally {
+//                             if (mounted) {
+//                               setState(() => _isPayBtnLoading = false);
+//                             }
+//                           }
+//                         }
+//                             : null,
+
                         onPressed: (orderItems.isNotEmpty && !_isPayBtnLoading)
                             ? () async {
                           await enablePhoneInput();
@@ -7041,230 +9024,166 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                           }
 
                           setState(() => _isPayBtnLoading = true);
-                          // 🔥 ADD THIS LINE
-                          // await Future.delayed(Duration(milliseconds: 100));
 
                           try {
-                            final int? frozenCheckoutOrderId =
-                                orderHelper.activeOrderId;
+                            final int? frozenCheckoutOrderId = orderHelper.activeOrderId;
                             if (frozenCheckoutOrderId == null) {
-                              if (mounted) {
-                                setState(() => _isPayBtnLoading = false);
-                              }
-                              _showError(
-                                  'Unable to open payment: no active order.');
+                              _showError('Unable to open payment: no active order.');
                               return;
                             }
 
-                            final List<Map<String, dynamic>>
-                            workingItems = orderItems
-                                .map((e) =>
-                            Map<String, dynamic>.from(e))
+                            // Working copy of current cart
+                            final List<Map<String, dynamic>> workingItems = orderItems
+                                .map((e) => Map<String, dynamic>.from(e))
                                 .toList();
 
                             int? serverOrderId;
 
-                            // =======================================================
-                            // 🔹 LOAD VALUES FOR SUMMARY
-                            // =======================================================
+                            // ── Load offline order ──────────────────────────────────────
                             final box = StorageProvider.offlineOrders;
-                            final hiveKey =
-                            frozenCheckoutOrderId.toString();
+                            final hiveKey = frozenCheckoutOrderId.toString();
+                            final boxData = await box.get(hiveKey);
 
                             double totalEbtAfterDiscount = 0.0;
-
-                            final boxData = await box.get(hiveKey);
                             final double discountAmount = ((boxData is Map
                                 ? boxData["discount_amount"]
                                 : null) ??
                                 0.0)
                                 .toDouble();
 
-                            // =======================================================
-                            // 🔹 PREPARE CART FOR ENGINE
-                            // =======================================================
-                            final List<Map<String, dynamic>> cartItems =
-                            orderItems
+                            // ── Prepare cart for discount engine ────────────────────────
+                            final List<Map<String, dynamic>> cartItems = orderItems
                                 .where((item) =>
                             item['product_id'] != null &&
                                 (item['product_id'] as int) > 0)
-                                .map((item) {
-                              return {
-                                'product_id': item['product_id'],
-                                'price': item['item_price'],
-                                'qty': item['items_count'],
+                                .map((item) => {
+                              'product_id': item['product_id'],
+                              'price': item['item_price'],
+                              'qty': item['items_count'],
+                            })
+                                .toList();
+
+                            // ── Discount engine (safe – never blocks navigation) ────────
+                            Map<int, EngineDiscountResult> engineDiscounts = {};
+                            try {
+                              final rawEngineDiscounts =
+                              await DiscountEngine.applyAll(AppDB.isar, cartItems);
+                              engineDiscounts = {
+                                for (final entry in rawEngineDiscounts.entries)
+                                  int.tryParse(entry.key.toString()) ?? -1: entry.value
                               };
-                            }).toList();
-
-                            // =======================================================
-                            // 🔥 CALL DISCOUNT ENGINE
-                            // =======================================================
-                            final rawEngineDiscounts =
-                            await DiscountEngine.applyAll(
-                                AppDB.isar, cartItems);
-
-// 🔧 Normalize keys to int (CRITICAL FIX)
-                            final Map<int, EngineDiscountResult>
-                            engineDiscounts = {
-                              for (final entry
-                              in rawEngineDiscounts.entries)
-                                int.tryParse(entry.key.toString()) ?? -1:
-                                entry.value
-                            };
-
-                            if (kDebugMode) {
-                              print(
-                                  "🔥 NORMALIZED ENGINE MAP = $engineDiscounts");
+                            } catch (e) {
+                              if (kDebugMode) print('Discount engine error (ignored): $e');
                             }
 
-                            if (kDebugMode) {
-                              print(
-                                  "🔥 ENGINE RESULT MAP = $engineDiscounts");
-                            }
-
-                            // =======================================================
-                            // 🔥 APPLY + NORMALIZE ENGINE RESULTS (ONCE)
-                            // =======================================================
-                            // for (final item in workingItems) {
-                            //   final pid = int.tryParse(
-                            //       item['product_id']?.toString() ?? '');
-                            //   final engineResult = pid != null
-                            //       ? engineDiscounts[pid]
-                            //       : null;
-                            //
-                            //   item['auto_discount'] =
-                            //       engineResult?.amount ?? 0.0;
-                            //   item['discount_type'] =
-                            //       engineResult?.ruleType ?? '';
-                            //   item['discount_source'] =
-                            //   engineResult != null ? 'engine' : '';
-                            //   item['rule_id'] =
-                            //       engineResult?.ruleId ?? '';
-                            // }
+                            // Apply engine results + seed item_tax
                             for (final item in workingItems) {
-                              final pid = int.tryParse(
-                                  item['product_id']?.toString() ?? '');
-                              final engineResult = pid != null
-                                  ? engineDiscounts[pid]
-                                  : null;
+                              final pid = int.tryParse(item['product_id']?.toString() ?? '');
+                              final engineResult = pid != null ? engineDiscounts[pid] : null;
 
-                              item['auto_discount'] =
-                                  engineResult?.amount ?? 0.0;
-                              item['discount_type'] =
-                                  engineResult?.ruleType ?? '';
+                              item['auto_discount'] = engineResult?.amount ?? 0.0;
+                              item['discount_type'] = engineResult?.ruleType ?? '';
                               item['discount_source'] =
                               engineResult != null ? 'engine' : '';
-                              item['rule_id'] =
-                                  engineResult?.ruleId ?? '';
+                              item['rule_id'] = engineResult?.ruleId ?? '';
 
-                              // ✅ Seed item_tax from the already-computed panel totals loop
-                              // so checkout tax fallback has a real value, not 0.0
-                              final String wItemType = (item['item_type'] ?? '').toString().toLowerCase();
+                              final String wItemType =
+                              (item['item_type'] ?? '').toString().toLowerCase();
                               final bool wIsPayout = wItemType.contains('payout');
                               final bool wIsCashback = wItemType.contains('cashback');
                               final bool wIsCoupon = wItemType.contains('coupon');
+
                               if (!wIsPayout && !wIsCashback && !wIsCoupon) {
-                                double seededTax = ((item['item_tax'] ?? 0) as num).toDouble();
+                                double seededTax =
+                                ((item['item_tax'] ?? 0) as num).toDouble();
                                 if (seededTax <= 0) {
                                   final int wProductId = int.tryParse(
-                                      (item['product_id'] ?? 0).toString()) ?? 0;
-                                  final double wPrice = ((item['item_price'] ?? 0) as num).toDouble();
-                                  final int wQty = ((item['items_count'] ?? 1) as num).toInt();
+                                      (item['product_id'] ?? 0).toString()) ??
+                                      0;
+                                  final double wPrice =
+                                  ((item['item_price'] ?? 0) as num).toDouble();
+                                  final int wQty =
+                                  ((item['items_count'] ?? 1) as num).toInt();
                                   final bool wIsEbt = item['is_ebt_eligible'] == true;
-                                  final String wTaxStatus = (item['tax_status'] ?? 'taxable').toString().toLowerCase();
+                                  final String wTaxStatus =
+                                  (item['tax_status'] ?? 'taxable')
+                                      .toString()
+                                      .toLowerCase();
                                   final double wTaxRate = double.tryParse(
-                                      (item['tax_rate'] ?? item['tax_Rate'] ?? '0').toString()) ?? 0.0;
-                                  final Map<int, double> _hiveTaxRateByProductId = {};
-                                  final Map<int, String> _hiveTaxStatusByProductId = {};
-
-                                  final double defaultNonEbtTaxRate =
-                                      _hiveTaxRateByProductId[wProductId] ?? 0.0;
+                                      (item['tax_rate'] ?? item['tax_Rate'] ?? '0')
+                                          .toString()) ??
+                                      0.0;
 
                                   if (wIsEbt) {
                                     seededTax = 0.0;
                                   } else if (wItemType.contains('custom')) {
                                     if (wTaxRate > 0) {
-                                      seededTax = roundTaxHalfUp(((wPrice * wTaxRate) / 100) * wQty);
+                                      seededTax = roundTaxHalfUp(
+                                          ((wPrice * wTaxRate) / 100) * wQty);
                                     }
                                   } else if (wProductId > 0) {
                                     if (wTaxStatus == 'taxable' && wTaxRate > 0) {
                                       seededTax = ((wPrice * wQty) * wTaxRate) / 100;
                                     } else {
-                                      seededTax = getProductTaxFromHive(wProductId, wPrice, wQty);
-                                      if (seededTax <= 0 && wTaxStatus != 'none') {
-                                        seededTax = ((wPrice * wQty) * defaultNonEbtTaxRate) / 100;
-                                      }
+                                      seededTax =
+                                          getProductTaxFromHive(wProductId, wPrice, wQty);
                                     }
                                   }
                                 }
-                                item['item_tax'] = seededTax; // ✅ now checkout loop can reliably read this
+                                item['item_tax'] = seededTax;
                               }
                             }
 
-                            // =======================================================
-                            // 🔹 CALCULATE TAX & TOTALS
-                            // =======================================================
+                            // ── Tax & totals ────────────────────────────────────────────
                             double totalTaxAfterDiscount = 0.0;
-                            final List<Tax> taxList =
-                            await _assetDBHelper.getTaxList();
+                            List<Tax> taxList = [];
+                            try {
+                              taxList = await _assetDBHelper.getTaxList();
+                            } catch (_) {}
 
                             for (final item in workingItems) {
-                              final int productId = int.tryParse(
-                                  item['product_id']?.toString() ??
-                                      '0') ??
-                                  0;
+                              final int productId =
+                                  int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
                               final double price =
-                                  (item['item_price'] as num?)
-                                      ?.toDouble() ??
-                                      0.0;
+                                  (item['item_price'] as num?)?.toDouble() ?? 0.0;
                               final int qty =
-                                  (item['items_count'] as num?)
-                                      ?.toInt() ??
-                                      1;
+                                  (item['items_count'] as num?)?.toInt() ?? 1;
                               final double autoDiscount =
-                                  (item['auto_discount'] as num?)
-                                      ?.toDouble() ??
-                                      0.0;
+                                  (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
 
                               final double discountedUnitPrice =
-                                  (price * qty - autoDiscount) / qty;
+                              qty > 0 ? (price * qty - autoDiscount) / qty : price;
 
                               double itemTax = 0.0;
+                              final String itemType =
+                              (item['item_type'] ?? '').toString().toLowerCase();
+
                               if (productId > 0) {
-                                final bool isEbt =
-                                    item['is_ebt_eligible'] == true;
+                                final bool isEbt = item['is_ebt_eligible'] == true;
                                 final lineTaxStatus =
-                                (item['tax_status'] ?? 'taxable')
-                                    .toString()
-                                    .toLowerCase();
+                                (item['tax_status'] ?? 'taxable').toString().toLowerCase();
                                 final lineTaxRate = double.tryParse(
-                                    (item['tax_rate'] ?? '0')
-                                        .toString()) ??
+                                    (item['tax_rate'] ?? '0').toString()) ??
                                     0.0;
+
                                 if (isEbt) {
                                   itemTax = 0.0;
                                 } else if (lineTaxStatus == 'taxable' && lineTaxRate > 0) {
-                                  // Use stored item_tax (now seeded above) as primary, recompute as fallback
-                                  itemTax = (item['item_tax'] as num?)?.toDouble() ?? 0.0;
+                                  itemTax =
+                                      (item['item_tax'] as num?)?.toDouble() ?? 0.0;
                                   if (itemTax <= 0) {
-                                    itemTax = ((discountedUnitPrice * qty) * lineTaxRate) / 100;
+                                    itemTax =
+                                        ((discountedUnitPrice * qty) * lineTaxRate) / 100;
                                   }
                                 } else {
-                                  itemTax = getProductTaxFromHive(productId, discountedUnitPrice, qty);
+                                  itemTax = getProductTaxFromHive(
+                                      productId, discountedUnitPrice, qty);
                                   if (itemTax <= 0 && lineTaxStatus != 'none') {
-                                    // Fallback to seeded item_tax from panel totals
-                                    itemTax = (item['item_tax'] as num?)?.toDouble() ?? 0.0;
-
-
-                                    if (itemTax <= 0) {
-                                      final double defaultNonEbtTaxRate =
-                                          _hiveTaxRateByProductId[productId] ?? 0.0;
-
-                                      itemTax = ((discountedUnitPrice * qty) * defaultNonEbtTaxRate) / 100;
-                                    }
+                                    itemTax =
+                                        (item['item_tax'] as num?)?.toDouble() ?? 0.0;
                                   }
                                 }
-                              } else if (item['item_type'] == 'custom') {
+                              } else if (itemType.contains('custom')) {
                                 itemTax = getCustomItemTax(
                                   taxClass: item['tax_class'] ?? '',
                                   unitPrice: discountedUnitPrice,
@@ -7277,124 +9196,105 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               totalTaxAfterDiscount += itemTax;
                               item['tax_after_discount'] = itemTax;
                             }
-                            totalTaxAfterDiscount =
-                                roundTaxHalfUp(totalTaxAfterDiscount);
+                            totalTaxAfterDiscount = roundTaxHalfUp(totalTaxAfterDiscount);
+
+                            // EBT total
                             for (final item in workingItems) {
-                              final double price =
-                                  (item['item_price'] as num?)
-                                      ?.toDouble() ??
-                                      0.0;
-                              final int qty =
-                                  (item['items_count'] as num?)
-                                      ?.toInt() ??
-                                      1;
-                              final double autoDiscount =
-                                  (item['auto_discount'] as num?)
-                                      ?.toDouble() ??
-                                      0.0;
-
-                              final double discountedUnitPrice =
-                                  (price * qty - autoDiscount) / qty;
-
                               if (item['is_ebt_eligible'] == true) {
+                                final double price =
+                                    (item['item_price'] as num?)?.toDouble() ?? 0.0;
+                                final int qty =
+                                    (item['items_count'] as num?)?.toInt() ?? 1;
+                                final double autoDiscount =
+                                    (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
+                                final double discountedUnitPrice =
+                                qty > 0 ? (price * qty - autoDiscount) / qty : price;
                                 totalEbtAfterDiscount +=
-                                    discountedUnitPrice * qty -merchantDiscount;
+                                    discountedUnitPrice * qty - merchantDiscount;
                               }
                             }
 
-                            double grossAfterDiscount =
-                            workingItems.fold(0.0, (sum, item) {
+                            double grossAfterDiscount = workingItems.fold(0.0, (sum, item) {
                               final double price =
-                                  (item['item_price'] as num?)
-                                      ?.toDouble() ??
-                                      0.0;
+                                  (item['item_price'] as num?)?.toDouble() ?? 0.0;
                               final int qty = item['items_count'] ?? 1;
                               final double autoDiscount =
-                                  (item['auto_discount'] as num?)
-                                      ?.toDouble() ??
-                                      0.0;
+                                  (item['auto_discount'] as num?)?.toDouble() ?? 0.0;
                               return sum + ((price * qty) - autoDiscount);
                             });
-                            grossAfterDiscount = double.parse(
-                                grossAfterDiscount.toStringAsFixed(2));
+                            grossAfterDiscount =
+                                double.parse(grossAfterDiscount.toStringAsFixed(2));
 
-                            // =======================================================
-                            // 🔒 FREEZE SNAPSHOT FOR SUMMARY
-                            // =======================================================
-                            // final List<Map<String, dynamic>>
-                            // summaryItems = workingItems
-                            //     .map((e) =>
-                            // Map<String, dynamic>.from(e))
-                            //     .toList();
+                            // ── Snapshot for summary (preserve weight fields) ───────────
+                            final List<Map<String, dynamic>> summaryItems =
+                            workingItems.map((e) {
+                              final Map<String, dynamic> item =
+                              Map<String, dynamic>.from(e);
+                              final String itemType =
+                              (item['item_type'] ?? '').toString().toLowerCase();
 
-                            // =======================================================
-// 🔒 FREEZE SNAPSHOT FOR SUMMARY (WITH WEIGHT FIELDS)
-// =======================================================
-                            final List<Map<String, dynamic>> summaryItems = workingItems
-                                .map((e) {
-                              final Map<String, dynamic> item = Map<String, dynamic>.from(e);
-
-                              // 🔥 PRESERVE WEIGHT FIELDS FOR WEIGHTED ITEMS
-                              final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
                               if (itemType.contains('weighted')) {
-                                // Copy all weight-related fields from the original item
-                                item['weight_qty'] = e['weight_qty'] ?? e['weightQty'] ?? e['weight'] ?? 0.0;
-                                item['weightQty'] = e['weightQty'] ?? e['weight_qty'] ?? e['weight'] ?? 0.0;
-                                item['weight'] = e['weight'] ?? e['weight_qty'] ?? e['weightQty'] ?? 0.0;
-                                item['unit_price'] = e['unit_price'] ?? e['regular_price'] ?? e['item_price'] ?? 0.0;
-                                item['regular_price'] = e['regular_price'] ?? e['unit_price'] ?? e['item_price'] ?? 0.0;
-                                item['sales_price'] = e['sales_price'] ?? e['item_price'] ?? 0.0;
+                                item['weight_qty'] = e['weight_qty'] ??
+                                    e['weightQty'] ??
+                                    e['weight'] ??
+                                    0.0;
+                                item['weightQty'] = e['weightQty'] ??
+                                    e['weight_qty'] ??
+                                    e['weight'] ??
+                                    0.0;
+                                item['weight'] = e['weight'] ??
+                                    e['weight_qty'] ??
+                                    e['weightQty'] ??
+                                    0.0;
+                                item['unit_price'] = e['unit_price'] ??
+                                    e['regular_price'] ??
+                                    e['item_price'] ??
+                                    0.0;
+                                item['regular_price'] = e['regular_price'] ??
+                                    e['unit_price'] ??
+                                    e['item_price'] ??
+                                    0.0;
+                                item['sales_price'] =
+                                    e['sales_price'] ?? e['item_price'] ?? 0.0;
 
-                                // Calculate and store the line total
-                                final double unitPrice = (item['unit_price'] as num?)?.toDouble() ?? 0.0;
-                                final double weightQty = (item['weight_qty'] as num?)?.toDouble() ?? 0.0;
+                                final double unitPrice =
+                                    (item['unit_price'] as num?)?.toDouble() ?? 0.0;
+                                final double weightQty =
+                                    (item['weight_qty'] as num?)?.toDouble() ?? 0.0;
                                 if (unitPrice > 0 && weightQty > 0) {
                                   final double lineTotal = unitPrice * weightQty;
                                   item['line_total'] = lineTotal;
-                                  item['item_price'] = lineTotal; // Ensure the price reflects the total
+                                  item['item_price'] = lineTotal;
                                   item['item_sum_price'] = lineTotal;
                                 }
-
-                                // Debug print to verify
-                                print('🟢 SUMMARY ITEM: ${item['item_name']} | '
-                                    'unitPricePerLb=${item['unit_price']} | '
-                                    'weightLbs=${item['weight_qty']} | '
-                                    'lineTotal=${item['line_total']}');
                               }
-
-                              // Also preserve for non-weighted items
                               return item;
-                            })
-                                .toList();
+                            }).toList();
 
-                            // =======================================================
-                            // 🔹 SAVE TO HIVE
-                            // =======================================================
-                            final localKey =
-                            frozenCheckoutOrderId.toString();
+                            // ── Persist to Hive ─────────────────────────────────────────
+                            final localKey = frozenCheckoutOrderId.toString();
                             final existingLocal = await box.get(localKey);
-                            final Map<String, dynamic> updated =
-                            existingLocal != null
-                                ? Map<String, dynamic>.from(
-                                existingLocal)
+                            final Map<String, dynamic> updated = existingLocal != null
+                                ? Map<String, dynamic>.from(existingLocal)
                                 : <String, dynamic>{
                               'order_id': frozenCheckoutOrderId,
                               'id': frozenCheckoutOrderId,
-                              'products':
-                              <Map<String, dynamic>>[],
+                              'products': <Map<String, dynamic>>[],
                             };
 
-                            // Recalculate percentage-based merchant discount w.r.t grossAfterDiscount
-                            final String mdType = updated['merchantDiscountType']?.toString() ?? 'fixed';
-                            final double mdPerc = double.tryParse(updated['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
+                            // Recalculate percentage merchant discount if needed
+                            final String mdType =
+                                updated['merchantDiscountType']?.toString() ?? 'fixed';
+                            final double mdPerc = double.tryParse(
+                                updated['merchantDiscountPercentage']?.toString() ??
+                                    '0') ??
+                                0.0;
                             double recalculatedMerchantDiscount = merchantDiscount;
+
                             if (mdType == 'percentage' && mdPerc > 0) {
                               double base = grossAfterDiscount - orderDiscount.abs();
-                              if (base > 0) {
-                                recalculatedMerchantDiscount = (base * mdPerc) / 100.0;
-                              } else {
-                                recalculatedMerchantDiscount = 0.0;
-                              }
+                              recalculatedMerchantDiscount =
+                              base > 0 ? (base * mdPerc) / 100.0 : 0.0;
                               updated['merchantDiscount'] = recalculatedMerchantDiscount;
 
                               if (updated['discounts'] is List) {
@@ -7403,12 +9303,15 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                 for (final item in list) {
                                   if (item is Map) {
                                     final m = Map<String, dynamic>.from(item);
-                                    final name = (m['name'] ?? '').toString().toLowerCase();
-                                    if (name.contains('merchant discount') || name.contains('discount')) {
+                                    final name =
+                                    (m['name'] ?? '').toString().toLowerCase();
+                                    if (name.contains('merchant discount') ||
+                                        name.contains('discount')) {
                                       m['discount_amount'] = -recalculatedMerchantDiscount;
                                       m['display_amount'] = recalculatedMerchantDiscount;
                                       m[AppDBConst.itemPrice] = recalculatedMerchantDiscount;
-                                      m[AppDBConst.itemSumPrice] = recalculatedMerchantDiscount;
+                                      m[AppDBConst.itemSumPrice] =
+                                          recalculatedMerchantDiscount;
                                     }
                                     updatedDiscounts.add(m);
                                   }
@@ -7417,138 +9320,149 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               }
                             }
 
+                            // Tax reduction for percentage merchant discount
                             double calculatedPerc = 0.0;
                             if (mdType == 'percentage' && mdPerc > 0) {
                               calculatedPerc = mdPerc;
-                            } else if (mdType == 'fixed' && recalculatedMerchantDiscount.abs() > 0) {
+                            } else if (mdType == 'fixed' &&
+                                recalculatedMerchantDiscount.abs() > 0) {
                               double base = grossAfterDiscount - orderDiscount.abs();
                               if (base > 0) {
-                                calculatedPerc = (recalculatedMerchantDiscount.abs() / base) * 100.0;
+                                calculatedPerc =
+                                    (recalculatedMerchantDiscount.abs() / base) * 100.0;
                               }
                             }
                             if (calculatedPerc > 0) {
-                              totalTaxAfterDiscount = totalTaxAfterDiscount * (1 - calculatedPerc / 100.0);
+                              totalTaxAfterDiscount =
+                                  totalTaxAfterDiscount * (1 - calculatedPerc / 100.0);
                               totalTaxAfterDiscount = roundTaxHalfUp(totalTaxAfterDiscount);
                             }
 
                             updated["tax_discount"] = totalTaxAfterDiscount;
                             updated["order_tax"] = totalTaxAfterDiscount;
+                            updated["cashback_fee"] =
+                                double.parse(cashbackFee.toStringAsFixed(2));
 
-                            updated["cashback_fee"] = double.parse(
-                                cashbackFee.toStringAsFixed(2));
+                            updated['net_total'] = grossAfterDiscount -
+                                orderDiscount.abs() -
+                                recalculatedMerchantDiscount;
+                            updated['net_payable'] = updated['net_total'] +
+                                totalTaxAfterDiscount +
+                                cashbackFee;
 
-                            updated['net_total'] = grossAfterDiscount - orderDiscount.abs() - recalculatedMerchantDiscount;
-                            updated['net_payable'] = updated['net_total'] + totalTaxAfterDiscount + cashbackFee;
                             merchantDiscount = recalculatedMerchantDiscount;
 
-// =======================================================
-// 🔥 BUILD DISCOUNT LINES (SOURCE OF TRUTH)
-// =======================================================
-
+                            // Discount lines
                             final Map<String, dynamic> discountLines = {};
-
                             for (final item in workingItems) {
                               final pid = item['product_id']?.toString();
                               if (pid == null || pid == "0") continue;
-
                               discountLines[pid] = {
-                                "amount": (item['auto_discount'] ?? 0)
-                                    .toDouble(),
+                                "amount": (item['auto_discount'] ?? 0).toDouble(),
                                 "type": item['discount_type'] ?? "",
                                 "source": item['discount_source'] ?? "",
                                 "rule_id": item['rule_id'] ?? "",
                               };
                             }
-
-// SAVE ONLY ONCE HERE
                             updated['discount_lines'] = discountLines;
                             updated['_update_source'] = 'checkout';
 
-// 🔥 ONLY WRITE IN WHOLE CHECKOUT
                             await box.put(localKey, updated);
 
-// DEBUG
+                            // Sticky summary flags
+                            _summaryEnabledForActiveOrder = true;
+                            _summaryLockedOrderId = frozenCheckoutOrderId;
 
-                            // ===== VERIFY HIVE WRITE =====
-                            final verifyWrite = await box.get(localKey);
+                            // Values for MQTT / summary
+                            final double mqttGross = grossAfterDiscount;
+                            final double mqttTax = totalTaxAfterDiscount;
+                            final double mqttDisc = orderDiscount.abs();
+                            final double mqttMDisc = merchantDiscount.abs();
+                            final double mqttCb = cashbackFee;
+                            final double mqttPayable =
+                                (updated['net_payable'] as num?)?.toDouble() ??
+                                    (grossAfterDiscount +
+                                        totalTaxAfterDiscount -
+                                        merchantDiscount.abs());
+                            final int mqttItems = totalItems;
+                            final String mqttDate = displayDate;
+                            final String mqttTime = displayTime;
 
-                            debugPrint(
-                                "\n🟥🟥🟥 VERIFY AFTER SAVE (CHECKOUT) 🟥🟥🟥");
-                            debugPrint("OrderID: $localKey");
+                            // ── Background CFD updates (never block navigation) ─────────
+                            unawaited(() async {
+                              try {
+                                await _publishMqttCart(
+                                  isPayment: true,
+                                  summaryEnabled: true,
+                                  grossTotal: mqttGross,
+                                  orderTax: mqttTax,
+                                  orderDiscount: mqttDisc,
+                                  merchantDiscount: mqttMDisc,
+                                  cashbackFee: mqttCb,
+                                  netPayable: mqttPayable,
+                                  totalItemsCount: mqttItems,
+                                  orderDate: mqttDate,
+                                  orderTime: mqttTime,
+                                );
+                              } catch (e) {
+                                if (kDebugMode) print('MQTT payment publish error: $e');
+                              }
+                            }());
 
-                            final items = verifyWrite?['items'] ?? [];
-                            for (final i in items) {
-                              debugPrint(
-                                  "ITEM → ${i['item_name']} | discount_meta=${i['discount_meta']}");
-                            }
+                            unawaited(() async {
+                              try {
+                                await CustomerDisplayHelper.updateCustomerDisplay(
+                                  frozenCheckoutOrderId,
+                                  summaryEnabled: true,
+                                );
+                              } catch (e, s) {
+                                if (kDebugMode) {
+                                  print(
+                                      'Native customer display update failed (ignored): $e\n$s');
+                                }
+                              }
+                            }());
 
-                            final products =
-                                verifyWrite?['products'] ?? [];
-                            for (final p in products) {
-                              debugPrint(
-                                  "PRODUCT → ${p['name']} | discount_meta=${p['discount_meta']}");
-                            }
+                            // ── ALWAYS open Order Summary ───────────────────────────────
+                            if (!mounted) return;
 
-                            debugPrint("🟥🟥🟥 END VERIFY 🟥🟥🟥\n");
+                            setState(() => _isPayBtnLoading = false);
 
-                            final finalStored = await box.get(localKey);
-                            debugPrint(
-                                "🧠 FINAL STORED HIVE ORDER =====================");
-                            debugPrint(const JsonEncoder.withIndent('  ')
-                                .convert(finalStored));
-                            debugPrint(
-                                "===============================================");
-// DEBUG
-                            final verify = await box.get(localKey);
-                            debugPrint("🧠 STORED ORDER AFTER SAVE:");
-                            debugPrint(jsonEncode(verify));
-                            await CustomerDisplayHelper
-                                .updateCustomerDisplay(
-                                frozenCheckoutOrderId,
-                                summaryEnabled: true);
-
-                            // =======================================================
-                            // 🔹 NAVIGATE TO SUMMARY SCREEN
-                            // =======================================================
-                            final result = await Navigator.push(
+                            await Navigator.push(
                               context,
                               PageRouteBuilder(
-                                pageBuilder: (context, animation,
-                                    secondaryAnimation) =>
+                                pageBuilder: (context, animation, secondaryAnimation) =>
                                     OrderSummaryScreen(
                                       formattedDate: displayDate,
                                       formattedTime: displayTime,
                                       orderItems: summaryItems,
-                                      grossTotal: grossTotal ,
+                                      grossTotal: grossTotal,
                                       orderDiscount: orderDiscount,
                                       merchantDiscount: merchantDiscount,
                                       orderTax: totalTaxAfterDiscount,
-                                      netPayable: updated['net_payable'] ?? (grossAfterDiscount +
-                                          totalTaxAfterDiscount -
-                                          merchantDiscount),
-                                      orderId: serverOrderId ??
-                                          frozenCheckoutOrderId,
+                                      netPayable: updated['net_payable'] ??
+                                          (grossAfterDiscount +
+                                              totalTaxAfterDiscount -
+                                              merchantDiscount),
+                                      orderId: serverOrderId ?? frozenCheckoutOrderId,
                                       isOfflineSynced: serverOrderId != null,
                                       offlineOrderId: frozenCheckoutOrderId,
                                       cashbackFee: cashbackFee,
                                       ebtAmount: totalEbtAfterDiscount,
                                       discountAmount: discountAmount,
                                     ),
-                                transitionDuration:
-                                const Duration(milliseconds: 220),
-                                transitionsBuilder: (context, animation,
-                                    secondaryAnimation, child) {
+                                transitionDuration: const Duration(milliseconds: 220),
+                                transitionsBuilder:
+                                    (context, animation, secondaryAnimation, child) {
                                   final curved = CurvedAnimation(
                                     parent: animation,
                                     curve: Curves.easeOutCubic,
                                   );
-
                                   return FadeTransition(
                                     opacity: curved,
                                     child: SlideTransition(
                                       position: Tween<Offset>(
-                                        begin: const Offset(0.05,
-                                            0), // slight right → natural feel
+                                        begin: const Offset(0.05, 0),
                                         end: Offset.zero,
                                       ).animate(curved),
                                       child: child,
@@ -7558,12 +9472,17 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                               ),
                             );
                           } catch (e, s) {
-                            debugPrint("❌ Error syncing order: $e");
+                            debugPrint("❌ Checkout error: $e");
                             debugPrint("$s");
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text("Failed to sync order")),
-                            );
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text("Checkout error: ${e.toString()}"),
+                                  backgroundColor: Colors.red,
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            }
                           } finally {
                             if (mounted) {
                               setState(() => _isPayBtnLoading = false);

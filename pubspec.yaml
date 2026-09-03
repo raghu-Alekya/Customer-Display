@@ -84,6 +84,9 @@ dependencies:
   # 10.8.1+ requires Dart SDK >=3.8; pin until Flutter/Dart is upgraded.
   mqtt_client: 10.8.0
   dotted_border: ^2.0.0
+  mqtt_server: ^2.0.0
+  nsd: ^2.3.0
+  mobile_scanner: ^5.2.3
 
 dev_dependencies:
   flutter_test:
