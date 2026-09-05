@@ -63,8 +63,6 @@ import 'mqtt_server/cart_state.dart';
 import 'mqtt_server/cfd_store_payload.dart';
 import 'mqtt_server/store_messaging_service.dart';
 
-
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Ensure Flutter services are ready
 
@@ -166,10 +164,10 @@ void main() async {
     await messagingService.startPublisher();
     await messagingService.startMdnsAdvertisement();
     print(
-      '✅ MQTT Broker + Publisher + mDNS started — isReady=${messagingService.isReady}',
+      'MQTT Broker + Publisher + mDNS started — isReady=${messagingService.isReady}',
     );
   } catch (e) {
-    print('❌ Failed to start MQTT (app continues): $e');
+    print('Failed to start MQTT (app continues): $e');
   }
 
   final posIp = await messagingService.getDeviceLocalIp();

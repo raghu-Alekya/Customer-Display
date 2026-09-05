@@ -31,12 +31,10 @@ android {
     defaultConfig {
         applicationId = "com.alekta.pinakapos"
         minSdk = 30
-        targetSdk = 35
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
-
-    // FIX: SIGNING CONFIG (NOW keystoreProperties EXISTS)
 
     signingConfigs {
         create("release") {

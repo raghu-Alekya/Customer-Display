@@ -17,7 +17,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
 
-version: 1.0.5+8
+version: 1.0.7+10
 
 environment:
   sdk: ^3.6.2
@@ -73,6 +73,9 @@ dependencies:
   focus_detector: ^2.0.1
   android_intent_plus: ^6.0.0
   usb_serial: ^0.5.2
+  flutter_secure_storage: ^9.2.2
+  dio: ^5.4.0
+  uuid: ^3.0.7
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

@@ -17,32 +17,149 @@ import '../../Repositories/Auth/store_validation_repository.dart';
 import '../Home/pos_home_screen.dart';
 
 class DeviceHelper {
+  /// Returns a non-empty device id for Android / iOS / Windows / macOS / Linux / Web.
+  /// Also prints platform + device type to console.
   static Future<String> getDeviceId() async {
     final deviceInfo = DeviceInfoPlugin();
 
-    if (Platform.isAndroid) {
-      final androidInfo = await deviceInfo.androidInfo;
+    try {
+      // ---------- WEB ----------
+      if (kIsWeb) {
+        final webInfo = await deviceInfo.webBrowserInfo;
+        final id =
+        '${webInfo.vendor ?? 'web'}_${webInfo.userAgent ?? 'browser'}_${webInfo.platform ?? 'unknown'}'
+            .replaceAll(RegExp(r'\s+'), '_')
+            .replaceAll(RegExp(r'[^a-zA-Z0-9_\-.]'), '');
+        final shortId = id.length > 80 ? id.substring(0, 80) : id;
 
-      if (kDebugMode) {
-        print("Android Device ID: ${androidInfo.id}");
+        if (kDebugMode) {
+          print('🌐 Platform: Web');
+          print('🌐 Browser: ${webInfo.browserName}');
+          print('🌐 Device ID: $shortId');
+        }
+        return shortId.isNotEmpty ? shortId : 'web_device';
       }
 
-      return androidInfo.id;
-    } else if (Platform.isIOS) {
-      final iosInfo = await deviceInfo.iosInfo;
+      // ---------- ANDROID ----------
+      if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        final id = androidInfo.id.isNotEmpty
+            ? androidInfo.id
+            : (androidInfo.fingerprint.isNotEmpty
+            ? androidInfo.fingerprint
+            : 'android_${androidInfo.model}');
 
-      if (kDebugMode) {
-        print("iOS Device ID: ${iosInfo.identifierForVendor}");
+        if (kDebugMode) {
+          print('🤖 Platform: Android');
+          print('🤖 Model: ${androidInfo.model}');
+          print('🤖 Manufacturer: ${androidInfo.manufacturer}');
+          print('🤖 Device ID: $id');
+        }
+        return id;
       }
 
-      return iosInfo.identifierForVendor ?? "unknown_ios";
-    }
+      // ---------- iOS ----------
+      if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        final id = iosInfo.identifierForVendor ??
+            'ios_${iosInfo.name}_${iosInfo.model}';
 
-    if (kDebugMode) {
-      print("Unknown Device Platform");
-    }
+        if (kDebugMode) {
+          print('🍎 Platform: iOS');
+          print('🍎 Name: ${iosInfo.name}');
+          print('🍎 Model: ${iosInfo.model}');
+          print('🍎 Device ID: $id');
+        }
+        return id.isNotEmpty ? id : 'ios_device';
+      }
 
-    return "unknown_device";
+      // ---------- WINDOWS ----------
+      if (Platform.isWindows) {
+        final windowsInfo = await deviceInfo.windowsInfo;
+        final computerName = windowsInfo.computerName;
+        final deviceId = windowsInfo.deviceId;
+        final productId = windowsInfo.productId;
+        final id = [
+          if (deviceId.isNotEmpty) deviceId,
+          if (computerName.isNotEmpty) computerName,
+          if (productId.isNotEmpty) productId,
+        ].join('_');
+
+        final finalId = id.isNotEmpty
+            ? id
+            : 'windows_${windowsInfo.numberOfCores}_${windowsInfo.systemMemoryInMegabytes}';
+
+        if (kDebugMode) {
+          print('🪟 Platform: Windows');
+          print('🪟 Computer Name: $computerName');
+          print('🪟 Device ID (raw): $deviceId');
+          print('🪟 Product ID: $productId');
+          print('🪟 Device ID (sent): $finalId');
+        }
+        return finalId;
+      }
+
+      // ---------- macOS ----------
+      if (Platform.isMacOS) {
+        final macInfo = await deviceInfo.macOsInfo;
+        final id = macInfo.systemGUID ??
+            '${macInfo.computerName}_${macInfo.model}';
+
+        if (kDebugMode) {
+          print('💻 Platform: macOS');
+          print('💻 Computer Name: ${macInfo.computerName}');
+          print('💻 Model: ${macInfo.model}');
+          print('💻 System GUID: ${macInfo.systemGUID}');
+          print('💻 Device ID: $id');
+        }
+        return id.isNotEmpty ? id : 'macos_device';
+      }
+
+      // ---------- LINUX ----------
+      if (Platform.isLinux) {
+        final linuxInfo = await deviceInfo.linuxInfo;
+        final id = linuxInfo.machineId ??
+            '${linuxInfo.name}_${linuxInfo.version ?? 'linux'}';
+
+        if (kDebugMode) {
+          print('🐧 Platform: Linux');
+          print('🐧 Name: ${linuxInfo.name}');
+          print('🐧 Version: ${linuxInfo.version}');
+          print('🐧 Machine ID: ${linuxInfo.machineId}');
+          print('🐧 Device ID: $id');
+        }
+        return id.isNotEmpty ? id : 'linux_device';
+      }
+
+      // ---------- FALLBACK ----------
+      final fallback =
+          'device_${DateTime.now().millisecondsSinceEpoch}';
+      if (kDebugMode) {
+        print('❓ Platform: Unknown → Fallback Device ID: $fallback');
+      }
+      return fallback;
+    } catch (e, stack) {
+      if (kDebugMode) {
+        print('❌ DeviceHelper.getDeviceId error: $e');
+        print(stack);
+      }
+      final fallback =
+          'device_${DateTime.now().millisecondsSinceEpoch}';
+      if (kDebugMode) {
+        print('❓ Error Fallback Device ID: $fallback');
+      }
+      return fallback;
+    }
+  }
+
+  static String getPlatformName() {
+    if (kIsWeb) return 'Web';
+    if (Platform.isAndroid) return 'Android';
+    if (Platform.isIOS) return 'iOS';
+    if (Platform.isWindows) return 'Windows';
+    if (Platform.isMacOS) return 'macOS';
+    if (Platform.isLinux) return 'Linux';
+    return 'Unknown';
   }
 }
 
@@ -94,6 +211,24 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
     super.dispose();
   }
 
+  // Future<void> _handleValidation() async {
+  //   if (_formKey.currentState!.validate()) {
+  //     setState(() {
+  //       _isLoading = true;
+  //       _lastErrorMessage = null;
+  //     });
+  //
+  //     final deviceId = await DeviceHelper.getDeviceId();
+  //
+  //     _bloc.validateStore(
+  //       username: _usernameController.text.trim(),
+  //       password: _passwordController.text.trim(),
+  //       storeId: _storeIdController.text.trim(),
+  //       deviceId: deviceId,
+  //     );
+  //   }
+  // }
+
   Future<void> _handleValidation() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
@@ -103,11 +238,21 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
 
       final deviceId = await DeviceHelper.getDeviceId();
 
+      // Never send empty device_id
+      final safeDeviceId = (deviceId.trim().isEmpty)
+          ? 'device_${DateTime.now().millisecondsSinceEpoch}'
+          : deviceId.trim();
+
+      if (kDebugMode) {
+        print('📤 Platform: ${DeviceHelper.getPlatformName()}');
+        print('📤 device_id: $safeDeviceId');
+      }
+
       _bloc.validateStore(
         username: _usernameController.text.trim(),
         password: _passwordController.text.trim(),
         storeId: _storeIdController.text.trim(),
-        deviceId: deviceId,
+        deviceId: safeDeviceId,
       );
     }
   }
