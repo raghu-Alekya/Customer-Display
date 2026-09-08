@@ -398,18 +398,22 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                 }
               });
             } else {
-              _fastKeyBloc.getFastKeysSink
-                  .add(APIResponse.error(TextConstants.retryText));
+              if (kDebugMode) {
+                print("FastKey offline / error -> Loading cached tabs from local database");
+              }
+              await loadTabs();
+              FastKeyDBHelper.isFastkeyLoaded = true;
             }
           } else if (onData.status == Status.COMPLETED) {
             if (onData.data != null) {
               final fastKeysResponse = onData.data!;
               if (fastKeysResponse.status != "success") {
-                _fastKeyBloc.getFastKeysSink
-                    .add(APIResponse.error(TextConstants.retryText));
+                await loadTabs();
+                FastKeyDBHelper.isFastkeyLoaded = true;
+              } else {
+                await loadTabs();
+                FastKeyDBHelper.isFastkeyLoaded = true;
               }
-              await loadTabs();
-              FastKeyDBHelper.isFastkeyLoaded = true;
             }
           }
         });
