@@ -193,6 +193,25 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String baseUrl = 'base_url';
   static const String currency = 'currency';
   static const String currencySymbol = 'currency_symbol';
+  // Shift Table
+  static const String shiftTable = 'shift_table';
+
+  static const String shiftLocalId = 'local_shift_id';
+  static const String shiftServerId = 'shift_id';
+
+  static const String shiftStartTime = 'start_time';
+  static const String shiftEndTime = 'end_time';
+
+  static const String shiftOpeningBalance = 'opening_balance';
+  static const String shiftClosingBalance = 'closing_balance';
+  static const String shiftTotalSalesAmount = 'total_sales_amount';
+  static const String shiftSafeDropTotal = 'safe_drop_total';
+  static const String shiftVendorPayoutTotal = 'vendor_payout_total';
+  static const String shiftOverShort = 'over_short';
+
+  static const String shiftStatus = 'shift_status';
+  static const String shiftSyncStatus = 'sync_status';
+  static const String shiftCreatedAt = 'created_at';
 }
 
 class DBHelper {
@@ -737,7 +756,33 @@ CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
       FOREIGN KEY(${AppDBConst.assetId}) REFERENCES ${AppDBConst.assetTable}(${AppDBConst.assetId}) ON DELETE CASCADE
     )
     ''');
+// Shift Table
+    await db.execute('''
+  CREATE TABLE ${AppDBConst.shiftTable} (
+    ${AppDBConst.shiftLocalId} INTEGER PRIMARY KEY AUTOINCREMENT,
+    ${AppDBConst.shiftServerId} INTEGER,
+    ${AppDBConst.userId} INTEGER NOT NULL,
 
+    ${AppDBConst.shiftStartTime} TEXT NOT NULL,
+    ${AppDBConst.shiftEndTime} TEXT,
+
+    ${AppDBConst.shiftOpeningBalance} REAL DEFAULT 0,
+    ${AppDBConst.shiftClosingBalance} REAL DEFAULT 0,
+    ${AppDBConst.shiftTotalSalesAmount} REAL DEFAULT 0,
+    ${AppDBConst.shiftSafeDropTotal} REAL DEFAULT 0,
+    ${AppDBConst.shiftVendorPayoutTotal} REAL DEFAULT 0,
+    ${AppDBConst.shiftOverShort} REAL DEFAULT 0,
+
+    ${AppDBConst.shiftStatus} TEXT NOT NULL,
+    ${AppDBConst.shiftSyncStatus} TEXT DEFAULT 'PENDING',
+    ${AppDBConst.shiftCreatedAt} TEXT,
+    ${AppDBConst.updatedAt} TEXT,
+
+    FOREIGN KEY(${AppDBConst.userId})
+      REFERENCES ${AppDBConst.userTable}(${AppDBConst.userId})
+      ON DELETE CASCADE
+  )
+''');
     if (kDebugMode) {
       print("#### All tables created successfully!");
     }
