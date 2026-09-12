@@ -67,11 +67,8 @@ class InventoryAttributeItemsApi {
         );
       }
     } catch (e) {
-      if (!await OfflineHelper.isNetworkAvailable()) {
-        if (kDebugMode) print('Inventory Attribute Items: network failure, returning empty list');
-        return [];
-      }
-      rethrow;
+      if (kDebugMode) print('Inventory Attribute Items unavailable: returning empty list');
+      return [];
     }
   }
 

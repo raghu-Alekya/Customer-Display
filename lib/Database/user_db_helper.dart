@@ -8,16 +8,16 @@ import '../Preferences/pinaka_preferences.dart';
 import 'db_helper.dart';
 
 class UserDbHelper { //Build #1.0.126: Updated for user data into db
-/// DOUBT -> NO PROBLEM IF WE USE "_instance"
-/// RE-Search: Singleton pattern - `UserDbHelper()` returns the same instance every time.
-/// No new object is created, only the existing static instance is reused.
-/// EX: IF WE USE/CALL LIKE THIS WAY !
+  /// DOUBT -> NO PROBLEM IF WE USE "_instance"
+  /// RE-Search: Singleton pattern - `UserDbHelper()` returns the same instance every time.
+  /// No new object is created, only the existing static instance is reused.
+  /// EX: IF WE USE/CALL LIKE THIS WAY !
 // final UserDbHelper _userDbHelper = UserDbHelper();
 // await _userDbHelper.getUserData();
-/// or use below in this call
+  /// or use below in this call
 // static final UserDbHelper instance = UserDbHelper._internal();
 //   factory UserDbHelper() => instance;
-/// then call using
+  /// then call using
 // UserDbHelper.instance.getUserData();
   static final UserDbHelper _instance = UserDbHelper._internal();
   factory UserDbHelper() => _instance;
@@ -225,6 +225,14 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     }
   }
 
+  /// Returns the currently active user's token, if available.
+  Future<String?> getUserToken() async {
+    final userData = await getUserData();
+    final value = userData?[AppDBConst.userToken];
+    final token = value?.toString().trim();
+    return (token == null || token.isEmpty) ? null : token;
+  }
+
   /// Checks if user is logged in by verifying token existence
   Future<bool> isUserLoggedIn() async {
     try {
@@ -334,7 +342,7 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       // brand-new offline user when no real email is available.
       if (!userMap.containsKey(AppDBConst.userEmail)) {
         userMap[AppDBConst.userEmail] =
-            'offline_${userId}_${DateTime.now().millisecondsSinceEpoch}@offline.local';
+        'offline_${userId}_${DateTime.now().millisecondsSinceEpoch}@offline.local';
       }
 
       userMap[AppDBConst.themeMode] = ThemeMode.light.toString();

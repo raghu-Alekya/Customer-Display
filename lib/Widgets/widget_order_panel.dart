@@ -6629,22 +6629,43 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                         final userData = await UserDbHelper().getUserData();
                                         final String token = userData?[AppDBConst.userToken] ?? "";
                                         final int? shiftId = await UserDbHelper().getUserShiftId();
-                                        final uri = Uri.parse('${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}orders/track-void-items-event${UrlHelper.apiKey}');
-                                        final headers = <String, String>{
-                                          'Content-Type': 'application/json',
-                                          if (token.isNotEmpty) 'Authorization': 'Bearer $token',
-                                        };
-                                        var body = jsonEncode({
-                                          "offline_orderid": orderHelper.activeOrderId,
-                                          "shift_id": shiftId,
-                                          "item_id": productId,
-                                          "item_total": itemTotal,
-                                          "item_qty": itemQty,
-                                          "timestamp": DateTime.now().toString(),
-                                          "deleted_by": orderHelper.activeUserId
-                                        });
-                                        await http.post(uri, headers: headers, body: body);
-                                        await deleteOfflineItem(orderItem, itemIndex: index);
+                                        // Delete locally first/without waiting for the server when offline.
+                                        // The previous code always called the API before deleting from
+                                        // Hive. When offline, that request failed and the catch block
+                                        // prevented deleteOfflineItem() from running.
+                                        if (!isOffline) {
+                                          final uri = Uri.parse('${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}orders/track-void-items-event${UrlHelper.apiKey}');
+                                          final headers = <String, String>{
+                                            'Content-Type': 'application/json',
+                                            if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+                                          };
+                                          final body = jsonEncode({
+                                            "offline_orderid": orderHelper.activeOrderId,
+                                            "shift_id": shiftId,
+                                            "item_id": productId,
+                                            "item_total": itemTotal,
+                                            "item_qty": itemQty,
+                                            "timestamp": DateTime.now().toString(),
+                                            "deleted_by": orderHelper.activeUserId
+                                          });
+
+                                          // Tracking is best-effort; it must never block local deletion.
+                                          try {
+                                            await http
+                                                .post(uri, headers: headers, body: body)
+                                                .timeout(const Duration(seconds: 3));
+                                          } catch (trackingError) {
+                                            if (kDebugMode) {
+                                              print('⚠️ Void-item tracking skipped: $trackingError');
+                                            }
+                                          }
+                                        }
+
+                                        // Always execute the local delete for an offline order,
+                                        // even when the server is unavailable.
+                                        if (isOffline) {
+                                          await deleteOfflineItem(orderItem, itemIndex: index);
+                                        }
                                       } catch (e) {
                                         if (kDebugMode) print("❌ Delete error: $e");
                                       }

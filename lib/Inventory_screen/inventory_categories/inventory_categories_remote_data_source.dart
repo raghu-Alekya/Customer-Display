@@ -89,8 +89,7 @@ class InventoryCategoriesRemoteDataSourceImpl implements InventoryCategoriesRemo
 
       // Network/DNS failure is a normal offline condition. Keep the UI usable
       // instead of putting the raw ClientException into the dropdown.
-      if (!await OfflineHelper.isNetworkAvailable()) return [];
-      rethrow;
+      return [];
     }
   }
 

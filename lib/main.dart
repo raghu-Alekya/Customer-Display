@@ -6,6 +6,7 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pinaka_pos/services/CustomerDisplayService.dart';
 import 'package:pinaka_pos/services/customer_services.dart';
+import 'package:pinaka_pos/services/shift_sync_services.dart';
 import 'package:provider/provider.dart';
 import 'Blocs/Orders/refund_orderlist_bloc.dart';
 import 'Constants/misc_features.dart';
@@ -69,6 +70,7 @@ void main() async {
 
   // Initialize Isar first
   await IsarService.init();
+  ShiftSyncService().startListening();
 
   AppDB.isar = await Isar.open(
     [DiscountRuleIsarSchema],
@@ -104,6 +106,8 @@ void main() async {
   await DBHelper.instance.database;
   // Restore the last store currency from SQLite before the first UI frame.
   await OfflineHelper.restoreStoredCurrency();
+  // Start reconnect-aware synchronization for orders created offline.
+  OfflineOrderSyncService.start();
 
   final deviceDetails = await GlobalUtility.getDeviceDetails();
   // CustomerService.setPosIdFromDevice(deviceDetails['device_id']);

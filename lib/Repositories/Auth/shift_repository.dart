@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../Constants/text.dart';
 import '../../Database/db_helper.dart';
 import '../../Database/shift_db_helper.dart';
 import '../../Database/user_db_helper.dart';
@@ -11,6 +13,7 @@ import '../../Models/Auth/shift_summary_model.dart';
 
 class ShiftRepository {
   final APIHelper _helper = APIHelper();
+  final ShiftDbHelper _shiftDbHelper = ShiftDbHelper(); // ADD THIS — was missing entirely
 
   // ─────────────────────────────────────────────────────────────────────────
   // Fetch shifts by user ID (Online first + Offline fallback)
@@ -301,4 +304,155 @@ class ShiftRepository {
       }
     }
   }
+
+  Future<ShiftResponse> _manageShiftPayload(Map<String, dynamic> payload) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.shifts}${EndUrlConstants.createShiftEndUrl}";
+
+    if (kDebugMode) {
+      print("ShiftRepository - SYNC POST URL: $url");
+      print("ShiftRepository - SYNC POST Payload: $payload");
+    }
+
+    final response = await _helper.post(url, payload, true);
+
+    if (response is String) {
+      final responseData = json.decode(response);
+      return ShiftResponse.fromJson(responseData);
+    } else if (response is Map<String, dynamic>) {
+      return ShiftResponse.fromJson(response);
+    }
+    throw Exception("Unexpected response type in shift sync");
+  }
+
+  Future<void> syncPendingShifts() async {
+    // 1. Check if we have an authentication token before hitting the server
+    final String? token = await UserDbHelper().getUserToken();
+    if (token == null || token.isEmpty) {
+      if (kDebugMode) {
+        print('⚠️ [ShiftSync] No auth token available. Shifts will sync after user logs in online.');
+      }
+      return;
+    }
+
+    final pendingShifts = await _shiftDbHelper.getPendingShifts();
+    if (pendingShifts.isEmpty) {
+      if (kDebugMode) print('ℹ️ [ShiftSync] No pending offline shifts to sync.');
+      return;
+    }
+
+    if (kDebugMode) {
+      print('🔄 [ShiftSync] Found ${pendingShifts.length} pending shifts to sync.');
+    }
+
+    for (final shift in pendingShifts) {
+      final int localShiftId =
+      int.parse(shift[AppDBConst.shiftLocalId].toString());
+
+      int? serverShiftId;
+
+      final rawServerShiftId = shift[AppDBConst.shiftServerId];
+
+      if (rawServerShiftId != null &&
+          rawServerShiftId.toString().isNotEmpty &&
+          rawServerShiftId.toString() != 'null') {
+        serverShiftId = int.tryParse(rawServerShiftId.toString());
+      }
+      final String shiftStatus = shift[AppDBConst.shiftStatus] as String;
+      final String? requestPayloadStr = shift['request_payload'] as String?;
+      final String? closePayloadStr = shift['close_payload'] as String?;
+
+      try {
+        // STEP 1: OPEN SHIFT ON SERVER
+        if (serverShiftId == null) {
+          if (requestPayloadStr != null && requestPayloadStr.isNotEmpty) {
+            final Map<String, dynamic> rawOpenPayload = jsonDecode(requestPayloadStr);
+            rawOpenPayload.remove('shift_id');
+            rawOpenPayload['status'] = TextConstants.open;
+
+            if (kDebugMode) {
+              print('📤 [ShiftSync] Opening shift $localShiftId on server...');
+            }
+
+            final ShiftResponse openResponse = await _manageShiftPayload(rawOpenPayload);
+            serverShiftId = openResponse.shiftId;
+
+            if (serverShiftId == null) {
+              throw Exception('Server did not return a shiftId for local shift $localShiftId');
+            }
+
+            if (kDebugMode) {
+              print('🎉 [ShiftSync] Shift opened on server! Local: $localShiftId ➔ Server: $serverShiftId');
+            }
+
+            // STEP 2: CASCADE MAP LOCAL ID ➔ SERVER ID
+            await _shiftDbHelper.updateShiftServerIdAndCascade(
+              localShiftId: localShiftId,
+              serverShiftId: serverShiftId,
+            );
+
+            if (shiftStatus == 'OPEN') {
+              // IMPORTANT:
+              // UserDB and SharedPreferences always store LOCAL shift ID.
+              await UserDbHelper().updateUserShiftId(localShiftId);
+
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setInt(
+                'active_local_shift_id',
+                localShiftId,
+              );
+
+              if (kDebugMode) {
+                print(
+                  '✅ [ShiftSync] Active shift mapped '
+                      'Local=$localShiftId -> Server=$serverShiftId',
+                );
+              }
+            }
+          }
+        }
+
+        // STEP 3: CLOSE SHIFT ON SERVER (IF CLOSED LOCALLY)
+        if (shiftStatus == 'CLOSED' && serverShiftId != null) {
+          if (closePayloadStr != null && closePayloadStr.isNotEmpty) {
+            final Map<String, dynamic> rawClosePayload =
+            Map<String, dynamic>.from(jsonDecode(closePayloadStr));
+
+            rawClosePayload['shift_id'] = serverShiftId;
+            rawClosePayload['status'] = TextConstants.closed;
+
+            debugPrint(
+              '📤 [ShiftSync] CLOSE PAYLOAD: $rawClosePayload',
+            );
+
+            final closeResponse =
+            await _manageShiftPayload(rawClosePayload);
+
+            debugPrint(
+              '✅ [ShiftSync] CLOSE RESPONSE: '
+                  'shiftId=${closeResponse.shiftId}, '
+                  'status=${closeResponse.status}, '
+                  'overShort=${closeResponse.overShort}',
+            );
+          }
+
+          await _shiftDbHelper.markShiftFullySynced(localShiftId);
+        } else if (shiftStatus == 'OPEN' && serverShiftId != null) {
+          await _shiftDbHelper.markShiftFullySynced(localShiftId);
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('❌ [ShiftSync] Failed to sync shift $localShiftId: $e');
+        }
+        // If unauthorized or token expired, halt sync until user re-authenticates
+        if (e.toString().contains('Unauthorised') || e.toString().contains('403')) {
+          if (kDebugMode) {
+            print('⚠️ [ShiftSync] Session expired or unauthorized. Halting sync until online login.');
+          }
+        }
+        break;
+      }
+    }
+  }
+
 }

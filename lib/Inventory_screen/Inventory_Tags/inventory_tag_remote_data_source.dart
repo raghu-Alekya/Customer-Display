@@ -72,11 +72,8 @@ class Inventory_Tag_Remote_Data_Source_Impl
         throw Exception('Failed to load inventory tags');
       }
     } catch (e) {
-      if (!await OfflineHelper.isNetworkAvailable()) {
-        if (kDebugMode) debugPrint('#### Inventory tags network failure: serving empty local list');
-        return [];
-      }
-      rethrow;
+      if (kDebugMode) debugPrint('#### Inventory data unavailable: serving empty local list');
+      return [];
     }
   }
 

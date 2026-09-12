@@ -76,11 +76,8 @@ class InventoryAttributesRemoteDataSourceImpl
         throw Exception('Failed to load attributes');
       }
     } catch (e) {
-      if (!await OfflineHelper.isNetworkAvailable()) {
-        if (kDebugMode) debugPrint('#### Inventory attributes network failure: serving empty local list');
-        return [];
-      }
-      rethrow;
+      if (kDebugMode) debugPrint('#### Inventory data unavailable: serving empty local list');
+      return [];
     }
   }
 

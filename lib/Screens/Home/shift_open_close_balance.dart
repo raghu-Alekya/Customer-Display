@@ -134,9 +134,16 @@ class _ShiftOpenCloseBalanceScreenState
   bool _isServerOrNetworkError(String? message) {
     if (message == null) return true;
     final m = message.toLowerCase();
-    // Authentication/business rejections must stay visible; treating a 403 as
-    // offline would mark a server shift closed even though the API rejected it.
-    return m.contains('404') ||
+    return m.contains('403') ||
+        m.contains('401') ||
+        m.contains('unauthorised') ||
+        m.contains('unauthorized') ||
+        m.contains('session is expired') ||
+        m.contains('jwt_auth_no_auth_header') ||
+        m.contains('authorization header not found') ||
+        m.contains('token') ||
+        m.contains('auth') ||
+        m.contains('404') ||
         m.contains('500') ||
         m.contains('502') ||
         m.contains('503') ||
@@ -155,15 +162,26 @@ class _ShiftOpenCloseBalanceScreenState
   // OFFLINE SHIFT EXECUTION HELPERS
   // ---------------------------------------------------------------------------
 
+
   Future<void> _tryOfflineOpenShift(ShiftRequest request) async {
     try {
-      final userDbHelper = UserDbHelper();
-      // final userId = await userDbHelper.getUserId() ?? 1;
-// ❌ Replace this:
-// final userId = await userDbHelper.getUserId() ?? 1;
+      if (kDebugMode) {
+        print('\n==========================================');
+        print('📦 OFFLINE SHIFT OPEN STARTED');
+        print('==========================================');
+        print('💰 Opening Balance: $totalAmount');
+        print('📤 Request Payload: ${request.toJson()}');
+      }
 
-// ✅ With this:
+      final userDbHelper = UserDbHelper();
+
       final userId = await _getLoggedInUserId();
+
+      if (kDebugMode) {
+        print('👤 Logged-in User ID: $userId');
+        print('📝 Creating offline shift in SQLite...');
+      }
+
       // 1. Create Shift Locally in SQLite
       final localShiftId = await ShiftDbHelper().createShiftOffline(
         userId: userId,
@@ -171,11 +189,68 @@ class _ShiftOpenCloseBalanceScreenState
         requestPayload: request.toJson(),
       );
 
-      // 2. Save active localShiftId for POS orders
-      await userDbHelper.updateUserShiftId(localShiftId);
+      if (kDebugMode) {
+        print('🎯 SQLITE GENERATED LOCAL SHIFT ID: $localShiftId');
+      }
+
+      // Verify immediately from database
+      final createdShift =
+      await ShiftDbHelper().getShiftById(localShiftId);
 
       if (kDebugMode) {
-        print('✅ [OfflineShift] Shift opened offline with Local ID: $localShiftId');
+        print('🔍 VERIFIED SHIFT FROM SQLITE:');
+        print(createdShift);
+        print('🆔 Local Shift ID from DB: '
+            '${createdShift?[AppDBConst.shiftLocalId]}');
+        print('🌐 Server Shift ID: '
+            '${createdShift?[AppDBConst.shiftServerId]}');
+        print('📊 Shift Status: '
+            '${createdShift?[AppDBConst.shiftStatus]}');
+        print('🔄 Sync Status: '
+            '${createdShift?[AppDBConst.shiftSyncStatus]}');
+      }
+
+      // 2. Save active localShiftId in User DB
+      if (kDebugMode) {
+        print('💾 Saving Local Shift ID to UserDbHelper...');
+        print('💾 Value being saved: $localShiftId');
+      }
+
+      await userDbHelper.updateUserShiftId(localShiftId);
+
+      final savedUserShiftId =
+      await userDbHelper.getUserShiftId();
+
+      if (kDebugMode) {
+        print('✅ UserDbHelper Shift ID after save: '
+            '$savedUserShiftId');
+      }
+
+      // Save in SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.setInt(
+        'active_local_shift_id',
+        localShiftId,
+      );
+
+      final savedPrefShiftId =
+      prefs.getInt('active_local_shift_id');
+
+      if (kDebugMode) {
+        print('💾 SharedPreferences Shift ID saved: '
+            '$savedPrefShiftId');
+      }
+
+      // Update current state
+      _shiftId = localShiftId.toString();
+
+      if (kDebugMode) {
+        print('📱 Current Screen _shiftId: $_shiftId');
+
+        print('==========================================');
+        print('✅ OFFLINE SHIFT OPEN COMPLETED');
+        print('==========================================\n');
       }
 
       if (!mounted) return;
@@ -191,7 +266,8 @@ class _ShiftOpenCloseBalanceScreenState
       );
 
       // 3. Show Start Shift Dialog
-      bool? result = await CustomDialog.showStartShiftVerification(
+      bool? result =
+      await CustomDialog.showStartShiftVerification(
         context,
         totalAmount: totalAmount,
         overShort: 0.0,
@@ -199,55 +275,212 @@ class _ShiftOpenCloseBalanceScreenState
 
       if (result == true && mounted) {
         _resetState();
+
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const POSHomeScreen()),
+          MaterialPageRoute(
+            builder: (_) => const POSHomeScreen(),
+          ),
               (_) => false,
         );
       }
-    } catch (e) {
-      if (kDebugMode) print('❌ [OfflineShift] Open error: $e');
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('❌ [OfflineShift] Open error: $e');
+        print(stackTrace);
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to open shift offline: $e'),
+            content: Text(
+              'Failed to open shift offline: $e',
+            ),
             backgroundColor: Colors.red,
           ),
         );
       }
     } finally {
-      if (mounted) setState(() => _isSubmitting = false);
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
     }
   }
 
-  Future<void> _tryOfflineCloseShift(int shiftId, ShiftRequest closeRequest) async {
+  Future<void> _tryOfflineCloseShift(
+      int localShiftId,
+      ShiftRequest closeRequest,
+      ) async {
     try {
-      // 1. Verification Dialog
-      bool? confirmClose = await CustomDialog.showCloseShiftVerification(
+      if (kDebugMode) {
+        print('\n==========================================');
+        print('📦 OFFLINE SHIFT CLOSE STARTED');
+        print('==========================================');
+        print('🆔 Local Shift ID received: $localShiftId');
+        print('💰 Closing Balance: $totalAmount');
+        print('📤 Close Payload: ${closeRequest.toJson()}');
+      }
+
+      // ---------------------------------------------------------
+      // Get shift using LOCAL SQLite ID
+      // ---------------------------------------------------------
+
+      final existingShift =
+      await ShiftDbHelper().getShiftById(localShiftId);
+
+      if (kDebugMode) {
+        print('🔍 SHIFT FOUND USING LOCAL ID:');
+        print(existingShift);
+      }
+
+      if (existingShift == null) {
+        throw Exception(
+          'No local shift found for local shift ID: $localShiftId',
+        );
+      }
+
+      final int? serverShiftId =
+      existingShift[AppDBConst.shiftServerId] == null
+          ? null
+          : int.tryParse(
+        existingShift[AppDBConst.shiftServerId].toString(),
+      );
+
+      final String shiftStatus =
+          existingShift[AppDBConst.shiftStatus]?.toString() ?? '';
+
+      if (kDebugMode) {
+        print('==========================================');
+        print('🔗 SHIFT ID MAPPING');
+        print('🆔 Local Shift ID : $localShiftId');
+        print('🌐 Server Shift ID: $serverShiftId');
+        print('📊 Status         : $shiftStatus');
+        print('==========================================');
+      }
+
+      // ---------------------------------------------------------
+      // IMPORTANT:
+      //
+      // serverShiftId can be NULL.
+      //
+      // This happens when the shift was created OFFLINE.
+      // It will be created on the server during sync.
+      // ---------------------------------------------------------
+
+      // ---------------------------------------------------------
+      // Verification Dialog
+      // ---------------------------------------------------------
+
+      final bool? confirmClose =
+      await CustomDialog.showCloseShiftVerification(
         context,
         totalAmount: totalAmount,
         overShort: 0.0,
       );
 
       if (confirmClose != true) {
-        if (mounted) setState(() => _isSubmitting = false);
+        if (mounted) {
+          setState(() => _isSubmitting = false);
+        }
         return;
       }
 
-      // 2. Close Shift Locally in SQLite
-      final result = await ShiftDbHelper().closeShiftByLocalOrServerId(
-        shiftId: shiftId,
-        userId: await _getLoggedInUserId(),
+      // ---------------------------------------------------------
+      // Prepare close payload
+      //
+      // If server ID exists:
+      //     API will use serverShiftId.
+      //
+      // If server ID does not exist:
+      //     keep local close payload.
+      //     ShiftSyncService will first OPEN the shift
+      //     on server, get serverShiftId, then CLOSE it.
+      // ---------------------------------------------------------
+
+      final Map<String, dynamic> finalClosePayload =
+      Map<String, dynamic>.from(closeRequest.toJson());
+
+      if (serverShiftId != null) {
+        finalClosePayload['shift_id'] = serverShiftId;
+      } else {
+        // Do not send local ID as server shift ID.
+        finalClosePayload.remove('shift_id');
+      }
+
+      finalClosePayload['status'] = TextConstants.closed;
+
+      if (kDebugMode) {
+        print('📤 FINAL OFFLINE CLOSE PAYLOAD:');
+        print(finalClosePayload);
+        print('🗄️ SQLite Local ID: $localShiftId');
+        print('🌐 API Server ID: $serverShiftId');
+      }
+
+      // ---------------------------------------------------------
+      // Close LOCAL SQLite record
+      // ---------------------------------------------------------
+
+      final result =
+      await ShiftDbHelper().closeShiftOffline(
+        localShiftId: localShiftId,
         closingBalance: totalAmount,
-        closePayload: closeRequest.toJson(),
+        closePayload: finalClosePayload,
       );
 
       if (kDebugMode) {
-        print('✅ [OfflineShift] Shift closed offline: $result');
+        print('✅ OFFLINE CLOSE RESULT: $result');
       }
 
-      // 3. Clear active shift ID
+      // ---------------------------------------------------------
+      // Verify after closing
+      // ---------------------------------------------------------
+
+      final closedShift =
+      await ShiftDbHelper().getShiftById(localShiftId);
+
+      if (kDebugMode) {
+        print('🔍 SHIFT AFTER CLOSING:');
+        print(closedShift);
+
+        print(
+          '🆔 Local ID: '
+              '${closedShift?[AppDBConst.shiftLocalId]}',
+        );
+
+        print(
+          '🌐 Server ID: '
+              '${closedShift?[AppDBConst.shiftServerId]}',
+        );
+
+        print(
+          '📊 Final Status: '
+              '${closedShift?[AppDBConst.shiftStatus]}',
+        );
+
+        print(
+          '🔄 Final Sync Status: '
+              '${closedShift?[AppDBConst.shiftSyncStatus]}',
+        );
+      }
+
+      // ---------------------------------------------------------
+      // Clear active LOCAL shift references
+      // ---------------------------------------------------------
+
+      final prefs =
+      await SharedPreferences.getInstance();
+
+      await prefs.remove('active_local_shift_id');
+
       await UserDbHelper().updateUserShiftId(null);
+
+      _shiftId = null;
+
+      if (kDebugMode) {
+        print('🗑️ Active local Shift ID cleared');
+        print('📱 Current _shiftId: $_shiftId');
+        print('==========================================\n');
+      }
 
       if (!mounted) return;
 
@@ -261,26 +494,34 @@ class _ShiftOpenCloseBalanceScreenState
         ),
       );
 
-      // 4. Logout / Navigate to Login
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        MaterialPageRoute(
+          builder: (_) => const LoginScreen(),
+        ),
       );
-    } catch (e) {
-      if (kDebugMode) print('❌ [OfflineShift] Close error: $e');
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('❌ [OfflineShift] Close error: $e');
+        print(stackTrace);
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to close shift offline: $e'),
+            content: Text(
+              'Failed to close shift offline: $e',
+            ),
             backgroundColor: Colors.red,
           ),
         );
       }
     } finally {
-      if (mounted) setState(() => _isSubmitting = false);
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
     }
   }
-
   // ---------------------------------------------------------------------------
   // EXISTING DENOMINATION HELPERS
   // ---------------------------------------------------------------------------
@@ -334,14 +575,116 @@ class _ShiftOpenCloseBalanceScreenState
       _grandTotal = 0.0;
     });
   }
+  // ---------------------------------------------------------------------------
+  // SHIFT ID RESOLUTION HELPERS
+  // ---------------------------------------------------------------------------
+  Future<int?> _resolveActiveShiftId() async {
+    if (kDebugMode) {
+      print('\n==========================================');
+      print('🔍 RESOLVING ACTIVE SHIFT ID');
+      print('==========================================');
+    }
 
+    // 1. Try UserDbHelper
+    final int? userDbShiftId =
+    await UserDbHelper().getUserShiftId();
+
+    if (kDebugMode) {
+      print('1️⃣ UserDbHelper Shift ID: $userDbShiftId');
+    }
+
+    if (userDbShiftId != null && userDbShiftId > 0) {
+      if (kDebugMode) {
+        print('✅ Using Shift ID from UserDbHelper: '
+            '$userDbShiftId');
+      }
+
+      return userDbShiftId;
+    }
+
+    // 2. Try Local SQLite shift table
+    final userId = await _getLoggedInUserId();
+
+    if (kDebugMode) {
+      print('👤 Current User ID: $userId');
+    }
+
+    final localShift =
+    await ShiftDbHelper().getActiveShift(userId);
+
+    if (kDebugMode) {
+      print('2️⃣ Active Shift from SQLite:');
+      print(localShift);
+    }
+
+    if (localShift != null) {
+      final localId =
+      localShift[AppDBConst.shiftLocalId] as int?;
+
+      if (kDebugMode) {
+        print('🆔 SQLite Local Shift ID: $localId');
+        print(
+          '🌐 SQLite Server Shift ID: '
+              '${localShift[AppDBConst.shiftServerId]}',
+        );
+      }
+
+      if (localId != null && localId > 0) {
+        if (kDebugMode) {
+          print('✅ Using Shift ID from SQLite: $localId');
+        }
+
+        return localId;
+      }
+    }
+
+    // 3. Try SharedPreferences backup
+    final prefs =
+    await SharedPreferences.getInstance();
+
+    final prefShiftId =
+    prefs.getInt('active_local_shift_id');
+
+    if (kDebugMode) {
+      print(
+        '3️⃣ SharedPreferences Shift ID: '
+            '$prefShiftId',
+      );
+    }
+
+    if (prefShiftId != null && prefShiftId > 0) {
+      if (kDebugMode) {
+        print(
+          '✅ Using Shift ID from SharedPreferences: '
+              '$prefShiftId',
+        );
+      }
+
+      return prefShiftId;
+    }
+
+    if (kDebugMode) {
+      print('❌ NO ACTIVE SHIFT ID FOUND');
+      print('==========================================\n');
+    }
+
+    return null;
+  }
   Future<void> _checkShiftId() async {
-    int? shiftId = await UserDbHelper().getUserShiftId();
+    if (kDebugMode) {
+      print('\n🔄 Checking Shift ID on Screen Open...');
+    }
+
+    final int? shiftId =
+    await _resolveActiveShiftId();
+
     if (shiftId != null) {
       _shiftId = shiftId.toString();
     }
+
     if (kDebugMode) {
-      print("#### _checkShiftId: $_shiftId");
+      print('📱 Final Screen _shiftId: $_shiftId');
+      print('==========================================\n');
     }
   }
 
@@ -491,42 +834,79 @@ class _ShiftOpenCloseBalanceScreenState
     if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
     _hasErrorShown = false;
-
-    // Check connectivity first (Same as LoginScreen._handleLogin)
+    // Check connectivity first
     final hasNet = await _hasInternet();
     if (!mounted) return;
     setState(() {
       _isOfflineMode = !hasNet;
     });
-
-    int? shiftId = await UserDbHelper().getUserShiftId();
-    String? previousScreen = _originScreen;
-
+    // 1. Explicitly identify Close Shift vs Open Shift
+    final String? previousScreen = _originScreen;
+    final bool isCloseShift = previousScreen == TextConstants.navLogout ||
+        screenTitle == TextConstants.shiftClose;
+    // 2. Resolve Active Shift ID
+    int? shiftId = int.tryParse(_shiftId ?? '') ?? await _resolveActiveShiftId();
     String status = TextConstants.open;
     String? closeShiftStatus;
-
-    if (shiftId != null) {
-      if (previousScreen == TextConstants.navLogout) {
-        status = TextConstants.update;
-        closeShiftStatus = TextConstants.closed;
-      } else if (previousScreen == TextConstants.navShiftHistory) {
+    if (isCloseShift) {
+      status = TextConstants.update;
+      closeShiftStatus = TextConstants.closed;
+    } else if (shiftId != null) {
+      if (previousScreen == TextConstants.navShiftHistory) {
         status = TextConstants.update;
       }
     }
+    // 3. Inspect if this shift was created offline (has no server ID yet)
+    // Map<String, dynamic>? localShiftData;
+// 3. Find the local SQLite record using the server shift ID.
+    Map<String, dynamic>? localShiftData;
+
+    if (shiftId != null) {
+      localShiftData = await ShiftDbHelper().getShiftById(shiftId);
+    }
+
+    final bool isOfflineOnlyShift =
+        localShiftData != null &&
+            localShiftData[AppDBConst.shiftServerId] == null;
+
+// Local ID is used for SQLite.
+// Server ID is used for API calls.
+    int? apiShiftId = shiftId;
+
+    if (localShiftData != null) {
+      final serverId = localShiftData[AppDBConst.shiftServerId];
+
+      if (serverId != null) {
+        apiShiftId = int.tryParse(serverId.toString());
+      }
+    }
+
+    if (kDebugMode) {
+      print('🔍 [ShiftSubmit] Local Shift ID: $shiftId');
+      print('🌐 [ShiftSubmit] API Shift ID: $apiShiftId');
+      print('🔍 [ShiftSubmit] Local Shift Data: $localShiftData');
+      print(
+        '🔍 [ShiftSubmit] Offline-only shift: '
+            '$isOfflineOnlyShift',
+      );
+    }
 
     final request = _buildShiftRequest(
-      shiftId: shiftId,
+      shiftId: apiShiftId,
       status: status,
     );
-
     // =========================================================================
-    // 1. NO INTERNET → DIRECT OFFLINE HANDLING (No API call)
+    // A. OFFLINE OPERATION OR OFFLINE-ONLY SHIFT
     // =========================================================================
-    if (!hasNet) {
+    // If no internet, OR if shift was created offline and has never synced to server:
+    // Close/open must be performed locally in SQLite first.
+    if (!hasNet || (isCloseShift && isOfflineOnlyShift)) {
       if (kDebugMode) {
-        print('📵 No internet → Executing shift operation completely offline');
+        print(
+          '📦 Handling offline: hasNet=$hasNet, isOfflineOnlyShift=$isOfflineOnlyShift',
+        );
       }
-      if (closeShiftStatus != null && shiftId != null) {
+      if (isCloseShift && shiftId != null) {
         final closeRequest = _buildShiftRequest(
           shiftId: shiftId,
           status: TextConstants.closed,
@@ -537,9 +917,8 @@ class _ShiftOpenCloseBalanceScreenState
       }
       return;
     }
-
     // =========================================================================
-    // 2. ONLINE → API SUBMISSION WITH AUTOMATIC OFFLINE FALLBACK
+    // B. ONLINE OPERATION WITH AUTOMATIC OFFLINE FALLBACK
     // =========================================================================
     var progressDialogShown = false;
     void dismissSubmitProgress() {
@@ -550,11 +929,9 @@ class _ShiftOpenCloseBalanceScreenState
         nav.pop();
       }
     }
-
     try {
       await _shiftSubscription?.cancel();
       _shiftBloc.manageShift(request);
-
       if (mounted) {
         showDialog<void>(
           context: context,
@@ -565,38 +942,66 @@ class _ShiftOpenCloseBalanceScreenState
         );
         progressDialogShown = true;
       }
-
       bool dialogShown = false;
-
       _shiftSubscription = _shiftBloc.shiftStream.listen((response) async {
         if (!mounted || dialogShown) return;
-
         // ---------- SUCCESS ----------
         if (response.status == Status.COMPLETED) {
           dialogShown = true;
           dismissSubmitProgress();
           setState(() => _isSubmitting = false);
-
           // OPEN / UPDATE
           if (closeShiftStatus == null) {
             bool? result;
-
             if (status == TextConstants.open) {
-              await UserDbHelper().updateUserShiftId(response.data!.shiftId);
+              final int serverShiftId = response.data!.shiftId;
+              final int userId = await _getLoggedInUserId();
+              // IMPORTANT:
+              // Online shift was successfully created on server.
+              // Now create its LOCAL SQLite representation.
+              final int localShiftId =
+              await ShiftDbHelper().cacheOnlineShift(
+                userId: userId,
+                serverShiftId: serverShiftId,
+                openingBalance: totalAmount,
+                requestPayload: request.toJson(),
+              );
+
+              // IMPORTANT:
+              // Always keep LOCAL ID in UserDB.
+              await UserDbHelper().updateUserShiftId(localShiftId);
+
+              // Always keep LOCAL ID in SharedPreferences.
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setInt(
+                'active_local_shift_id',
+                localShiftId,
+              );
+
+              // Keep the screen's active shift ID LOCAL as well.
+              _shiftId = localShiftId.toString();
+
+              if (kDebugMode) {
+                print('==========================================');
+                print('✅ ONLINE SHIFT CREATED');
+                print('🌐 Server Shift ID: $serverShiftId');
+                print('💾 Local Shift ID: $localShiftId');
+                print('🔗 Mapping: LOCAL $localShiftId -> SERVER $serverShiftId');
+                print('==========================================');
+              }
 
               result = await CustomDialog.showStartShiftVerification(
                 context,
                 totalAmount: totalAmount,
                 overShort: response.data!.overShort.toDouble(),
               );
-            } else {
+            }else {
               result = await CustomDialog.showUpdateShiftVerification(
                 context,
                 totalAmount: totalAmount,
                 overShort: response.data!.overShort.toDouble(),
               );
             }
-
             if (result == true && mounted) {
               _resetState();
               Navigator.pushAndRemoveUntil(
@@ -607,39 +1012,33 @@ class _ShiftOpenCloseBalanceScreenState
             }
             return;
           }
-
           // CLOSE SHIFT
           bool? confirmClose = await CustomDialog.showCloseShiftVerification(
             context,
             totalAmount: totalAmount,
             overShort: response.data!.overShort.toDouble(),
           );
-
           if (confirmClose != true) return;
-
           CustomDialog.showCloseShiftVerification(
             context,
             totalAmount: totalAmount,
             overShort: response.data!.overShort.toDouble(),
             isLoading: true,
           );
-
           await _shiftSubscription?.cancel();
-
           final closeRequest = _buildShiftRequest(
             shiftId: shiftId,
             status: TextConstants.closed,
           );
           _calculateGrandTotal();
-
           _shiftBloc.manageShift(closeRequest);
-
           _shiftSubscription =
               _shiftBloc.shiftStream.listen((closeResponse) async {
                 if (closeResponse.status == Status.COMPLETED) {
                   await UserDbHelper().updateUserShiftId(null);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.remove('active_local_shift_id');
                   logoutBloc.performLogout();
-
                   StreamSubscription? logoutSub;
                   logoutSub = logoutBloc.logoutStream.listen((logoutResponse) {
                     if (logoutResponse.status == Status.COMPLETED && mounted) {
@@ -653,24 +1052,16 @@ class _ShiftOpenCloseBalanceScreenState
                 }
               });
         }
-
         // ---------- ERROR / OFFLINE FALLBACK ----------
         if (response.status == Status.ERROR) {
           dismissSubmitProgress();
           setState(() => _isSubmitting = false);
-
           final errorMsg = response.message;
           if (kDebugMode) {
             print("⚠️ Shift API Error: $errorMsg");
           }
-
-          // SERVER / NETWORK ERROR → FALLBACK TO OFFLINE LOCAL STORAGE (Like LoginScreen)
-          // Opening a shift must remain available when the server rejects an
-          // old/offline token with 403.  Closing is deliberately excluded:
-          // a rejected close must not be marked as closed locally.
-          final canOpenOffline = status == TextConstants.open &&
-              (errorMsg?.toLowerCase().contains('403') ?? false);
-          if (_isServerOrNetworkError(errorMsg) || canOpenOffline) {
+          // SERVER / AUTH / NETWORK ERROR → FALLBACK TO OFFLINE STORAGE
+          if (_isServerOrNetworkError(errorMsg)) {
             if (!_hasErrorShown) {
               _hasErrorShown = true;
               WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -678,10 +1069,9 @@ class _ShiftOpenCloseBalanceScreenState
                   _isOfflineMode = true;
                 });
                 if (kDebugMode) {
-                  print('⚠️ Network error during API call → falling back to offline execution');
+                  print('⚠️ Auth or network error during API call → falling back to offline execution');
                 }
-
-                if (closeShiftStatus != null && shiftId != null) {
+                if (isCloseShift && shiftId != null) {
                   final closeRequest = _buildShiftRequest(
                     shiftId: shiftId,
                     status: TextConstants.closed,
@@ -694,7 +1084,6 @@ class _ShiftOpenCloseBalanceScreenState
             }
             return;
           }
-
           // Real Business / Validation error from API
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -1679,17 +2068,17 @@ class _ShiftOpenCloseBalanceScreenState
                       )),
 
 
-                      if (sidebarPosition == SidebarPosition.right)
-                  custom_widgets.NavigationBar(
-                    selectedSidebarIndex: _selectedSidebarIndex,
-                    onSidebarItemSelected: (index) {
-                      setState(() {
-                        _selectedSidebarIndex = index;
-                      });
-                    },
-                    isVertical: true,
-                    isShiftScreen: true,
-                  ),
+                  if (sidebarPosition == SidebarPosition.right)
+                    custom_widgets.NavigationBar(
+                      selectedSidebarIndex: _selectedSidebarIndex,
+                      onSidebarItemSelected: (index) {
+                        setState(() {
+                          _selectedSidebarIndex = index;
+                        });
+                      },
+                      isVertical: true,
+                      isShiftScreen: true,
+                    ),
                 ],
               ),
             ),

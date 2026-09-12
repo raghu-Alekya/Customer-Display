@@ -1,19 +1,54 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+
+import '../Helper/offline_helper.dart';
 
 import '../Database/storage/storage_provider.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 
 class OfflineOrderSyncService {
-   static Timer? _timer;
-   static bool _isSyncing = false;
+  static Timer? _timer;
+  static StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  static Timer? _reconnectDebounce;
+  static bool _isSyncing = false;
+  static bool _started = false;
   static void start() {
+    if (_started) return;
+    _started = true;
+
+    // Keep the existing periodic retry, but also react immediately when the
+    // device changes from offline to an actual network connection.
     _timer ??= Timer.periodic(
       const Duration(minutes: 30),
           (_) => syncPendingOrders(),
     );
+
+    _connectivitySubscription ??= Connectivity()
+        .onConnectivityChanged
+        .listen((result) {
+      if (result == ConnectivityResult.none) return;
+
+      // Connectivity events can fire several times while Wi-Fi is joining.
+      // Wait briefly, then verify the server is reachable before syncing.
+      _reconnectDebounce?.cancel();
+      _reconnectDebounce = Timer(const Duration(milliseconds: 700), () async {
+        OfflineHelper.invalidateNetworkCache();
+        if (await OfflineHelper.isNetworkAvailable()) {
+          await syncPendingOrders();
+        }
+      });
+    });
+
+    // Also handle the case where the app starts while the internet is already
+    // available and there are pending offline orders.
+    Future<void>(() async {
+      if (await OfflineHelper.isNetworkAvailable()) {
+        await syncPendingOrders();
+      }
+    });
 
 
     if (kDebugMode) {
@@ -24,6 +59,11 @@ class OfflineOrderSyncService {
   static void stop() {
     _timer?.cancel();
     _timer = null;
+    _connectivitySubscription?.cancel();
+    _connectivitySubscription = null;
+    _reconnectDebounce?.cancel();
+    _reconnectDebounce = null;
+    _started = false;
     if (kDebugMode) {
       print("🛑 Offline order background sync stopped");
     }
@@ -31,6 +71,10 @@ class OfflineOrderSyncService {
 
   static Future<void> syncPendingOrders() async {
     if (_isSyncing) return;
+
+    // Never attempt server synchronization while offline. This also prevents
+    // a reconnect event from racing with a still-unavailable DNS/server.
+    if (!await OfflineHelper.isNetworkAvailable()) return;
     _isSyncing = true;
 
     try {

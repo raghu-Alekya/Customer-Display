@@ -67,11 +67,8 @@ class InventoryGetProductTypesRemoteDataSourceImpl
         throw Exception('Failed to load product types');
       }
     } catch (e) {
-      if (!await OfflineHelper.isNetworkAvailable()) {
-        if (kDebugMode) debugPrint('#### Product types network failure: serving empty local list');
-        return InventoryGetProductTypesModel(types: const <String, String>{});
-      }
-      rethrow;
+      if (kDebugMode) debugPrint('#### Product types unavailable: serving empty local list');
+      return InventoryGetProductTypesModel(types: const <String, String>{});
     }
   }
 }
