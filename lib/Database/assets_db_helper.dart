@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import '../Models/Assets/asset_model.dart';
 import 'db_helper.dart';
+import '../Helper/offline_helper.dart';
 
 class AssetDBHelper { //Build #1.0.54: added
   // Singleton instance to ensure only one instance of AssetDBHelper
@@ -81,6 +82,10 @@ class AssetDBHelper { //Build #1.0.54: added
         }
 
         TextConstants.currencySymbol = assetResponse.currencySymbol;
+        OfflineHelper.setStoredCurrency(
+          code: assetResponse.currency,
+          symbol: assetResponse.currencySymbol,
+        );
 
         // Build #1.0.163: No need save media from assets api, updated to saving from image assets api
         // await txn.delete(AppDBConst.mediaTable, where: '${AppDBConst.assetId} = ?', whereArgs: [assetId]);

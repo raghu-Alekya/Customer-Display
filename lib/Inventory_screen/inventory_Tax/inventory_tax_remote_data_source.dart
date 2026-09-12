@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../Database/db_helper.dart';
 import '../../Helper/url_helper.dart';
+import '../../Helper/offline_helper.dart';
 import 'inventory_tax_model.dart';
 
 abstract class Inventory_Tax_Remote_Data_Source {
@@ -61,50 +62,63 @@ class Inventory_Tax_Remote_Data_Source_Impl
   // }
 
   Future<List<Inventory_Tax_Model>> fetchInventoryTaxes() async {
-    final db = await DBHelper.instance.database;
-
-    final result = await db.query(
-      AppDBConst.userTable,
-      where:
-      '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
-      orderBy: '${AppDBConst.userId} DESC',
-      limit: 1,
-    );
-
-    if (result.isEmpty) {
-      if (kDebugMode) print("#### No active user found in database");
-      throw Exception('No active user token found');
+    if (!await OfflineHelper.isNetworkAvailable()) {
+      if (kDebugMode) debugPrint('#### Offline: inventory taxes served as empty local list');
+      return [];
     }
 
-    final token = result.first[AppDBConst.userToken];
+    try {
+      final db = await DBHelper.instance.database;
 
-    if (kDebugMode) {
-      print("#### TOKEN FROM DB: $token");
-    }
+      final result = await db.query(
+        AppDBConst.userTable,
+        where:
+        '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+        orderBy: '${AppDBConst.userId} DESC',
+        limit: 1,
+      );
 
-    // 🔹 Construct URL using UrlHelper constants
-    final url = "${UrlHelper.wooBaseUrl}${EndUrlConstants.gettaxes}";
-
-    if (kDebugMode) {
-      print("#### INVENTORY TAXES URL: $url");
-    }
-
-    final response = await client.get(
-      Uri.parse(url),
-      headers: {
-        'Authorization': 'Bearer $token',
-      },
-    );
-
-    if (response.statusCode == 200) {
-      final List decoded = json.decode(response.body);
-      return decoded.map((e) => Inventory_Tax_Model.fromJson(e)).toList();
-    } else {
-      if (kDebugMode) {
-        print('#### API ERROR: ${response.statusCode}');
-        print('#### BODY: ${response.body}');
+      if (result.isEmpty) {
+        if (kDebugMode) print("#### No active user found in database");
+        throw Exception('No active user token found');
       }
-      throw Exception('Failed to load inventory taxes');
+
+      final token = result.first[AppDBConst.userToken];
+
+      if (kDebugMode) {
+        print("#### TOKEN FROM DB: $token");
+      }
+
+      // 🔹 Construct URL using UrlHelper constants
+      final url = "${UrlHelper.wooBaseUrl}${EndUrlConstants.gettaxes}";
+
+      if (kDebugMode) {
+        print("#### INVENTORY TAXES URL: $url");
+      }
+
+      final response = await client.get(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List decoded = json.decode(response.body);
+        return decoded.map((e) => Inventory_Tax_Model.fromJson(e)).toList();
+      } else {
+        if (kDebugMode) {
+          print('#### API ERROR: ${response.statusCode}');
+          print('#### BODY: ${response.body}');
+        }
+        throw Exception('Failed to load inventory taxes');
+      }
+    } catch (e) {
+      if (!await OfflineHelper.isNetworkAvailable()) {
+        if (kDebugMode) debugPrint('#### Inventory taxes network failure: serving empty local list');
+        return [];
+      }
+      rethrow;
     }
   }
 

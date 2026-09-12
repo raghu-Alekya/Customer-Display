@@ -15,7 +15,9 @@ class LoginResponse {
   int? shiftId; // Build #1.0.149: Added shift_id from API response
   String? safeEnable;
   String? safeEnableDrop;
-
+  // Build #offline: Terminal identity from login API
+  String? deviceDisplayName;
+  String? tableId;
 
   LoginResponse({
     this.success,
@@ -31,9 +33,11 @@ class LoginResponse {
     this.displayName,
     this.role,
     this.avatar,
-    this.shiftId, // Build #1.0.149: added
+    this.shiftId,
     this.safeEnable,
     this.safeEnableDrop,
+    this.deviceDisplayName,
+    this.tableId,
   });
 
   LoginResponse.fromJson(Map<String, dynamic> json) {
@@ -51,8 +55,11 @@ class LoginResponse {
     role = json['data']?['role'];
     avatar = json['data']?['avatar'];
     shiftId = json['data']?['shift_id']; // Build #1.0.149: added
-    safeEnable = json['data']?['safe_enable']; // ✅ HERE
-    safeEnableDrop = json['data']?['safe_enable_drop']; // ✅ HERE
+    safeEnable = json['data']?['safe_enable'];
+    safeEnableDrop = json['data']?['safe_enable_drop'];
+    // Build #offline: parse terminal identity
+    deviceDisplayName = json['data']?['device_display_name'] as String?;
+    tableId = json['data']?['table_id']?.toString();
   }
 
   Map<String, dynamic> toJson() {
@@ -71,15 +78,17 @@ class LoginResponse {
         'displayName': displayName,
         'role': role,
         'avatar': avatar,
-        'shift_id': shiftId, // Build #1.0.149: added
-        'safe_enable':safeEnable,
-        'safe_enable_drop': safeEnableDrop, // ✅ added
+        'shift_id': shiftId,
+        'safe_enable': safeEnable,
+        'safe_enable_drop': safeEnableDrop,
+        'device_display_name': deviceDisplayName,
+        'table_id': tableId,
       }
     };
   }
 }
 
-class LoginRequest { // Build #1.0.13: Updated login request
+class LoginRequest {
   String _empLoginPin;
 
   set empLoginPin(String value) {

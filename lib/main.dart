@@ -16,6 +16,7 @@ import 'Database/user_db_helper.dart';
 import 'Helper/Extentions/theme_notifier.dart';
 import 'Helper/cashbackhelper.dart';
 import 'Helper/customerdisplayhelper.dart';
+import 'Helper/offline_helper.dart';
 import 'Helper/url_helper.dart';
 import '../Repositories/Orders/order_repository.dart';
 
@@ -101,6 +102,8 @@ void main() async {
   // Build #1.0.9 : By default dark theme getting selected on launch even after changing from settings
   await UrlHelper.initializeBaseUrl();
   await DBHelper.instance.database;
+  // Restore the last store currency from SQLite before the first UI frame.
+  await OfflineHelper.restoreStoredCurrency();
 
   final deviceDetails = await GlobalUtility.getDeviceDetails();
   // CustomerService.setPosIdFromDevice(deviceDetails['device_id']);

@@ -15,6 +15,6 @@ class AuthClient {
   }
 
   Future<void> logout() async {
-    // no-op until PCH logout endpoint is available
+
   }
 }

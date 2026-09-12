@@ -134,8 +134,9 @@ class _ShiftOpenCloseBalanceScreenState
   bool _isServerOrNetworkError(String? message) {
     if (message == null) return true;
     final m = message.toLowerCase();
-    return m.contains('403') ||
-        m.contains('404') ||
+    // Authentication/business rejections must stay visible; treating a 403 as
+    // offline would mark a server shift closed even though the API rejected it.
+    return m.contains('404') ||
         m.contains('500') ||
         m.contains('502') ||
         m.contains('503') ||
@@ -234,8 +235,9 @@ class _ShiftOpenCloseBalanceScreenState
       }
 
       // 2. Close Shift Locally in SQLite
-      final result = await ShiftDbHelper().closeShiftOffline(
-        localShiftId: shiftId,
+      final result = await ShiftDbHelper().closeShiftByLocalOrServerId(
+        shiftId: shiftId,
+        userId: await _getLoggedInUserId(),
         closingBalance: totalAmount,
         closePayload: closeRequest.toJson(),
       );
@@ -663,7 +665,12 @@ class _ShiftOpenCloseBalanceScreenState
           }
 
           // SERVER / NETWORK ERROR → FALLBACK TO OFFLINE LOCAL STORAGE (Like LoginScreen)
-          if (_isServerOrNetworkError(errorMsg)) {
+          // Opening a shift must remain available when the server rejects an
+          // old/offline token with 403.  Closing is deliberately excluded:
+          // a rejected close must not be marked as closed locally.
+          final canOpenOffline = status == TextConstants.open &&
+              (errorMsg?.toLowerCase().contains('403') ?? false);
+          if (_isServerOrNetworkError(errorMsg) || canOpenOffline) {
             if (!_hasErrorShown) {
               _hasErrorShown = true;
               WidgetsBinding.instance.addPostFrameCallback((_) async {

@@ -9,7 +9,7 @@ class DiscountRuleIsar {
   late String ruleId;
   late List<int> productIds;
 
-  int? requiredProductIds; // for mixmatch dependency
+  int? requiredProductIds;
   late int requiredQty;
 
   late double bundlePrice;

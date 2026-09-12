@@ -4,6 +4,7 @@ import 'package:pinaka_pos/Screens/Auth/store_id_screen.dart';
 import '../../Database/store_db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import 'login_screen.dart';
+import '../../Repositories/Auth/startup_recovery_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -41,6 +42,9 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _checkValidationAndNavigate() async {
     await Future.delayed(const Duration(seconds: 1)); // Keep splash delay
+
+    // Best-effort crash recovery; normal splash navigation is unchanged.
+    await StartupRecoveryService.recover();
     bool isValid = await StoreDbHelper.instance.isStoreValidationValid(); //Build #1.0.126: updated to StoreDbHelper
     if (isValid && mounted) {
       Navigator.pushReplacement(

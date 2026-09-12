@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../Database/db_helper.dart';
 import '../../Helper/url_helper.dart';
+import '../../Helper/offline_helper.dart';
 import 'inventory_get_product_types_model.dart';
 
 abstract class InventoryGetProductTypesRemoteDataSource {
@@ -18,46 +19,59 @@ class InventoryGetProductTypesRemoteDataSourceImpl
 
   @override
   Future<InventoryGetProductTypesModel> getProductTypes() async {
-    final db = await DBHelper.instance.database;
-
-    final result = await db.query(
-      AppDBConst.userTable,
-      where:
-      '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
-      orderBy: '${AppDBConst.userId} DESC',
-      limit: 1,
-    );
-
-    if (result.isEmpty) {
-      throw Exception('No active user token found');
+    if (!await OfflineHelper.isNetworkAvailable()) {
+      if (kDebugMode) debugPrint('#### Offline: product types served as empty local list');
+      return InventoryGetProductTypesModel(types: const <String, String>{});
     }
 
-    final token = result.first[AppDBConst.userToken];
+    try {
+      final db = await DBHelper.instance.database;
 
-    // Corrected URL
-    final url =
-        '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}inventories${EndUrlConstants.get_product_types}';
+      final result = await db.query(
+        AppDBConst.userTable,
+        where:
+        '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+        orderBy: '${AppDBConst.userId} DESC',
+        limit: 1,
+      );
 
-    if (kDebugMode) {
-      print('#### PRODUCT TYPES URL: $url');
-    }
-
-    final response = await client.get(
-      Uri.parse(url),
-      headers: {
-        'Authorization': 'Bearer $token',
-      },
-    );
-
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body);
-      return InventoryGetProductTypesModel.fromJson(decoded);
-    } else {
-      if (kDebugMode) {
-        print('#### API ERROR: ${response.statusCode}');
-        print('#### BODY: ${response.body}');
+      if (result.isEmpty) {
+        throw Exception('No active user token found');
       }
-      throw Exception('Failed to load product types');
+
+      final token = result.first[AppDBConst.userToken];
+
+      // Corrected URL
+      final url =
+          '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}inventories${EndUrlConstants.get_product_types}';
+
+      if (kDebugMode) {
+        print('#### PRODUCT TYPES URL: $url');
+      }
+
+      final response = await client.get(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        return InventoryGetProductTypesModel.fromJson(decoded);
+      } else {
+        if (kDebugMode) {
+          print('#### API ERROR: ${response.statusCode}');
+          print('#### BODY: ${response.body}');
+        }
+        throw Exception('Failed to load product types');
+      }
+    } catch (e) {
+      if (!await OfflineHelper.isNetworkAvailable()) {
+        if (kDebugMode) debugPrint('#### Product types network failure: serving empty local list');
+        return InventoryGetProductTypesModel(types: const <String, String>{});
+      }
+      rethrow;
     }
   }
 }

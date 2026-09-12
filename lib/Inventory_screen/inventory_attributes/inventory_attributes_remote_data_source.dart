@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../Database/db_helper.dart';
 import '../../Helper/url_helper.dart';
+import '../../Helper/offline_helper.dart';
 import 'inventory_attributes_model.dart';
 
 abstract class InventoryAttributesRemoteDataSource {
@@ -39,78 +40,91 @@ class InventoryAttributesRemoteDataSourceImpl
 
   @override
   Future<List<InventoryAttributesModel>> getInventoryAttributes() async {
-    final token = await _getTokenFromDb();
-
-    final String fullUrl =
-        "${UrlHelper.wooBaseUrl}products/attributes";
-
-    if (kDebugMode) {
-      print("#### FULL REQUEST  attributes URLlll: $fullUrl");
+    if (!await OfflineHelper.isNetworkAvailable()) {
+      if (kDebugMode) debugPrint('#### Offline: inventory attributes served as empty local list');
+      return [];
     }
 
-    final response = await client.get(
-      Uri.parse(fullUrl),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-      },
-    );
+    try {
+      final token = await _getTokenFromDb();
 
-    if (response.statusCode == 200) {
-      final List<dynamic> decoded = json.decode(response.body);
-      return decoded
-          .map((e) => InventoryAttributesModel.fromJson(e))
-          .toList();
-    } else {
+      final String fullUrl =
+          "${UrlHelper.wooBaseUrl}products/attributes";
+
       if (kDebugMode) {
-        print('#### API ERROR: ${response.statusCode}');
-        print('#### BODY: ${response.body}');
+        print("#### FULL REQUEST  attributes URLlll: $fullUrl");
       }
-      throw Exception('Failed to load attributes');
+
+      final response = await client.get(
+        Uri.parse(fullUrl),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> decoded = json.decode(response.body);
+        return decoded
+            .map((e) => InventoryAttributesModel.fromJson(e))
+            .toList();
+      } else {
+        if (kDebugMode) {
+          print('#### API ERROR: ${response.statusCode}');
+          print('#### BODY: ${response.body}');
+        }
+        throw Exception('Failed to load attributes');
+      }
+    } catch (e) {
+      if (!await OfflineHelper.isNetworkAvailable()) {
+        if (kDebugMode) debugPrint('#### Inventory attributes network failure: serving empty local list');
+        return [];
+      }
+      rethrow;
     }
   }
 
-  // @override
-  // Future<List<InventoryAttributesModel>> getInventoryAttributes() async {
-  //   final token = await _getTokenFromDb();
-  //
-  //   final String fullUrl = "${UrlHelper.wooBaseUrl}products/attributes";
-  //
-  //   if (kDebugMode) {
-  //     print("#### FULL REQUEST attributes URL: $fullUrl");
-  //     print("#### TOKEN: $token");
-  //   }
-  //
-  //   final response = await client.get(
-  //     Uri.parse(fullUrl),
-  //     headers: {
-  //       'Authorization': 'Bearer $token',
-  //       'Accept': 'application/json',
-  //     },
-  //   );
-  //
-  //   // Print the full response
-  //   if (kDebugMode) {
-  //         print("#### RESPONSE STATUS CODE: ${response.statusCode}");
-  //     print("#### RESPONSE BODY: ${response.body}");
-  //   }
-  //
-  //   if (response.statusCode == 200) {
-  //     final List<dynamic> decoded = json.decode(response.body);
-  //     if (kDebugMode) {
-  //       print("#### DECODED RESPONSE LENGTH: ${decoded.length}");
-  //     }
-  //     return decoded
-  //         .map((e) => InventoryAttributesModel.fromJson(e))
-  //         .toList();
-  //   } else {
-  //     if (kDebugMode) {
-  //       print('#### API ERROR: ${response.statusCode}');
-  //       print('####API BODY: ${response.body}');
-  //     }
-  //     throw Exception('Failed to load attributes');
-  //   }
-  // }
+// @override
+// Future<List<InventoryAttributesModel>> getInventoryAttributes() async {
+//   final token = await _getTokenFromDb();
+//
+//   final String fullUrl = "${UrlHelper.wooBaseUrl}products/attributes";
+//
+//   if (kDebugMode) {
+//     print("#### FULL REQUEST attributes URL: $fullUrl");
+//     print("#### TOKEN: $token");
+//   }
+//
+//   final response = await client.get(
+//     Uri.parse(fullUrl),
+//     headers: {
+//       'Authorization': 'Bearer $token',
+//       'Accept': 'application/json',
+//     },
+//   );
+//
+//   // Print the full response
+//   if (kDebugMode) {
+//         print("#### RESPONSE STATUS CODE: ${response.statusCode}");
+//     print("#### RESPONSE BODY: ${response.body}");
+//   }
+//
+//   if (response.statusCode == 200) {
+//     final List<dynamic> decoded = json.decode(response.body);
+//     if (kDebugMode) {
+//       print("#### DECODED RESPONSE LENGTH: ${decoded.length}");
+//     }
+//     return decoded
+//         .map((e) => InventoryAttributesModel.fromJson(e))
+//         .toList();
+//   } else {
+//     if (kDebugMode) {
+//       print('#### API ERROR: ${response.statusCode}');
+//       print('####API BODY: ${response.body}');
+//     }
+//     throw Exception('Failed to load attributes');
+//   }
+// }
 
 
 }

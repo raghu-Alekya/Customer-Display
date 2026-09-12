@@ -272,7 +272,7 @@
 //     final token = result.first[AppDBConst.userToken] as String;
 //
 //     if (kDebugMode) {
-//       print('Using JWT token: ${token.substring(0, 20)}...');
+//       print('Using JWT token: ${token.length > 20 ? token.substring(0, 20) : token}...');
 //     }
 //
 //     return token;
@@ -824,13 +824,13 @@
 //                         ),
 //                         _DataCell(order.paymentMethod),
 //                         _DataCell(
-//                             '${order.amount < 0 ? '-' : ''}\$${order.amount.abs().toStringAsFixed(2)}'),
+//                             _formatCurrency(order.amount)),
 //                         _DataCell(
-//                             '${order.tax < 0 ? '-' : ''}\$${order.tax.abs().toStringAsFixed(2)}'),
+//                             _formatCurrency(order.tax)),
 //                         _DataCell(
-//                             '${order.discount < 0 ? '-' : ''}\$${order.discount.abs().toStringAsFixed(2)}'),
+//                             _formatCurrency(order.discount)),
 //                         _DataCell(
-//                             '${order.total < 0 ? '-' : ''}\$${order.total.abs().toStringAsFixed(2)}'),
+//                             _formatCurrency(order.total)),
 //                         const _StatusCell(),
 //                       ],
 //                     ),
@@ -1031,6 +1031,7 @@ import '../Database/db_helper.dart';
 import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/nav_layout_manager.dart';
 import '../Helper/url_helper.dart';
+import '../Helper/offline_helper.dart';
 import '../Models/Orders/refund_orderlist_model.dart';
 import '../Repositories/Orders/refund_validation_repository.dart';
 import '../Widgets/refund_checkin_popup.dart';
@@ -1074,12 +1075,18 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
   bool _isLoading = false;
   String? _errorMessage;
 
+  // Store currency is persisted in the local asset table.  Keep the last
+  // known symbol in memory so offline Refund never falls back to a hard-coded
+  // '$' or the TextConstants default '€'.
+  String _currencySymbol = TextConstants.currencySymbol;
+
   // ✅ NEW: Cache management
   static List<CompletedOrder> _cachedOrders = [];
   static DateTime? _lastFetchTime;
-  static const Duration _cacheDuration = Duration(minutes: 5);
+  static const Duration _cacheDuration = Duration(minutes: 10);
   static Set<int> _cachedOrderIds = {};
   static bool _isInitialLoad = true;
+  static Future<void>? _backgroundRefreshInFlight;
 
   int get _totalPages {
     final pages = _rowsPerPage > 0 ? (filteredOrders.length / _rowsPerPage).ceil() : 1;
@@ -1156,10 +1163,33 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
     });
   }
 
+  Future<void> _restoreCurrencyForOfflineUse() async {
+    try {
+      await OfflineHelper.restoreStoredCurrency();
+      final symbol = await OfflineHelper.getStoredCurrencySymbol();
+
+      if (!mounted) return;
+      if (symbol.trim().isNotEmpty) {
+        _currencySymbol = symbol.trim();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[Refund] Currency restore failed: $e');
+      }
+    }
+  }
+
+  String _formatCurrency(double value) {
+    final sign = value < 0 ? '-' : '';
+    return '$sign$_currencySymbol${value.abs().toStringAsFixed(2)}';
+  }
+
   @override
   void initState() {
     super.initState();
     _selectedSidebarIndex = widget.lastSelectedIndex;
+    // Restore currency from SQLite before offline orders are rendered. This
+    // is local-only and does not add a network/DNS wait.
     _loadCompletedOrders();
   }
 
@@ -1170,116 +1200,199 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
     super.dispose();
   }
 
-  // ✅ MODIFIED: Smart loading with caching and incremental updates
-  Future<void> _loadCompletedOrders() async {
-    // Check if cache is valid and we have data
-    final bool shouldUseCache = _cachedOrders.isNotEmpty &&
-        _lastFetchTime != null &&
-        DateTime.now().difference(_lastFetchTime!) < _cacheDuration;
+  // Smart loading with a cache-first strategy.
+  //
+  // Important performance rules:
+  // 1. If this screen already has cached orders, render them immediately.
+  // 2. Do NOT run DNS/network checks just because the screen was opened.
+  // 3. Only refresh from the server when the cache is stale or the user
+  //    explicitly presses Refresh.
+  // 4. When there is no memory cache (for example after app restart), read
+  //    SQLite first so offline users see data without waiting for DNS.
+  Future<void> _loadCompletedOrders({bool forceRefresh = false}) async {
+    if (!mounted) return;
 
-    if (shouldUseCache && !_isInitialLoad) {
-      if (kDebugMode) {
-        debugPrint("📦 Using cached orders (${_cachedOrders.length} items)");
+    // Load the last known store currency from SQLite. This is intentionally
+    // before any network check, so offline mode uses the correct symbol.
+    await _restoreCurrencyForOfflineUse();
+    if (!mounted) return;
+
+    final hasCache = _cachedOrders.isNotEmpty;
+    final cacheAge = _lastFetchTime == null
+        ? const Duration(days: 999)
+        : DateTime.now().difference(_lastFetchTime!);
+    final cacheFresh = hasCache && cacheAge < _cacheDuration;
+
+    // ---------------------------------------------------------------
+    // CACHE-FIRST: normal navigation should be instant.
+    // ---------------------------------------------------------------
+    if (hasCache && !forceRefresh) {
+      _showOrdersImmediately(_cachedOrders);
+
+      // Fresh cache: nothing else is needed. This prevents reloading all
+      // orders every time the Refund screen is opened.
+      if (cacheFresh) {
+        return;
       }
-      setState(() {
-        _allOrders = List.from(_cachedOrders);
-        filteredOrders = List.from(_cachedOrders);
-        _updateTransactionIds();
-        _currentPage = 1;
-        _paginate();
-      });
 
-      // Fetch latest updates in background
+      // Stale cache: keep showing the old data and refresh in the background.
       _fetchLatestOrdersInBackground();
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    // ---------------------------------------------------------------
+    // FIRST LOAD / APP RESTART: SQLite first.
+    // ---------------------------------------------------------------
+    if (!hasCache) {
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+          _errorMessage = null;
+        });
+      }
+
+      // Read local data BEFORE doing DNS. This makes an offline first-open
+      // fast even when Windows reports Wi-Fi as connected.
+      try {
+        final localOrders =
+        await OfflineHelper.buildOfflineCompletedOrdersFromDb(
+          page: 1,
+          perPage: 100,
+        );
+
+        if (localOrders.isNotEmpty) {
+          _cachedOrders = List<CompletedOrder>.from(localOrders);
+          _cachedOrderIds = _cachedOrders.map((o) => o.orderId).toSet();
+          _lastFetchTime = DateTime.now();
+          if (mounted) {
+            _showOrdersImmediately(localOrders);
+            _isInitialLoad = false;
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) debugPrint('⚠️ [Refund] Local load failed: $e');
+      }
+    } else {
+      // Manual refresh: never hide the current orders behind a spinner.
+      _showOrdersImmediately(_cachedOrders);
+    }
+
+    // ---------------------------------------------------------------
+    // NETWORK: only now decide whether a server refresh is possible.
+    // ---------------------------------------------------------------
+    final bool online = await OfflineHelper.isNetworkAvailable(
+      forceRefresh: forceRefresh,
+    );
+
+    if (!online) {
+      // If SQLite was empty, keep the screen usable without an error page.
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isInitialLoad = false;
+          _errorMessage = null;
+        });
+      }
+      return;
+    }
+
+    // ---------------------------------------------------------------
+    // ONLINE: update only what is needed.
+    // Normal navigation with stale cache uses a small background request.
+    // Manual Refresh can fetch the full first page.
+    // ---------------------------------------------------------------
+    if (!forceRefresh && _cachedOrders.isNotEmpty) {
+      _fetchLatestOrdersInBackground();
+      return;
+    }
 
     try {
-      // Get last known order ID for incremental updates
-      int? lastOrderId = _cachedOrders.isNotEmpty ? _cachedOrders.first.orderId : null;
-
       final orders = await _fetchCompletedOrders(
         page: 1,
-        perPage: 100, // Load all orders at once for client-side filtering
-        lastOrderId: lastOrderId,
+        perPage: 100,
+        // A manual refresh intentionally gets the first page again.
       );
 
-      if (kDebugMode) {
-        debugPrint("✅ Fetched ${orders.length} completed orders");
-      }
-
-      // Merge with cache - update only new/changed orders
-      _mergeOrdersWithCache(orders);
-
-      setState(() {
-        _allOrders = List.from(_cachedOrders);
-        filteredOrders = List.from(_cachedOrders);
-        _updateTransactionIds();
-        _currentPage = 1;
-        _isLoading = false;
-        _isInitialLoad = false;
-        _paginate();
-      });
-
-    } catch (e) {
-      // If error occurs but we have cached data, use it
-      if (_cachedOrders.isNotEmpty) {
-        if (kDebugMode) {
-          debugPrint("⚠️ Error loading, using cached data: $e");
-        }
-        setState(() {
-          _allOrders = List.from(_cachedOrders);
-          filteredOrders = List.from(_cachedOrders);
-          _updateTransactionIds();
-          _currentPage = 1;
-          _isLoading = false;
-          _errorMessage = null;
-          _paginate();
-        });
+      if (orders.isNotEmpty) {
+        _mergeOrdersWithCache(orders);
       } else {
-        setState(() {
-          _errorMessage = e.toString();
-          _isLoading = false;
-        });
-        if (kDebugMode) {
-          debugPrint("❌ Error loading completed orders: $e");
-        }
+        _lastFetchTime = DateTime.now();
       }
+
+      if (!mounted) return;
+      _showOrdersImmediately(_cachedOrders);
+      _isInitialLoad = false;
+    } catch (e) {
+      // Never replace usable local data with an error/loading screen.
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isInitialLoad = false;
+          _errorMessage = null;
+        });
+      }
+      if (kDebugMode) debugPrint('⚠️ [Refund] Refresh failed: $e');
     }
   }
 
-  // ✅ NEW: Background fetch for latest updates
+  void _showOrdersImmediately(List<CompletedOrder> orders) {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+      _errorMessage = null;
+      _allOrders = List<CompletedOrder>.from(orders);
+      filteredOrders = List<CompletedOrder>.from(orders);
+      _updateTransactionIds();
+      _currentPage = 1;
+      _paginate();
+    });
+  }
+
+  // Background fetch for latest updates. It is deliberately deduplicated so
+  // opening/rebuilding the screen cannot start multiple API calls.
   void _fetchLatestOrdersInBackground() {
-    Future.delayed(const Duration(milliseconds: 500), () async {
+    if (_backgroundRefreshInFlight != null) return;
+
+    final future = Future<void>(() async {
       try {
-        int? lastOrderId = _cachedOrders.isNotEmpty ? _cachedOrders.first.orderId : null;
+        if (!await OfflineHelper.isNetworkAvailable()) {
+          if (kDebugMode) {
+            debugPrint('📴 [Refund] Background refresh skipped while offline');
+          }
+          return;
+        }
+
+        final lastOrderId =
+        _cachedOrders.isNotEmpty ? _cachedOrders.first.orderId : null;
+
         final newOrders = await _fetchCompletedOrders(
           page: 1,
-          perPage: 50, // Fetch only recent orders
+          perPage: 50,
           lastOrderId: lastOrderId,
         );
 
-        if (newOrders.isNotEmpty && mounted) {
+        // Even an empty successful response means the cache was checked.
+        _lastFetchTime = DateTime.now();
+
+        if (newOrders.isNotEmpty) {
           _mergeOrdersWithCache(newOrders);
-          setState(() {
-            _allOrders = List.from(_cachedOrders);
-            filteredOrders = List.from(_cachedOrders);
-            _updateTransactionIds();
-            _paginate();
-          });
-          if (kDebugMode) {
-            debugPrint("🔄 Background update: Added ${newOrders.length} new orders");
+
+          if (mounted) {
+            _showOrdersImmediately(_cachedOrders);
           }
         }
       } catch (e) {
         if (kDebugMode) {
-          debugPrint("⚠️ Background update failed: $e");
+          debugPrint('⚠️ [Refund] Background update failed: $e');
         }
+      }
+    });
+
+    _backgroundRefreshInFlight = future;
+    future.whenComplete(() {
+      if (identical(_backgroundRefreshInFlight, future)) {
+        _backgroundRefreshInFlight = null;
       }
     });
   }
@@ -1332,6 +1445,19 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
     String? to,
     int? lastOrderId, // ✅ NEW: For incremental updates
   }) async {
+    // Never start a remote request while the POS is offline. The local
+    // SQLite order store is the source for the Refund screen in this mode.
+    final isOnline = await OfflineHelper.isNetworkAvailable();
+    if (!isOnline) {
+      return OfflineHelper.buildOfflineCompletedOrdersFromDb(
+        page: page,
+        perPage: perPage ?? 20,
+        authorId: authorId,
+        from: from,
+        to: to,
+      );
+    }
+
     final token = await _getTokenFromDb();
 
     // ✅ Build query parameters dynamically
@@ -1349,43 +1475,57 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
       '${UrlHelper.baseUrl}pinaka-pos/v1/orders/completed-orders',
     ).replace(queryParameters: queryParams);
 
-    final response = await http.get(
-      uri,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-      },
-    );
+    try {
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 3));
 
-    if (kDebugMode) {
-      print("completed orders Status Code: ${response.statusCode}");
-      print("Body: ${response.body}");
-    }
+      if (kDebugMode) {
+        print("completed orders Status Code: ${response.statusCode}");
+        print("Body: ${response.body}");
+      }
 
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Failed to load completed orders (status: ${response.statusCode})',
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Failed to load completed orders (status: ${response.statusCode})',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (kDebugMode) {
+        print("DECODED JSON:");
+        debugPrint(decoded.toString());
+      }
+
+      // ✅ Safe parsing
+      if (decoded == null ||
+          decoded['orders_data'] == null ||
+          decoded['orders_data'] is! List) {
+        return [];
+      }
+
+      final List ordersList = decoded['orders_data'];
+
+      return ordersList
+          .map((e) => CompletedOrder.fromJson(e))
+          .toList();
+    } catch (e) {
+      if (OfflineHelper.isSessionError(e)) rethrow;
+      if (kDebugMode) {
+        debugPrint('⚠️ Refund screen network fetch failed; using local orders: $e');
+      }
+      return OfflineHelper.buildOfflineCompletedOrdersFromDb(
+        page: page,
+        perPage: perPage ?? 20,
+        authorId: authorId,
+        from: from,
+        to: to,
       );
     }
-
-    final decoded = jsonDecode(response.body);
-    if (kDebugMode) {
-      print("DECODED JSON:");
-      debugPrint(decoded.toString());
-    }
-
-    // ✅ Safe parsing
-    if (decoded == null ||
-        decoded['orders_data'] == null ||
-        decoded['orders_data'] is! List) {
-      return [];
-    }
-
-    final List ordersList = decoded['orders_data'];
-
-    return ordersList
-        .map((e) => CompletedOrder.fromJson(e))
-        .toList();
   }
 
   // ✅ Helper to get token from DB
@@ -1407,7 +1547,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
     final token = result.first[AppDBConst.userToken] as String;
 
     if (kDebugMode) {
-      print('Using JWT token: ${token.substring(0, 20)}...');
+      print('Using JWT token: ${token.length > 20 ? token.substring(0, 20) : token}...');
     }
 
     return token;
@@ -1474,10 +1614,10 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
 
   // ✅ Refresh method
   Future<void> _refreshOrders() async {
-    // Force refresh by clearing cache
     _lastFetchTime = null;
     _isInitialLoad = true;
-    await _loadCompletedOrders();
+    OfflineHelper.invalidateNetworkCache();
+    await _loadCompletedOrders(forceRefresh: true);
   }
 
   @override
@@ -1861,8 +2001,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
                         return BlocProvider(
                           create: (_) => RefundValidationBloc(
                             repository: RefundValidationRepository(
-                              baseUrl:
-                              "https://merchantretail.alektasolutions.com",
+                              baseUrl: UrlHelper.wooBaseUrl,
                             ),
                           ),
                           child: PinCheckInDialog(order: order),
@@ -1962,13 +2101,13 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
                         ),
                         _DataCell(order.paymentMethod),
                         _DataCell(
-                            '${order.amount < 0 ? '-' : ''}\$${order.amount.abs().toStringAsFixed(2)}'),
+                            _formatCurrency(order.amount)),
                         _DataCell(
-                            '${order.tax < 0 ? '-' : ''}\$${order.tax.abs().toStringAsFixed(2)}'),
+                            _formatCurrency(order.tax)),
                         _DataCell(
-                            '${order.discount < 0 ? '-' : ''}\$${order.discount.abs().toStringAsFixed(2)}'),
+                            _formatCurrency(order.discount)),
                         _DataCell(
-                            '${order.total < 0 ? '-' : ''}\$${order.total.abs().toStringAsFixed(2)}'),
+                            _formatCurrency(order.total)),
                         const _StatusCell(),
                       ],
                     ),

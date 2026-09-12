@@ -290,6 +290,7 @@ class OrderHelper {
     final customItems = (order['custom_items'] as List?) ?? [];
     final payouts = (order['payouts'] as List?) ?? [];
     final cashbacks = (order['cashbacks'] as List?) ?? [];
+    final orderItems = (order['order_items'] as List?) ?? [];
 
     double grossTotal = 0.0;
     double orderTax = 0.0;
@@ -329,6 +330,53 @@ class OrderHelper {
       final taxRate = double.tryParse(c['tax_rate']?.toString() ?? '0') ?? 0.0;
       if (taxRate > 0) {
         orderTax += roundTaxHalfUp(((price * taxRate) / 100) * qty);
+      }
+    }
+
+    // 2b. Order Summary line items (when products[] is empty or incomplete)
+    if (products.isEmpty && customItems.isEmpty && orderItems.isNotEmpty) {
+      for (final raw in orderItems) {
+        if (raw is! Map) continue;
+        final oi = Map<String, dynamic>.from(raw);
+        final itemType =
+            (oi['item_type'] ?? oi['type'] ?? 'product').toString().toLowerCase();
+        if (itemType.contains('discount') ||
+            itemType.contains('coupon') ||
+            itemType.contains('loyalty') ||
+            itemType.contains('payout') ||
+            itemType.contains('cashback')) {
+          continue;
+        }
+
+        final qty = int.tryParse(
+                (oi['items_count'] ?? oi['quantity'] ?? 1).toString()) ??
+            1;
+        final sumPrice = double.tryParse(
+                (oi['item_sum_price'] ?? oi['amount'] ?? '').toString()) ??
+            0.0;
+        final unitPrice = sumPrice > 0
+            ? sumPrice
+            : (double.tryParse(
+                    (oi['item_price'] ?? oi['price'] ?? '0').toString()) ??
+                0.0) *
+                qty;
+        grossTotal += unitPrice;
+
+        final lineTax = double.tryParse(
+                (oi['item_tax'] ?? oi['tax'] ?? oi['total_tax'] ?? '0')
+                    .toString()) ??
+            0.0;
+        if (lineTax > 0) {
+          orderTax += lineTax;
+        } else {
+          final pid =
+              int.tryParse((oi['product_id'] ?? oi['id'] ?? '0').toString()) ??
+                  0;
+          if (pid > 0) {
+            final perUnit = unitPrice / (qty > 0 ? qty : 1);
+            orderTax += getProductTaxFromHive(pid, perUnit, qty);
+          }
+        }
       }
     }
 
@@ -683,7 +731,7 @@ class OrderHelper {
   /// Same id resolution as order panel tabs (`widget_order_panel` _getOrderTabs).
   int? _normalizeOrderIdForShiftCheck(Map<String, dynamic> order) {
     final dynamic raw =
-        order[AppDBConst.orderServerId] ?? order['order_id'] ?? order['id'];
+        order['order_id'] ?? order['id'] ?? order[AppDBConst.orderServerId];
     if (raw == null) return null;
     if (raw is int) return raw;
     if (raw is num) return raw.toInt();
@@ -1315,8 +1363,11 @@ class OrderHelper {
             AppDBConst.isRefundItem: isRefunded ? 1 : 0,
             AppDBConst.isEbtEligible: isEbtEligible ? 1 : 0,
           },
-          where: '${AppDBConst.itemServerId} = ?',
-          whereArgs: [existingItem[AppDBConst.itemServerId]],
+          // A line-item id must be scoped to its order.  Without this, a
+          // collision during an online/offline refresh can overwrite product
+          // names and prices in a different order.
+          where: '${AppDBConst.itemServerId} = ? AND ${AppDBConst.orderIdForeignKey} = ?',
+          whereArgs: [existingItem[AppDBConst.itemServerId], orderId],
         );
         if (kDebugMode) {
           print("#### DEBUG: Updated item ID: $itemId for order $orderId");
@@ -1375,8 +1426,8 @@ class OrderHelper {
     for (var item in existingItemsMap.values) {
       await db.delete(
         AppDBConst.purchasedItemsTable,
-        where: '${AppDBConst.itemServerId} = ?',
-        whereArgs: [item[AppDBConst.itemServerId]],
+        where: '${AppDBConst.itemServerId} = ? AND ${AppDBConst.orderIdForeignKey} = ?',
+        whereArgs: [item[AppDBConst.itemServerId], orderId],
       );
       if (kDebugMode) {
         print(
@@ -2002,7 +2053,10 @@ class OrderHelper {
     activeOrderId = serverOrderId;
     await db.insert(AppDBConst.orderTable, {
       AppDBConst.userId: activeUserId ?? 0,
-      if (serverOrderId != null) AppDBConst.orderServerId: serverOrderId,
+      if (serverOrderId != null) ...{
+        AppDBConst.orderId: serverOrderId,
+        AppDBConst.orderServerId: serverOrderId,
+      },
       AppDBConst.orderTotal: 0.0,
       AppDBConst.orderStatus: "processing",
       AppDBConst.orderType: 'in-store',
@@ -2204,35 +2258,82 @@ class OrderHelper {
     );
   }
 
-  // Fetch order for a specific orderId - Build #1.0.285: Filter by user ID
+  // Fetch order for a specific orderId - Build #1.0.285: Filter by user ID with fallback
   Future<List<Map<String, dynamic>>> getOrderById(int orderId) async {
     final db = await DBHelper.instance.database;
     final uId = await getUserIdFromDB();
-    return await db.query(
-      AppDBConst.orderTable,
-      where: '${AppDBConst.orderServerId} = ? AND ${AppDBConst.userId} = ?',
-      whereArgs: [orderId, uId],
-    );
+    List<Map<String, dynamic>> res = [];
+    if (uId != null && uId > 0) {
+      res = await db.query(
+        AppDBConst.orderTable,
+        where: '(${AppDBConst.orderServerId} = ? OR ${AppDBConst.orderId} = ?) AND ${AppDBConst.userId} = ?',
+        whereArgs: [orderId, orderId, uId],
+      );
+    }
+    if (res.isEmpty) {
+      res = await db.query(
+        AppDBConst.orderTable,
+        where: '${AppDBConst.orderServerId} = ? OR ${AppDBConst.orderId} = ?',
+        whereArgs: [orderId, orderId],
+      );
+    }
+    return res;
   }
 
   // Fetch all items for a specific order - Build #1.0.285: Verify order ownership
   Future<List<Map<String, dynamic>>> getOrderItems(int orderID) async {
-    final db = await DBHelper.instance.database;
-    final uId = await getUserIdFromDB();
+    try {
+      // The offline order snapshot is the transaction's immutable source of
+      // truth.  Prefer it while offline so a partial/stale SQLite sync can
+      // never replace every line with the most recently cached product.
+      if (await UserDbHelper().isOfflineSession()) {
+        final offlineItems = await getOrderItemsFromOffline(orderID);
+        if (offlineItems.isNotEmpty) return offlineItems;
+      }
 
-    final order = await db.query(
-      AppDBConst.orderTable,
-      where: '${AppDBConst.orderServerId} = ? AND ${AppDBConst.userId} = ?',
-      whereArgs: [orderID, uId],
-    );
+      final db = await DBHelper.instance.database;
 
-    if (order.isEmpty) return [];
+      // 1. Find both local auto-increment ID and server ID from orders_table
+      int? localId;
+      int? serverId;
+      final orderRows = await db.query(
+        AppDBConst.orderTable,
+        columns: [AppDBConst.orderId, AppDBConst.orderServerId],
+        where: '${AppDBConst.orderId} = ? OR ${AppDBConst.orderServerId} = ?',
+        whereArgs: [orderID, orderID],
+      );
+      if (orderRows.isNotEmpty) {
+        localId = orderRows.first[AppDBConst.orderId] as int?;
+        serverId = orderRows.first[AppDBConst.orderServerId] as int?;
+      }
 
-    return await db.query(
-      AppDBConst.purchasedItemsTable,
-      where: '${AppDBConst.orderIdForeignKey} = ?',
-      whereArgs: [orderID],
-    );
+      final searchIds = <int>{orderID};
+      if (localId != null && localId > 0) searchIds.add(localId);
+      if (serverId != null && serverId > 0) searchIds.add(serverId);
+
+      final placeholders = List.filled(searchIds.length, '?').join(',');
+      final items = await db.query(
+        AppDBConst.purchasedItemsTable,
+        // items_server_id identifies a line item, not an order. Matching it
+        // against an order id can pull lines from another order.
+        where: '${AppDBConst.orderIdForeignKey} IN ($placeholders)',
+        whereArgs: searchIds.toList(),
+      );
+
+      if (items.isNotEmpty) return items;
+    } catch (e) {
+      if (kDebugMode) print("OrderPanelDBHelper - getOrderItems SQLite query error: $e");
+    }
+
+    // 2. Fallback to offline orders box
+    try {
+      final offlineItems = await getOrderItemsFromOffline(orderID);
+      if (offlineItems.isNotEmpty) return offlineItems;
+    } catch (e) {
+      if (kDebugMode) print("OrderPanelDBHelper - getOrderItemsFromOffline error: $e");
+    }
+
+    return [];
   }
 
   static double _toDouble(dynamic value) {
@@ -2279,19 +2380,63 @@ class OrderHelper {
   Future<List<Map<String, dynamic>>> getOrderItemsFromOffline(
       int orderID) async {
     final box = StorageProvider.offlineOrders;
-    final dynamic raw = await box.get(orderID.toString());
+    dynamic raw = await box.get(orderID.toString());
+
+    if (raw == null) {
+      // Try searching by mapped local or server ID from orders table
+      try {
+        final db = await DBHelper.instance.database;
+        final rows = await db.query(
+          AppDBConst.orderTable,
+          columns: [AppDBConst.orderId, AppDBConst.orderServerId],
+          where: '${AppDBConst.orderId} = ? OR ${AppDBConst.orderServerId} = ?',
+          whereArgs: [orderID, orderID],
+        );
+        if (rows.isNotEmpty) {
+          final lid = rows.first[AppDBConst.orderId]?.toString();
+          final sid = rows.first[AppDBConst.orderServerId]?.toString();
+          if (lid != null && lid != orderID.toString()) {
+            raw = await box.get(lid);
+          }
+          if (raw == null && sid != null && sid != orderID.toString()) {
+            raw = await box.get(sid);
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (raw == null) {
+      // Search all entries in box to match order_id / id in map
+      try {
+        final allEntries = await box.toMap();
+        for (final v in allEntries.values) {
+          if (v is Map) {
+            final vid = v['order_id'] ?? v['id'] ?? v[AppDBConst.orderServerId];
+            if (vid != null && vid.toString() == orderID.toString()) {
+              raw = v;
+              break;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     if (raw == null || raw is! Map) return [];
 
-    // Build #1.0.285: STRICT User check
+    // Build #1.0.285: User check with safety fallback
     final order = Map<String, dynamic>.from(raw);
     final currentUserId = await getUserIdFromDB();
     final dynamic orderUserId = order['user_id'] ?? order[AppDBConst.userId];
 
-    if (orderUserId?.toString() != currentUserId.toString()) {
-      if (kDebugMode)
+    if (orderUserId != null &&
+        currentUserId != null &&
+        orderUserId.toString() != '0' &&
+        currentUserId.toString() != '0' &&
+        orderUserId.toString() != currentUserId.toString()) {
+      if (kDebugMode) {
         print(
-            "⛔ getOrderItemsFromOffline blocked: Order $orderID belongs to another user ($orderUserId). Requested by $currentUserId.");
-      return [];
+            "⚠️ getOrderItemsFromOffline notice: Order $orderID belongs to user $orderUserId (current: $currentUserId). Proceeding with display.");
+      }
     }
 
     final List<Map<String, dynamic>> items = [];
@@ -2419,6 +2564,16 @@ class OrderHelper {
         final price = (map['price'] as num?)?.toDouble() ?? 0.0;
         final qty = (map['quantity'] as num?)?.toInt() ?? 1;
         final sumPrice = price * qty;
+        final taxRate = _toDouble(map['tax_rate']);
+        final taxStatus = map['tax_status']?.toString() ?? 'taxable';
+        final savedItemTax = _toDouble(
+          map['item_tax'] ?? map['tax'] ?? map['total_tax'],
+        );
+        final itemTax = savedItemTax > 0
+            ? savedItemTax
+            : (taxStatus.toLowerCase() == 'taxable' && taxRate > 0
+                ? roundTaxHalfUp(sumPrice * taxRate / 100)
+                : 0.0);
 
         final multipack = _toDouble(
             map['multipack_discount_total'] ?? map['multipackDiscount'] ?? 0);
@@ -2451,6 +2606,10 @@ class OrderHelper {
           AppDBConst.multipackDiscount: multipack,
           AppDBConst.autoDiscountTotal: auto,
           AppDBConst.comboDiscountTotal: combo,
+          'tax_rate': taxRate,
+          'tax_class': map['tax_class']?.toString() ?? '',
+          'tax_status': taxStatus,
+          'item_tax': itemTax,
         });
       }
     }

@@ -32,6 +32,11 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
       AppDBConst.storeInfo: response.storeInfo,
       AppDBConst.licenseKey: response.licenseKey,
       AppDBConst.licenseStatus: response.licenseStatus,
+      // Build #offline: terminal identity fields
+      AppDBConst.deviceDisplayName: response.deviceDisplayName,
+      AppDBConst.deviceTableId: response.deviceTableId,
+      AppDBConst.storeLogo: response.storeLogo,
+      AppDBConst.storeGstin: response.storeGstin,
     };
 
     await db.insert(
@@ -97,6 +102,18 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
     final baseUrl = validationData?[AppDBConst.storeBaseUrl];
     if (kDebugMode) print("#### Retrieved store base URL: $baseUrl");
     return baseUrl;
+  }
+
+  // Build #offline: get terminal display name
+  Future<String?> getDeviceDisplayName() async {
+    final data = await getStoreValidationData();
+    return data?[AppDBConst.deviceDisplayName] as String?;
+  }
+
+  // Build #offline: get terminal / table id
+  Future<String?> getDeviceTableId() async {
+    final data = await getStoreValidationData();
+    return data?[AppDBConst.deviceTableId] as String?;
   }
 
   /// Clears store validation data during logout

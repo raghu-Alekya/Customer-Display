@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../Database/db_helper.dart';
 import '../../Helper/url_helper.dart';
+import '../../Helper/offline_helper.dart';
 import 'inventory_attribute_items_model.dart';
 
 class InventoryAttributeItemsApi {
@@ -32,32 +33,45 @@ class InventoryAttributeItemsApi {
   Future<List<InventoryAttributeItemsModel>> fetchItems(
       int attributeId) async {
 
-    final token = await _getTokenFromDb();
-
-    final String url =
-        '${UrlHelper.wooBaseUrl}products/attributes/$attributeId/terms';
-
-    if (kDebugMode) {
-      print('Inventory Attribute Items URL: $url');
+    if (!await OfflineHelper.isNetworkAvailable()) {
+      if (kDebugMode) print('Inventory Attribute Items: offline, returning empty list');
+      return [];
     }
 
-    final response = await http.get(
-      Uri.parse(url),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-      },
-    );
+    try {
+      final token = await _getTokenFromDb();
 
-    if (response.statusCode == 200) {
-      final List data = jsonDecode(response.body);
-      return data
-          .map((e) => InventoryAttributeItemsModel.fromJson(e))
-          .toList();
-    } else {
-      throw Exception(
-        'Failed to load attribute items (${response.statusCode})',
+      final String url =
+          '${UrlHelper.wooBaseUrl}products/attributes/$attributeId/terms';
+
+      if (kDebugMode) {
+        print('Inventory Attribute Items URL: $url');
+      }
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
       );
+
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+        return data
+            .map((e) => InventoryAttributeItemsModel.fromJson(e))
+            .toList();
+      } else {
+        throw Exception(
+          'Failed to load attribute items (${response.statusCode})',
+        );
+      }
+    } catch (e) {
+      if (!await OfflineHelper.isNetworkAvailable()) {
+        if (kDebugMode) print('Inventory Attribute Items: network failure, returning empty list');
+        return [];
+      }
+      rethrow;
     }
   }
 

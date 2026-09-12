@@ -28,6 +28,28 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String layoutSelection = 'layout_selection';
   static const String orderCashbackFee = "order_cashback_fee";
 
+  // ── Offline / Sync columns ─────────────────────────────────────────────────
+  /// 0 = not yet synced to server, 1 = synced. Used in orders_table, shift_table.
+  static const String synced             = 'synced';
+  /// Device fingerprint (UUID) written into order meta_data.
+  static const String posDeviceId        = 'pos_device_id';
+  /// Terminal / table number returned by merchant-validation & login APIs.
+  static const String tableId            = 'table_id';
+  /// Human-readable terminal label (e.g. "Cashier-1") stored in store_validation_table / user_table.
+  static const String deviceDisplayName  = 'device_display_name';
+  // ── Employees offline PIN ───────────────────────────────────────────────────
+  /// SHA-256 hash of the employee PIN, stored in employees_table for offline login.
+  static const String employeePinHash    = 'pin_hash';
+  /// Employee email, stored alongside the pin hash.
+  static const String employeeEmail      = 'employee_email';
+  // ── Loyalty / Customer ─────────────────────────────────────────────────────
+  /// Cached loyalty point balance kept in user_table for offline redemption.
+  static const String loyaltyPoints      = 'loyalty_points_balance';
+  // ── Store validation extra columns ─────────────────────────────────────────
+  static const String storeGstin         = 'store_gstin';
+  static const String storeLogo          = 'store_logo';
+  static const String deviceTableId      = 'device_table_id';  // terminal/table id from validate-merchant
+
   // Orders Table
   static const String orderTable = 'orders_table';
   static const String orderId = 'orders_id';
@@ -86,6 +108,19 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String itemRegularPrice = 'item_regular_price'; //It is a Regular price = line_item -> product_data-> regular price * quantity
   static const String itemUnitPrice = 'item_unit_price';
   static const String isRefundItem = 'is_refund_item';// line_item -> product_data-> regular price
+  // Offline refund / inventory audit
+  static const String fastKeyStockQuantity = 'stock_quantity';
+  static const String inventoryLogTable = 'inventory_log_table';
+  static const String inventoryLogId = 'inventory_log_id';
+  static const String inventoryLogOrderId = 'order_id';
+  static const String inventoryLogOrderItemId = 'order_item_id';
+  static const String inventoryLogProductId = 'product_id';
+  static const String inventoryLogQuantity = 'quantity';
+  static const String inventoryLogAction = 'action';
+  static const String inventoryLogReason = 'reason';
+  static const String inventoryLogCreatedAt = 'created_at';
+  static const String inventoryLogSynced = 'synced';
+  static const String inventoryLogPosDeviceId = 'pos_device_id';
 
 
 
@@ -251,7 +286,7 @@ class DBHelper {
       return await databaseFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 4, // 🔥 CHANGE THIS FROM 2 TO 3
+          version: 6, // Offline refund/inventory recovery schema
           onCreate: _createTables,
           onUpgrade: _upgradeTables,
         ),
@@ -276,7 +311,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 4, // 🔥 CHANGE THIS FROM 2 TO 3
+      version: 6, // Offline refund/inventory recovery schema
       onCreate: _createTables,
       onUpgrade: _upgradeTables,
     );
@@ -397,6 +432,71 @@ class DBHelper {
         rethrow;
       }
     }
+
+    // ── v5: Offline / Sync support columns ──────────────────────────────────
+    if (oldVersion < 5) {
+      Future<void> _safeAlter(String sql) async {
+        try { await db.execute(sql); } catch (_) {}
+      }
+
+      // orders_table: synced flag, device meta
+      await _safeAlter('ALTER TABLE ${AppDBConst.orderTable} ADD COLUMN ${AppDBConst.synced} INTEGER DEFAULT 0');
+      await _safeAlter('ALTER TABLE ${AppDBConst.orderTable} ADD COLUMN ${AppDBConst.posDeviceId} TEXT');
+      await _safeAlter('ALTER TABLE ${AppDBConst.orderTable} ADD COLUMN ${AppDBConst.tableId} TEXT');
+      await _safeAlter('ALTER TABLE ${AppDBConst.orderTable} ADD COLUMN ${AppDBConst.deviceDisplayName} TEXT');
+      await _safeAlter('ALTER TABLE ${AppDBConst.orderTable} ADD COLUMN ${AppDBConst.isEbtEligible} INTEGER DEFAULT 0');
+
+      // employees_table: offline PIN hash + email
+      await _safeAlter('ALTER TABLE ${AppDBConst.employeesTable} ADD COLUMN ${AppDBConst.employeePinHash} TEXT');
+      await _safeAlter('ALTER TABLE ${AppDBConst.employeesTable} ADD COLUMN ${AppDBConst.employeeEmail} TEXT');
+
+      // user_table: loyalty points balance cache
+      await _safeAlter('ALTER TABLE ${AppDBConst.userTable} ADD COLUMN ${AppDBConst.loyaltyPoints} INTEGER DEFAULT 0');
+      await _safeAlter('ALTER TABLE ${AppDBConst.userTable} ADD COLUMN ${AppDBConst.posDeviceId} TEXT');
+      await _safeAlter('ALTER TABLE ${AppDBConst.userTable} ADD COLUMN ${AppDBConst.tableId} TEXT');
+      await _safeAlter('ALTER TABLE ${AppDBConst.userTable} ADD COLUMN ${AppDBConst.deviceDisplayName} TEXT');
+
+      // store_validation_table: device info + logo + gstin
+      await _safeAlter('ALTER TABLE ${AppDBConst.storeValidationTable} ADD COLUMN ${AppDBConst.deviceDisplayName} TEXT');
+      await _safeAlter('ALTER TABLE ${AppDBConst.storeValidationTable} ADD COLUMN ${AppDBConst.deviceTableId} TEXT');
+      await _safeAlter('ALTER TABLE ${AppDBConst.storeValidationTable} ADD COLUMN ${AppDBConst.storeLogo} TEXT');
+      await _safeAlter('ALTER TABLE ${AppDBConst.storeValidationTable} ADD COLUMN ${AppDBConst.storeGstin} TEXT');
+
+      if (kDebugMode) print('✅ Upgraded to v5: offline columns added');
+    }
+
+    // ── v6: Offline refund + inventory audit support ───────────────────────
+    if (oldVersion < 6) {
+      Future<void> _safeAlterV6(String sql) async {
+        try {
+          await db.execute(sql);
+        } catch (e) {
+          if (kDebugMode) print('v6 migration skipped/already applied: $e');
+        }
+      }
+
+      await _safeAlterV6(
+        'ALTER TABLE ${AppDBConst.fastKeyItemsTable} '
+        'ADD COLUMN ${AppDBConst.fastKeyStockQuantity} INTEGER DEFAULT 0',
+      );
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ${AppDBConst.inventoryLogTable} (
+          ${AppDBConst.inventoryLogId} INTEGER PRIMARY KEY AUTOINCREMENT,
+          ${AppDBConst.inventoryLogOrderId} INTEGER,
+          ${AppDBConst.inventoryLogOrderItemId} INTEGER,
+          ${AppDBConst.inventoryLogProductId} TEXT,
+          ${AppDBConst.inventoryLogQuantity} INTEGER NOT NULL,
+          ${AppDBConst.inventoryLogAction} TEXT NOT NULL,
+          ${AppDBConst.inventoryLogReason} TEXT,
+          ${AppDBConst.inventoryLogCreatedAt} TEXT NOT NULL,
+          ${AppDBConst.inventoryLogSynced} INTEGER DEFAULT 0,
+          ${AppDBConst.inventoryLogPosDeviceId} TEXT
+        )
+      ''');
+
+      if (kDebugMode) print('✅ Upgraded to v6: refund/inventory support ready');
+    }
   }
 
   // Create all tables in the database
@@ -449,9 +549,16 @@ CREATE TABLE ${AppDBConst.orderTable} (
   ${AppDBConst.multipack_discount_total} REAL DEFAULT 0,
   auto_discount_total REAL DEFAULT 0,
 
-   ${AppDBConst.comboDiscountTotal} REAL DEFAULT 0, -- NEW: Total combo discounts for order
-   ${AppDBConst.displayAutoDiscount} REAL DEFAULT 0, -- NEW: Total display auto discounts for order
-  
+  ${AppDBConst.comboDiscountTotal} REAL DEFAULT 0,
+  ${AppDBConst.displayAutoDiscount} REAL DEFAULT 0,
+
+  -- Build #offline: Sync tracking & terminal identity
+  ${AppDBConst.synced} INTEGER DEFAULT 0,
+  ${AppDBConst.posDeviceId} TEXT,
+  ${AppDBConst.tableId} TEXT,
+  ${AppDBConst.deviceDisplayName} TEXT,
+  ${AppDBConst.isEbtEligible} INTEGER DEFAULT 0,
+
   FOREIGN KEY(${AppDBConst.userId})
     REFERENCES ${AppDBConst.userTable}(${AppDBConst.userId})
     ON DELETE CASCADE
@@ -530,9 +637,26 @@ CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
   ${AppDBConst.fastKeyItemMetaData} TEXT,
   ${AppDBConst.fastKeyItemLoyaltyPoints} INTEGER DEFAULT 0,
   ${AppDBConst.fastKeyItemType} TEXT DEFAULT 'simple',
+  ${AppDBConst.fastKeyStockQuantity} INTEGER DEFAULT 0,
   FOREIGN KEY(${AppDBConst.fastKeyIdForeignKey}) REFERENCES ${AppDBConst.fastKeyTable}(${AppDBConst.fastKeyId}) ON DELETE CASCADE
 )
 ''');
+
+    // Offline refund / inventory audit table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${AppDBConst.inventoryLogTable} (
+        ${AppDBConst.inventoryLogId} INTEGER PRIMARY KEY AUTOINCREMENT,
+        ${AppDBConst.inventoryLogOrderId} INTEGER,
+        ${AppDBConst.inventoryLogOrderItemId} INTEGER,
+        ${AppDBConst.inventoryLogProductId} TEXT,
+        ${AppDBConst.inventoryLogQuantity} INTEGER NOT NULL,
+        ${AppDBConst.inventoryLogAction} TEXT NOT NULL,
+        ${AppDBConst.inventoryLogReason} TEXT,
+        ${AppDBConst.inventoryLogCreatedAt} TEXT NOT NULL,
+        ${AppDBConst.inventoryLogSynced} INTEGER DEFAULT 0,
+        ${AppDBConst.inventoryLogPosDeviceId} TEXT
+      )
+    ''');
 
     /// Printer Table
     await db.execute('''
@@ -564,7 +688,11 @@ CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
       ${AppDBConst.storePhone} TEXT NOT NULL,
       ${AppDBConst.storeInfo} TEXT NOT NULL,
       ${AppDBConst.licenseKey} TEXT NOT NULL,
-      ${AppDBConst.licenseStatus} TEXT NOT NULL
+      ${AppDBConst.licenseStatus} TEXT NOT NULL,
+      ${AppDBConst.deviceDisplayName} TEXT,
+      ${AppDBConst.deviceTableId} TEXT,
+      ${AppDBConst.storeLogo} TEXT,
+      ${AppDBConst.storeGstin} TEXT
     )
   ''');
 
@@ -742,6 +870,8 @@ CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
     CREATE TABLE ${AppDBConst.employeesTable} (
       ${AppDBConst.employeeId} TEXT PRIMARY KEY,
       ${AppDBConst.employeeDisplayName} TEXT NOT NULL,
+      ${AppDBConst.employeePinHash} TEXT,
+      ${AppDBConst.employeeEmail} TEXT,
       ${AppDBConst.assetId} INTEGER NOT NULL,
       FOREIGN KEY(${AppDBConst.assetId}) REFERENCES ${AppDBConst.assetTable}(${AppDBConst.assetId}) ON DELETE CASCADE
     )

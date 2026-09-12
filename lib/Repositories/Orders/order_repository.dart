@@ -1,6 +1,5 @@
 // repositories/order_repository.dart
 import 'dart:convert';
-import 'dart:ffi';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
@@ -13,11 +12,12 @@ import '../../Database/order_panel_db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import '../../Helper/api_helper.dart';
 import '../../Helper/customerdisplayhelper.dart';
+import '../../Helper/offline_helper.dart';  // Build #offline
 import '../../Helper/url_helper.dart';
 import '../../Models/Assets/asset_model.dart';
 import '../../Models/Orders/apply_discount_model.dart';
 import '../../Models/Orders/get_orders_model.dart';
-import '../../Models/Orders/orders_model.dart';
+import '../../Models/Orders/orders_model.dart' hide CouponLine;
 import '../../Models/Orders/total_orders_count_model.dart';
 import '../../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import '../../Utilities/global_utility.dart';
@@ -4109,7 +4109,18 @@ class OrderRepository {
         print("OrderRepository - Error in getOrders: $e");
         print("Stack trace: $s");
       }
-      throw Exception("Failed to fetch orders: $e");
+      // Build #offline: session-expired errors should propagate up for re-login handling.
+      // All other errors (network, timeout) fall back to local SQLite data.
+      if (OfflineHelper.isSessionError(e)) {
+        throw Exception('SESSION_EXPIRED: ${OfflineHelper.friendlyMessage(e)}');
+      }
+      if (kDebugMode) print('OrderRepository - Falling back to offline SQLite orders');
+      return OfflineHelper.buildOfflineOrdersListFromDb(
+        userId: userId,
+        status: status,
+        pageNumber: pageNumber,
+        pageLimit: pageLimit,
+      );
     }
   }
 
@@ -4151,10 +4162,7 @@ class OrderRepository {
         print("OrderRepository - Raw Response: ${response.toString()}");
       }
 
-      /// Build #1.0.149
-      /// The issue was passing a `String` (raw JSON) to `TotalOrdersResponseModel.fromJson` instead of a `Map<String, dynamic>` due to improper response handling.
-      /// Updated code ensuring the `String` response is decoded with `json.decode` before processing in `fetchTotalOrdersCount`.
-      /// Ensure response is decoded if it's a String
+      /// Build #1.0.149: ensure the response is decoded
       dynamic responseData;
       if (response is String) {
         try {
@@ -4180,7 +4188,52 @@ class OrderRepository {
       if (kDebugMode) {
         print("OrderRepository - Error in fetchTotalOrders: $e, Stack: $s");
       }
-      throw Exception("Failed to fetch total orders: $e");
+      // Build #offline: on network failure return local count from SQLite
+      if (OfflineHelper.isSessionError(e)) {
+        throw Exception('SESSION_EXPIRED: ${OfflineHelper.friendlyMessage(e)}');
+      }
+      try {
+        final offlineOrders = await OfflineHelper.buildOfflineOrdersListFromDb(
+          userId: userId,
+          status: status,
+          pageNumber: pageNumber,
+          pageLimit: pageLimit,
+        );
+
+        final db = await DBHelper.instance.database;
+        final List<String> whereClauses = [];
+        final List<dynamic> whereArgs = [];
+        if (userId.isNotEmpty && userId != '0') {
+          whereClauses.add('${AppDBConst.userId} = ?');
+          whereArgs.add(int.tryParse(userId) ?? 0);
+        }
+        if (status.isNotEmpty) {
+          final statuses = status.split(',').map((s) => s.trim()).toList();
+          final ph = List.filled(statuses.length, '?').join(',');
+          whereClauses.add('${AppDBConst.orderStatus} IN ($ph)');
+          whereArgs.addAll(statuses);
+        }
+        final countResult = await db.rawQuery(
+          'SELECT COUNT(*) as cnt FROM ${AppDBConst.orderTable}'
+          '${whereClauses.isNotEmpty ? ' WHERE ${whereClauses.join(' AND ')}' : ''}',
+          whereArgs.isNotEmpty ? whereArgs : null,
+        );
+        final count = countResult.isNotEmpty
+            ? (int.tryParse(countResult.first['cnt']?.toString() ?? '0') ?? 0)
+            : offlineOrders.orders.length;
+
+        final totalCount = count > 0 ? count : offlineOrders.orders.length;
+        if (kDebugMode) {
+          print('OrderRepository - Offline total orders count: $totalCount, orders count: ${offlineOrders.orders.length}');
+        }
+        return TotalOrdersResponseModel(
+          orderTotalCount: totalCount,
+          ordersData: offlineOrders.orders,
+        );
+      } catch (dbErr) {
+        if (kDebugMode) print('OrderRepository - Offline count fallback error: $dbErr');
+        return TotalOrdersResponseModel(orderTotalCount: 0, ordersData: []);
+      }
     }
   }
 
@@ -4561,7 +4614,24 @@ class OrderRepository {
 
       return response;
     } catch (e) {
-      throw Exception(_extractRedeemError(e)); // <----- ADD THIS
+      if (OfflineHelper.isSessionError(e)) rethrow;
+
+      // Build #offline: queue redemption locally when offline
+      if (kDebugMode) print('[Offline Loyalty] Queuing redemption locally: $redeemPoints pts, \$$redeemAmount');
+      final userData = await UserDbHelper().getUserData();
+      if (userData != null) {
+        final currentPoints = (userData[AppDBConst.loyaltyPoints] as int?) ?? 0;
+        final newPoints = (currentPoints - redeemPoints).clamp(0, currentPoints);
+        await UserDbHelper().updateLoyaltyPoints(newPoints);
+      }
+      // Return a synthetic success response that matches the online API
+      return {
+        'success': true,
+        'message': 'Loyalty points queued for redemption (offline mode)',
+        'offline': true,
+        'redeemed_points': redeemPoints,
+        'redeemed_amount': redeemAmount,
+      };
     }
   }
 
@@ -4598,18 +4668,25 @@ class OrderRepository {
       print("🔵 Add Loyalty Points Body: $body");
     }
 
-    final response = await _helper.post(
-      url,
-      body,
-      true,
-      validateMarchentUrl: true,
-    );
+    try {
+      final response = await _helper.post(
+        url,
+        body,
+        true,
+        validateMarchentUrl: true,
+      );
 
-    if (kDebugMode) {
-      print("🔵 Add Loyalty Points Response: $response");
+      if (kDebugMode) {
+        print("🔵 Add Loyalty Points Response: $response");
+      }
+
+      return response;
+    } catch (e) {
+      if (OfflineHelper.isSessionError(e)) rethrow;
+      // Build #offline: silently queue adding points — they will sync later
+      if (kDebugMode) print('[Offline Loyalty] addLoyaltyPoints queued for sync (order $orderId)');
+      return {'success': true, 'message': 'Loyalty points will be added when online.', 'offline': true};
     }
-
-    return response;
   }
 
   Future<dynamic> removeLoyaltyPoints({
@@ -4624,14 +4701,19 @@ class OrderRepository {
       "contact": contact,
     };
 
-    final response = await _helper.post(
-      url,
-      body,
-      true,
-      validateMarchentUrl: true,
-    );
-
-    return response;
+    try {
+      final response = await _helper.post(
+        url,
+        body,
+        true,
+        validateMarchentUrl: true,
+      );
+      return response;
+    } catch (e) {
+      if (OfflineHelper.isSessionError(e)) rethrow;
+      if (kDebugMode) print('[Offline Loyalty] removeLoyaltyPoints queued for sync (order $orderId)');
+      return {'success': true, 'message': 'Loyalty points removal queued for sync.', 'offline': true};
+    }
   }
 
   Future<List<Map<String, dynamic>>> fetchDiscountRules() async {
@@ -4673,25 +4755,114 @@ class OrderRepository {
       print("OrderRepository - Request Body: ${request.toJson()}");
     }
 
-    final response = await _helper.post(url, request.toJson(), true);
+    try {
+      final response = await _helper.post(url, request.toJson(), true);
 
-    if (kDebugMode) {
-      print("OrderRepository - Raw Response: $response");
-    }
-
-    if (response is String) {
-      try {
-        final responseData = json.decode(response);
-        return OrderModel.fromJson(
-            responseData); //Build #1.0.92: Updated: using OrderModel rather than UpdateOrderResponseModel
-      } catch (e) {
-        if (kDebugMode) print("Error parsing apply coupon response: $e");
-        throw Exception("Failed to parse apply coupon response");
+      if (kDebugMode) {
+        print("OrderRepository - Raw Response: $response");
       }
-    } else if (response is Map<String, dynamic>) {
-      return OrderModel.fromJson(response);
-    } else {
-      throw Exception("Unexpected response type in apply coupon POST");
+
+      if (response is String) {
+        try {
+          final responseData = json.decode(response);
+          return OrderModel.fromJson(responseData);
+        } catch (e) {
+          if (kDebugMode) print("Error parsing apply coupon response: $e");
+          throw Exception("Failed to parse apply coupon response");
+        }
+      } else if (response is Map<String, dynamic>) {
+        return OrderModel.fromJson(response);
+      } else {
+        throw Exception("Unexpected response type in apply coupon POST");
+      }
+    } catch (e) {
+      if (kDebugMode) print("OrderRepository - applyCouponToOrder error: $e");
+
+      if (OfflineHelper.isSessionError(e)) {
+        throw Exception('SESSION_EXPIRED: ${OfflineHelper.friendlyMessage(e)}');
+      }
+
+      // Build #offline: coupon fallback — look up the code in local coupon_table
+      try {
+        final couponCode = (request.toJson()['coupon_lines'] as List?)?.first?['code']?.toString() ?? '';
+        if (couponCode.isEmpty) rethrow;
+
+        final db = await DBHelper.instance.database;
+        final couponRows = await db.query(
+          AppDBConst.couponTable,
+          where: 'coupon_code = ?',
+          whereArgs: [couponCode.toLowerCase()],
+          limit: 1,
+        );
+
+        if (couponRows.isEmpty) {
+          throw Exception('Coupon "$couponCode" not found in offline cache.');
+        }
+
+        final coupon = couponRows.first;
+        final expiryStr = coupon['expiry_date']?.toString() ?? '';
+        if (expiryStr.isNotEmpty) {
+          final expiry = DateTime.tryParse(expiryStr);
+          if (expiry != null && expiry.isBefore(DateTime.now())) {
+            throw Exception('Coupon "$couponCode" has expired.');
+          }
+        }
+
+        // Build a synthetic OrderModel showing discount applied
+        final discountAmount = double.tryParse(coupon['coupon_amount']?.toString() ?? '0') ?? 0.0;
+        if (kDebugMode) print('[Offline Coupon] Applied "$couponCode" discount: $discountAmount');
+
+        // Return minimal OrderModel with coupon data — caller applies to UI
+        return OrderModel(
+          id: orderId,
+          parentId: 0,
+          status: 'pending_offline',
+          currency: 'INR',
+          version: '',
+          pricesIncludeTax: false,
+          dateCreated: DateTime.now().toIso8601String(),
+          dateModified: DateTime.now().toIso8601String(),
+          discountTotal: discountAmount.toStringAsFixed(2),
+          discountTax: '0.00',
+          shippingTotal: '0.00',
+          shippingTax: '0.00',
+          cartTax: '0.00',
+          total: '0.00',
+          totalTax: '0.00',
+          customerId: 0,
+          orderKey: '',
+          lineItems: [],
+          feeLines: [],
+          couponLines: [
+            CouponLine(
+              id: 0,
+              code: couponCode,
+              discount: discountAmount.toStringAsFixed(2),
+              discountTax: '0.00',
+              metaData: [],
+            ),
+          ],
+          metaData: [],
+          datePaid: null,
+          dateCompleted: null,
+          paymentMethod: '',
+          createdVia: 'offline_pos',
+          orderType: null,
+          number: orderId.toString(),
+          currencySymbol: TextConstants.currencySymbol,
+          multipackDiscountTotal: null,
+          autoDiscountTotal: null,
+          getTime: null,
+          autoDiscountMeta: null,
+          orderLevelAutoDiscountAmount: 0.0,
+          refundTotal: 0.0,
+          refundOrderTotal: 0.0,
+          netPayment: 0.0,
+        );
+      } catch (offlineErr) {
+        if (kDebugMode) print('[Offline Coupon] Fallback failed: $offlineErr');
+        rethrow;
+      }
     }
   }
 

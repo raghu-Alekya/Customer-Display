@@ -587,7 +587,7 @@
 // }
 
 import 'dart:async';
-
+import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -624,7 +624,6 @@ import '../../Widgets/widget_error.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
-
   @override
   _LoginScreenState createState() => _LoginScreenState();
 }
@@ -642,6 +641,9 @@ class _LoginScreenState extends State<LoginScreen> {
     iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
   );
   static const _securePinKey = 'encrypted_login_pin';
+  static const _secureUserIdKey = 'offline_user_id';
+  static const _secureUserDataKey = 'offline_user_data';
+
   bool _isOfflineMode = false;
   // ================================================
 
@@ -657,7 +659,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // CONNECTIVITY + SECURE PIN HELPERS
+  // CONNECTIVITY + SECURE PIN + USER DATA HELPERS
   // ---------------------------------------------------------------------------
 
   Future<void> _checkConnectivityOnOpen() async {
@@ -704,9 +706,123 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// Save user data after successful ONLINE login
+  Future<void> _saveUserDataForOffline(LoginResponse loginResponse) async {
+    try {
+      final userId = loginResponse.id?.toString() ?? '';
+      final displayName = loginResponse.displayName ?? '';
+
+      await _secureStorage.write(key: _secureUserIdKey, value: userId);
+
+      final userData = {
+        'userId': userId,
+        'displayName': displayName,
+        'token': loginResponse.token, // optional; not used offline for API
+        'shiftId': loginResponse.shiftId,
+        'safeEnable': loginResponse.safeEnable,
+        'safeEnableDrop': loginResponse.safeEnableDrop,
+        // add more if needed later (role, email, etc.)
+      };
+
+      await _secureStorage.write(
+        key: _secureUserDataKey,
+        value: jsonEncode(userData),
+      );
+
+      if (kDebugMode) {
+        print('💾 User data saved for offline: $userData');
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Failed to save user data for offline: $e');
+    }
+  }
+
+  Future<String?> _readSavedUserId() async {
+    try {
+      return await _secureStorage.read(key: _secureUserIdKey);
+    } catch (e) {
+      if (kDebugMode) print('❌ Failed to read offline userId: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _readSavedUserData() async {
+    try {
+      final jsonStr = await _secureStorage.read(key: _secureUserDataKey);
+      if (jsonStr == null || jsonStr.isEmpty) return null;
+      return jsonDecode(jsonStr) as Map<String, dynamic>;
+    } catch (e) {
+      if (kDebugMode) print('❌ Failed to read offline user data: $e');
+      return null;
+    }
+  }
+
+  // Future<void> _tryOfflineLogin(String pin) async {
+  //   final savedPin = await _readSavedPin();
+  //   if (savedPin == null || savedPin.isEmpty) {
+  //     if (!mounted) return;
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(
+  //         content: Text(
+  //           'No offline PIN saved. Please login once with internet.',
+  //           style: TextStyle(color: Colors.orange),
+  //         ),
+  //         backgroundColor: Colors.black87,
+  //       ),
+  //     );
+  //     return;
+  //   }
+  //
+  //   if (savedPin != pin) {
+  //     if (!mounted) return;
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(
+  //         content: Text(
+  //           'Incorrect PIN (offline)',
+  //           style: TextStyle(color: Colors.red),
+  //         ),
+  //         backgroundColor: Colors.black87,
+  //       ),
+  //     );
+  //     return;
+  //   }
+  //
+  //   // ★★★ PRINT USER ID + DISPLAY NAME ON OFFLINE LOGIN ★★★
+  //   final userId = await _readSavedUserId();
+  //   final userData = await _readSavedUserData();
+  //   final displayName = userData?['displayName']?.toString() ?? 'N/A';
+  //
+  //   if (kDebugMode) {
+  //     print('✅ OFFLINE LOGIN SUCCESS — navigating without API');
+  //     print('------------------------------------------------');
+  //     print('👤 Offline User ID     : $userId');
+  //     print('📛 Offline Display Name: $displayName');
+  //     print('📦 Full Offline Data   : $userData');
+  //     print('------------------------------------------------');
+  //   }
+  //
+  //   if (!mounted) return;
+  //   final shiftId = await UserDbHelper().getUserShiftId();
+  //   if (!mounted) return;
+  //
+  //   if (shiftId != null) {
+  //     Navigator.pushReplacement(
+  //       context,
+  //       MaterialPageRoute(builder: (context) => const POSHomeScreen()),
+  //     );
+  //   } else {
+  //     Navigator.pushReplacement(
+  //       context,
+  //       MaterialPageRoute(
+  //         builder: (context) => const ShiftOpenCloseBalanceScreen(),
+  //         settings: RouteSettings(arguments: TextConstants.loginScreen),
+  //       ),
+  //     );
+  //   }
+  // }
+
   Future<void> _tryOfflineLogin(String pin) async {
     final savedPin = await _readSavedPin();
-
     if (savedPin == null || savedPin.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -735,16 +851,73 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    if (kDebugMode) {
-      print('✅ OFFLINE LOGIN SUCCESS — navigating without API');
+    // Read offline user data saved during last online login
+    final userData = await _readSavedUserData();
+    if (userData == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No offline user data. Please login once with internet.',
+            style: TextStyle(color: Colors.orange),
+          ),
+          backgroundColor: Colors.black87,
+        ),
+      );
+      return;
     }
 
+    final userIdStr = userData['userId']?.toString() ?? '';
+    final userId = int.tryParse(userIdStr);
+    final displayName = userData['displayName']?.toString() ?? 'Offline User';
+    final shiftIdRaw = userData['shiftId'];
+    final shiftId = shiftIdRaw is int
+        ? shiftIdRaw
+        : int.tryParse(shiftIdRaw?.toString() ?? '');
+
+    if (userId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Invalid offline user. Please login once with internet.',
+            style: TextStyle(color: Colors.red),
+          ),
+          backgroundColor: Colors.black87,
+        ),
+      );
+      return;
+    }
+
+    if (kDebugMode) {
+      print('✅ OFFLINE LOGIN SUCCESS');
+      print('👤 Offline User ID     : $userId');
+      print('📛 Offline Display Name: $displayName');
+      print('📦 Full Offline Data   : $userData');
+    }
+
+    // ★★★ CRITICAL: write user into DB so getUserData() finds an active user ★★★
+    await _userDbHelper.saveOfflineUserSession(
+      userId: userId,
+      displayName: displayName,
+      shiftId: shiftId,
+      // optional: email / role / avatar if you store them in secure storage
+    );
+
+    // Restore safe flags if you stored them
+    final safeEnable = userData['safeEnable']?.toString() == '1' ||
+        userData['safeEnable'] == true;
+    final safeEnableDrop = userData['safeEnableDrop']?.toString() == '1' ||
+        userData['safeEnableDrop'] == true;
+    await SafeStorageHelper.saveSafeEnable(safeEnable);
+    await SafeStorageHelper.saveSafeEnableDrop(safeEnableDrop);
+
     if (!mounted) return;
 
-    final shiftId = await UserDbHelper().getUserShiftId();
-    if (!mounted) return;
+    // Prefer shiftId from the session we just wrote
+    final currentShiftId = await _userDbHelper.getUserShiftId();
 
-    if (shiftId != null) {
+    if (currentShiftId != null) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const POSHomeScreen()),
@@ -759,7 +932,6 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     }
   }
-
   bool _isServerOrNetworkError(String? message) {
     if (message == null) return true;
     final m = message.toLowerCase();
@@ -863,12 +1035,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _handleLogin() async {
     if (!_validatePin()) return;
+
     _hasErrorShown = false;
     final pin = _password.join();
-
     final hasNet = await _hasInternet();
-    if (!mounted) return;
 
+    if (!mounted) return;
     setState(() {
       _isOfflineMode = !hasNet;
     });
@@ -886,7 +1058,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
     // ONLINE → API LOGIN
     _bloc.fetchLoginToken(LoginRequest(pin));
-
     if (kDebugMode) {
       print("#### LoginScreen: fetching assets after login attempt");
     }
@@ -987,6 +1158,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           );
                         }),
                       ),
+
                       const SizedBox(height: 32),
 
                       CustomNumPad(
@@ -1040,6 +1212,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                         // SAVE PIN ENCRYPTED
                                         await _savePinSecurely(pin);
 
+                                        // ★★★ SAVE USER DATA FOR OFFLINE ★★★
+                                        await _saveUserDataForOffline(
+                                            loginResponse);
+
                                         TokenValidationService.startValidation(
                                           token: token,
                                           pin: pin,
@@ -1092,6 +1268,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                                         int? shiftId = await UserDbHelper()
                                             .getUserShiftId();
+
                                         if (shiftId != null &&
                                             snapshot.data?.data?.shiftId !=
                                                 null) {
@@ -1116,6 +1293,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                           );
                                         }
                                       });
+
                                       return Center(
                                         child: Loading(
                                           loadingMessage:
@@ -1149,7 +1327,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                         "Login failed. Please try again.";
 
                                     // SERVER / NETWORK ERROR → OFFLINE LOGIN
-                                    // NO logout snackbar
                                     if (_isServerOrNetworkError(errorMsg)) {
                                       if (!_hasErrorShown) {
                                         _hasErrorShown = true;
@@ -1270,14 +1447,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                                                     .pop();
                                                               }
                                                             });
-
                                                         final pin =
                                                         _password.join();
                                                         logoutBloc
                                                             .performLogoutByEmpPin(
                                                           int.tryParse(pin),
                                                         );
-
                                                         return const Center(
                                                           child:
                                                           CircularProgressIndicator(),
@@ -1306,6 +1481,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     break;
                                 }
                               }
+
                               return const Center(
                                 child: Text(
                                   TextConstants.loginBtnText,
@@ -1327,7 +1503,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => DeviceAuthorizationScreen()
+                                builder: (context) => DeviceAuthorizationScreen()
                               //StoreIdScreen(),
                             ),
                           );

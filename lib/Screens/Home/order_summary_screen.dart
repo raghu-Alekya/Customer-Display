@@ -37,6 +37,7 @@ import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/api_response.dart';
 import '../../Helper/customerdisplayhelper.dart';
+import '../../Helper/offline_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Payment/payment_model.dart';
 import '../../Models/Payment/void_payment_model.dart';
@@ -1373,8 +1374,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         order['lastPayment'] = _lastPayment!.toJson();
       }
 
-      // 9. WRITE BACK TO HIVE
+      // 9. WRITE BACK TO HIVE & SQLITE
       await box.put(key, order);
+      if (orderId != null && orderId! > 0) {
+        unawaited(OfflineHelper.updateOfflineOrderStatus(
+          orderId!,
+          order['order_status']?.toString() ?? (isComplete ? 'processing' : 'pending_offline'),
+          paymentMethod: paymentMethod,
+        ));
+      }
 
       print(" [SAVE] Written to Hive successfully");
 
@@ -1628,8 +1636,15 @@ Previous Remaining: \$${remaining.toStringAsFixed(2)}
         order['lastPayment'] = _lastPayment!.toJson();
       }
 
-      // 9.  WRITE BACK TO HIVE
+      // 9.  WRITE BACK TO HIVE & SQLITE
       await box.put(key, order);
+      if (orderId != null && orderId! > 0) {
+        unawaited(OfflineHelper.updateOfflineOrderStatus(
+          orderId!,
+          order['order_status']?.toString() ?? (remaining <= 0 ? 'processing' : 'pending_offline'),
+          paymentMethod: payment.paymentMethod,
+        ));
+      }
 
       print(" [SAVE] Written to Hive successfully");
 
@@ -6877,6 +6892,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           final order = Map<String, dynamic>.from(raw);
           order['order_status'] = TextConstants.completed;
           await box.put(key, order);
+        }
+
+        if (orderId != null && orderId! > 0) {
+          unawaited(OfflineHelper.updateOfflineOrderStatus(
+            orderId!,
+            TextConstants.completed,
+            paymentMethod: selectedPaymentMethod,
+          ));
         }
 
         _showPaymentDialog(
@@ -14331,7 +14354,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       order['updated_at'] = DateTime.now().toIso8601String();
 
       await box.put(key, order);
-      print("✅ Hive order #$localOrderId marked as processing");
+      await OfflineHelper.updateOfflineOrderStatus(localOrderId, 'processing');
+      print("✅ Hive & SQLite order #$localOrderId marked as processing");
     } catch (e) {
       print("❌ _markHiveOrderCompleted error: $e");
     }
@@ -14538,7 +14562,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         order['updated_at'] = DateTime.now().toIso8601String();
 
         await box.put(key, order);
-        print("✅ Hive order #$orderId force-marked as completed");
+        if (orderId != null && orderId! > 0) {
+          await OfflineHelper.updateOfflineOrderStatus(orderId!, 'completed', paymentMethod: selectedPaymentMethod);
+        }
+        print("✅ Hive & SQLite order #$orderId force-marked as completed");
       } catch (e) {
         print("❌ forceMarkHiveOrderCompleted error: $e");
       }

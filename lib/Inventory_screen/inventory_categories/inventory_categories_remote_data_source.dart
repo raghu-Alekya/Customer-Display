@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../Database/db_helper.dart';
 import '../../Helper/url_helper.dart';
+import '../../Helper/offline_helper.dart';
 import 'inventory_categories_model.dart';
 
 abstract class InventoryCategoriesRemoteDataSource {
@@ -39,6 +40,10 @@ class InventoryCategoriesRemoteDataSourceImpl implements InventoryCategoriesRemo
   @override
   Future<List<InventoryCategoriesModel>> getCategories() async {
     try {
+      if (!await OfflineHelper.isNetworkAvailable()) {
+        if (kDebugMode) debugPrint('#### Offline: inventory categories served as empty local list');
+        return [];
+      }
       final token = await _getTokenFromDb();
 
       final String fullUrl =
@@ -79,11 +84,13 @@ class InventoryCategoriesRemoteDataSourceImpl implements InventoryCategoriesRemo
         );
       }
     } catch (e, stackTrace) {
-      // 🔥 THIS prints EVERYTHING
       debugPrint('#### GET CATEGORIES ERROR: $e');
       debugPrint('#### STACK TRACE:\n$stackTrace');
 
-      rethrow; // important: lets Bloc/UI handle the error
+      // Network/DNS failure is a normal offline condition. Keep the UI usable
+      // instead of putting the raw ClientException into the dropdown.
+      if (!await OfflineHelper.isNetworkAvailable()) return [];
+      rethrow;
     }
   }
 
