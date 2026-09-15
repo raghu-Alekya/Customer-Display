@@ -32,6 +32,28 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
   /// Saves or updates user data in the database
   /// Updates if user exists, inserts if new
   // Build #1.0.148: Fixed Issue: user display name is not changing in top bar if new user login, old user name showing
+  Future<void> _ensureUserTableColumns(Database db) async {
+    try {
+      final columns = await db.rawQuery("PRAGMA table_info(${AppDBConst.userTable})");
+      final colNames = columns.map((c) => c['name'] as String).toSet();
+
+      Future<void> _addCol(String col, String type) async {
+        if (!colNames.contains(col)) {
+          try {
+            await db.execute('ALTER TABLE ${AppDBConst.userTable} ADD COLUMN $col $type');
+          } catch (_) {}
+        }
+      }
+
+      await _addCol(AppDBConst.deviceDisplayName, 'TEXT');
+      await _addCol(AppDBConst.tableId, 'TEXT');
+      await _addCol(AppDBConst.posDeviceId, 'TEXT');
+      await _addCol(AppDBConst.loyaltyPoints, 'INTEGER DEFAULT 0');
+    } catch (e) {
+      if (kDebugMode) print("UserDbHelper _ensureUserTableColumns error: $e");
+    }
+  }
+
   // Ensures only ONE user has a valid token at any time
   Future<void> saveUserData(LoginResponse loginResponse) async {
     if (kDebugMode) {
@@ -40,6 +62,7 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     }
 
     final db = await DBHelper.instance.database;
+    await _ensureUserTableColumns(db);
 
     // 1. FIRST clear ALL existing tokens to ensure single active user
     await db.update(

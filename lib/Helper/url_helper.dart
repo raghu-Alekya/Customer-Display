@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import '../Database/assets_db_helper.dart';
 import '../Database/store_db_helper.dart';
 
@@ -36,24 +35,37 @@ class UrlHelper {
 
   //Build #1.0.54: added Dynamic base URL initialized from database
   static String? _baseUrl;
-  // Initialize base URL from database
+  // Initialize base URL from database (Store DB first, then Asset DB fallback)
   static Future<void> initializeBaseUrl() async {
-    _baseUrl = await AssetDBHelper.instance.getAppBaseUrl();
-    if (_baseUrl == null) {
-      _baseUrl = await StoreDbHelper.instance.getStoreBaseUrl(); //Build #1.0.126: Fallback to dev URL if database is empty
+    final storeUrl = await StoreDbHelper.instance.getStoreBaseUrl();
+    if (storeUrl != null && storeUrl.trim().isNotEmpty) {
+      _baseUrl = storeUrl.trim();
+    } else {
+      final appUrl = await AssetDBHelper.instance.getAppBaseUrl();
+      if (appUrl != null && appUrl.trim().isNotEmpty) {
+        _baseUrl = appUrl.trim();
+      } else {
+        _baseUrl = _uat;
+      }
+    }
+    if (_baseUrl != null && _baseUrl!.endsWith('/')) {
+      _baseUrl = _baseUrl!.substring(0, _baseUrl!.length - 1);
     }
   }
+
   static String get wooBaseUrl {
     if (_baseUrl == null || _baseUrl!.isEmpty) {
-      _baseUrl = _uat; // fallback to dev environment
+      _baseUrl = _uat;
     }
     final url = '$_baseUrl/wp-json/wc/v3/';
     return url;
   }
 
-
   //Build #1.0.54: Getter for base URL with /wp-json/ appended
   static String get baseUrl {
+    if (_baseUrl == null || _baseUrl!.isEmpty) {
+      _baseUrl = _uat;
+    }
     final url = '$_baseUrl/$wpJson';
     return url;
   }

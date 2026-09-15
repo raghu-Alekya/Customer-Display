@@ -516,7 +516,11 @@ class DBHelper {
       ${AppDBConst.profilePhoto} TEXT,
       ${AppDBConst.themeMode} TEXT,
       ${AppDBConst.layoutSelection} TEXT,
-      ${AppDBConst.userShiftId} INTEGER
+      ${AppDBConst.userShiftId} INTEGER,
+      ${AppDBConst.deviceDisplayName} TEXT,
+      ${AppDBConst.tableId} TEXT,
+      ${AppDBConst.posDeviceId} TEXT,
+      ${AppDBConst.loyaltyPoints} INTEGER DEFAULT 0
     )
     ''');
 

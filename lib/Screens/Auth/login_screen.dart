@@ -1260,10 +1260,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                           );
                                         }
 
-                                        unawaited(
-                                          _assetBloc.fetchImageAssets(),
-                                        );
-                                        await _assetBloc.fetchAssets();
+                                        try {
+                                          unawaited(
+                                            _assetBloc.fetchImageAssets(),
+                                          );
+                                          await _assetBloc.fetchAssets();
+                                        } catch (e) {
+                                          if (kDebugMode) {
+                                            print(
+                                              "Asset fetch warning (offline mode): $e",
+                                            );
+                                          }
+                                        }
                                         resetLoadStatus();
 
                                         int? shiftId = await UserDbHelper()

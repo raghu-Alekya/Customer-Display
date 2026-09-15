@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../../Constants/text.dart';
 import '../../Database/assets_db_helper.dart';
@@ -22,8 +23,10 @@ class LoginRepository {
       print("LoginRepository - Request: ${request.toJson()}");
     }
 
-    // ── Check connectivity ──────────────────────────────────────────────────
-    final isOnline = await OfflineHelper.isNetworkAvailable();
+    // Always try the server first. Wi-Fi availability does not guarantee that
+    // the configured API/tunnel is reachable (for example, an ngrok tunnel can
+    // be offline while the device still reports internet=true).
+    final isOnline = true;
 
     // Restore the configured store symbol before the login UI continues. This
     // also keeps offline order totals from reverting to the default currency.
@@ -42,7 +45,7 @@ class LoginRepository {
       try {
         final response = await _helper.post(url, request.toJson(), false);
         // On successful online login, save the PIN hash for future offline use
-        await _cacheEmployeePinIfPresent(request);
+        await _cacheEmployeePinIfPresent(request, response);
         return response;
       } catch (e) {
         if (kDebugMode) print("LoginRepository - Online login exception: $e");
@@ -54,7 +57,8 @@ class LoginRepository {
             errStr.contains('unauthorised') ||
             errStr.contains('wrong') ||
             errStr.contains('403') ||
-            errStr.contains('401');
+            errStr.contains('401') ||
+            errStr.contains('session_active_elsewhere');
 
         // If the server explicitly rejected the credentials, do not create a fake offline token
         if (isAuthFailure) {
@@ -71,11 +75,15 @@ class LoginRepository {
     final employee = await UserDbHelper().validateOfflinePin(pin);
 
     if (employee == null) {
-      throw Exception(
-        isOnline
-            ? "Login failed. Please check your PIN and network connection."
-            : "Offline login failed: PIN not recognized. Please log in online first to cache your credentials.",
-      );
+      if (isOnline) {
+        throw Exception(
+          "Login failed. Server is unreachable. Please check your PIN and network connection.",
+        );
+      } else {
+        throw Exception(
+          "Offline login failed: PIN not recognized. Please log in online first to cache your credentials.",
+        );
+      }
     }
 
     // Found matching employee: create synthetic offline session
@@ -101,18 +109,42 @@ class LoginRepository {
   // ─────────────────────────────────────────────────────────────────────────
   // After a successful ONLINE login, save the PIN hash for offline reuse.
   // ─────────────────────────────────────────────────────────────────────────
-  Future<void> _cacheEmployeePinIfPresent(LoginRequest request) async {
+  Future<void> _cacheEmployeePinIfPresent(LoginRequest request, String rawResponse) async {
     try {
       final pin = request.toJson()['emp_login_pin']?.toString() ?? '';
       if (pin.isEmpty) return;
-      final userData = await UserDbHelper().getUserData();
-      if (userData == null) return;
-      await UserDbHelper().saveEmployeePin(
-        employeeId: userData['user_id']?.toString() ?? '',
-        displayName: userData['display_name']?.toString() ?? '',
-        email: userData['email']?.toString() ?? '',
-        pin: pin,
-      );
+
+      Map<String, dynamic>? dataMap;
+      try {
+        final decoded = jsonDecode(rawResponse);
+        if (decoded is Map<String, dynamic>) {
+          if (decoded['data'] is Map<String, dynamic>) {
+            dataMap = decoded['data'] as Map<String, dynamic>;
+          } else {
+            dataMap = decoded;
+          }
+        }
+      } catch (_) {}
+
+      final nestedUser = dataMap?['user'] is Map
+          ? Map<String, dynamic>.from(dataMap!['user'] as Map)
+          : <String, dynamic>{};
+      final source = <String, dynamic>{...nestedUser, ...?dataMap};
+      final employeeId = source['id']?.toString() ?? source['user_id']?.toString() ?? '';
+      final displayName = source['displayName']?.toString() ?? source['display_name']?.toString() ?? 'Cashier';
+      final email = source['email']?.toString() ?? '';
+
+      if (employeeId.isNotEmpty && employeeId != '0') {
+        await UserDbHelper().saveEmployeePin(
+          employeeId: employeeId,
+          displayName: displayName,
+          email: email,
+          pin: pin,
+        );
+        if (kDebugMode) {
+          print("✅ LoginRepository - Cached employee PIN for offline login: $displayName (id: $employeeId)");
+        }
+      }
     } catch (e) {
       if (kDebugMode) print("LoginRepository - Could not cache PIN: $e");
     }
