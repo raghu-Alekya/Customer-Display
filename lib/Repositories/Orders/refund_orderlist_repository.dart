@@ -53,6 +53,11 @@ class CompletedOrdersRepository {
         '${UrlHelper.baseUrl}pinaka-pos/v1/orders/completed-orders',
       ).replace(queryParameters: queryParams);
 
+      if (kDebugMode) {
+        print("URLllllllllll: $uri");
+        print("Bearer Token: $token");
+      }
+
       final response = await http.get(
         uri,
         headers: {
@@ -170,6 +175,12 @@ class CompletedOrdersRepository {
         body["items"] = items;
       }
 
+      if (kDebugMode) {
+        print("URL: $uri");
+        print("Bearer Token: $token");
+        print("Body: ${jsonEncode(body)}");
+      }
+
       final response = await http.post(
         uri,
         headers: {
@@ -178,6 +189,11 @@ class CompletedOrdersRepository {
         },
         body: jsonEncode(body),
       );
+
+      if (kDebugMode) {
+        print("refundOrder Status Code: ${response.statusCode}");
+        print("Body: ${response.body}");
+      }
 
       final Map<String, dynamic> responseData = jsonDecode(response.body);
 
@@ -250,31 +266,31 @@ class CompletedOrdersRepository {
 
             final qty =
                 int.tryParse(item["qty"]?.toString() ?? '') ??
-                int.tryParse(item["items_count"]?.toString() ?? '') ??
-                1;
+                    int.tryParse(item["items_count"]?.toString() ?? '') ??
+                    1;
 
             final serverItemId =
-                int.tryParse(rawServerItemId?.toString() ?? '');
+            int.tryParse(rawServerItemId?.toString() ?? '');
             final localItemId =
-                int.tryParse(rawLocalItemId?.toString() ?? '');
+            int.tryParse(rawLocalItemId?.toString() ?? '');
             final productId =
-                rawProductId?.toString().trim();
+            rawProductId?.toString().trim();
 
             int updated = 0;
             if (serverItemId != null) {
               updated = await txn.rawUpdate(
                 'UPDATE ${AppDBConst.purchasedItemsTable} '
-                'SET ${AppDBConst.isRefundItem} = 1 '
-                'WHERE ${AppDBConst.itemServerId} = ? '
-                'AND ${AppDBConst.isRefundItem} = 0',
+                    'SET ${AppDBConst.isRefundItem} = 1 '
+                    'WHERE ${AppDBConst.itemServerId} = ? '
+                    'AND ${AppDBConst.isRefundItem} = 0',
                 [serverItemId],
               );
             } else if (localItemId != null) {
               updated = await txn.rawUpdate(
                 'UPDATE ${AppDBConst.purchasedItemsTable} '
-                'SET ${AppDBConst.isRefundItem} = 1 '
-                'WHERE ${AppDBConst.itemId} = ? '
-                'AND ${AppDBConst.isRefundItem} = 0',
+                    'SET ${AppDBConst.isRefundItem} = 1 '
+                    'WHERE ${AppDBConst.itemId} = ? '
+                    'AND ${AppDBConst.isRefundItem} = 0',
                 [localItemId],
               );
             }
@@ -287,15 +303,15 @@ class CompletedOrdersRepository {
 
             final restock =
                 item["restock"] == true ||
-                item["restockToInventory"] == true ||
-                item["restock_to_inventory"] == true;
+                    item["restockToInventory"] == true ||
+                    item["restock_to_inventory"] == true;
 
             if (productId != null && productId.isNotEmpty && qty > 0) {
               await txn.rawUpdate(
                 'UPDATE ${AppDBConst.fastKeyItemsTable} '
-                'SET ${AppDBConst.fastKeyStockQuantity} = '
-                '${AppDBConst.fastKeyStockQuantity} + ? '
-                'WHERE ${AppDBConst.fastKeyProductId} = ?',
+                    'SET ${AppDBConst.fastKeyStockQuantity} = '
+                    '${AppDBConst.fastKeyStockQuantity} + ? '
+                    'WHERE ${AppDBConst.fastKeyProductId} = ?',
                 restock ? [qty, productId] : [0, productId],
               );
 
@@ -304,15 +320,15 @@ class CompletedOrdersRepository {
                 {
                   AppDBConst.inventoryLogOrderId: orderId,
                   AppDBConst.inventoryLogOrderItemId:
-                      serverItemId ?? localItemId,
+                  serverItemId ?? localItemId,
                   AppDBConst.inventoryLogProductId: productId,
                   AppDBConst.inventoryLogQuantity: qty,
                   AppDBConst.inventoryLogAction:
-                      restock ? 'RESTOCK' : 'DISCARD',
+                  restock ? 'RESTOCK' : 'DISCARD',
                   AppDBConst.inventoryLogReason:
-                      restock
-                          ? 'OFFLINE_REFUND'
-                          : 'OFFLINE_REFUND_NON_RESTOCK',
+                  restock
+                      ? 'OFFLINE_REFUND'
+                      : 'OFFLINE_REFUND_NON_RESTOCK',
                   AppDBConst.inventoryLogCreatedAt: now,
                   AppDBConst.inventoryLogSynced: 0,
                 },
@@ -323,7 +339,7 @@ class CompletedOrdersRepository {
           final rows = await txn.query(
             AppDBConst.purchasedItemsTable,
             where:
-                '${AppDBConst.orderIdForeignKey} = ? '
+            '${AppDBConst.orderIdForeignKey} = ? '
                 'AND ${AppDBConst.isRefundItem} = 0',
             whereArgs: [orderId],
           );
@@ -336,13 +352,13 @@ class CompletedOrdersRepository {
             final qty =
                 int.tryParse(row[AppDBConst.itemCount]?.toString() ?? '') ?? 1;
             final productId =
-                row[AppDBConst.itemProductId]?.toString().trim();
+            row[AppDBConst.itemProductId]?.toString().trim();
 
             final changed = await txn.update(
               AppDBConst.purchasedItemsTable,
               {AppDBConst.isRefundItem: 1},
               where:
-                  '${AppDBConst.itemId} = ? AND ${AppDBConst.isRefundItem} = 0',
+              '${AppDBConst.itemId} = ? AND ${AppDBConst.isRefundItem} = 0',
               whereArgs: [row[AppDBConst.itemId]],
             );
 
@@ -353,9 +369,9 @@ class CompletedOrdersRepository {
             if (productId != null && productId.isNotEmpty && qty > 0) {
               await txn.rawUpdate(
                 'UPDATE ${AppDBConst.fastKeyItemsTable} '
-                'SET ${AppDBConst.fastKeyStockQuantity} = '
-                '${AppDBConst.fastKeyStockQuantity} + ? '
-                'WHERE ${AppDBConst.fastKeyProductId} = ?',
+                    'SET ${AppDBConst.fastKeyStockQuantity} = '
+                    '${AppDBConst.fastKeyStockQuantity} + ? '
+                    'WHERE ${AppDBConst.fastKeyProductId} = ?',
                 [qty, productId],
               );
 
@@ -364,7 +380,7 @@ class CompletedOrdersRepository {
                 {
                   AppDBConst.inventoryLogOrderId: orderId,
                   AppDBConst.inventoryLogOrderItemId:
-                      row[AppDBConst.itemServerId] ?? row[AppDBConst.itemId],
+                  row[AppDBConst.itemServerId] ?? row[AppDBConst.itemId],
                   AppDBConst.inventoryLogProductId: productId,
                   AppDBConst.inventoryLogQuantity: qty,
                   AppDBConst.inventoryLogAction: 'RESTOCK',
@@ -391,7 +407,7 @@ class CompletedOrdersRepository {
       if (kDebugMode) {
         print(
           '[Offline Refund] Atomic refund completed for order $orderId '
-          '($refundType)',
+              '($refundType)',
         );
       }
 
@@ -399,7 +415,7 @@ class CompletedOrdersRepository {
         "success": true,
         "offline": true,
         "message":
-            "Refund recorded locally. Inventory and sync audit records were saved.",
+        "Refund recorded locally. Inventory and sync audit records were saved.",
         "data": {
           "order_id": orderId,
           "refund_type": refundType,
@@ -414,7 +430,7 @@ class CompletedOrdersRepository {
         "success": false,
         "offline": true,
         "message":
-            "Could not process refund offline. No partial refund changes were saved.",
+        "Could not process refund offline. No partial refund changes were saved.",
       };
     }
   }

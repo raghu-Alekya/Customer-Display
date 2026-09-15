@@ -8,6 +8,7 @@ import '../Helper/offline_helper.dart';
 import '../Database/storage/storage_provider.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
+import '../services/refund_sync_services.dart';
 
 class OfflineOrderSyncService {
   static Timer? _timer;
@@ -21,10 +22,10 @@ class OfflineOrderSyncService {
 
     // Keep the existing periodic retry, but also react immediately when the
     // device changes from offline to an actual network connection.
-    _timer ??= Timer.periodic(
-      const Duration(minutes: 30),
-          (_) => syncPendingOrders(),
-    );
+    // _timer ??= Timer.periodic(
+    //   const Duration(minutes: 30),
+    //       (_) => syncPendingOrders(),
+    // );
 
     _connectivitySubscription ??= Connectivity()
         .onConnectivityChanged
@@ -210,6 +211,20 @@ class OfflineOrderSyncService {
           );
         }
       }
+      // ============================================================
+      // REFUND SYNC
+      // ============================================================
+
+      if (kDebugMode) {
+        print("🔄 Starting pending refund sync...");
+      }
+
+      await RefundSyncService().syncPendingRefunds();
+
+      if (kDebugMode) {
+        print("✅ Pending refund sync completed");
+      }
+
     } catch (e, s) {
       print("❌ Offline sync failed: $e");
       print(s);

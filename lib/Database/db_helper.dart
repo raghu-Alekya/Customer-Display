@@ -247,7 +247,26 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String shiftStatus = 'shift_status';
   static const String shiftSyncStatus = 'sync_status';
   static const String shiftCreatedAt = 'created_at';
+
+  // Offline Refund
+  static const String refundTable = 'offline_refunds';
+
+  static const String refundId = 'id';
+  static const String refundLocalId = 'local_refund_id';
+  static const String refundOrderId = 'order_id';
+  static const String refundType = 'refund_type';
+  static const String refundAmount = 'amount';
+  static const String refundPaymentType = 'payment_type';
+  static const String refundReason = 'reason';
+  static const String refundItemsReusable = 'items_reusable';
+  static const String refundItems = 'items';
+  static const String refundStatus = 'status';
+  static const String refundRetryCount = 'retry_count';
+  static const String refundErrorMessage = 'error_message';
+  static const String refundCreatedAt = 'created_at';
+  static const String refundSyncedAt = 'synced_at';
 }
+
 
 class DBHelper {
   // Singleton instance to ensure only one instance of DBHelper exists
@@ -286,7 +305,7 @@ class DBHelper {
       return await databaseFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 6, // Offline refund/inventory recovery schema
+          version: 7, // Offline refund/inventory recovery schema
           onCreate: _createTables,
           onUpgrade: _upgradeTables,
         ),
@@ -311,7 +330,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 6, // Offline refund/inventory recovery schema
+      version: 7, // Offline refund/inventory recovery schema
       onCreate: _createTables,
       onUpgrade: _upgradeTables,
     );
@@ -471,31 +490,64 @@ class DBHelper {
         try {
           await db.execute(sql);
         } catch (e) {
-          if (kDebugMode) print('v6 migration skipped/already applied: $e');
+          if (kDebugMode) {
+            print('v6 migration skipped/already applied: $e');
+          }
         }
       }
 
       await _safeAlterV6(
         'ALTER TABLE ${AppDBConst.fastKeyItemsTable} '
-        'ADD COLUMN ${AppDBConst.fastKeyStockQuantity} INTEGER DEFAULT 0',
+            'ADD COLUMN ${AppDBConst.fastKeyStockQuantity} INTEGER DEFAULT 0',
       );
 
       await db.execute('''
-        CREATE TABLE IF NOT EXISTS ${AppDBConst.inventoryLogTable} (
-          ${AppDBConst.inventoryLogId} INTEGER PRIMARY KEY AUTOINCREMENT,
-          ${AppDBConst.inventoryLogOrderId} INTEGER,
-          ${AppDBConst.inventoryLogOrderItemId} INTEGER,
-          ${AppDBConst.inventoryLogProductId} TEXT,
-          ${AppDBConst.inventoryLogQuantity} INTEGER NOT NULL,
-          ${AppDBConst.inventoryLogAction} TEXT NOT NULL,
-          ${AppDBConst.inventoryLogReason} TEXT,
-          ${AppDBConst.inventoryLogCreatedAt} TEXT NOT NULL,
-          ${AppDBConst.inventoryLogSynced} INTEGER DEFAULT 0,
-          ${AppDBConst.inventoryLogPosDeviceId} TEXT
-        )
-      ''');
+    CREATE TABLE IF NOT EXISTS ${AppDBConst.inventoryLogTable} (
+      ${AppDBConst.inventoryLogId} INTEGER PRIMARY KEY AUTOINCREMENT,
+      ${AppDBConst.inventoryLogOrderId} INTEGER,
+      ${AppDBConst.inventoryLogOrderItemId} INTEGER,
+      ${AppDBConst.inventoryLogProductId} TEXT,
+      ${AppDBConst.inventoryLogQuantity} INTEGER NOT NULL,
+      ${AppDBConst.inventoryLogAction} TEXT NOT NULL,
+      ${AppDBConst.inventoryLogReason} TEXT,
+      ${AppDBConst.inventoryLogCreatedAt} TEXT NOT NULL,
+      ${AppDBConst.inventoryLogSynced} INTEGER DEFAULT 0,
+      ${AppDBConst.inventoryLogPosDeviceId} TEXT
+    )
+  ''');
 
-      if (kDebugMode) print('✅ Upgraded to v6: refund/inventory support ready');
+      if (kDebugMode) {
+        print('✅ Upgraded to v6: refund/inventory support ready');
+      }
+    }
+
+
+// =====================================================
+// v7 - Offline Refunds
+// =====================================================
+    if (oldVersion < 7) {
+      await db.execute('''
+    CREATE TABLE IF NOT EXISTS ${AppDBConst.refundTable} (
+      ${AppDBConst.refundId} INTEGER PRIMARY KEY AUTOINCREMENT,
+      ${AppDBConst.refundLocalId} TEXT NOT NULL UNIQUE,
+      ${AppDBConst.refundOrderId} INTEGER NOT NULL,
+      ${AppDBConst.refundType} TEXT NOT NULL,
+      ${AppDBConst.refundAmount} REAL NOT NULL,
+      ${AppDBConst.refundPaymentType} TEXT,
+      ${AppDBConst.refundReason} TEXT,
+      ${AppDBConst.refundItemsReusable} TEXT,
+      ${AppDBConst.refundItems} TEXT,
+      ${AppDBConst.refundStatus} TEXT NOT NULL DEFAULT 'PENDING_SYNC',
+      ${AppDBConst.refundRetryCount} INTEGER NOT NULL DEFAULT 0,
+      ${AppDBConst.refundErrorMessage} TEXT,
+      ${AppDBConst.refundCreatedAt} TEXT NOT NULL,
+      ${AppDBConst.refundSyncedAt} TEXT
+    )
+  ''');
+
+      if (kDebugMode) {
+        print('✅ Upgraded to v7: offline refund table added');
+      }
     }
   }
 
@@ -516,11 +568,7 @@ class DBHelper {
       ${AppDBConst.profilePhoto} TEXT,
       ${AppDBConst.themeMode} TEXT,
       ${AppDBConst.layoutSelection} TEXT,
-      ${AppDBConst.userShiftId} INTEGER,
-      ${AppDBConst.deviceDisplayName} TEXT,
-      ${AppDBConst.tableId} TEXT,
-      ${AppDBConst.posDeviceId} TEXT,
-      ${AppDBConst.loyaltyPoints} INTEGER DEFAULT 0
+      ${AppDBConst.userShiftId} INTEGER
     )
     ''');
 
@@ -661,6 +709,26 @@ CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
         ${AppDBConst.inventoryLogPosDeviceId} TEXT
       )
     ''');
+
+    // Offline Refund Queue
+    await db.execute('''
+  CREATE TABLE IF NOT EXISTS ${AppDBConst.refundTable} (
+    ${AppDBConst.refundId} INTEGER PRIMARY KEY AUTOINCREMENT,
+    ${AppDBConst.refundLocalId} TEXT NOT NULL UNIQUE,
+    ${AppDBConst.refundOrderId} INTEGER NOT NULL,
+    ${AppDBConst.refundType} TEXT NOT NULL,
+    ${AppDBConst.refundAmount} REAL NOT NULL,
+    ${AppDBConst.refundPaymentType} TEXT,
+    ${AppDBConst.refundReason} TEXT,
+    ${AppDBConst.refundItemsReusable} TEXT,
+    ${AppDBConst.refundItems} TEXT,
+    ${AppDBConst.refundStatus} TEXT NOT NULL DEFAULT 'PENDING_SYNC',
+    ${AppDBConst.refundRetryCount} INTEGER NOT NULL DEFAULT 0,
+    ${AppDBConst.refundErrorMessage} TEXT,
+    ${AppDBConst.refundCreatedAt} TEXT NOT NULL,
+    ${AppDBConst.refundSyncedAt} TEXT
+  )
+''');
 
     /// Printer Table
     await db.execute('''

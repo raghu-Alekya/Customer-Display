@@ -13,8 +13,10 @@ import 'package:provider/provider.dart';
 import '../../Constants/text.dart';
 import '../../Database/db_helper.dart';
 import '../../Database/order_panel_db_helper.dart';
+import '../../Database/refund_db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
+import '../../Helper/offline_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Orders/refund_orderlist_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
@@ -1508,17 +1510,73 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                       // ==================== EXISTING CASH / OTHER PAYMENT LOGIC ====================
                                       try {
+                                        final isOnline = await OfflineHelper.isNetworkAvailable();
+
+                                        final isFullRefund =
+                                            selectedItems.length == selectedOrder.items.length;
+
+                                        final refundType = isFullRefund ? "Full" : "Partial";
+
+                                        final itemsReusableValue = "yes";
+                                        final reason = selectedReason ?? "refund";
+
+                                        final refundAmount =
+                                            editedRefundAmount ?? totalRefund;
+
+                                        // ============================================================
+                                        // OFFLINE REFUND
+                                        // ============================================================
+                                        if (!isOnline) {
+                                          final localRefundId =
+                                          await RefundDbHelper().insertOfflineRefund(
+                                            orderId: selectedOrder.orderId,
+                                            refundType: refundType,
+                                            amount: refundAmount,
+                                            paymentType: selectedPayment ?? "Cash",
+                                            reason: reason,
+                                            itemsReusable: itemsReusableValue,
+                                            items: selectedItems.map((item) {
+                                              return {
+                                                "order_item_id": item["order_item_id"],
+                                                "qty": item["qty"],
+                                                "refundable_amount": item["amount"],
+                                              };
+                                            }).toList(),
+                                          );
+
+                                          if (!mounted) return;
+
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                "Refund saved offline. Refund ID: $localRefundId",
+                                              ),
+                                              backgroundColor: Colors.orange,
+                                            ),
+                                          );
+
+                                          Navigator.pushAndRemoveUntil(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => const TotalOrdersScreen(),
+                                            ),
+                                                (route) => false,
+                                          );
+
+                                          return;
+                                        }
+
+                                        // ============================================================
+                                        // ONLINE REFUND
+                                        // ============================================================
+
                                         final fullRepo = RefundOrderRepository(
-                                          baseUrl: "https://merchantretail.alektasolutions.com",
+                                          baseUrl: UrlHelper.pinakaBaseUrl,
                                         );
 
                                         final partialRepo = PartialRefundRepository(
-                                          baseUrl: "https://merchantretail.alektasolutions.com",
+                                          baseUrl: UrlHelper.pinakaBaseUrl,
                                         );
-
-                                        final isFullRefund = selectedItems.length == selectedOrder.items.length;
-                                        final itemsReusableValue = "yes";
-                                        final reason = selectedReason ?? "refund";
 
                                         bool success = false;
 
@@ -1531,12 +1589,20 @@ class _RefundScreenState extends State<RefundScreen> {
                                           );
                                         } else {
                                           final itemsToRefund = selectedItems.map((item) {
-                                            final rawAmount = item['amount']?.toString() ?? "0";
-                                            final amount = double.tryParse(rawAmount.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
+                                            final rawAmount =
+                                                item['amount']?.toString() ?? "0";
+
+                                            final amount = double.tryParse(
+                                              rawAmount.replaceAll(
+                                                RegExp(r'[^0-9.]'),
+                                                '',
+                                              ),
+                                            ) ??
+                                                0.0;
 
                                             return {
-                                              "order_item_id": item['order_item_id'],
-                                              "qty": item['qty'],
+                                              "order_item_id": item["order_item_id"],
+                                              "qty": item["qty"],
                                               "refundable_amount": amount,
                                             };
                                           }).toList();
@@ -1553,21 +1619,33 @@ class _RefundScreenState extends State<RefundScreen> {
 
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(
-                                            content: Text(success ? "Refund Successful" : "Refund Failed"),
-                                            backgroundColor: success ? Colors.green : Colors.red,
+                                            content: Text(
+                                              success
+                                                  ? "Refund Successful"
+                                                  : "Refund Failed",
+                                            ),
+                                            backgroundColor:
+                                            success ? Colors.green : Colors.red,
                                           ),
                                         );
 
                                         if (success) {
                                           Navigator.pushAndRemoveUntil(
                                             context,
-                                            MaterialPageRoute(builder: (_) => const TotalOrdersScreen()),
+                                            MaterialPageRoute(
+                                              builder: (_) => const TotalOrdersScreen(),
+                                            ),
                                                 (route) => false,
                                           );
                                         }
                                       } catch (e) {
+                                        if (!mounted) return;
+
                                         ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+                                          SnackBar(
+                                            content: Text("Refund Error: $e"),
+                                            backgroundColor: Colors.red,
+                                          ),
                                         );
                                       }
                                     },

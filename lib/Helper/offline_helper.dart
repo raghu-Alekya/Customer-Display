@@ -504,12 +504,19 @@ class OfflineHelper {
       final db = await DBHelper.instance.database;
 
       final List<String> whereClauses = [
-        '${AppDBConst.orderStatus} IN (?,?,?)',
+        'LOWER(${AppDBConst.orderStatus}) IN (?,?,?,?,?,?,?,?,?,?)',
       ];
       final List<dynamic> whereArgs = [
         'completed',
+        'wc-completed',
         'processing',
+        'wc-processing',
         'pending_offline',
+        'wc-pending_offline',
+        'pending',
+        'wc-pending',
+        'refunded',
+        'wc-refunded',
       ];
 
       if (authorId != null && authorId > 0) {
@@ -835,4 +842,3 @@ class OfflineHelper {
     );
   }
 }
-
