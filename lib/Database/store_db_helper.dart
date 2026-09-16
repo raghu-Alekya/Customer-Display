@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import '../Constants/text.dart';
 import '../Models/Auth/store_validation_model.dart';
+import '../Preferences/pinaka_preferences.dart';
 import 'db_helper.dart';
 
 class StoreDbHelper { //Build #1.0.126: Updated code - store validation data management
@@ -44,6 +45,15 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
       validationMap,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+
+    try {
+      await PinakaPreferences.saveLoggedInStore(
+        storeId: response.storeId,
+        storeName: response.storeName,
+        storeLogoUrl: response.storeLogo,
+        storeBaseUrl: response.storeBaseUrl,
+      );
+    } catch (_) {}
 
     if (kDebugMode) {
       print("#### Store validation data saved: $validationMap");

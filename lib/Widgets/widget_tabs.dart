@@ -31,6 +31,7 @@ import '../Models/Search/product_custom_item_model.dart' as model;
 import '../Repositories/Assets/asset_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
+import '../Utilities/printer_settings.dart';
 import '../Utilities/svg_images_utility.dart';
 import '../mqtt_server/cart_item.dart';
 import '../mqtt_server/cart_state.dart';
@@ -321,7 +322,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       return;
     }
     if (_lastCfdPushAt != null &&
-        now.difference(_lastCfdPushAt!) < const Duration(milliseconds: 400)) {
+        now.difference(_lastCfdPushAt!) < const Duration(milliseconds: 120)) {
       if (kDebugMode) print('🔇 CFD push debounced (too soon after last push)');
       return;
     }
@@ -334,8 +335,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         CustomerDisplayHelper.skipNextPendingOrderRefresh = false;
       } catch (_) {}
 
-      // ... existing body: native update + MQTT publishState(...) ...
-      // (single publish only — no extra delayed second call)
+      await _publishCfdFromHiveOnce(orderId);
     } finally {
       _cfdPushInFlight = false;
     }
@@ -1146,6 +1146,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
             _persistedTabIndex = index;
             if (index != 2) _isEnteringItemPrice = false;
           });
+          final activeId = _orderHelper.activeOrderId;
+          if (activeId != null && activeId > 0) {
+            unawaited(_pushCfdAfterAppsChange(activeId));
+          }
         },
         child: SizedBox(
 
@@ -5260,6 +5264,12 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       // Clear any stale skip so native CFD accepts this update
       try {
         CustomerDisplayHelper.skipNextPendingOrderRefresh = false;
+      } catch (_) {}
+
+      // Open cash drawer through connected thermal printer
+      try {
+        await PrinterSettings.openDrawer(
+            context: widget.scaffoldMessengerContext);
       } catch (_) {}
 
       // Push CFD (native + MQTT) — works from IDLE

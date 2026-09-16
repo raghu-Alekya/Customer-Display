@@ -42,16 +42,33 @@ class CustomerDisplayService {
     required String storeName,
     String? storeLogoUrl,
     String? storeBaseUrl,
+    List<String>? slideshowUrls,
+    List<String>? banners,
   }) async {
     try {
+      final logoStr = storeLogoUrl ?? "";
+      final baseUrlStr = storeBaseUrl ?? "";
+      final bannersList = slideshowUrls ?? banners ?? const <String>[];
+
       print(
-          "📢 [CustomerDisplayService] showWelcomeWithStore → storeId=$storeId, storeName=$storeName, logo=$storeLogoUrl, baseUrl=$storeBaseUrl");
+          "📢 [CustomerDisplayService] showWelcomeWithStore → storeId=$storeId, storeName=$storeName, logo=$logoStr, banners=${bannersList.length}");
 
       await _platform.invokeMethod('showWelcomeWithStore', {
         "storeId": storeId,
+        "store_id": storeId,
         "storeName": storeName,
-        "storeLogoUrl": storeLogoUrl ?? "",
-        "storeBaseUrl": storeBaseUrl ?? "",
+        "store_name": storeName,
+        "storeLogoUrl": logoStr,
+        "store_logo_url": logoStr,
+        "storeLogo": logoStr,
+        "store_logo": logoStr,
+        "logo": logoStr,
+        "logoUrl": logoStr,
+        "storeBaseUrl": baseUrlStr,
+        "store_base_url": baseUrlStr,
+        "slideshowUrls": bannersList,
+        "slideshow_urls": bannersList,
+        "banners": bannersList,
       });
 
       print("✅ [CustomerDisplayService] Store welcome displayed");
@@ -79,6 +96,9 @@ class CustomerDisplayService {
     String storeId = '',
     String storeName = '',
     String? storeLogoUrl,
+    String? storeBaseUrl,
+    List<String>? slideshowUrls,
+    List<String>? banners,
     bool summaryEnabled = true,
     String discountType = "",
     double discountValue = 0.0,
@@ -87,6 +107,19 @@ class CustomerDisplayService {
       print("📢 showCustomerData() called, availablePoints=$availablePoints");
 
       final safeItems = items.map((item) {
+        final bool ebtFlag = item["is_ebt_eligible"] == true ||
+            item["isEbtEligible"] == true ||
+            item["ebt_eligible"] == true ||
+            item["is_ebt_eligible"] == 1 ||
+            item["isEbtEligible"] == 1 ||
+            item["ebt_eligible"] == 1 ||
+            item["is_ebt_eligible"]?.toString() == "1" ||
+            item["isEbtEligible"]?.toString() == "1" ||
+            item["ebt_eligible"]?.toString() == "1" ||
+            item["is_ebt_eligible"]?.toString() == "true" ||
+            item["isEbtEligible"]?.toString() == "true" ||
+            item["ebt_eligible"]?.toString() == "true";
+
         return {
           "name": item["name"] ?? "Unknown",
           "qty": item["qty"] ?? 0,
@@ -98,8 +131,15 @@ class CustomerDisplayService {
           "multipack_discount": item["multipack_discount"] ?? 0.0,
           "discount_type": item["discount_type"] ?? "",
           "image": item["image"] ?? "",
+          "is_ebt_eligible": ebtFlag,
+          "isEbtEligible": ebtFlag,
+          "ebt_eligible": ebtFlag,
         };
       }).toList();
+
+      final logoStr = storeLogoUrl ?? "";
+      final baseUrlStr = storeBaseUrl ?? "";
+      final bannersList = slideshowUrls ?? banners ?? const <String>[];
 
       await _platform.invokeMethod('showCustomerData', {
         "orderId": orderId,
@@ -116,8 +156,20 @@ class CustomerDisplayService {
         "orderDate": orderDate,
         "orderTime": orderTime,
         "storeId": storeId,
+        "store_id": storeId,
         "storeName": storeName,
-        "storeLogoUrl": storeLogoUrl ?? "",
+        "store_name": storeName,
+        "storeLogoUrl": logoStr,
+        "store_logo_url": logoStr,
+        "storeLogo": logoStr,
+        "store_logo": logoStr,
+        "logo": logoStr,
+        "logoUrl": logoStr,
+        "storeBaseUrl": baseUrlStr,
+        "store_base_url": baseUrlStr,
+        "slideshowUrls": bannersList,
+        "slideshow_urls": bannersList,
+        "banners": bannersList,
         "loyaltyContact": loyaltyContact,
         "summaryEnabled": summaryEnabled,
         "discountType": discountType,

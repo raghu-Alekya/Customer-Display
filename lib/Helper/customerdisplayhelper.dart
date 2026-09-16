@@ -538,8 +538,9 @@ import '../Database/order_panel_db_helper.dart';
 import '../Preferences/pinaka_preferences.dart';
 import '../mqtt_server/cart_item.dart';
 import '../mqtt_server/cart_state.dart';
+import '../mqtt_server/cfd_store_payload.dart';
 import '../mqtt_server/store_messaging_service.dart';
-import '../services/CustomerDisplayService.dart';
+import '../services/customerdisplayservice.dart';
 
 // ========== NEW MQTT IMPORTS ==========
 import 'package:flutter/material.dart';
@@ -922,10 +923,24 @@ class CustomerDisplayHelper {
 
           final double perUnitDiscount = qty > 0 ? totalDiscount / qty : 0.0;
 
+          final bool isEbt = item['is_ebt_eligible'] == true ||
+              item['isEbtEligible'] == true ||
+              item['ebt_eligible'] == true ||
+              item['is_ebt_eligible'] == 1 ||
+              item['isEbtEligible'] == 1 ||
+              item['ebt_eligible'] == 1 ||
+              item['is_ebt_eligible']?.toString() == '1' ||
+              item['isEbtEligible']?.toString() == '1' ||
+              item['ebt_eligible']?.toString() == '1' ||
+              item['is_ebt_eligible']?.toString() == 'true' ||
+              item['isEbtEligible']?.toString() == 'true' ||
+              item['ebt_eligible']?.toString() == 'true';
+
           print("""
-🟠 [CD] RESOLVED DISCOUNT
+🟠 [CD] RESOLVED DISCOUNT & EBT
  product : ${item["name"]}
  productId : $pid
+ isEbt : $isEbt
  meta : $discountMeta
  perUnit : $perUnitDiscount
 """);
@@ -956,29 +971,55 @@ class CustomerDisplayHelper {
             "discount_source": discountMeta["source"] ?? "",
             "rule_id": discountMeta["rule_id"] ?? "",
             "image": item["image"] ?? "",
-            // keep product_id for MQTT
             "product_id": pid,
+            "is_ebt_eligible": isEbt,
+            "isEbtEligible": isEbt,
+            "ebt_eligible": isEbt,
           };
         }),
-        ...payouts.map((p) => {
-          "name": "Payout",
-          "qty": 1.0,
-          "price": (p["amount"] ?? 0).toDouble(),
-          "image": "assets/svg/payout.svg",
-          "product_id": "payout",
+        ...payouts.map((p) {
+          final double pAmt = (p["amount"] is num)
+              ? (p["amount"] as num).toDouble()
+              : (double.tryParse((p["amount"] ?? p["price"] ?? p["total"] ?? p["payout_amount"] ?? 0).toString()) ?? 0.0);
+          final String pName = (p["product_name"] ?? p["name"] ?? p["item_name"] ?? "Payout").toString();
+          final String pImg = (p["product_image"] ?? p["image"] ?? p["item_image"] ?? "assets/svg/payout.svg").toString();
+          return {
+            "name": pName.isNotEmpty ? pName : "Payout",
+            "qty": 1.0,
+            "price": pAmt.abs(),
+            "original_price": pAmt.abs(),
+            "auto_discount": 0.0,
+            "image": pImg,
+            "product_id": (p["payout_product_id"] ?? p["product_id"] ?? p["id"] ?? "payout").toString(),
+            "item_type": "payout",
+            "is_ebt_eligible": false,
+            "isEbtEligible": false,
+            "ebt_eligible": false,
+          };
         }),
-        ...cashbacks.map((c) => {
-          "name": "Cashback",
-          "qty": 1.0,
-          "price": (c["amount"] ?? 0).toDouble(),
-          "image": c["product_image"] ?? "",
-          "product_id": "cashback",
+        ...cashbacks.map((c) {
+          final double cAmt = (c["amount"] is num)
+              ? (c["amount"] as num).toDouble()
+              : (double.tryParse((c["amount"] ?? c["price"] ?? 0).toString()) ?? 0.0);
+          return {
+            "name": "Cashback",
+            "qty": 1.0,
+            "price": cAmt.abs(),
+            "original_price": cAmt.abs(),
+            "auto_discount": 0.0,
+            "image": c["product_image"] ?? c["image"] ?? "",
+            "product_id": "cashback",
+            "item_type": "cashback",
+            "is_ebt_eligible": false,
+            "isEbtEligible": false,
+            "ebt_eligible": false,
+          };
         }),
       ];
 
       // ------------------ TOTALS ------------------
       double productTotal = parsedItems
-          .where((i) => i["name"] != "Payout" && i["name"] != "Cashback")
+          .where((i) => i["name"] != "Payout" && i["name"] != "Cashback" && i["product_id"] != "payout")
           .fold(0.0, (sum, i) {
         final qty = (i["qty"] as num?)?.toDouble() ?? 1.0;
         final price = (i["price"] as num?)?.toDouble() ?? 0.0;
@@ -986,11 +1027,19 @@ class CustomerDisplayHelper {
         return sum + ((price * qty) - totalDiscount);
       });
 
-      double payoutTotal =
-      payouts.fold(0, (sum, p) => sum + (p["amount"] ?? 0).toDouble());
+      double payoutTotal = payouts.fold(0.0, (sum, p) {
+        final double pAmt = (p["amount"] is num)
+            ? (p["amount"] as num).toDouble()
+            : (double.tryParse((p["amount"] ?? p["price"] ?? p["payout_amount"] ?? 0).toString()) ?? 0.0);
+        return sum + pAmt.abs();
+      });
 
-      double cashbackTotal =
-      cashbacks.fold(0, (sum, c) => sum + (c["amount"] ?? 0).toDouble());
+      double cashbackTotal = cashbacks.fold(0.0, (sum, c) {
+        final double cAmt = (c["amount"] is num)
+            ? (c["amount"] as num).toDouble()
+            : (double.tryParse((c["amount"] ?? c["price"] ?? 0).toString()) ?? 0.0);
+        return sum + cAmt.abs();
+      });
 
       double grossTotal = productTotal + payoutTotal + cashbackTotal;
 
@@ -1039,6 +1088,9 @@ class CustomerDisplayHelper {
           int.tryParse(data["available_points"]?.toString() ?? "0") ?? 0;
       print("🎯 Available Points = $availablePoints");
 
+      // ------------------ STORE DETAILS & BANNERS ------------------
+      final storePayload = await CfdStorePayload.load();
+
       // ------------------ PUSH TO CUSTOMER DISPLAY ------------------
       final int safeOrderId = serverOrderId;
 
@@ -1072,6 +1124,11 @@ class CustomerDisplayHelper {
         discountValue: totalItemDiscount,
         redeemedAmount: 0.0,
         availablePoints: availablePoints,
+        storeId: storePayload.storeId,
+        storeName: storePayload.storeName,
+        storeLogoUrl: storePayload.storeLogoUrl,
+        storeBaseUrl: storePayload.storeBaseUrl,
+        slideshowUrls: storePayload.slideshowUrls,
       );
 
       // ========== NEW: Publish full cart to MQTT CFD ==========
@@ -1085,6 +1142,11 @@ class CustomerDisplayHelper {
         grossTotal: grossTotal,
         screen: summaryEnabled ? 'PAYMENT' : 'CART',
         message: summaryEnabled ? 'Please complete payment' : null,
+        storeId: storePayload.storeId,
+        storeName: storePayload.storeName,
+        storeLogoUrl: storePayload.storeLogoUrl,
+        storeBaseUrl: storePayload.storeBaseUrl,
+        slideshowUrls: storePayload.slideshowUrls,
       );
       // ========================================================
 
@@ -1110,6 +1172,11 @@ class CustomerDisplayHelper {
     double merchantDiscount = 0.0,
     double netPayable = 0.0,
     double grossTotal = 0.0,
+    String? storeId,
+    String? storeName,
+    String? storeLogoUrl,
+    String? storeBaseUrl,
+    List<String>? slideshowUrls,
   }) async {
     try {
       final context = navigatorKey.currentContext;
@@ -1143,15 +1210,15 @@ class CustomerDisplayHelper {
             0.0;
 
         return CartItem(
-          productId: (i["product_id"] ?? i["id"] ?? i["name"] ?? "").toString(),
-          name: (i["name"] ?? i["item_name"] ?? "Item").toString(),
+          productId: (i["payout_product_id"] ?? i["product_id"] ?? i["id"] ?? i["name"] ?? "").toString(),
+          name: (i["product_name"] ?? i["name"] ?? i["item_name"] ?? "Item").toString(),
           qty: ((i["qty"] as num?)?.toInt() ?? (i["quantity"] as num?)?.toInt() ?? 1),
           unitPrice: (i["price"] as num?)?.toDouble() ?? (i["unit_price"] as num?)?.toDouble() ?? 0.0,
           discount: itemDiscount,
           isEbtEligible: ebtFlag,
           sku: i["sku"]?.toString(),
           itemType: i["item_type"]?.toString() ?? i["type"]?.toString(),
-          image: i["image"]?.toString() ?? i["item_image"]?.toString(),
+          image: i["product_image"]?.toString() ?? i["image"]?.toString() ?? i["item_image"]?.toString(),
         );
       }).toList();
 
@@ -1168,6 +1235,11 @@ class CustomerDisplayHelper {
         netPayable: netPayable,
         subtotalOverride: grossTotal,
         totalItems: mqttItems.fold(0, (s, item) => s + item.qty),
+        storeId: storeId,
+        storeName: storeName,
+        storeLogoUrl: storeLogoUrl,
+        storeBaseUrl: storeBaseUrl,
+        slideshowUrls: slideshowUrls ?? const [],
       );
 
       await messaging.publishState(cartState);

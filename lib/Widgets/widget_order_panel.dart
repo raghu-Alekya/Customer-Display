@@ -416,11 +416,14 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       double hiveOrderTax = 0.0;
       double hiveCashbackFee = 0.0;
 
+      Map<String, dynamic>? activeHiveOrder;
+
       if (activeId != null) {
         final box = StorageProvider.offlineOrders;
         final raw = await box.get(activeId.toString());
         if (raw != null) {
-          final order = Map<String, dynamic>.from(raw);
+          activeHiveOrder = Map<String, dynamic>.from(raw);
+          final order = activeHiveOrder!;
           loyaltyContact = (order['loyaltyContact'] ?? '').toString();
           availablePoints =
               int.tryParse((order['available_points'] ?? '0').toString()) ?? 0;
@@ -441,6 +444,69 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 
       final List<CartItem> items =
       orderItems.map((item) => CartItem.fromOrderItem(item)).toList();
+
+      if (activeHiveOrder != null) {
+        final payouts = (activeHiveOrder['payouts'] as List? ?? []);
+        for (final p in payouts) {
+          if (p is Map) {
+            final double amt =
+                ((p['amount'] ?? p['price'] ?? 0) as num).toDouble().abs();
+            if (amt > 0) {
+              final int pId = int.tryParse(
+                      (p['payout_product_id'] ?? p['product_id'] ?? 0)
+                          .toString()) ??
+                  0;
+              final String pName =
+                  (p['product_name'] ?? p['name'] ?? 'Payout').toString();
+              final bool exists = items.any(
+                (i) => i.itemType == 'payout' || i.productId == pId.toString(),
+              );
+              if (!exists) {
+                items.add(CartItem.fromOrderItem({
+                  'item_name': pName,
+                  'item_price': amt,
+                  'items_count': 1,
+                  'item_type': 'payout',
+                  'product_id': pId,
+                  'productId': pId,
+                  'product_name': pName,
+                  'product_image': p['product_image'] ?? p['image'] ?? '',
+                }));
+              }
+            }
+          }
+        }
+
+        final cashbacks = (activeHiveOrder['cashbacks'] as List? ?? []);
+        for (final c in cashbacks) {
+          if (c is Map) {
+            final double amt =
+                ((c['amount'] ?? c['price'] ?? 0) as num).toDouble().abs();
+            if (amt > 0) {
+              final int cId = int.tryParse(
+                      (c['cashback_product_id'] ?? c['product_id'] ?? 0)
+                          .toString()) ??
+                  0;
+              final bool exists = items.any(
+                (i) =>
+                    i.itemType == 'cashback' || i.productId == cId.toString(),
+              );
+              if (!exists) {
+                items.add(CartItem.fromOrderItem({
+                  'item_name': 'Cashback',
+                  'item_price': amt,
+                  'items_count': 1,
+                  'item_type': 'cashback',
+                  'product_id': cId,
+                  'productId': cId,
+                  'product_name': 'Cashback',
+                  'product_image': c['product_image'] ?? c['image'] ?? '',
+                }));
+              }
+            }
+          }
+        }
+      }
 
       final double tax = orderTax ?? hiveOrderTax;
       final double disc = (orderDiscount ?? hiveOrderDiscount).abs();

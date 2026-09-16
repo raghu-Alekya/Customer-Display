@@ -68,12 +68,18 @@ class CartItem {
     (item['item_type'] ?? item['type'] ?? 'product').toString().toLowerCase();
     final bool isWeighted = type.contains('weighted');
 
-    final double unitPrice = isWeighted
+    final double rawPrice = isWeighted
         ? _toD(item['unit_price'] ??
         item['regular_price'] ??
         item['item_price'] ??
-        item['price'])
-        : _toD(item['item_price'] ?? item['price']);
+        item['price'] ??
+        item['amount'] ??
+        item['payout_amount'])
+        : _toD(item['item_price'] ??
+        item['price'] ??
+        item['amount'] ??
+        item['payout_amount']);
+    final double unitPrice = rawPrice.abs();
 
     final int qty = _toI(item['items_count'] ?? item['quantity'] ?? 1);
 
@@ -108,11 +114,27 @@ class CartItem {
         item['isEbtEligible']?.toString() == 'true' ||
         item['ebt_eligible']?.toString() == 'true';
 
+    final String nameStr = (item['product_name'] ??
+            item['item_name'] ??
+            item['name'] ??
+            item['title'] ??
+            'Item')
+        .toString();
+
+    final String imgStr = (item['product_image'] ??
+            item['image'] ??
+            item['item_image'] ??
+            '')
+        .toString();
+
     return CartItem(
-      productId:
-      (item['product_id'] ?? item['itemProductId'] ?? item['id'] ?? '')
+      productId: (item['payout_product_id'] ??
+              item['product_id'] ??
+              item['itemProductId'] ??
+              item['id'] ??
+              '')
           .toString(),
-      name: (item['item_name'] ?? item['name'] ?? 'Item').toString(),
+      name: nameStr.isNotEmpty ? nameStr : 'Item',
       qty: qty,
       unitPrice: unitPrice,
       discount: discount,
@@ -120,9 +142,7 @@ class CartItem {
           ? null
           : item['sku']?.toString(),
       itemType: type,
-      image: (item['item_image'] ?? item['image'] ?? '').toString().isEmpty
-          ? null
-          : (item['item_image'] ?? item['image'])?.toString(),
+      image: imgStr.isNotEmpty ? imgStr : null,
       weightQty: weightQty,
       itemTax: _toD(item['item_tax'] ?? item['tax_after_discount']),
       loyaltyPoints: _toI(item['loyalty_points'] ?? item['loyaltyPoints'] ?? 0),

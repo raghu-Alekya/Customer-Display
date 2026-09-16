@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:pinaka_pos/Preferences/pinaka_preferences.dart';
+import '../Database/store_db_helper.dart';
+import '../Database/db_helper.dart';
 
 /// Loads store branding + banner URLs for MQTT CFD.
 class CfdStorePayload {
@@ -20,13 +22,6 @@ class CfdStorePayload {
 
   // ---------------------------------------------------------------------------
   // FIX: Cache the loaded payload for a short window.
-  //
-  // load() used to be called on every single cart publish (every item add,
-  // qty change, tab switch, etc.), which meant re-reading SharedPreferences
-  // and re-parsing the banner list dozens of times per second during rapid
-  // scanning. That added real latency to the "update the customer display"
-  // path. Caching for a few seconds removes that cost while still picking
-  // up store/banner changes quickly if they're edited elsewhere in the app.
   // ---------------------------------------------------------------------------
 
   static CfdStorePayload? _cached;
@@ -57,17 +52,42 @@ class CfdStorePayload {
   }
 
   static Future<CfdStorePayload> _loadFresh() async {
-    final storeInfo = PinakaPreferences.getLoggedInStore();
+    final Map<String, dynamic> storeInfo =
+        Map<String, dynamic>.from(PinakaPreferences.getLoggedInStore());
 
-    // ========== TEMPORARY DEBUG – paste the full output ==========
-    if (kDebugMode) {
-      print('🏪 [CFD] ========== FULL STORE INFO ==========');
-      storeInfo.forEach((key, value) {
-        print('   $key → ${value.runtimeType} = $value');
-      });
-      print('🏪 [CFD] =====================================');
+    Map<String, dynamic>? dbData;
+    try {
+      dbData = await StoreDbHelper.instance.getStoreValidationData();
+    } catch (_) {}
+
+    if (dbData != null && dbData.isNotEmpty) {
+      if (storeInfo['storeId'] == null || storeInfo['storeId'].toString().isEmpty) {
+        storeInfo['storeId'] = dbData[AppDBConst.storeId]?.toString() ?? '';
+      }
+      if (storeInfo['storeName'] == null || storeInfo['storeName'].toString().isEmpty) {
+        storeInfo['storeName'] = dbData[AppDBConst.storeName]?.toString() ?? '';
+      }
+      if (storeInfo['storeLogoUrl'] == null || storeInfo['storeLogoUrl'].toString().isEmpty) {
+        storeInfo['storeLogoUrl'] = dbData[AppDBConst.storeLogo]?.toString() ?? '';
+      }
+      if (storeInfo['storeBaseUrl'] == null || storeInfo['storeBaseUrl'].toString().isEmpty) {
+        storeInfo['storeBaseUrl'] = dbData[AppDBConst.storeBaseUrl]?.toString() ?? '';
+      }
+      if (dbData[AppDBConst.storeInfo] != null) {
+        storeInfo['store_info'] = dbData[AppDBConst.storeInfo];
+      }
     }
-    // =============================================================
+
+    // ========== PRINT STORE DETAILS API/DB RESPONSE IN CONSOLE ==========
+    print('🏪 [CFD] ========== STORE DETAILS API / DB RESPONSE ==========');
+    storeInfo.forEach((key, value) {
+      print('   ▶ $key → ${value.runtimeType} = $value');
+    });
+    if (dbData != null) {
+      print('   ▶ [DB Raw Validation Map] → $dbData');
+    }
+    print('🏪 [CFD] ========================================================');
+    // =====================================================================
 
     final storeId = _str(storeInfo['storeId'] ?? storeInfo['store_id']);
     final storeName = _str(storeInfo['storeName'] ?? storeInfo['store_name']);

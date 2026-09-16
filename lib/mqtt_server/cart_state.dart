@@ -229,11 +229,19 @@ class CartState {
 
       'subtotal': _r2(computedSubtotal),
       'grossTotal': _r2(computedSubtotal),
-      'discount': _r2(totalOverallDiscount),
+      'discount': _r2(orderDiscount + totalItemDiscount),
       'totalDiscount': _r2(totalOverallDiscount),
+      'total_discount': _r2(totalOverallDiscount),
       'itemDiscountTotal': _r2(totalItemDiscount),
+      'item_discount_total': _r2(totalItemDiscount),
       'orderDiscount': _r2(orderDiscount),
+      'order_discount': _r2(orderDiscount),
+      'coupon': _r2(orderDiscount),
+      'couponDiscount': _r2(orderDiscount),
+      'coupon_discount': _r2(orderDiscount),
+      'couponAmount': _r2(orderDiscount),
       'merchantDiscount': _r2(merchantDiscount),
+      'merchant_discount': _r2(merchantDiscount),
       'tax': _r2(tax),
       'cashbackFee': _r2(cashbackFee),
       'netTotal': _r2(computedNetTotal),
@@ -250,13 +258,30 @@ class CartState {
       'summaryEnabled': summaryEnabled,
 
       // Store + banners
-      if (storeId != null && storeId!.isNotEmpty) 'storeId': storeId,
-      if (storeName != null && storeName!.isNotEmpty) 'storeName': storeName,
-      if (storeLogoUrl != null && storeLogoUrl!.isNotEmpty)
+      if (storeId != null && storeId!.isNotEmpty) ...{
+        'storeId': storeId,
+        'store_id': storeId,
+      },
+      if (storeName != null && storeName!.isNotEmpty) ...{
+        'storeName': storeName,
+        'store_name': storeName,
+      },
+      if (storeLogoUrl != null && storeLogoUrl!.isNotEmpty) ...{
         'storeLogoUrl': storeLogoUrl,
-      if (storeBaseUrl != null && storeBaseUrl!.isNotEmpty)
+        'store_logo_url': storeLogoUrl,
+        'storeLogo': storeLogoUrl,
+        'logo': storeLogoUrl,
+        'logoUrl': storeLogoUrl,
+      },
+      if (storeBaseUrl != null && storeBaseUrl!.isNotEmpty) ...{
         'storeBaseUrl': storeBaseUrl,
-      if (slideshowUrls.isNotEmpty) 'slideshowUrls': slideshowUrls,
+        'store_base_url': storeBaseUrl,
+      },
+      if (slideshowUrls.isNotEmpty) ...{
+        'slideshowUrls': slideshowUrls,
+        'slideshow_urls': slideshowUrls,
+        'banners': slideshowUrls,
+      },
 
       // ── NEW FIELDS ──
       'loyaltyContact': loyaltyContact,

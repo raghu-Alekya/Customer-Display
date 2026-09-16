@@ -34,46 +34,78 @@ class PrinterSettings {
   final PrinterDBHelper _printerDBHelper = PrinterDBHelper();
 
   static Future<void> openDrawer({BuildContext? context}) async {
-    //Old code
-    // final profile = await CapabilityProfile.load(name: 'default');
-    // var bytes = Generator(PaperSize.mm80, profile).drawer(pin: PosDrawer.pin5); /// open drawer
-    // if (kDebugMode) {
-    //   print("TopBar onTap of cash drawer open tapped with profile: ${profile.name} and bytes return $bytes");
-    // }
-    //
-    //New code
+    print("cash drawer throught the printer");
+
     try {
       var sunmi = SunmiPrinterPlus();
       sunmi.openDrawer();
-      bool isOpen = await sunmi.isDrawerOpen();
       SunmiDrawer.openDrawer();
       var result = await SunmiPrinterPlusPlatform.instance.openDrawer();
       if (kDebugMode) {
         print("Drawer is open $result");
       }
-    } catch(e,s){
+    } catch (e, s) {
       if (kDebugMode) {
-        print("Exception at PrinterSetting.openDrawer as :: $e :: Stack :: $s");
+        print("Exception at Sunmi openDrawer as :: $e :: Stack :: $s");
       }
     }
-    if (context != null) {
-      // First SnackBar: Cash drawer opening
-      // ScaffoldMessenger.of(context).showSnackBar(
-      //   const SnackBar(
-      //     content: Text(TextConstants.cashDrawerIsOpening),
-      //     backgroundColor: Colors.orange,
-      //     duration: Duration(seconds: 2),
-      //   ),
-      // );
-      //
-      // // Second SnackBar: Order successfully completed
-      // ScaffoldMessenger.of(context).showSnackBar(
-      //   const SnackBar(
-      //     content: Text("Order successfully completed"),
-      //     backgroundColor: Colors.green,
-      //     duration: Duration(seconds: 2),
-      //   ),
-      // );
+
+    try {
+      final settings = PrinterSettings();
+      await settings.setSelectedPrinterFromDB();
+      final printer = settings.selectedPrinter;
+
+      if (printer != null &&
+          printer.deviceName != null &&
+          printer.deviceName!.isNotEmpty) {
+        final profile = await CapabilityProfile.load(name: 'XP-N160I');
+        final generator = Generator(PaperSize.mm80, profile);
+
+        List<int> bytes = [];
+        bytes += generator.drawer(pin: PosDrawer.pin2);
+        bytes += generator.drawer(pin: PosDrawer.pin5);
+        bytes += const [27, 112, 0, 25, 250];
+        bytes += const [27, 112, 1, 25, 250];
+
+        switch (printer.typePrinter) {
+          case PrinterType.usb:
+            await settings.printerManager.connect(
+              type: printer.typePrinter,
+              model: UsbPrinterInput(
+                name: printer.deviceName,
+                productId: printer.productId,
+                vendorId: printer.vendorId,
+              ),
+            );
+            break;
+          case PrinterType.bluetooth:
+            await settings.printerManager.connect(
+              type: printer.typePrinter,
+              model: BluetoothPrinterInput(
+                name: printer.deviceName,
+                address: printer.address ?? "",
+                isBle: printer.isBle ?? false,
+              ),
+            );
+            break;
+          case PrinterType.network:
+            await settings.printerManager.connect(
+              type: printer.typePrinter,
+              model: TcpPrinterInput(ipAddress: printer.address ?? ""),
+            );
+            break;
+        }
+
+        settings.printerManager.send(type: printer.typePrinter, bytes: bytes);
+        if (kDebugMode) {
+          print(
+              "✅ Sent ESC/POS drawer open command to external printer: ${printer.deviceName}");
+        }
+      }
+    } catch (e, s) {
+      if (kDebugMode) {
+        print("Exception opening cash drawer through connected printer :: $e :: Stack :: $s");
+      }
     }
   }
 
