@@ -1076,9 +1076,13 @@ class CustomerDisplayHelper {
 
       // ========== NEW: Publish full cart to MQTT CFD ==========
       await _publishMqttCart(
-        orderId: serverOrderId,
+        orderId: safeOrderId,
         items: parsedItems,
         tax: orderTax,
+        orderDiscount: orderDiscount,
+        merchantDiscount: merchantDiscount,
+        netPayable: netPayable,
+        grossTotal: grossTotal,
         screen: summaryEnabled ? 'PAYMENT' : 'CART',
         message: summaryEnabled ? 'Please complete payment' : null,
       );
@@ -1102,6 +1106,10 @@ class CustomerDisplayHelper {
     required double tax,
     required String screen,
     String? message,
+    double orderDiscount = 0.0,
+    double merchantDiscount = 0.0,
+    double netPayable = 0.0,
+    double grossTotal = 0.0,
   }) async {
     try {
       final context = navigatorKey.currentContext;
@@ -1114,12 +1122,36 @@ class CustomerDisplayHelper {
       Provider.of<StoreMessagingService>(context, listen: false);
 
       final List<CartItem> mqttItems = items.map((i) {
+        final bool ebtFlag = i["is_ebt_eligible"] == true ||
+            i["isEbtEligible"] == true ||
+            i["ebt_eligible"] == true ||
+            i["is_ebt_eligible"] == 1 ||
+            i["isEbtEligible"] == 1 ||
+            i["ebt_eligible"] == 1 ||
+            i["is_ebt_eligible"]?.toString() == "1" ||
+            i["isEbtEligible"]?.toString() == "1" ||
+            i["ebt_eligible"]?.toString() == "1" ||
+            i["is_ebt_eligible"]?.toString() == "true" ||
+            i["isEbtEligible"]?.toString() == "true" ||
+            i["ebt_eligible"]?.toString() == "true";
+
+        final double itemDiscount = (i["auto_discount"] as num?)?.toDouble() ??
+            (i["discount"] as num?)?.toDouble() ??
+            (i["multipack_discount_total"] as num?)?.toDouble() ??
+            (i["combo_discount_total"] as num?)?.toDouble() ??
+            (i["item_discount"] as num?)?.toDouble() ??
+            0.0;
+
         return CartItem(
-          productId: (i["product_id"] ?? i["name"] ?? "").toString(),
-          name: (i["name"] ?? "Item").toString(),
-          qty: ((i["qty"] as num?)?.toInt() ?? 1),
-          unitPrice: (i["price"] as num?)?.toDouble() ?? 0.0,
-          discount: (i["auto_discount"] as num?)?.toDouble() ?? 0.0,
+          productId: (i["product_id"] ?? i["id"] ?? i["name"] ?? "").toString(),
+          name: (i["name"] ?? i["item_name"] ?? "Item").toString(),
+          qty: ((i["qty"] as num?)?.toInt() ?? (i["quantity"] as num?)?.toInt() ?? 1),
+          unitPrice: (i["price"] as num?)?.toDouble() ?? (i["unit_price"] as num?)?.toDouble() ?? 0.0,
+          discount: itemDiscount,
+          isEbtEligible: ebtFlag,
+          sku: i["sku"]?.toString(),
+          itemType: i["item_type"]?.toString() ?? i["type"]?.toString(),
+          image: i["image"]?.toString() ?? i["item_image"]?.toString(),
         );
       }).toList();
 
@@ -1130,10 +1162,16 @@ class CustomerDisplayHelper {
         items: mqttItems,
         tax: tax,
         message: message,
+        orderId: orderId,
+        orderDiscount: orderDiscount,
+        merchantDiscount: merchantDiscount,
+        netPayable: netPayable,
+        subtotalOverride: grossTotal,
+        totalItems: mqttItems.fold(0, (s, item) => s + item.qty),
       );
 
       await messaging.publishState(cartState);
-      print("✅ [MQTT] Published $screen with ${mqttItems.length} items");
+      print("✅ [MQTT] Published $screen with ${mqttItems.length} items (discounts & EBT included)");
     } catch (e) {
       print("❌ [MQTT] Publish failed (non-fatal): $e");
     }

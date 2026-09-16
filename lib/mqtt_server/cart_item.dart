@@ -45,6 +45,7 @@ class CartItem {
     'unit_price': unitPrice,
     'price': unitPrice,
     'discount': discount,
+    'auto_discount': discount,
     'total': total,
     'lineTotal': total,
     'item_sum_price': total,
@@ -58,6 +59,8 @@ class CartItem {
     if (loyaltyPoints > 0) 'loyaltyPoints': loyaltyPoints,
     if (variationId != null) 'variationId': variationId,
     'isEbtEligible': isEbtEligible,
+    'is_ebt_eligible': isEbtEligible,
+    'ebt_eligible': isEbtEligible,
   };
 
   factory CartItem.fromOrderItem(Map<String, dynamic> item) {
@@ -78,10 +81,32 @@ class CartItem {
         ? _toD(item['weight_qty'] ?? item['weightQty'] ?? item['weight'] ?? 0)
         : 0.0;
 
-    final double discount = _toD(item['auto_discount']);
+    final double discount = _toD(item['auto_discount']) > 0
+        ? _toD(item['auto_discount'])
+        : (_toD(item['discount']) > 0
+            ? _toD(item['discount'])
+            : (_toD(item['multipack_discount_total']) > 0
+                ? _toD(item['multipack_discount_total'])
+                : (_toD(item['combo_discount_total']) > 0
+                    ? _toD(item['combo_discount_total'])
+                    : _toD(item['item_discount']))));
+
     final double lineTotal = isWeighted && weightQty > 0
         ? (unitPrice * weightQty) - discount
         : (unitPrice * qty) - discount;
+
+    final bool ebtFlag = item['is_ebt_eligible'] == true ||
+        item['isEbtEligible'] == true ||
+        item['ebt_eligible'] == true ||
+        item['is_ebt_eligible'] == 1 ||
+        item['isEbtEligible'] == 1 ||
+        item['ebt_eligible'] == 1 ||
+        item['is_ebt_eligible']?.toString() == '1' ||
+        item['isEbtEligible']?.toString() == '1' ||
+        item['ebt_eligible']?.toString() == '1' ||
+        item['is_ebt_eligible']?.toString() == 'true' ||
+        item['isEbtEligible']?.toString() == 'true' ||
+        item['ebt_eligible']?.toString() == 'true';
 
     return CartItem(
       productId:
@@ -104,8 +129,7 @@ class CartItem {
       variationId: item['variation_id'] != null
           ? int.tryParse(item['variation_id'].toString())
           : null,
-      isEbtEligible:
-      item['is_ebt_eligible'] == true || item['isEbtEligible'] == true,
+      isEbtEligible: ebtFlag,
       lineTotal: lineTotal,
     );
   }

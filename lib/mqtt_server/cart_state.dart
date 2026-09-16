@@ -208,6 +208,8 @@ class CartState {
             : null);
 
     final computedSubtotal = subtotal;
+    final totalItemDiscount = items.fold(0.0, (sum, i) => sum + i.discount);
+    final totalOverallDiscount = totalItemDiscount + orderDiscount + merchantDiscount;
     final computedNetTotal =
         computedSubtotal - orderDiscount - merchantDiscount;
     final computedTotal = netPayable > 0
@@ -227,7 +229,9 @@ class CartState {
 
       'subtotal': _r2(computedSubtotal),
       'grossTotal': _r2(computedSubtotal),
-      'discount': _r2(orderDiscount),
+      'discount': _r2(totalOverallDiscount),
+      'totalDiscount': _r2(totalOverallDiscount),
+      'itemDiscountTotal': _r2(totalItemDiscount),
       'orderDiscount': _r2(orderDiscount),
       'merchantDiscount': _r2(merchantDiscount),
       'tax': _r2(tax),
