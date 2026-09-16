@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/svg.dart';
@@ -31,7 +33,24 @@ List<String> allData = List.generate(27, (i) => "Item ${i + 1}");
 
 class CompletedOrdersScreen extends StatefulWidget {
   final int lastSelectedIndex;
-  const CompletedOrdersScreen({super.key, required this.lastSelectedIndex});
+
+  // Track orders that were refunded locally so they disappear immediately
+  static final Set<int> _manuallyRefundedOrderIds = {};
+
+  static void markOrderRefunded(int orderId) {
+    _manuallyRefundedOrderIds.add(orderId);
+    _CompletedOrdersScreenState._cachedOrders.removeWhere((o) => o.orderId == orderId);
+    _CompletedOrdersScreenState._cachedOrderIds.remove(orderId);
+  }
+
+  static bool isOrderRefunded(int orderId) {
+    return _manuallyRefundedOrderIds.contains(orderId);
+  }
+
+  const CompletedOrdersScreen({
+    Key? key,
+    this.lastSelectedIndex = 0,
+  }) : super(key: key);
 
   @override
   State<CompletedOrdersScreen> createState() => _CompletedOrdersScreenState();
@@ -40,7 +59,7 @@ class CompletedOrdersScreen extends StatefulWidget {
 class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
     with WidgetsBindingObserver, LayoutSelectionMixin {
 
-  int _selectedSidebarIndex = 5;
+  int _selectedSidebarIndex = 0;
   int _currentPage = 1;
   int itemsPerPage = 10;
   final List<int> _rowsPerPageOptions = [10, 20, 50, 100];
@@ -60,6 +79,7 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
   // ✅ NEW: Loading and error states
   bool _isLoading = false;
   String? _errorMessage;
+  StreamSubscription<ConnectivityResult>? _connectivitySubscription;
 
   // Store currency is persisted in the local asset table.  Keep the last
   // known symbol in memory so offline Refund never falls back to a hard-coded
@@ -175,11 +195,19 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
     super.initState();
     _selectedSidebarIndex = widget.lastSelectedIndex;
     _loadCompletedOrders();
+
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((result) {
+      if (result != ConnectivityResult.none) {
+        OfflineHelper.invalidateNetworkCache();
+        _loadCompletedOrders(forceRefresh: true);
+      }
+    });
   }
 
   @override
   void dispose() {
     _isNavigatingAway = true;
+    _connectivitySubscription?.cancel();
     searchController.dispose();
     super.dispose();
   }

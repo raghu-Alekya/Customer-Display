@@ -808,25 +808,46 @@ class OfflineHelper {
     final int localId = row[AppDBConst.orderId] as int? ?? 0;
     final int orderId = serverId > 0 ? serverId : localId;
 
-    final total = (row[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0;
-    final discount = (row[AppDBConst.orderDiscount] as num?)?.toDouble() ?? 0.0;
+    final total = (row[AppDBConst.orderTotal] as num?)?.toDouble() ??
+        (row['total'] as num?)?.toDouble() ??
+        (row['gross_total'] as num?)?.toDouble() ?? 0.0;
+    final discount = (row[AppDBConst.orderDiscount] as num?)?.toDouble() ??
+        (row['discount'] as num?)?.toDouble() ?? 0.0;
     final tax = (row[AppDBConst.orderTax] as num?)?.toDouble() ??
         (row['tax'] as num?)?.toDouble() ?? 0.0;
-    final dateStr = row[AppDBConst.orderDate]?.toString() ?? '';
+    final dateStr = row[AppDBConst.orderDate]?.toString() ?? row['created_at']?.toString() ?? '';
     final completedAt = DateTime.tryParse(dateStr) ?? DateTime.now();
 
     final items = itemRows
-        .map((item) => refund_model.LineItem(
-      id: item[AppDBConst.itemServerId] as int? ?? 0,
-      name: item[AppDBConst.itemName]?.toString() ?? '',
-      productId: item[AppDBConst.itemProductId] as int? ?? 0,
-      quantity: item[AppDBConst.itemCount] as int? ?? 1,
-      total: (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ?? 0.0,
-      image: item[AppDBConst.itemImage]?.toString() ?? '',
-      totalTax: 0.0,
-      isItemsHasDiscount: 'No',
-      itemDiscountType: '',
-    ))
+        .map((item) {
+      final double itemPrice = (item[AppDBConst.itemPrice] as num?)?.toDouble() ??
+          (item['price'] as num?)?.toDouble() ??
+          (item['item_price'] as num?)?.toDouble() ?? 0.0;
+      final int qty = (item[AppDBConst.itemCount] as num?)?.toInt() ??
+          (item['quantity'] as num?)?.toInt() ??
+          (item['items_count'] as num?)?.toInt() ?? 1;
+      final double sumPrice = (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
+          (item['item_sum_price'] as num?)?.toDouble() ??
+          (item['total'] as num?)?.toDouble() ?? (itemPrice * (qty > 0 ? qty : 1));
+      final int lineItemId = (item[AppDBConst.itemServerId] as num?)?.toInt() ??
+          (item[AppDBConst.itemId] as num?)?.toInt() ??
+          (item['id'] as num?)?.toInt() ?? 0;
+      final String rawName = item[AppDBConst.itemName]?.toString() ??
+          item['name']?.toString() ?? item['item_name']?.toString() ?? 'Item';
+
+      return refund_model.LineItem(
+        id: lineItemId,
+        name: rawName.isNotEmpty ? rawName : 'Item',
+        productId: (item[AppDBConst.itemProductId] as num?)?.toInt() ??
+            (item['product_id'] as num?)?.toInt() ?? 0,
+        quantity: qty > 0 ? qty : 1,
+        total: sumPrice > 0 ? sumPrice : (itemPrice * (qty > 0 ? qty : 1)),
+        image: item[AppDBConst.itemImage]?.toString() ?? item['image']?.toString() ?? '',
+        totalTax: (item['total_tax'] as num?)?.toDouble() ?? 0.0,
+        isItemsHasDiscount: 'No',
+        itemDiscountType: '',
+      );
+    })
         .toList();
 
     return refund_model.CompletedOrder(
@@ -840,7 +861,7 @@ class OfflineHelper {
       discount: discount,
       tax: tax,
       total: total,
-      author: row[AppDBConst.userId] as int?,
+      author: (row[AppDBConst.userId] as num?)?.toInt(),
       items: items,
       coupons: [],
       payments: [],

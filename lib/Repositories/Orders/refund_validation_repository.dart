@@ -1,7 +1,11 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../Database/db_helper.dart';
+import '../../Database/user_db_helper.dart';
+import '../../Helper/offline_helper.dart';
 import '../../Helper/url_helper.dart';
 
 class RefundValidationRepository {
@@ -15,6 +19,63 @@ class RefundValidationRepository {
     if (kDebugMode) {
       print("========== REFUND VALIDATION START ==========");
       print("Employee PIN Entered: $employeePin");
+    }
+
+    final bool isOnline = await OfflineHelper.isNetworkAvailable();
+    if (!isOnline) {
+      if (kDebugMode) {
+        print("⚡ Device is OFFLINE. Performing local PIN validation...");
+      }
+
+      String storedPin = "";
+      try {
+        const secureStorage = FlutterSecureStorage(
+          aOptions: AndroidOptions(encryptedSharedPreferences: true),
+          iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+        );
+        storedPin = await secureStorage.read(key: 'encrypted_login_pin') ?? "";
+      } catch (_) {}
+
+      if (storedPin.isEmpty) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          storedPin = prefs.getString('user_pin') ??
+              prefs.getString('login_pin') ??
+              prefs.getString('encrypted_login_pin') ??
+              "";
+        } catch (_) {}
+      }
+
+      final userData = await UserDbHelper().getUserData();
+      final userPinInDb = userData?['pin']?.toString() ??
+          userData?['user_pin']?.toString() ??
+          userData?['login_pin']?.toString() ??
+          "";
+
+      bool isValid = false;
+      if (employeePin.isNotEmpty) {
+        if ((storedPin.isNotEmpty && storedPin == employeePin) ||
+            (userPinInDb.isNotEmpty && userPinInDb == employeePin)) {
+          isValid = true;
+        } else {
+          final matchedEmployee =
+              await UserDbHelper().validateOfflinePin(employeePin);
+          if (matchedEmployee != null) {
+            isValid = true;
+          }
+        }
+      }
+
+      if (isValid) {
+        if (kDebugMode) print("✅ Local OFFLINE PIN validated successfully");
+        return {
+          "success": true,
+          "message": "User verified successfully (offline)",
+        };
+      } else {
+        if (kDebugMode) print("❌ Local OFFLINE PIN validation failed");
+        throw Exception("Invalid PIN or unauthorized user");
+      }
     }
 
     final token = await _getTokenFromDb();
