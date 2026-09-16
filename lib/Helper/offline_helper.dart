@@ -467,6 +467,7 @@ class OfflineHelper {
                 AppDBConst.userId: orderMap['user_id'] ?? 0,
                 AppDBConst.orderDiscount: (orderMap['order_discount'] ?? 0.0) as num,
                 AppDBConst.merchantDiscount: (orderMap['merchant_discount'] ?? 0.0) as num,
+                AppDBConst.orderTax: (orderMap['order_tax'] ?? orderMap['tax'] ?? 0.0) as num,
               };
               orders.insert(0, _orderModelFromSqliteRow(row, itemRows));
               addedOrderIds.add(offId);
@@ -705,6 +706,8 @@ class OfflineHelper {
     final total = (row[AppDBConst.orderTotal] as num?)?.toStringAsFixed(2) ?? '0.00';
     final dateCreated = row[AppDBConst.orderDate]?.toString() ?? '';
     final discount = (row[AppDBConst.orderDiscount] as num?)?.toStringAsFixed(2) ?? '0.00';
+    final tax = (row[AppDBConst.orderTax] as num?)?.toStringAsFixed(2) ??
+        (row['tax'] as num?)?.toStringAsFixed(2) ?? '0.00';
 
     final lineItems = itemRows.map((item) => _lineItemFromSqliteRow(item)).toList();
 
@@ -721,9 +724,9 @@ class OfflineHelper {
       discountTax: '0.00',
       shippingTotal: '0.00',
       shippingTax: '0.00',
-      cartTax: '0.00',
+      cartTax: tax,
       total: total,
-      totalTax: '0.00',
+      totalTax: tax,
       customerId: row[AppDBConst.userId] as int? ?? 0,
       orderKey: '',
       lineItems: lineItems,
@@ -807,6 +810,8 @@ class OfflineHelper {
 
     final total = (row[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0;
     final discount = (row[AppDBConst.orderDiscount] as num?)?.toDouble() ?? 0.0;
+    final tax = (row[AppDBConst.orderTax] as num?)?.toDouble() ??
+        (row['tax'] as num?)?.toDouble() ?? 0.0;
     final dateStr = row[AppDBConst.orderDate]?.toString() ?? '';
     final completedAt = DateTime.tryParse(dateStr) ?? DateTime.now();
 
@@ -833,7 +838,7 @@ class OfflineHelper {
       transactionId: '',
       amount: total,
       discount: discount,
-      tax: 0.0,
+      tax: tax,
       total: total,
       author: row[AppDBConst.userId] as int?,
       items: items,

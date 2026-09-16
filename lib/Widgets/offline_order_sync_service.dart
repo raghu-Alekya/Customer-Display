@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../Helper/offline_helper.dart';
 
+import '../Database/db_helper.dart';
 import '../Database/storage/storage_provider.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
@@ -183,14 +184,32 @@ class OfflineOrderSyncService {
               .markAsSynced(p.id, wooOrderId);
         }
 
-        // 🗑️ DELETE IMMEDIATELY if Woo says COMPLETED
-        if (wooStatus == 'completed') {
+        // 🗑️ REMOVE FROM LOCAL DB ONCE SYNCED
+        if (wooOrderId > 0) {
           await box.delete(key.toString());
           await box.delete(wooOrderId.toString());
 
+          try {
+            final db = await DBHelper.instance.database;
+            await db.delete(
+              AppDBConst.orderTable,
+              where: '${AppDBConst.orderId} = ? OR ${AppDBConst.orderServerId} = ?',
+              whereArgs: [orderId, wooOrderId],
+            );
+            await db.delete(
+              AppDBConst.purchasedItemsTable,
+              where: '${AppDBConst.orderIdForeignKey} = ? OR ${AppDBConst.itemServerId} = ?',
+              whereArgs: [orderId, wooOrderId],
+            );
+          } catch (e) {
+            if (kDebugMode) {
+              print("⚠️ Error removing synced order from SQLite: $e");
+            }
+          }
+
           if (kDebugMode) {
             print(
-              "🗑️ Offline order deleted → local:$orderId woo:$wooOrderId",
+              "🗑️ Synced offline order deleted from local DB → local:$orderId woo:$wooOrderId status:$wooStatus",
             );
           }
 

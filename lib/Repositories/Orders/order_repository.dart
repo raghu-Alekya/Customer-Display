@@ -3344,10 +3344,20 @@ class OrderRepository {
           int.tryParse(selectedPayLaterUser['user_id'].toString()) != null &&
           int.tryParse(selectedPayLaterUser['user_id'].toString())! > 0;
 
-      final String orderStatus = isPayLaterOrder ? "completed" : "processing";
+      String orderStatus = isPayLaterOrder ? "completed" : "processing";
+      final String? storedStatus = offlineOrder['order_status']?.toString() ??
+          offlineOrder['status']?.toString() ??
+          offlineOrder['post_status']?.toString() ??
+          offlineOrder['orderStatus']?.toString();
+      if (storedStatus != null && storedStatus.isNotEmpty) {
+        String cleanStatus = storedStatus.toLowerCase().replaceAll('wc-', '').trim();
+        if (cleanStatus.isNotEmpty && cleanStatus != 'pending_offline') {
+          orderStatus = cleanStatus;
+        }
+      }
 
       debugPrint(
-          "📊 ORDER STATUS: $orderStatus ${isPayLaterOrder ? '(Pay Later)' : '(Regular)'}");
+          "📊 ORDER STATUS: $orderStatus ${isPayLaterOrder ? '(Pay Later)' : '(Stored/Regular)'}");
 
       // ---------------------------------------------------------
       // ⭐ FINAL PAYLOAD

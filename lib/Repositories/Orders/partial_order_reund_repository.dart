@@ -13,7 +13,8 @@ class PartialRefundRepository {
     required int orderId,
     required String reason,
     required String itemsReusable,
-    required List<Map<String, dynamic>> items, // [{"order_item_id": 123, "qty": 1, "refundable_amount": 10}]
+    required List<Map<String, dynamic>>
+        items, // [{"order_item_id": 123, "qty": 1, "refundable_amount": 10}]
   }) async {
     final token = await _getTokenFromDb();
 
@@ -53,7 +54,8 @@ class PartialRefundRepository {
 
       if (response.statusCode == 200) {
         if (response.body.isEmpty || response.body == '[]') {
-          if (kDebugMode) print("Partial Refund API SUCCESS ✅ (empty array returned)");
+          if (kDebugMode)
+            print("Partial Refund API SUCCESS ✅ (empty array returned)");
           return true;
         }
 
@@ -67,27 +69,17 @@ class PartialRefundRepository {
             }
             return true;
           } else {
-            if (kDebugMode) print("Partial Refund API FAILED ❌ Message: ${data["message"]}");
+            if (kDebugMode)
+              print("Partial Refund API FAILED ❌ Message: ${data["message"]}");
             return false;
           }
         } else {
-          if (kDebugMode) print("Partial Refund API returned unexpected structure ❌");
+          if (kDebugMode)
+            print("Partial Refund API returned unexpected structure ❌");
           return false;
         }
-      } else if (response.statusCode == 400) {
-        final bodyStr = response.body.toLowerCase();
-        if (bodyStr.contains("order_already_refunded") ||
-            bodyStr.contains("already been fully refunded") ||
-            bodyStr.contains("already refunded")) {
-          if (kDebugMode) {
-            print("Partial Refund API: Order was already refunded on server. Treating as success.");
-          }
-          return true;
-        }
-        if (kDebugMode) print("HTTP Error 400: ${response.body}");
-        return false;
       } else {
-        if (kDebugMode) print("HTTP Error ${response.statusCode} ❌");
+        if (kDebugMode) print("HTTP Error ❌");
         return false;
       }
     } catch (e, stacktrace) {
@@ -106,7 +98,8 @@ class PartialRefundRepository {
 
     final result = await db.query(
       AppDBConst.userTable,
-      where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+      where:
+          '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
       orderBy: '${AppDBConst.userId} DESC',
       limit: 1,
     );
