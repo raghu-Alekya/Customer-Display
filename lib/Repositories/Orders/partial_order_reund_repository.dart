@@ -74,8 +74,20 @@ class PartialRefundRepository {
           if (kDebugMode) print("Partial Refund API returned unexpected structure ❌");
           return false;
         }
+      } else if (response.statusCode == 400) {
+        final bodyStr = response.body.toLowerCase();
+        if (bodyStr.contains("order_already_refunded") ||
+            bodyStr.contains("already been fully refunded") ||
+            bodyStr.contains("already refunded")) {
+          if (kDebugMode) {
+            print("Partial Refund API: Order was already refunded on server. Treating as success.");
+          }
+          return true;
+        }
+        if (kDebugMode) print("HTTP Error 400: ${response.body}");
+        return false;
       } else {
-        if (kDebugMode) print("HTTP Error ❌");
+        if (kDebugMode) print("HTTP Error ${response.statusCode} ❌");
         return false;
       }
     } catch (e, stacktrace) {

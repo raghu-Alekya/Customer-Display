@@ -63,7 +63,8 @@ class RefundOrderRepository {
             if (kDebugMode) print("Refund API SUCCESS ");
             return true;
           } else {
-            if (kDebugMode) print("Refund API FAILED  Message: ${data["message"]}");
+            if (kDebugMode)
+              print("Refund API FAILED  Message: ${data["message"]}");
             return false;
           }
         } else {
@@ -138,7 +139,8 @@ class RefundOrderRepository {
           if (success) {
             return (true, null);
           } else {
-            final errorMsg = data["message"]?.toString() ?? "Card refund failed";
+            final errorMsg =
+                data["message"]?.toString() ?? "Card refund failed";
             if (kDebugMode) print("Card Refund FAILED ❌ Message: $errorMsg");
             return (false, errorMsg);
           }
@@ -161,7 +163,8 @@ class RefundOrderRepository {
 
     final result = await db.query(
       AppDBConst.userTable,
-      where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+      where:
+          '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
       orderBy: '${AppDBConst.userId} DESC',
       limit: 1,
     );
