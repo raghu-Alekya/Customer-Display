@@ -679,6 +679,23 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
     );
   }
 
+  String _formatOrderType(String rawType) {
+    final clean = rawType.toLowerCase().trim();
+    if (clean.isEmpty ||
+        clean == 'rest-api' ||
+        clean == 'rest_api' ||
+        clean == 'restapi' ||
+        clean == 'pos' ||
+        clean == 'online_pos' ||
+        clean == 'in-store' ||
+        clean == 'instore' ||
+        clean == 'store' ||
+        clean == 'shop order') {
+      return "Shop Order";
+    }
+    return rawType;
+  }
+
   // ✅ NEW: Content builder replacing BlocConsumer
   Widget _buildContent(ThemeNotifier themeHelper) {
     if (_isLoading) {
@@ -704,12 +721,6 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
             ),
           ],
         ),
-      );
-    }
-
-    if (filteredOrders.isEmpty) {
-      return const Center(
-        child: Text("No completed orders found"),
       );
     }
 
@@ -978,49 +989,63 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
 
           /// 🔹 TABLE BODY
           Expanded(
-            child: ListView.builder(
-              itemCount: _pagedOrders.length,
-              itemBuilder: (context, index) {
-                final order = _pagedOrders[index];
-
-                return InkWell(
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (dialogContext) {
-                        return BlocProvider(
-                          create: (_) => RefundValidationBloc(
-                            repository: RefundValidationRepository(
-                              baseUrl: UrlHelper.wooBaseUrl,
-                            ),
-                          ),
-                          child: PinCheckInDialog(order: order),
-                        );
-                      },
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.only(
-                      left: 10,
-                      right: 10,
-                      top: 10,
-                      bottom: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF212231) : Colors.white,
-                      border: Border(
-                        bottom: BorderSide(
-                          color: isDark
-                              ? const Color(0xFF4D4E63)
-                              : const Color(0xFFD8D7D7),
+            child: _pagedOrders.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(40.0),
+                      child: Text(
+                        "No completed orders found",
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white70 : Colors.black54,
                         ),
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        _DataCell("#${order.orderId}"),
-                        _DataCell(order.orderType),
+                  )
+                : ListView.builder(
+                    itemCount: _pagedOrders.length,
+                    itemBuilder: (context, index) {
+                      final order = _pagedOrders[index];
+
+                      return InkWell(
+                        onTap: () {
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (dialogContext) {
+                              return BlocProvider(
+                                create: (_) => RefundValidationBloc(
+                                  repository: RefundValidationRepository(
+                                    baseUrl: UrlHelper.wooBaseUrl,
+                                  ),
+                                ),
+                                child: PinCheckInDialog(order: order),
+                              );
+                            },
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.only(
+                            left: 10,
+                            right: 10,
+                            top: 10,
+                            bottom: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF212231) : Colors.white,
+                            border: Border(
+                              bottom: BorderSide(
+                                color: isDark
+                                    ? const Color(0xFF4D4E63)
+                                    : const Color(0xFFD8D7D7),
+                              ),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              _DataCell("#${order.orderId}"),
+                              _DataCell(_formatOrderType(order.orderType)),
                         _DataCell(
                           DateFormat('dd-MM-yyyy').format(order.completedAt),
                         ),

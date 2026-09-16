@@ -850,17 +850,31 @@ class OfflineHelper {
     })
         .toList();
 
+    double finalTotal = total;
+    if (finalTotal <= 0.0 && items.isNotEmpty) {
+      finalTotal = items.fold<double>(0.0, (sum, i) => sum + i.total);
+    }
+    final double rawAmount = (row['amount'] as num?)?.toDouble() ??
+        (row['gross_total'] as num?)?.toDouble() ?? 0.0;
+    final double finalAmount = rawAmount > 0.0 ? rawAmount : finalTotal;
+
+    final String rawOrderType = row[AppDBConst.orderType]?.toString() ?? row['order_type']?.toString() ?? '';
+    final String cleanType = rawOrderType.toLowerCase().trim();
+    final String finalOrderType = (cleanType.isEmpty || cleanType.contains('rest') || cleanType.contains('pos') || cleanType.contains('store') || cleanType.contains('shop'))
+        ? 'Shop Order'
+        : rawOrderType;
+
     return refund_model.CompletedOrder(
       orderId: orderId,
       status: row[AppDBConst.orderStatus]?.toString() ?? 'pending_offline',
       completedAt: completedAt,
       paymentMethod: row[AppDBConst.orderPaymentMethod]?.toString() ?? '',
-      orderType: row[AppDBConst.orderType]?.toString() ?? '',
+      orderType: finalOrderType,
       transactionId: '',
-      amount: total,
+      amount: finalAmount,
       discount: discount,
       tax: tax,
-      total: total,
+      total: finalTotal,
       author: (row[AppDBConst.userId] as num?)?.toInt(),
       items: items,
       coupons: [],
