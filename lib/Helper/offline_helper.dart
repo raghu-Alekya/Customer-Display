@@ -487,6 +487,24 @@ class OfflineHelper {
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Offline data builder: Completed / Refundable Orders
+  static double _parseDouble(dynamic val, [double fallback = 0.0]) {
+    if (val == null) return fallback;
+    if (val is num) return val.toDouble();
+    if (val is String) {
+      return double.tryParse(val.trim()) ?? fallback;
+    }
+    return fallback;
+  }
+
+  static int _parseInt(dynamic val, [int fallback = 0]) {
+    if (val == null) return fallback;
+    if (val is num) return val.toInt();
+    if (val is String) {
+      return int.tryParse(val.trim()) ?? fallback;
+    }
+    return fallback;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
 
   /// Reads completed / pending_offline orders from SQLite for the Refund screen.
@@ -548,13 +566,17 @@ class OfflineHelper {
       }
 
       final List<refund_model.CompletedOrder> result = [];
+      final Set<int> addedOrderIds = {};
+
       for (final row in rows) {
         final rawServerId = row[AppDBConst.orderServerId] ?? row['order_id'] ?? row['server_id'];
-        final int serverId = rawServerId is num
-            ? rawServerId.toInt()
-            : int.tryParse(rawServerId?.toString() ?? '') ?? 0;
-        final int localId = row[AppDBConst.orderId] as int? ?? 0;
+        final int serverId = _parseInt(rawServerId);
+        final int localId = _parseInt(row[AppDBConst.orderId]);
         final int orderId = serverId > 0 ? serverId : localId;
+        if (orderId > 0) {
+          addedOrderIds.add(orderId);
+          addedOrderIds.add(localId);
+        }
 
         List<Map<String, dynamic>> itemRows = await db.query(
           AppDBConst.purchasedItemsTable,
@@ -570,19 +592,21 @@ class OfflineHelper {
             if (raw is Map) {
               final orderMap = Map<String, dynamic>.from(raw);
               final List products = (orderMap['products'] as List?) ??
-                  (orderMap['order_items'] as List?) ?? [];
+                  (orderMap['order_items'] as List?) ??
+                  (orderMap['line_items'] as List?) ??
+                  (orderMap['items'] as List?) ?? [];
               for (final p in products) {
                 if (p is Map) {
                   final pMap = Map<String, dynamic>.from(p);
                   itemRows.add({
                     AppDBConst.itemServerId: pMap['id'] ?? pMap['server_id'] ?? 0,
-                    AppDBConst.itemName: pMap['name'] ?? pMap['item_name'] ?? '',
+                    AppDBConst.itemName: pMap['name'] ?? pMap['item_name'] ?? pMap['product_name'] ?? 'Item',
                     AppDBConst.itemProductId: pMap['product_id'] ?? 0,
                     AppDBConst.itemVariationId: pMap['variation_id'] ?? 0,
                     AppDBConst.itemCount: pMap['quantity'] ?? pMap['items_count'] ?? 1,
                     AppDBConst.itemPrice: pMap['price'] ?? pMap['item_price'] ?? 0.0,
-                    AppDBConst.itemSumPrice: pMap['item_sum_price'] ??
-                        ((pMap['price'] as num? ?? 0) * (pMap['quantity'] as num? ?? 1)),
+                    AppDBConst.itemSumPrice: pMap['item_sum_price'] ?? pMap['total'] ??
+                        (_parseDouble(pMap['price'] ?? pMap['item_price']) * _parseInt(pMap['quantity'] ?? pMap['items_count'], 1)),
                     AppDBConst.itemImage: pMap['image'] ?? pMap['product_image'] ?? '',
                   });
                 }
@@ -596,16 +620,79 @@ class OfflineHelper {
           final box = StorageProvider.offlineOrders;
           final dynamic raw = await box.get(orderId.toString()) ??
               (localId > 0 ? await box.get(localId.toString()) : null);
-          if (raw is Map && raw['order_status'] != null) {
-            final hiveStatus = raw['order_status'].toString();
-            if (hiveStatus.isNotEmpty) {
-              rowCopy[AppDBConst.orderStatus] = hiveStatus;
+          if (raw is Map) {
+            final orderMap = Map<String, dynamic>.from(raw);
+            if (orderMap['order_status'] != null && orderMap['order_status'].toString().isNotEmpty) {
+              rowCopy[AppDBConst.orderStatus] = orderMap['order_status'].toString();
+            }
+            if (_parseDouble(rowCopy[AppDBConst.orderTotal]) <= 0 && orderMap['gross_total'] != null) {
+              rowCopy[AppDBConst.orderTotal] = orderMap['gross_total'];
+            }
+            if (_parseDouble(rowCopy[AppDBConst.orderTax]) <= 0 && orderMap['tax'] != null) {
+              rowCopy[AppDBConst.orderTax] = orderMap['tax'];
+            }
+            if (_parseDouble(rowCopy['amount']) <= 0 && orderMap['amount'] != null) {
+              rowCopy['amount'] = orderMap['amount'];
             }
           }
         } catch (_) {}
 
         result.add(_completedOrderFromSqliteRow(rowCopy, itemRows));
       }
+
+      // Merge remaining orders from Hive offlineOrders box
+      try {
+        final box = StorageProvider.offlineOrders;
+        final allEntries = await box.toMap();
+        for (final raw in allEntries.values) {
+          if (raw is Map) {
+            final orderMap = Map<String, dynamic>.from(raw);
+            final rawId = orderMap['order_id'] ?? orderMap['id'] ?? orderMap[AppDBConst.orderServerId];
+            final int offId = _parseInt(rawId);
+            if (offId > 0 && !addedOrderIds.contains(offId)) {
+              final List<Map<String, dynamic>> itemRows = [];
+              final List products = (orderMap['products'] as List?) ??
+                  (orderMap['order_items'] as List?) ??
+                  (orderMap['line_items'] as List?) ??
+                  (orderMap['items'] as List?) ?? [];
+              for (final p in products) {
+                if (p is Map) {
+                  final pMap = Map<String, dynamic>.from(p);
+                  itemRows.add({
+                    AppDBConst.itemServerId: pMap['id'] ?? pMap['server_id'] ?? 0,
+                    AppDBConst.itemName: pMap['name'] ?? pMap['item_name'] ?? pMap['product_name'] ?? 'Item',
+                    AppDBConst.itemProductId: pMap['product_id'] ?? 0,
+                    AppDBConst.itemVariationId: pMap['variation_id'] ?? 0,
+                    AppDBConst.itemCount: pMap['quantity'] ?? pMap['items_count'] ?? 1,
+                    AppDBConst.itemPrice: pMap['price'] ?? pMap['item_price'] ?? 0.0,
+                    AppDBConst.itemSumPrice: pMap['item_sum_price'] ?? pMap['total'] ??
+                        (_parseDouble(pMap['price'] ?? pMap['item_price']) * _parseInt(pMap['quantity'] ?? pMap['items_count'], 1)),
+                    AppDBConst.itemImage: pMap['image'] ?? pMap['product_image'] ?? '',
+                  });
+                }
+              }
+
+              final row = {
+                AppDBConst.orderId: offId,
+                AppDBConst.orderServerId: offId,
+                AppDBConst.orderStatus: orderMap['order_status']?.toString() ?? 'completed',
+                AppDBConst.orderTotal: orderMap['gross_total'] ?? orderMap['total'] ?? orderMap['amount'] ?? 0.0,
+                'amount': orderMap['amount'] ?? orderMap['gross_total'] ?? orderMap['total'] ?? 0.0,
+                AppDBConst.orderDate: orderMap['created_at']?.toString() ?? DateTime.now().toString(),
+                AppDBConst.orderTime: orderMap['created_at']?.toString() ?? DateTime.now().toString(),
+                AppDBConst.orderPaymentMethod: orderMap['payment_method']?.toString() ?? '',
+                AppDBConst.userId: orderMap['user_id'] ?? 0,
+                AppDBConst.orderDiscount: orderMap['order_discount'] ?? orderMap['discount'] ?? 0.0,
+                AppDBConst.merchantDiscount: orderMap['merchant_discount'] ?? 0.0,
+                AppDBConst.orderTax: orderMap['order_tax'] ?? orderMap['tax'] ?? 0.0,
+                AppDBConst.orderType: orderMap['order_type'] ?? 'Shop Order',
+              };
+              result.insert(0, _completedOrderFromSqliteRow(row, itemRows));
+              addedOrderIds.add(offId);
+            }
+          }
+        }
+      } catch (_) {}
 
       return result;
     } catch (e, s) {
@@ -696,18 +783,15 @@ class OfflineHelper {
       List<Map<String, dynamic>> itemRows,
       ) {
     final rawServerId = row[AppDBConst.orderServerId] ?? row['order_id'] ?? row['server_id'];
-    final int serverId = rawServerId is num
-        ? rawServerId.toInt()
-        : int.tryParse(rawServerId?.toString() ?? '') ?? 0;
-    final int localId = row[AppDBConst.orderId] as int? ?? 0;
+    final int serverId = _parseInt(rawServerId);
+    final int localId = _parseInt(row[AppDBConst.orderId]);
     final int orderId = serverId > 0 ? serverId : localId;
 
     final status = row[AppDBConst.orderStatus]?.toString() ?? 'pending_offline';
-    final total = (row[AppDBConst.orderTotal] as num?)?.toStringAsFixed(2) ?? '0.00';
+    final total = _parseDouble(row[AppDBConst.orderTotal]).toStringAsFixed(2);
     final dateCreated = row[AppDBConst.orderDate]?.toString() ?? '';
-    final discount = (row[AppDBConst.orderDiscount] as num?)?.toStringAsFixed(2) ?? '0.00';
-    final tax = (row[AppDBConst.orderTax] as num?)?.toStringAsFixed(2) ??
-        (row['tax'] as num?)?.toStringAsFixed(2) ?? '0.00';
+    final discount = _parseDouble(row[AppDBConst.orderDiscount]).toStringAsFixed(2);
+    final tax = _parseDouble(row[AppDBConst.orderTax] ?? row['tax']).toStringAsFixed(2);
 
     final lineItems = itemRows.map((item) => _lineItemFromSqliteRow(item)).toList();
 
@@ -727,7 +811,7 @@ class OfflineHelper {
       cartTax: tax,
       total: total,
       totalTax: tax,
-      customerId: row[AppDBConst.userId] as int? ?? 0,
+      customerId: _parseInt(row[AppDBConst.userId]),
       orderKey: '',
       lineItems: lineItems,
       feeLines: [],
@@ -744,37 +828,36 @@ class OfflineHelper {
       autoDiscountTotal: null,
       getTime: row[AppDBConst.orderTime]?.toString(),
       autoDiscountMeta: null,
-      orderLevelAutoDiscountAmount:
-      (row[AppDBConst.merchantDiscount] as num?)?.toDouble() ?? 0.0,
+      orderLevelAutoDiscountAmount: _parseDouble(row[AppDBConst.merchantDiscount]),
       refundTotal: 0.0,
       refundOrderTotal: 0.0,
-      netPayment: (row[AppDBConst.orderTotal] as num?)?.toDouble() ?? 0.0,
+      netPayment: _parseDouble(row[AppDBConst.orderTotal]),
     );
   }
 
   static LineItem _lineItemFromSqliteRow(Map<String, dynamic> item) {
     final imageSrc = item[AppDBConst.itemImage]?.toString() ?? '';
-    final itemPrice = (item[AppDBConst.itemPrice] as num?)?.toDouble() ?? 0.0;
-    final itemRegularPrice = (item[AppDBConst.itemRegularPrice] as num?)?.toString() ?? itemPrice.toStringAsFixed(2);
-    final itemSalesPrice = (item[AppDBConst.itemSalesPrice] as num?)?.toString() ?? itemPrice.toStringAsFixed(2);
+    final itemPrice = _parseDouble(item[AppDBConst.itemPrice]);
+    final itemRegularPrice = item[AppDBConst.itemRegularPrice]?.toString() ?? itemPrice.toStringAsFixed(2);
+    final itemSalesPrice = item[AppDBConst.itemSalesPrice]?.toString() ?? itemPrice.toStringAsFixed(2);
 
     return LineItem(
-      id: item[AppDBConst.itemServerId] as int? ?? 0,
+      id: _parseInt(item[AppDBConst.itemServerId]),
       name: item[AppDBConst.itemName]?.toString() ?? '',
-      productId: item[AppDBConst.itemProductId] as int? ?? 0,
-      variationId: item[AppDBConst.itemVariationId] as int? ?? 0,
-      quantity: item[AppDBConst.itemCount] as int? ?? 1,
+      productId: _parseInt(item[AppDBConst.itemProductId]),
+      variationId: _parseInt(item[AppDBConst.itemVariationId]),
+      quantity: _parseInt(item[AppDBConst.itemCount], 1),
       taxClass: '',
-      subtotal: (item[AppDBConst.itemPrice] as num?)?.toStringAsFixed(2) ?? '0.00',
+      subtotal: itemPrice.toStringAsFixed(2),
       subtotalTax: '0.00',
-      total: (item[AppDBConst.itemSumPrice] as num?)?.toStringAsFixed(2) ?? '0.00',
+      total: _parseDouble(item[AppDBConst.itemSumPrice]).toStringAsFixed(2),
       totalTax: '0.00',
       metaData: [],
       sku: item[AppDBConst.itemSKU]?.toString() ?? '',
       price: itemPrice,
       image: ImageData(id: '0', src: imageSrc),
       productData: ProductData(
-        id: item[AppDBConst.itemProductId] as int? ?? 0,
+        id: _parseInt(item[AppDBConst.itemProductId]),
         name: item[AppDBConst.itemName]?.toString() ?? '',
         tags: <Tag>[],
         regularPrice: itemRegularPrice,
@@ -782,18 +865,14 @@ class OfflineHelper {
         price: itemPrice.toStringAsFixed(2),
       ),
       isRefundItem: (item['is_refund_item'] as int? ?? 0) == 1,
-      multipackDiscountAmount:
-      (item[AppDBConst.multipack_discount_total] as num?)?.toDouble() ?? 0.0,
-      multipackApplied: ((item[AppDBConst.multipack_discount_total] as num?)?.toDouble() ?? 0.0) > 0,
-      autoDiscountAmount:
-      (item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0,
-      autoDiscountApplied: ((item[AppDBConst.autoDiscountTotal] as num?)?.toDouble() ?? 0.0) > 0,
-      comboDiscountAmount:
-      (item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0,
-      comboDiscountApplied: ((item[AppDBConst.comboDiscountTotal] as num?)?.toDouble() ?? 0.0) > 0,
-      displayAutoDiscountAmount:
-      (item[AppDBConst.displayAutoDiscount] as num?)?.toDouble() ?? 0.0,
-      unitPrice: (item[AppDBConst.itemUnitPrice] as num?)?.toDouble() ?? itemPrice,
+      multipackDiscountAmount: _parseDouble(item[AppDBConst.multipack_discount_total]),
+      multipackApplied: _parseDouble(item[AppDBConst.multipack_discount_total]) > 0,
+      autoDiscountAmount: _parseDouble(item[AppDBConst.autoDiscountTotal]),
+      autoDiscountApplied: _parseDouble(item[AppDBConst.autoDiscountTotal]) > 0,
+      comboDiscountAmount: _parseDouble(item[AppDBConst.comboDiscountTotal]),
+      comboDiscountApplied: _parseDouble(item[AppDBConst.comboDiscountTotal]) > 0,
+      displayAutoDiscountAmount: _parseDouble(item[AppDBConst.displayAutoDiscount]),
+      unitPrice: _parseDouble(item[AppDBConst.itemUnitPrice], itemPrice),
     );
   }
 
@@ -802,48 +881,78 @@ class OfflineHelper {
       List<Map<String, dynamic>> itemRows,
       ) {
     final rawServerId = row[AppDBConst.orderServerId] ?? row['order_id'] ?? row['server_id'];
-    final int serverId = rawServerId is num
-        ? rawServerId.toInt()
-        : int.tryParse(rawServerId?.toString() ?? '') ?? 0;
-    final int localId = row[AppDBConst.orderId] as int? ?? 0;
+    final int serverId = _parseInt(rawServerId);
+    final int localId = _parseInt(row[AppDBConst.orderId]);
     final int orderId = serverId > 0 ? serverId : localId;
 
-    final total = (row[AppDBConst.orderTotal] as num?)?.toDouble() ??
-        (row['total'] as num?)?.toDouble() ??
-        (row['gross_total'] as num?)?.toDouble() ?? 0.0;
-    final discount = (row[AppDBConst.orderDiscount] as num?)?.toDouble() ??
-        (row['discount'] as num?)?.toDouble() ?? 0.0;
-    final tax = (row[AppDBConst.orderTax] as num?)?.toDouble() ??
-        (row['tax'] as num?)?.toDouble() ?? 0.0;
+    final double total = _parseDouble(row[AppDBConst.orderTotal]) > 0
+        ? _parseDouble(row[AppDBConst.orderTotal])
+        : (_parseDouble(row['total']) > 0
+            ? _parseDouble(row['total'])
+            : (_parseDouble(row['gross_total']) > 0
+                ? _parseDouble(row['gross_total'])
+                : _parseDouble(row['amount'])));
+
+    final double discount = _parseDouble(row[AppDBConst.orderDiscount]) > 0
+        ? _parseDouble(row[AppDBConst.orderDiscount])
+        : _parseDouble(row['discount']);
+
+    final double tax = _parseDouble(row[AppDBConst.orderTax]) > 0
+        ? _parseDouble(row[AppDBConst.orderTax])
+        : (_parseDouble(row['tax']) > 0
+            ? _parseDouble(row['tax'])
+            : _parseDouble(row['order_tax']));
+
     final dateStr = row[AppDBConst.orderDate]?.toString() ?? row['created_at']?.toString() ?? '';
     final completedAt = DateTime.tryParse(dateStr) ?? DateTime.now();
 
     final items = itemRows
         .map((item) {
-      final double itemPrice = (item[AppDBConst.itemPrice] as num?)?.toDouble() ??
-          (item['price'] as num?)?.toDouble() ??
-          (item['item_price'] as num?)?.toDouble() ?? 0.0;
-      final int qty = (item[AppDBConst.itemCount] as num?)?.toInt() ??
-          (item['quantity'] as num?)?.toInt() ??
-          (item['items_count'] as num?)?.toInt() ?? 1;
-      final double sumPrice = (item[AppDBConst.itemSumPrice] as num?)?.toDouble() ??
-          (item['item_sum_price'] as num?)?.toDouble() ??
-          (item['total'] as num?)?.toDouble() ?? (itemPrice * (qty > 0 ? qty : 1));
-      final int lineItemId = (item[AppDBConst.itemServerId] as num?)?.toInt() ??
-          (item[AppDBConst.itemId] as num?)?.toInt() ??
-          (item['id'] as num?)?.toInt() ?? 0;
+      final double itemPrice = _parseDouble(item[AppDBConst.itemPrice]) > 0
+          ? _parseDouble(item[AppDBConst.itemPrice])
+          : (_parseDouble(item['price']) > 0
+              ? _parseDouble(item['price'])
+              : _parseDouble(item['item_price']));
+
+      final int qty = _parseInt(item[AppDBConst.itemCount]) > 0
+          ? _parseInt(item[AppDBConst.itemCount])
+          : (_parseInt(item['quantity']) > 0
+              ? _parseInt(item['quantity'])
+              : _parseInt(item['items_count'], 1));
+
+      final double rawSum = _parseDouble(item[AppDBConst.itemSumPrice]) > 0
+          ? _parseDouble(item[AppDBConst.itemSumPrice])
+          : (_parseDouble(item['item_sum_price']) > 0
+              ? _parseDouble(item['item_sum_price'])
+              : _parseDouble(item['total']));
+
+      final double sumPrice = rawSum > 0 ? rawSum : (itemPrice * (qty > 0 ? qty : 1));
+
+      final int lineItemId = _parseInt(item[AppDBConst.itemServerId]) > 0
+          ? _parseInt(item[AppDBConst.itemServerId])
+          : (_parseInt(item[AppDBConst.itemId]) > 0
+              ? _parseInt(item[AppDBConst.itemId])
+              : _parseInt(item['id']));
+
       final String rawName = item[AppDBConst.itemName]?.toString() ??
           item['name']?.toString() ?? item['item_name']?.toString() ?? 'Item';
 
+      final double itemTax = _parseDouble(item['total_tax']) > 0
+          ? _parseDouble(item['total_tax'])
+          : (_parseDouble(item['tax']) > 0
+              ? _parseDouble(item['tax'])
+              : _parseDouble(item['item_tax']));
+
       return refund_model.LineItem(
         id: lineItemId,
-        name: rawName.isNotEmpty ? rawName : 'Item',
-        productId: (item[AppDBConst.itemProductId] as num?)?.toInt() ??
-            (item['product_id'] as num?)?.toInt() ?? 0,
+        name: (rawName.isNotEmpty && rawName != 'null') ? rawName : 'Item',
+        productId: _parseInt(item[AppDBConst.itemProductId]) > 0
+            ? _parseInt(item[AppDBConst.itemProductId])
+            : _parseInt(item['product_id']),
         quantity: qty > 0 ? qty : 1,
         total: sumPrice > 0 ? sumPrice : (itemPrice * (qty > 0 ? qty : 1)),
         image: item[AppDBConst.itemImage]?.toString() ?? item['image']?.toString() ?? '',
-        totalTax: (item['total_tax'] as num?)?.toDouble() ?? 0.0,
+        totalTax: itemTax,
         isItemsHasDiscount: 'No',
         itemDiscountType: '',
       );
@@ -854,9 +963,18 @@ class OfflineHelper {
     if (finalTotal <= 0.0 && items.isNotEmpty) {
       finalTotal = items.fold<double>(0.0, (sum, i) => sum + i.total);
     }
-    final double rawAmount = (row['amount'] as num?)?.toDouble() ??
-        (row['gross_total'] as num?)?.toDouble() ?? 0.0;
+
+    final double rawAmount = _parseDouble(row['amount']) > 0
+        ? _parseDouble(row['amount'])
+        : (_parseDouble(row['gross_total']) > 0
+            ? _parseDouble(row['gross_total'])
+            : _parseDouble(row[AppDBConst.orderTotal]));
     final double finalAmount = rawAmount > 0.0 ? rawAmount : finalTotal;
+
+    double finalTax = tax;
+    if (finalTax <= 0.0 && items.isNotEmpty) {
+      finalTax = items.fold<double>(0.0, (sum, i) => sum + i.totalTax);
+    }
 
     final String rawOrderType = row[AppDBConst.orderType]?.toString() ?? row['order_type']?.toString() ?? '';
     final String cleanType = rawOrderType.toLowerCase().trim();
@@ -873,9 +991,9 @@ class OfflineHelper {
       transactionId: '',
       amount: finalAmount,
       discount: discount,
-      tax: tax,
+      tax: finalTax,
       total: finalTotal,
-      author: (row[AppDBConst.userId] as num?)?.toInt(),
+      author: _parseInt(row[AppDBConst.userId]),
       items: items,
       coupons: [],
       payments: [],
