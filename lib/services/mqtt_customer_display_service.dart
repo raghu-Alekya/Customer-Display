@@ -879,9 +879,7 @@
 //   }
 // }
 
-
 ////======
-
 
 import 'dart:async';
 import 'dart:convert';
@@ -1023,7 +1021,6 @@ class MqttCustomerDisplayService {
     return _connectToDiscoveredService(service);
   }
 
-
   // ---------------------------------------------------------------------------
   // HOST CANDIDATES (dynamic — prefer IPv4 over .local)
   // ---------------------------------------------------------------------------
@@ -1107,8 +1104,10 @@ class MqttCustomerDisplayService {
 
     final topic = activeTopicPrefix;
     if (topic == null || topic.isEmpty) {
-      print('❌ CFD MQTT topic is not configured '
-          '(merchant/store/terminal missing)');
+      print(
+        '❌ CFD MQTT topic is not configured '
+        '(merchant/store/terminal missing)',
+      );
       return false;
     }
 
@@ -1159,8 +1158,10 @@ class MqttCustomerDisplayService {
         return true;
       }
 
-      print('❌ CFD broker rejected connection: '
-          '${client.connectionStatus}');
+      print(
+        '❌ CFD broker rejected connection: '
+        '${client.connectionStatus}',
+      );
       client.disconnect();
     } catch (e, st) {
       print('❌ CFD connection failed ($host:$port): $e');
@@ -1201,7 +1202,7 @@ class MqttCustomerDisplayService {
 
         print(
           '🔎 CFD found mDNS service: '
-              'name=${service.name}, host=${service.host}, port=${service.port}',
+          'name=${service.name}, host=${service.host}, port=${service.port}',
         );
 
         try {
@@ -1216,9 +1217,7 @@ class MqttCustomerDisplayService {
 
       timer = Timer(const Duration(seconds: 8), () {
         if (!completer.isCompleted) {
-          completer.completeError(
-            TimeoutException('mDNS discovery timeout'),
-          );
+          completer.completeError(TimeoutException('mDNS discovery timeout'));
         }
       });
 
@@ -1346,7 +1345,7 @@ class MqttCustomerDisplayService {
     }
 
     _updatesSubscription = updates.listen(
-          (events) {
+      (events) {
         for (final event in events) {
           _processMqttEvent(event);
         }
@@ -1363,7 +1362,7 @@ class MqttCustomerDisplayService {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(
       const Duration(seconds: 20),
-          (_) => _publishOnlineStatus(),
+      (_) => _publishOnlineStatus(),
     );
   }
 
@@ -1400,15 +1399,17 @@ class MqttCustomerDisplayService {
               return;
             }
             print('🧹 CFD CMD → force IDLE/Welcome (no active order)');
-            final seq = map['sequence'] ??
-                DateTime.now().millisecondsSinceEpoch;
-            _handleIncoming(jsonEncode({
-              'sequence': seq,
-              'screen': 'IDLE',
-              'items': <dynamic>[],
-              'orderId': null,
-              'summaryEnabled': false,
-            }));
+            final seq =
+                map['sequence'] ?? DateTime.now().millisecondsSinceEpoch;
+            _handleIncoming(
+              jsonEncode({
+                'sequence': seq,
+                'screen': 'IDLE',
+                'items': <dynamic>[],
+                'orderId': null,
+                'summaryEnabled': false,
+              }),
+            );
           }
         } catch (e) {
           print('⚠️ CFD cmd parse error: $e');
@@ -1460,8 +1461,9 @@ class MqttCustomerDisplayService {
 
       _expectedChunkCount[actualSequence] = actualCount;
 
-      final stale =
-      _expectedChunkCount.keys.where((s) => s < actualSequence).toList();
+      final stale = _expectedChunkCount.keys
+          .where((s) => s < actualSequence)
+          .toList();
       for (final oldSeq in stale) {
         _chunkBuffers.remove(oldSeq);
         _expectedChunkCount.remove(oldSeq);
@@ -1517,9 +1519,7 @@ class MqttCustomerDisplayService {
 
             final oldData = decoded['data'];
             if (oldData is String) {
-              print(
-                '⚠️ CFD legacy chunk format seq=$sequence index=$index',
-              );
+              print('⚠️ CFD legacy chunk format seq=$sequence index=$index');
               _storeChunk(sequence, index, oldData);
               return;
             }
@@ -1548,7 +1548,7 @@ class MqttCustomerDisplayService {
     final preview = data.length > 60 ? '${data.substring(0, 60)}…' : data;
     print(
       '🧩 CFD CHUNK seq=$sequence index=$index $received/${expected ?? "?"} '
-          'len=${data.length} >>>$preview<<<',
+      'len=${data.length} >>>$preview<<<',
     );
 
     _tryAssemble(sequence);
@@ -1565,25 +1565,16 @@ class MqttCustomerDisplayService {
       s = '$s}';
     }
 
-    s = s.replaceAllMapped(
-      RegExp(r'"(\w+):"'),
-          (m) => '"${m[1]}":"',
-    );
+    s = s.replaceAllMapped(RegExp(r'"(\w+):"'), (m) => '"${m[1]}":"');
 
     s = s.replaceAllMapped(
       RegExp(r'"(\w+)"(\d+\.?\d*)'),
-          (m) => '"${m[1]}":${m[2]}',
+      (m) => '"${m[1]}":${m[2]}',
     );
 
-    s = s.replaceAllMapped(
-      RegExp(r',(\w+)":'),
-          (m) => ',"${m[1]}":',
-    );
+    s = s.replaceAllMapped(RegExp(r',(\w+)":'), (m) => ',"${m[1]}":');
 
-    s = s.replaceAllMapped(
-      RegExp(r'"(\w+)""'),
-          (m) => '"${m[1]}":"',
-    );
+    s = s.replaceAllMapped(RegExp(r'"(\w+)""'), (m) => '"${m[1]}":"');
 
     s = s.replaceAll('"iscount"', '"discount"');
     s = s.replaceAll('"ubtotal"', '"subtotal"');
@@ -1618,7 +1609,7 @@ class MqttCustomerDisplayService {
 
     print(
       '🧩 CFD REASSEMBLED seq=$sequence '
-          'chunks=$expected chars=${completePayload.length}',
+      'chunks=$expected chars=${completePayload.length}',
     );
 
     String toParse = completePayload;
@@ -1640,7 +1631,7 @@ class MqttCustomerDisplayService {
       } catch (e2) {
         print(
           '⚠️ CFD skipped bad reassembly seq=$sequence '
-              '(${completePayload.length} chars) – waiting for next state',
+          '(${completePayload.length} chars) – waiting for next state',
         );
         return;
       }
@@ -1651,8 +1642,9 @@ class MqttCustomerDisplayService {
     _expectedChunkCount.remove(sequence);
     _chunkBuffers.remove(sequence);
 
-    final stale =
-    _chunkBuffers.keys.where((value) => value < sequence - 1).toList();
+    final stale = _chunkBuffers.keys
+        .where((value) => value < sequence - 1)
+        .toList();
     for (final oldSequence in stale) {
       _chunkBuffers.remove(oldSequence);
       _expectedChunkCount.remove(oldSequence);
@@ -1675,16 +1667,15 @@ class MqttCustomerDisplayService {
       if (decoded is! Map<String, dynamic>) return;
 
       final sequence = _parseInt(decoded['sequence']) ?? 0;
-      final screenUpper =
-      (decoded['screen'] ?? '').toString().toUpperCase().trim();
-      final isIdle =
-          screenUpper == 'IDLE' || screenUpper == 'WELCOME';
+      final screenUpper = (decoded['screen'] ?? '')
+          .toString()
+          .toUpperCase()
+          .trim();
+      final isIdle = screenUpper == 'IDLE' || screenUpper == 'WELCOME';
 
       if (!isIdle) {
         if (sequence < _lastSequenceSeen) {
-          print(
-            '⏭️ CFD ignored old seq=$sequence last=$_lastSequenceSeen',
-          );
+          print('⏭️ CFD ignored old seq=$sequence last=$_lastSequenceSeen');
           return;
         }
         if (sequence == _lastSequenceSeen) {
@@ -1703,7 +1694,7 @@ class MqttCustomerDisplayService {
 
       print(
         '⚡ CFD state applied seq=$sequence screen=${state.screen} '
-            'items=${state.items.length}',
+        'items=${state.items.length}',
       );
     } catch (e, st) {
       print('❌ CFD invalid MQTT message: $e');

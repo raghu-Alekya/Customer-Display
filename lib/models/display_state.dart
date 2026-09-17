@@ -8,6 +8,12 @@ class DisplayItem {
   final double weightQty;
   final String? sku;
   final bool isEbtEligible;
+  final double autoDiscount;
+  final double comboDiscount;
+  final double multipackDiscount;
+  final double mixAndMatchDiscount;
+  final String? discountType;
+  final double itemDiscount;
 
   DisplayItem.fromJson(Map<String, dynamic> j)
       : productId = (j['productId'] ?? j['product_id'] ?? '').toString(),
@@ -24,8 +30,33 @@ class DisplayItem {
           j['weightQty'] ?? j['weight_qty'] ?? j['weight'],
         ),
         sku = j['sku']?.toString(),
-        isEbtEligible =
-            j['isEbtEligible'] == true || j['is_ebt_eligible'] == true;
+        isEbtEligible = j['isEbtEligible'] == true ||
+            j['is_ebt_eligible'] == true ||
+            j['is_ebt_eligible'] == 1 ||
+            j['is_ebt_eligible'] == '1' ||
+            j['isEbs'] == true ||
+            j['is_ebs'] == true ||
+            j['is_ebs_eligible'] == true ||
+            j['is_ebs_eligible'] == 1 ||
+            j['is_ebs_eligible'] == '1',
+        autoDiscount = _toDouble(
+          j['autoDiscount'] ?? j['auto_discount'] ?? j['auto_discount_total'] ?? j['autoDiscountTotal'],
+        ),
+        comboDiscount = _toDouble(
+          j['comboDiscount'] ?? j['combo_discount'] ?? j['combo_discount_total'] ?? j['comboDiscountTotal'],
+        ),
+        multipackDiscount = _toDouble(
+          j['multipackDiscount'] ?? j['multipack_discount'] ?? j['multipack_discount_total'] ?? j['multipackDiscountTotal'],
+        ),
+        mixAndMatchDiscount = _toDouble(
+          j['mixAndMatchDiscount'] ?? j['mix_and_match'] ?? j['mix_match_discount'] ?? j['mix_match'],
+        ),
+        discountType = _readStringOrNull(
+          j['discountType'] ?? j['discount_type'] ?? j['discount_source'] ?? j['discountSource'],
+        ),
+        itemDiscount = _toDouble(
+          j['itemDiscount'] ?? j['item_discount'] ?? j['auto_discount'] ?? j['discount'] ?? j['unit_discount'],
+        );
 
   static int _toInt(dynamic v) {
     if (v == null) return 0;
@@ -39,6 +70,12 @@ class DisplayItem {
     if (v == null) return 0.0;
     if (v is num) return v.toDouble();
     return double.tryParse(v.toString().trim()) ?? 0.0;
+  }
+
+  static String? _readStringOrNull(dynamic value) {
+    if (value == null) return null;
+    final s = value.toString().trim();
+    return s.isEmpty ? null : s;
   }
 }
 
@@ -94,14 +131,21 @@ class DisplayState {
         storeId = (j['storeId'] ?? j['store_id'] ?? '').toString(),
         storeName = (j['storeName'] ?? j['store_name'] ?? '').toString(),
         storeLogoUrl = _readStringOrNull(
-          j['storeLogoUrl'] ?? j['store_logo_url'],
+          j['storeLogoUrl'] ?? j['store_logo_url'] ?? j['logo'] ?? j['logo_url'],
         ),
-        storeBaseUrl =
-        (j['storeBaseUrl'] ?? j['store_base_url'] ?? '').toString(),
+        storeBaseUrl = (j['storeBaseUrl'] ?? j['store_base_url'] ?? j['baseUrl'] ?? j['base_url'] ?? '').toString(),
         slideshowUrls = _readStringList(
           j['slideshowUrls'] ??
               j['slideshow_urls'] ??
               j['banners'] ??
+              j['banner_urls'] ??
+              j['bannerUrls'] ??
+              j['storeBanners'] ??
+              j['store_banners'] ??
+              j['customer_display_banners'] ??
+              j['customerDisplayBanners'] ??
+              j['cfd_banners'] ??
+              j['cfdBanners'] ??
               j['slides'],
         ),
         loyaltyContact = (j['loyaltyContact'] ?? '').toString(),
@@ -243,6 +287,12 @@ class DisplayState {
         'weightQty': i.weightQty,
         'sku': i.sku,
         'isEbtEligible': i.isEbtEligible,
+        'autoDiscount': i.autoDiscount,
+        'comboDiscount': i.comboDiscount,
+        'multipackDiscount': i.multipackDiscount,
+        'mixAndMatchDiscount': i.mixAndMatchDiscount,
+        'discountType': i.discountType,
+        'itemDiscount': i.itemDiscount,
       }).toList(),
       if (subtotal != null) 'subtotal': subtotal,
       if (discount != null) 'discount': discount,
@@ -284,6 +334,12 @@ class DisplayState {
         'weightQty': i.weightQty,
         'sku': i.sku,
         'isEbtEligible': i.isEbtEligible,
+        'autoDiscount': i.autoDiscount,
+        'comboDiscount': i.comboDiscount,
+        'multipackDiscount': i.multipackDiscount,
+        'mixAndMatchDiscount': i.mixAndMatchDiscount,
+        'discountType': i.discountType,
+        'itemDiscount': i.itemDiscount,
       })
           .toList(),
       'subtotal': subtotal,

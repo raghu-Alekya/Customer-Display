@@ -2648,6 +2648,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pinaka_pos_customer_display/screens/qr_connect_widgets.dart';
 import 'package:provider/provider.dart';
@@ -3536,49 +3537,106 @@ class _WelcomeLayoutState extends State<_WelcomeLayout> {
 
   @override
   Widget build(BuildContext context) {
-    final hasStore = _storeName.isNotEmpty;
+    final isMobile = MediaQuery.of(context).size.width < 700;
+    final displayName = _storeName.isNotEmpty ? _storeName : 'Indigo';
 
-    if (_loading && !hasStore && _storeLogoUrl == null) {
+    if (isMobile) {
       return Container(
-        color: _C.slate,
-        child: Row(
+        color: const Color(0xFF132E53),
+        child: Column(
           children: [
-            Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.storefront_rounded,
-                      color: Colors.white54,
-                      size: 90,
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Welcome',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 40,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'serif',
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: CircularProgressIndicator(
-                        color: Colors.white54,
-                        strokeWidth: 2,
-                      ),
-                    ),
-                  ],
-                ),
+            const SizedBox(height: 20),
+            // Circular Store Logo
+            Container(
+              width: 90,
+              height: 90,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white12,
+                border: Border.all(color: Colors.amber.shade700, width: 2),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: _StoreLogo(url: _storeLogoUrl, width: 90),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Welcome to $displayName',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
               ),
             ),
-            Expanded(
-              child: _PromotionSlideshow(state: widget.state),
+            const SizedBox(height: 16),
+            // Action buttons row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                GestureDetector(
+                  onTap: _handleReconnect,
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: _reconnecting
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.sync, color: Colors.white, size: 20),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                GestureDetector(
+                  onTap: _handleScanQr,
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.qr_code_scanner,
+                        color: Colors.white, size: 20),
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 20),
+            // Middle promotion poster card
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: _PromotionSlideshow(state: widget.state),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Powered by Pinaka',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Bottom Home Indicator Bar
+            Container(
+              width: 130,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 8),
           ],
         ),
       );
@@ -3603,7 +3661,7 @@ class _WelcomeLayoutState extends State<_WelcomeLayout> {
                       ),
                       const SizedBox(height: 24),
                       Text(
-                        hasStore
+                        _storeName.isNotEmpty
                             ? 'Welcome to $_storeName'
                             : 'Welcome to Pinaka',
                         textAlign: TextAlign.center,
@@ -3639,7 +3697,7 @@ class _WelcomeLayoutState extends State<_WelcomeLayout> {
           ),
 
           // Powered by
-          if (hasStore)
+          if (_storeName.isNotEmpty)
             Positioned(
               left: 0,
               right: 0,
@@ -3766,7 +3824,6 @@ class _ThankYouLayout extends StatelessWidget {
               ),
             ),
           ),
-          // Promotion banners (same as Welcome)
           Expanded(
             child: _PromotionSlideshow(state: state),
           ),
@@ -3799,8 +3856,6 @@ class _CustomerDisplayLayoutState extends State<_CustomerDisplayLayout> {
   bool _keypadOpen = false;
   bool _popupOpen = false;
 
-  // Sticky summary: once summaryEnabled=true for an order, keep panel
-  // until order changes or cart is empty.
   bool _summaryLocked = false;
   String? _lastSummaryOrderId;
 
@@ -3867,12 +3922,11 @@ class _CustomerDisplayLayoutState extends State<_CustomerDisplayLayout> {
   Widget build(BuildContext context) {
     final provider = context.watch<DisplayProvider>();
     final state = provider.state;
+    final isMobile = MediaQuery.of(context).size.width < 700;
 
-    // List shows products / payout / cashback only — NOT merchant discount
     final listItems = _visibleCartItems(state.items);
     final hasListItems = listItems.isNotEmpty;
 
-    // Sticky summary bookkeeping (uses full state.items for emptiness)
     if (state.orderId != _lastSummaryOrderId) {
       _summaryLocked = false;
       _lastSummaryOrderId = state.orderId;
@@ -3886,6 +3940,83 @@ class _CustomerDisplayLayoutState extends State<_CustomerDisplayLayout> {
     final bool showSummary =
         (state.summaryEnabled || _summaryLocked) && state.items.isNotEmpty;
 
+    if (isMobile) {
+      return Container(
+        color: const Color(0xFFF3F4F6),
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                _HeaderBar(state: state),
+                _SubHeaderDateTimeBar(state: state),
+                _CustomerInfoCard(
+                  state: state,
+                  controller: _controller,
+                  unlocked: state.phoneInputUnlocked,
+                  onFieldTap: () {
+                    if (!state.phoneInputUnlocked) return;
+                    setState(() => _keypadOpen = true);
+                  },
+                  onAdd: () => _submit(provider),
+                ),
+                if (hasListItems) const _ItemsHeaderRow(),
+                Expanded(
+                  child: !hasListItems
+                      ? const _EmptyStateBox()
+                      : ListView.builder(
+                          padding: EdgeInsets.zero,
+                          itemCount: listItems.length,
+                          itemBuilder: (context, index) {
+                            final item = listItems[index];
+                            return _ItemRow(
+                              key: ValueKey('${item.productId}_$index'),
+                              item: item,
+                              isLast: index == listItems.length - 1,
+                            );
+                          },
+                        ),
+                ),
+                if (showSummary) _SummaryPanel(state: state),
+                if (_keypadOpen)
+                  _CustomKeypad(
+                    onChar: _appendChar,
+                    onBackspace: _backspace,
+                    onDone: () {
+                      setState(() => _keypadOpen = false);
+                    },
+                  ),
+                // Home Indicator Bar at bottom
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  alignment: Alignment.center,
+                  child: Container(
+                    width: 130,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_popupOpen)
+              _RedeemPopup(
+                fetching: provider.isFetchingPoints,
+                points: state.availablePoints,
+                onOk: () {
+                  provider.closeRedeemPopup();
+                  if (!mounted) return;
+                  setState(() => _popupOpen = false);
+                },
+              ),
+          ],
+        ),
+      );
+    }
+
+    // Wide screen / Tablet layout
     return Container(
       color: _C.bodyBg,
       padding: const EdgeInsets.all(8),
@@ -3894,12 +4025,12 @@ class _CustomerDisplayLayoutState extends State<_CustomerDisplayLayout> {
           Column(
             children: [
               _HeaderBar(state: state),
+              _SubHeaderDateTimeBar(state: state),
               const SizedBox(height: 10),
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // ── LEFT ──────────────────────────────────────────
                     Expanded(
                       flex: 2,
                       child: Padding(
@@ -3917,32 +4048,27 @@ class _CustomerDisplayLayoutState extends State<_CustomerDisplayLayout> {
                               },
                               onAdd: () => _submit(provider),
                             ),
-
                             if (hasListItems) const _ItemsHeaderRow(),
-
                             Expanded(
                               child: !hasListItems
                                   ? const _EmptyStateBox()
                                   : ListView.builder(
-                                padding: EdgeInsets.zero,
-                                itemCount: listItems.length,
-                                itemBuilder: (context, index) {
-                                  final item = listItems[index];
-                                  return _ItemRow(
-                                    key: ValueKey(
-                                      '${item.productId}_$index',
+                                      padding: EdgeInsets.zero,
+                                      itemCount: listItems.length,
+                                      itemBuilder: (context, index) {
+                                        final item = listItems[index];
+                                        return _ItemRow(
+                                          key: ValueKey(
+                                            '${item.productId}_$index',
+                                          ),
+                                          item: item,
+                                          isLast:
+                                              index == listItems.length - 1,
+                                        );
+                                      },
                                     ),
-                                    item: item,
-                                    isLast:
-                                    index == listItems.length - 1,
-                                  );
-                                },
-                              ),
                             ),
-
-                            // Summary: merchant discount + coupon only here
                             if (showSummary) _SummaryPanel(state: state),
-
                             if (_keypadOpen)
                               _CustomKeypad(
                                 onChar: _appendChar,
@@ -3955,8 +4081,6 @@ class _CustomerDisplayLayoutState extends State<_CustomerDisplayLayout> {
                         ),
                       ),
                     ),
-
-                    // ── RIGHT – promotion slideshow (API + MQTT fallback) ─
                     Expanded(
                       flex: 2,
                       child: Container(
@@ -3969,7 +4093,6 @@ class _CustomerDisplayLayoutState extends State<_CustomerDisplayLayout> {
               ),
             ],
           ),
-
           if (_popupOpen)
             _RedeemPopup(
               fetching: provider.isFetchingPoints,
@@ -3987,31 +4110,134 @@ class _CustomerDisplayLayoutState extends State<_CustomerDisplayLayout> {
 }
 
 // ============================================================================
-// HEADER
+// HEADER & DATE TIME
 // ============================================================================
+
+String _formatCurrentDateTime(String orderDate, String orderTime) {
+  if (orderDate.trim().isNotEmpty && orderTime.trim().isNotEmpty) {
+    return '$orderDate | $orderTime';
+  }
+  final now = DateTime.now();
+  final months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+  final month = months[now.month - 1];
+  final day = now.day;
+  final year = now.year;
+  final hour12 = (now.hour % 12 == 0) ? 12 : now.hour % 12;
+  final minute = now.minute.toString().padLeft(2, '0');
+  final second = now.second.toString().padLeft(2, '0');
+  final ampm = now.hour >= 12 ? 'PM' : 'AM';
+
+  return '$month $day, $year | $hour12:$minute:$second $ampm';
+}
+
+enum _HeaderMenuOption { reconnect, rescanQr, disconnect }
 
 class _HeaderBar extends StatelessWidget {
   final DisplayState state;
 
   const _HeaderBar({required this.state});
 
+  void _onSelected(BuildContext context, _HeaderMenuOption option) {
+    switch (option) {
+      case _HeaderMenuOption.reconnect:
+        _handleReconnect(context);
+        break;
+      case _HeaderMenuOption.rescanQr:
+        _handleScanQr(context);
+        break;
+      case _HeaderMenuOption.disconnect:
+        _handleDisconnect(context);
+        break;
+    }
+  }
+
+  Future<void> _handleReconnect(BuildContext context) async {
+    final provider = Provider.of<DisplayProvider>(context, listen: false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Reconnecting...')),
+    );
+    try {
+      await provider.reconnect();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reconnected to POS')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Reconnect failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleScanQr(BuildContext context) async {
+    final result = await Navigator.of(context).push<CfdConnectionPayload>(
+      MaterialPageRoute(builder: (_) => const QrConnectScannerPage()),
+    );
+    if (result == null || !context.mounted) return;
+
+    try {
+      await Provider.of<DisplayProvider>(context, listen: false)
+          .connectWithScannedConfig(
+        brokerIp: result.brokerIp,
+        brokerPort: result.brokerPort,
+        merchantId: result.merchantId,
+        storeId: result.storeId,
+        terminalId: result.terminalId,
+        brokerUsername: result.brokerUsername,
+        brokerToken: result.brokerToken,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connected to POS successfully')),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Failed to connect using scanned QR code')),
+        );
+      }
+    }
+  }
+
+  void _handleDisconnect(BuildContext context) {
+    final provider = Provider.of<DisplayProvider>(context, listen: false);
+    provider.service.disconnect();
+    provider.resetToWelcome();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Disconnected from POS')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 60,
-      color: _C.headerBlue,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      height: 56,
+      color: const Color(0xFF0F2B52),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(
         children: [
-          SizedBox(
-            width: 100,
-            height: 56,
-            child: _StoreLogo(url: state.storeLogoUrl, width: 100),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white12,
+              border: Border.all(color: Colors.amber.shade700, width: 1.5),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: _StoreLogo(url: state.storeLogoUrl, width: 36),
           ),
+          const SizedBox(width: 10),
           Expanded(
-            child: state.storeName.isNotEmpty
-                ? Text(
-              state.storeName,
+            child: Text(
+              state.storeName.isNotEmpty ? state.storeName : 'Indigo',
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -4019,35 +4245,123 @@ class _HeaderBar extends StatelessWidget {
                 color: Colors.white,
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
+                fontFamily: 'serif',
               ),
-            )
-                : const SizedBox.shrink(),
+            ),
           ),
-          if (state.orderDate.isNotEmpty)
-            Text(
-              state.orderDate,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
+          PopupMenuButton<_HeaderMenuOption>(
+            icon: const Icon(Icons.menu, color: Colors.white, size: 26),
+            tooltip: 'Menu',
+            color: const Color(0xFF132E53),
+            onSelected: (option) => _onSelected(context, option),
+            itemBuilder: (context) => [
+              const PopupMenuItem<_HeaderMenuOption>(
+                value: _HeaderMenuOption.reconnect,
+                child: Row(
+                  children: [
+                    Icon(Icons.sync, color: Colors.white, size: 20),
+                    SizedBox(width: 10),
+                    Text(
+                      'Reconnect',
+                      style: TextStyle(color: Colors.white, fontSize: 15),
+                    ),
+                  ],
+                ),
               ),
+              const PopupMenuItem<_HeaderMenuOption>(
+                value: _HeaderMenuOption.rescanQr,
+                child: Row(
+                  children: [
+                    Icon(Icons.qr_code_scanner, color: Colors.white, size: 20),
+                    SizedBox(width: 10),
+                    Text(
+                      'Rescan QR Scanner',
+                      style: TextStyle(color: Colors.white, fontSize: 15),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(height: 1),
+              const PopupMenuItem<_HeaderMenuOption>(
+                value: _HeaderMenuOption.disconnect,
+                child: Row(
+                  children: [
+                    Icon(Icons.link_off, color: Colors.redAccent, size: 20),
+                    SizedBox(width: 10),
+                    Text(
+                      'Disconnect',
+                      style: TextStyle(color: Colors.redAccent, fontSize: 15),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubHeaderDateTimeBar extends StatefulWidget {
+  final DisplayState state;
+  const _SubHeaderDateTimeBar({required this.state});
+
+  @override
+  State<_SubHeaderDateTimeBar> createState() => _SubHeaderDateTimeBarState();
+}
+
+class _SubHeaderDateTimeBarState extends State<_SubHeaderDateTimeBar> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final formatted = _formatCurrentDateTime(
+      widget.state.orderDate,
+      widget.state.orderTime,
+    );
+
+    return Container(
+      height: 38,
+      color: const Color(0xFF163C6F),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF234F88),
+              borderRadius: BorderRadius.circular(4),
             ),
-          if (state.orderDate.isNotEmpty && state.orderTime.isNotEmpty)
-            Container(
-              width: 2,
-              height: 18,
-              margin: const EdgeInsets.symmetric(horizontal: 10),
+            child: const Icon(
+              Icons.storefront_rounded,
               color: Colors.white,
+              size: 20,
             ),
-          if (state.orderTime.isNotEmpty)
-            Text(
-              state.orderTime,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
+          ),
+          Text(
+            formatted,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
             ),
+          ),
         ],
       ),
     );
@@ -4077,18 +4391,8 @@ class _CustomerInfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 3,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      color: Colors.white,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -4097,100 +4401,120 @@ class _CustomerInfoCard extends StatelessWidget {
               const Text(
                 'Customer:',
                 style: TextStyle(
-                  color: _C.accentBlue,
-                  fontSize: 20,
+                  color: Color(0xFF0F2B52),
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 180,
-                height: 40,
-                child: TextField(
-                  controller: controller,
-                  enabled: unlocked,
-                  readOnly: true,
-                  onTap: onFieldTap,
-                  style: const TextStyle(
-                    color: Color(0xFF353535),
-                    fontSize: 18,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Enter phone or email',
-                    hintStyle: const TextStyle(
-                      color: Colors.grey,
-                      fontSize: 14,
+              const SizedBox(width: 10),
+              Expanded(
+                child: SizedBox(
+                  height: 38,
+                  child: TextField(
+                    controller: controller,
+                    enabled: unlocked,
+                    readOnly: true,
+                    onTap: onFieldTap,
+                    style: const TextStyle(
+                      color: Color(0xFF1F2937),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
                     ),
-                    contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12),
-                    filled: true,
-                    fillColor:
-                    unlocked ? Colors.white : const Color(0xFFF2F2F2),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: const BorderSide(color: _C.cardBorder),
+                    decoration: InputDecoration(
+                      hintText: 'Enter phone or email',
+                      hintStyle: const TextStyle(
+                        color: Color(0xFF9CA3AF),
+                        fontSize: 14,
+                      ),
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      filled: true,
+                      fillColor: unlocked ? Colors.white : const Color(0xFFF3F4F6),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: const BorderSide(color: Color(0xFF4A90E2)),
+                      ),
+                      disabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                      ),
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 10),
               SizedBox(
-                height: 48,
+                height: 38,
                 child: ElevatedButton(
                   onPressed: unlocked ? onAdd : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _C.accentBlue,
-                    disabledBackgroundColor:
-                    _C.accentBlue.withOpacity(0.4),
+                    backgroundColor: const Color(0xFF6495ED),
+                    disabledBackgroundColor: const Color(0xFF6495ED).withOpacity(0.5),
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                   ),
                   child: const Text(
                     'Add',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-              ),
-              const Spacer(),
-              const Text(
-                'Points:',
-                style: TextStyle(
-                  color: _C.red,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '${state.availablePoints}',
-                style: const TextStyle(
-                  color: Color(0xFF353535),
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Order ID:',
-                style: TextStyle(
-                  color: _C.accentBlue,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                children: [
+                  const Text(
+                    'Order ID: ',
+                    style: TextStyle(
+                      color: Color(0xFF0F2B52),
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    state.orderId.isNotEmpty ? state.orderId : '—',
+                    style: const TextStyle(
+                      color: Color(0xFF111827),
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Text(
-                state.orderId.isNotEmpty ? state.orderId : '—',
-                style: const TextStyle(
-                  color: Color(0xFF353535),
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                children: [
+                  const Text(
+                    'Points: ',
+                    style: TextStyle(
+                      color: Color(0xFFD92525),
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    '${state.availablePoints}',
+                    style: const TextStyle(
+                      color: Color(0xFFD92525),
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -4212,16 +4536,16 @@ class _ItemsHeaderRow extends StatelessWidget {
     const style = TextStyle(
       color: Colors.white,
       fontWeight: FontWeight.bold,
-      fontSize: 16,
+      fontSize: 14,
     );
 
     return Container(
-      height: 48,
-      color: _C.headerBlue,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      height: 42,
+      color: const Color(0xFF0F2B52),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: const Row(
         children: [
-          Expanded(flex: 15, child: Text('Item Name', style: style)),
+          Expanded(flex: 16, child: Text('Item Name', style: style)),
           Expanded(
             flex: 10,
             child: Text(
@@ -4261,10 +4585,8 @@ class _ItemRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final nameLower = item.name.toLowerCase();
-
     final isSpecial =
         nameLower == 'payout' || nameLower == 'cashback' || nameLower == 'coupon';
-
     final isWeighted =
         item.itemType.toLowerCase().contains('weighted') && item.weightQty > 0;
 
@@ -4273,58 +4595,67 @@ class _ItemRow extends StatelessWidget {
       qtyPriceText = '';
     } else if (isWeighted) {
       qtyPriceText =
-      '${item.weightQty.toStringAsFixed(3)} lb × ${_currency(item.unitPrice)}';
+          '${item.weightQty.toStringAsFixed(3)} lb × ${_currency(item.unitPrice)}';
     } else {
       qtyPriceText = '${item.qty} × ${_currency(item.unitPrice)}';
     }
 
-    return Column(
-      children: [
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            children: [
-              Expanded(
-                flex: 15,
-                child: Text(
-                  item.name.length > 26
-                      ? '${item.name.substring(0, 26)}…'
-                      : item.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 10,
-                child: Text(
-                  qtyPriceText,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.black54, fontSize: 18),
-                ),
-              ),
-              Expanded(
-                flex: 8,
-                child: Text(
-                  _currency(item.total),
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    color: nameLower == 'payout' ? Colors.red : Colors.black,
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
+    final isPayout = nameLower == 'payout';
+    final isCashback = nameLower == 'cashback';
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: isLast ? Colors.transparent : const Color(0xFFE5E7EB),
+            width: 1,
           ),
         ),
-        if (!isLast) const Divider(color: Colors.grey, height: 1),
-      ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            flex: 16,
+            child: Text(
+              item.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF111827),
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 10,
+            child: Text(
+              qtyPriceText,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 13,
+                fontWeight: FontWeight.normal,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 8,
+            child: Text(
+              _currency(item.total),
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: (isPayout || isCashback) ? const Color(0xFFD92525) : const Color(0xFF111827),
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -4439,7 +4770,7 @@ class _DashedLinePainter extends CustomPainter {
 }
 
 // ============================================================================
-// SUMMARY PANEL (merchant discount + coupon only here)
+// SUMMARY PANEL
 // ============================================================================
 
 class _SummaryPanel extends StatefulWidget {
@@ -4464,182 +4795,127 @@ class _SummaryPanelState extends State<_SummaryPanel> {
         : (state.subtotal - coupon - state.merchantDiscount);
     final double netPayable = state.total;
 
-    // Total items excludes merchant-discount / coupon lines
     final int totalItems = state.items.fold<int>(0, (sum, item) {
       if (_isDiscountLineItem(item)) return sum;
       return sum + item.qty;
     });
 
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(top: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _C.cardBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AnimatedSize(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeInOut,
-            child: _expanded
-                ? Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _row(
-                    'Gross Total',
-                    _currency(state.subtotal),
-                    _C.textDark,
-                    20,
-                    FontWeight.bold,
+    return Column(
+      children: [
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          child: _expanded
+              ? Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _summaryRow('Gross Total', _currency(state.subtotal),
+                          color: const Color(0xFF111827), isBold: true, fontSize: 16),
+                      if (state.merchantDiscount > 0)
+                        _summaryRow('Merchant Discount', '-${_currency(state.merchantDiscount)}',
+                            color: const Color(0xFF007BFF), isBold: true, fontSize: 14),
+                      if (coupon > 0)
+                        _summaryRow('Coupon', '-${_currency(coupon)}',
+                            color: const Color(0xFF28A745), isBold: true, fontSize: 14),
+                      const SizedBox(height: 6),
+                      const Divider(color: Color(0xFFE5E7EB), height: 1),
+                      const SizedBox(height: 6),
+                      _summaryRow('Net Total', _currency(net),
+                          color: const Color(0xFF111827), isBold: true, fontSize: 16),
+                      _summaryRow('Tax', _currency(state.tax),
+                          color: const Color(0xFF6B7280), isBold: false, fontSize: 14),
+                      if (state.redeemedAmount > 0)
+                        _summaryRow('Redeemed Amount', '-${_currency(state.redeemedAmount)}',
+                            color: const Color(0xFF9C27B0), isBold: false, fontSize: 14),
+                      if (state.cashbackFee > 0)
+                        _summaryRow('Cashback Fee', _currency(state.cashbackFee),
+                            color: const Color(0xFF55CBCD), isBold: false, fontSize: 14),
+                      const SizedBox(height: 6),
+                      const Divider(color: Color(0xFFE5E7EB), height: 1),
+                      const SizedBox(height: 6),
+                      _summaryRow('Net Payable', _currency(netPayable),
+                          color: const Color(0xFF111827), isBold: true, fontSize: 18),
+                    ],
                   ),
-                  if (state.merchantDiscount > 0)
-                    _row(
-                      'Merchant Discount',
-                      '-${_currency(state.merchantDiscount)}',
-                      _C.blue2,
-                      16,
-                      FontWeight.w600,
-                    ),
-                  if (coupon > 0)
-                    _row(
-                      'Coupon',
-                      '-${_currency(coupon)}',
-                      _C.green,
-                      16,
-                      FontWeight.w600,
-                    ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 6),
-                    child: _DashedDivider(),
+                )
+              : const SizedBox.shrink(),
+        ),
+
+        // Sticky Bottom Coral / Red Bar
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Container(
+            color: const Color(0xFFFFA9A9),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Total Items : $totalItems',
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
                   ),
-                  _row(
-                    'Net Total',
-                    _currency(net),
-                    _C.textMid,
-                    18,
-                    FontWeight.bold,
-                  ),
-                  _row(
-                    'Tax',
-                    _currency(state.tax),
-                    _C.textGray,
-                    16,
-                    FontWeight.normal,
-                  ),
-                  if (state.redeemedAmount > 0)
-                    _row(
-                      'Redeemed Amount',
-                      '-${_currency(state.redeemedAmount)}',
-                      _C.purple,
-                      16,
-                      FontWeight.normal,
-                    ),
-                  if (state.cashbackFee > 0)
-                    _row(
-                      'Cashback Fee',
-                      _currency(state.cashbackFee),
-                      _C.teal,
-                      16,
-                      FontWeight.normal,
-                    ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 6),
-                    child: _DashedDivider(),
-                  ),
-                  _row(
-                    'Net Payable',
-                    _currency(netPayable),
-                    _C.textDark,
-                    22,
-                    FontWeight.w800,
-                  ),
-                ],
-              ),
-            )
-                : const SizedBox.shrink(),
-          ),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Container(
-              color: _C.totalsBar,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Total Items : $totalItems',
+                ),
+                Row(
+                  children: [
+                    Text(
+                      'Net Payable : ${_currency(netPayable)}',
                       style: const TextStyle(
-                        color: _C.textDark,
-                        fontSize: 18,
+                        color: Color(0xFF111827),
+                        fontSize: 15,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                  Text(
-                    'Net Payable : ${_currency(netPayable)}',
-                    style: const TextStyle(
-                      color: Colors.black,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                    const SizedBox(width: 4),
+                    Icon(
+                      _expanded
+                          ? Icons.keyboard_arrow_down
+                          : Icons.keyboard_arrow_up,
+                      color: const Color(0xFF111827),
+                      size: 20,
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    _expanded
-                        ? Icons.keyboard_arrow_down
-                        : Icons.keyboard_arrow_up,
-                    color: Colors.black87,
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _row(
-      String label,
-      String value,
-      Color color,
-      double size,
-      FontWeight weight,
-      ) {
+  Widget _summaryRow(
+    String label,
+    String value, {
+    required Color color,
+    required bool isBold,
+    required double fontSize,
+  }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: size,
-                fontWeight: weight,
-              ),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: fontSize,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
             ),
           ),
           Text(
             value,
             style: TextStyle(
               color: color,
-              fontSize: size,
-              fontWeight: weight,
+              fontSize: fontSize,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
             ),
           ),
         ],

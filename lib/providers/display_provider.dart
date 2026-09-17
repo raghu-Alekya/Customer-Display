@@ -143,7 +143,6 @@
 //   }
 // }
 
-
 ///////======
 
 import 'package:flutter/foundation.dart';
@@ -168,17 +167,19 @@ class DisplayProvider extends ChangeNotifier {
   void _attachStateListener() {
     _service.stateStream.listen((newState) {
       if (newState.screen == 'IDLE' || newState.screen == 'WELCOME') {
-        final hasRealOrder = newState.orderId.trim().isNotEmpty &&
+        final hasRealOrder =
+            newState.orderId.trim().isNotEmpty &&
             newState.orderId.trim() != '0';
         if (hasRealOrder) {
           state = newState.copyWith(screen: 'CART', items: []);
         } else {
+          final mergedState = newState.mergeBranding(state);
           state = DisplayState.idle().copyWith(
-            storeId: state.storeId,
-            storeName: state.storeName,
-            storeLogoUrl: state.storeLogoUrl,
-            storeBaseUrl: state.storeBaseUrl,
-            slideshowUrls: state.slideshowUrls,
+            storeId: mergedState.storeId,
+            storeName: mergedState.storeName,
+            storeLogoUrl: mergedState.storeLogoUrl,
+            storeBaseUrl: mergedState.storeBaseUrl,
+            slideshowUrls: mergedState.slideshowUrls,
           );
         }
       } else {
@@ -287,7 +288,7 @@ class DisplayProvider extends ChangeNotifier {
         displayId: 'CFD-${DateTime.now().millisecondsSinceEpoch}',
         username: brokerUsername,
         token: brokerToken,
-        brokerHost: brokerIp,          // direct connect — skip mDNS
+        brokerHost: brokerIp, // direct connect — skip mDNS
         merchantId: merchantId,
         storeId: storeId,
         terminalId: terminalId,
