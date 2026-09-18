@@ -23,6 +23,9 @@ import '../../../Repositories/Auth/store_validation_repository.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../Widgets/scanner_guard.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import '../../../mqtt_server/qr_connect_widgets.dart';
+import '../../../mqtt_server/store_messaging_service.dart';
 
 class SettingsScreen extends StatefulWidget { // Build #1.0.6 - Added Settings Screen
   const SettingsScreen({super.key});
@@ -385,6 +388,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<CfdConnectionPayload?> _buildConnectionPayload() async {
+    try {
+      final messagingService =
+          Provider.of<StoreMessagingService>(context, listen: false);
+      final ip = await messagingService.getDeviceLocalIp();
+      if (ip == null) return null;
+
+      return CfdConnectionPayload(
+        brokerIp: ip,
+        brokerPort: 1883,
+        merchantId: 'M1001',
+        storeId: 'S001',
+        terminalId: 'POS01',
+        brokerUsername: 'pinaka_cfd',
+        brokerToken: 'generated-device-token',
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('#### [ERROR] Failed building connection QR payload: $e');
+      }
+      return null;
+    }
+  }
+
+  Widget _buildPosConnectQrSection() {
+    return FutureBuilder<CfdConnectionPayload?>(
+      future: _buildConnectionPayload(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (!snapshot.hasData || snapshot.data == null) {
+          return const SizedBox.shrink();
+        }
+
+        final payload = snapshot.data!;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Customer Display Pairing',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Scan this QR code from the Customer Display to connect it to this POS',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: QrImageView(
+                  data: payload.toQrData(),
+                  version: QrVersions.auto,
+                  size: 180,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     //   final themeHelper = Provider.of<ThemeNotifier>(context);  // Build #1.0.207
@@ -480,6 +556,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // Divider(color: Colors.grey[800], thickness: 1),
                 _buildPrinterSettingsSection(),
                 Divider(color: Colors.grey[800], thickness: 1),
+                _buildPosConnectQrSection(),
               ],
             ),
           ),

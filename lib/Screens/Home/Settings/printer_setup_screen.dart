@@ -681,7 +681,7 @@ class _PrinterSetupState extends State<PrinterSetup> {
                         )
                             .toList()),
                     Visibility(
-                      visible: defaultPrinterType == PrinterType.network && Platform.isWindows,
+                      visible: defaultPrinterType == PrinterType.network,
                       child: Padding(
                         padding: const EdgeInsets.only(top: 10.0),
                         child: TextFormField(
@@ -696,7 +696,7 @@ class _PrinterSetupState extends State<PrinterSetup> {
                       ),
                     ),
                     Visibility(
-                      visible: defaultPrinterType == PrinterType.network && Platform.isWindows,
+                      visible: defaultPrinterType == PrinterType.network,
                       child: Padding(
                         padding: const EdgeInsets.only(top: 10.0),
                         child: TextFormField(
@@ -711,7 +711,7 @@ class _PrinterSetupState extends State<PrinterSetup> {
                       ),
                     ),
                     Visibility(
-                      visible: defaultPrinterType == PrinterType.network && Platform.isWindows,
+                      visible: defaultPrinterType == PrinterType.network,
                       child: Padding(
                         padding: const EdgeInsets.only(top: 10.0),
                         child: OutlinedButton(

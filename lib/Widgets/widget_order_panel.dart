@@ -68,6 +68,10 @@ import '../Repositories/Orders/order_repository.dart';
 import '../Screens/Home/add_screen.dart';
 import '../Screens/Home/edit_product_screen.dart';
 import '../Utilities/svg_images_utility.dart';
+import '../mqtt_server/cart_item.dart';
+import '../mqtt_server/cart_state.dart';
+import '../mqtt_server/cfd_store_payload.dart';
+import '../mqtt_server/store_messaging_service.dart';
 import '../services/CustomerDisplayService.dart';
 import '../services/customer_services.dart';
 import 'ManualPriceDialog.dart';
@@ -188,6 +192,8 @@ class _RightOrderPanelState extends State<RightOrderPanel>
   int _currentOrderVersion = 0;
 
   VoidCallback? _modeChangeListener;
+  bool _summaryEnabledForActiveOrder = false;
+  int? _summaryLockedOrderId;
 
   void _toggleSummary() {
     setState(() {
@@ -203,6 +209,309 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  Future<void> _publishMqttCart({
+    bool isPayment = false,
+    double? grossTotal,
+    double? orderTax,
+    double? orderDiscount,
+    double? merchantDiscount,
+    double? cashbackFee,
+    double? netPayable,
+    int? totalItemsCount,
+    bool? summaryEnabled,
+    String? orderDate,
+    String? orderTime,
+    bool forceIdle = false,
+    int? orderId,
+  }) async {
+    try {
+      final messaging =
+          Provider.of<StoreMessagingService>(context, listen: false);
+
+      final int? activeId = orderId ?? orderHelper.activeOrderId;
+
+      if (forceIdle) {
+        _summaryEnabledForActiveOrder = false;
+        _summaryLockedOrderId = null;
+
+        await messaging.publishIdleClear();
+
+        if (kDebugMode) {
+          print(
+            '📤 MQTT → IDLE via publishIdleClear (delete confirm) '
+            'activeId=$activeId orderItems=${orderItems.length}',
+          );
+        }
+        return;
+      }
+
+      final bool shouldIdle = !isPayment && activeId == null;
+
+      if (shouldIdle) {
+        _summaryEnabledForActiveOrder = false;
+        _summaryLockedOrderId = null;
+
+        final store = await CfdStorePayload.load();
+        final idleState = CartState(
+          sessionId: 'ORDER-0',
+          sequence: CfdSequence.next(),
+          screen: 'IDLE',
+          items: const [],
+          tax: 0,
+          message: null,
+          orderId: null,
+          subtotalOverride: 0,
+          orderDiscount: 0,
+          merchantDiscount: 0,
+          cashbackFee: 0,
+          netPayable: 0,
+          totalItems: 0,
+          orderDate: '',
+          orderTime: '',
+          summaryEnabled: false,
+          storeId: store.storeId,
+          storeName: store.storeName,
+          storeLogoUrl: store.storeLogoUrl,
+          storeBaseUrl: store.storeBaseUrl,
+          slideshowUrls: store.slideshowUrls,
+          loyaltyContact: '',
+          availablePoints: 0,
+        );
+
+        await messaging.publishState(idleState);
+
+        if (kDebugMode) {
+          print(
+            '📤 MQTT → IDLE (soft) shouldIdle=$shouldIdle '
+            'forceIdle=$forceIdle activeId=$activeId '
+            'orderItems=${orderItems.length}',
+          );
+        }
+        return;
+      }
+
+      String loyaltyContact = '';
+      int availablePoints = 0;
+      double hiveOrderDiscount = 0.0;
+      double hiveMerchantDiscount = 0.0;
+      double hiveOrderTax = 0.0;
+      double hiveCashbackFee = 0.0;
+
+      Map<String, dynamic>? activeHiveOrder;
+
+      if (activeId != null) {
+        final box = StorageProvider.offlineOrders;
+        final raw = await box.get(activeId.toString());
+        if (raw != null) {
+          activeHiveOrder = Map<String, dynamic>.from(raw);
+          final order = activeHiveOrder!;
+          loyaltyContact = (order['loyaltyContact'] ?? '').toString();
+          availablePoints =
+              int.tryParse((order['available_points'] ?? '0').toString()) ?? 0;
+          hiveOrderDiscount =
+              (order['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+          hiveMerchantDiscount =
+              (order['merchantDiscount'] as num?)?.toDouble() ??
+                  (order['merchant_discount'] as num?)?.toDouble() ??
+                  0.0;
+          hiveOrderTax = (order['order_tax'] as num?)?.toDouble() ??
+              (order['tax_discount'] as num?)?.toDouble() ??
+              0.0;
+          hiveCashbackFee = (order['cashbackFee'] as num?)?.toDouble() ??
+              (order['cashback_fee'] as num?)?.toDouble() ??
+              0.0;
+        }
+      }
+
+      final List<CartItem> items =
+          orderItems.map((item) => CartItem.fromOrderItem(item)).toList();
+
+      if (activeHiveOrder != null) {
+        final payouts = (activeHiveOrder['payouts'] as List? ?? []);
+        for (final p in payouts) {
+          if (p is Map) {
+            final double amt =
+                ((p['amount'] ?? p['price'] ?? 0) as num).toDouble().abs();
+            if (amt > 0) {
+              final int pId = int.tryParse(
+                      (p['payout_product_id'] ?? p['product_id'] ?? 0)
+                          .toString()) ??
+                  0;
+              final String pName =
+                  (p['product_name'] ?? p['name'] ?? 'Payout').toString();
+              final bool exists = items.any(
+                (i) => i.itemType == 'payout' || i.productId == pId.toString(),
+              );
+              if (!exists) {
+                items.add(CartItem.fromOrderItem({
+                  'item_name': pName,
+                  'item_price': amt,
+                  'items_count': 1,
+                  'item_type': 'payout',
+                  'product_id': pId,
+                  'productId': pId,
+                  'product_name': pName,
+                  'product_image': p['product_image'] ?? p['image'] ?? '',
+                }));
+              }
+            }
+          }
+        }
+
+        final cashbacks = (activeHiveOrder['cashbacks'] as List? ?? []);
+        for (final c in cashbacks) {
+          if (c is Map) {
+            final double amt =
+                ((c['amount'] ?? c['price'] ?? 0) as num).toDouble().abs();
+            if (amt > 0) {
+              final int cId = int.tryParse(
+                      (c['cashback_product_id'] ?? c['product_id'] ?? 0)
+                          .toString()) ??
+                  0;
+              final bool exists = items.any(
+                (i) =>
+                    i.itemType == 'cashback' || i.productId == cId.toString(),
+              );
+              if (!exists) {
+                items.add(CartItem.fromOrderItem({
+                  'item_name': 'Cashback',
+                  'item_price': amt,
+                  'items_count': 1,
+                  'item_type': 'cashback',
+                  'product_id': cId,
+                  'productId': cId,
+                  'product_name': 'Cashback',
+                  'product_image': c['product_image'] ?? c['image'] ?? '',
+                }));
+              }
+            }
+          }
+        }
+      }
+
+      final double tax = orderTax ?? hiveOrderTax;
+      final double disc = (orderDiscount ?? hiveOrderDiscount).abs();
+      final double mDisc = (merchantDiscount ?? hiveMerchantDiscount).abs();
+      final double cbFee = cashbackFee ??
+          (hiveCashbackFee != 0 ? hiveCashbackFee : this.cashbackFee);
+      final double gross =
+          grossTotal ?? items.fold(0.0, (s, i) => s + i.lineTotal);
+      final double payable =
+          netPayable ?? (gross + tax + cbFee - disc - mDisc);
+      final int itemCount =
+          totalItemsCount ?? items.fold(0, (s, i) => s + i.qty);
+
+      if (activeId == null) {
+        _summaryEnabledForActiveOrder = false;
+        _summaryLockedOrderId = null;
+      } else if (_summaryLockedOrderId != null &&
+          activeId != _summaryLockedOrderId) {
+        _summaryEnabledForActiveOrder = false;
+        _summaryLockedOrderId = null;
+      }
+      if (summaryEnabled == true && activeId != null) {
+        _summaryEnabledForActiveOrder = true;
+        _summaryLockedOrderId = activeId;
+      }
+      if (summaryEnabled == false) {
+        _summaryEnabledForActiveOrder = false;
+        _summaryLockedOrderId = null;
+      }
+
+      final bool effectiveSummary = summaryEnabled == false
+          ? false
+          : (summaryEnabled == true ||
+              (_summaryEnabledForActiveOrder &&
+                  activeId != null &&
+                  activeId == _summaryLockedOrderId));
+
+      final store = await CfdStorePayload.load();
+
+      final state = CartState(
+        sessionId: 'ORDER-${activeId ?? 0}',
+        sequence: CfdSequence.next(),
+        screen: (isPayment || effectiveSummary) ? 'PAYMENT' : 'CART',
+        items: items,
+        tax: tax,
+        message: (isPayment || effectiveSummary) ? 'Please complete payment' : null,
+        orderId: activeId,
+        subtotalOverride: gross,
+        orderDiscount: disc,
+        merchantDiscount: mDisc,
+        cashbackFee: cbFee,
+        netPayable: payable,
+        totalItems: itemCount,
+        orderDate: orderDate ?? widget.formattedDate,
+        orderTime: orderTime ?? widget.formattedTime,
+        summaryEnabled: effectiveSummary,
+        storeId: store.storeId,
+        storeName: store.storeName,
+        storeLogoUrl: store.storeLogoUrl,
+        storeBaseUrl: store.storeBaseUrl,
+        slideshowUrls: store.slideshowUrls,
+        loyaltyContact: loyaltyContact,
+        availablePoints: availablePoints,
+      );
+
+      await messaging.publishState(state);
+
+      if (kDebugMode) {
+        print(
+          'MB TT → orderId=$activeId screen=${state.screen} '
+          'summary=$effectiveSummary disc=$disc tax=$tax items=${items.length}',
+        );
+      }
+    } catch (e, s) {
+      if (kDebugMode) print('MQTT publish error: $e\n$s');
+    }
+  }
+
+  int _extractLoyaltyPoints(Map<String, dynamic>? productMap) {
+    if (productMap == null) return 0;
+    final metaData = productMap['meta_data'];
+    if (metaData is List) {
+      for (final meta in metaData) {
+        if (meta is Map) {
+          final key = (meta['key'] ?? '').toString();
+          if (key == '_product_loyalty_points') {
+            final value = meta['value']?.toString() ?? '0';
+            return int.tryParse(value) ?? 0;
+          }
+        }
+      }
+    }
+    final directPoints = productMap['loyalty_points'] ?? productMap['loyaltyPoints'];
+    if (directPoints != null) {
+      return int.tryParse(directPoints.toString()) ?? 0;
+    }
+    final nestedMeta = productMap['metaData'];
+    if (nestedMeta is List) {
+      for (final meta in nestedMeta) {
+        if (meta is Map) {
+          final key = (meta['key'] ?? '').toString();
+          if (key == '_product_loyalty_points') {
+            final value = meta['value']?.toString() ?? '0';
+            return int.tryParse(value) ?? 0;
+          }
+        }
+      }
+    }
+    return 0;
+  }
+
+  List<Map<String, dynamic>> _extractMetaData(Map<String, dynamic>? productMap) {
+    if (productMap == null) return [];
+    final metaData = productMap['meta_data'];
+    if (metaData is List) {
+      return metaData.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
+    }
+    final nestedMeta = productMap['metaData'];
+    if (nestedMeta is List) {
+      return nestedMeta.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
+    }
+    return [];
   }
 
   static double _toDouble(dynamic value) {
@@ -1224,6 +1533,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           _listVersion++;
           _currentOrderVersion++;
         });
+        unawaited(_publishMqttCart());
       }
       return;
     }
@@ -1459,6 +1769,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                 _listVersion++;
                 _currentOrderVersion++;
               });
+              unawaited(_publishMqttCart());
             }
             return;
           }
@@ -1479,6 +1790,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             setState(() {
               orderItems = [];
             });
+            unawaited(_publishMqttCart());
           }
           await _getOrderTabs();
           return;
@@ -1505,6 +1817,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
             orderItems = List<Map<String, dynamic>>.from(items);
             _listVersion++;
           });
+          unawaited(_publishMqttCart());
         }
       } catch (e, s) {
         if (kDebugMode) {
@@ -1514,6 +1827,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           setState(() {
             orderItems = [];
           });
+          unawaited(_publishMqttCart());
         }
       }
     } else {
@@ -1526,6 +1840,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           orderItems = [];
           _listVersion++;
         });
+        unawaited(_publishMqttCart());
       }
     }
   }
@@ -1566,6 +1881,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       } else {
         await CustomerDisplayService.showWelcome();
       }
+      unawaited(_publishMqttCart());
       return;
     }
 
@@ -1611,11 +1927,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         // Increment request ID to ignore stale responses
         final int requestId = ++_fetchOrderItemsRequestId;
 
-        // Clear UI immediately – totals will become zero until fetch completes
+        // Set switching state without clearing orderItems to prevent UI flickering
         setState(() {
           _isSwitchingOrder = true;
           _currentOrderVersion++;
-          orderItems = []; // ← clears old items → totals become zero
           _listVersion++;
         });
 
@@ -1640,7 +1955,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
       final activeTabOrderId =
           _normalizeOrderId(tabs[defaultIndex]["orderId"]) ?? 0;
       if (activeTabOrderId != 0) {
-        CustomerDisplayHelper.updateCustomerDisplay(activeTabOrderId);
+        unawaited(CustomerDisplayHelper.updateCustomerDisplay(activeTabOrderId));
       }
       setState(() {});
     }
@@ -1807,12 +2122,16 @@ class _RightOrderPanelState extends State<RightOrderPanel>
               "##### DEBUG: addNewTab - Order created successfully, serverOrderId: ${response.data!.id}");
         }
         // Persist to SQLite so order panel shows this order
-        await orderHelper.createOrder(serverOrderId: response.data!.id);
+        final newOrderId = response.data!.id;
+        await orderHelper.createOrder(serverOrderId: newOrderId);
+        await orderHelper.setActiveOrder(newOrderId);
+        await orderHelper.saveLastActiveOrderId(newOrderId);
+
         setState(() {
           tabs.add({
-            "title": "${response.data!.id}",
+            "title": "$newOrderId",
             "subtitle": "Tab ${tabs.length + 1}",
-            "orderId": response.data!.id as Object,
+            "orderId": newOrderId as Object,
           });
         });
 
@@ -1820,6 +2139,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         _tabController?.index = tabs.length - 1;
         _scrollToSelectedTab();
         await fetchOrderItems();
+        await CustomerDisplayHelper.updateCustomerDisplay(newOrderId);
 
         if (Misc.showDebugSnackBar) {
           // Build #1.0.254
@@ -1992,32 +2312,65 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     return null;
   }
 
+  // Future<void> _openCustomItemDialog(
+  //     BuildContext context, String barcode) async {
+  //   if (_isCustomItemLoading) return;
+  //   _isCustomItemLoading = true;
+  //
+  //   await CustomDialog.showCustomItemNotAdded(
+  //     context,
+  //     onRetry: () {
+  //       Navigator.of(context).pop();
+  //       Navigator.pushAndRemoveUntil(
+  //         context,
+  //         MaterialPageRoute(
+  //           builder: (context) => AddScreen(
+  //             barcode: barcode,
+  //             selectedTabIndex: 2, // Custom Item tab
+  //           ),
+  //         ),
+  //         (route) => false,
+  //       );
+  //     },
+  //   ).then((_) {
+  //     _isCustomItemLoading = false;
+  //     if (kDebugMode) {
+  //       print("🧩 Custom Item dialog closed for SKU: $barcode");
+  //     }
+  //   });
+  // }
+
+
   Future<void> _openCustomItemDialog(
       BuildContext context, String barcode) async {
     if (_isCustomItemLoading) return;
     _isCustomItemLoading = true;
 
-    await CustomDialog.showCustomItemNotAdded(
+    // 🔴 Instead of showing the CustomItemNotAdded dialog, just show a snackbar
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Item not present"),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    // Navigate straight to AddScreen (Custom Item tab)
+    Navigator.pushAndRemoveUntil(
       context,
-      onRetry: () {
-        Navigator.of(context).pop();
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (context) => AddScreen(
-              barcode: barcode,
-              selectedTabIndex: 2, // Custom Item tab
-            ),
-          ),
+      MaterialPageRoute(
+        builder: (context) => AddScreen(
+          barcode: barcode,
+          selectedTabIndex: 2, // Custom Item tab
+        ),
+      ),
           (route) => false,
-        );
-      },
-    ).then((_) {
-      _isCustomItemLoading = false;
-      if (kDebugMode) {
-        print("🧩 Custom Item dialog closed for SKU: $barcode");
-      }
-    });
+    );
+
+    _isCustomItemLoading = false;
+    if (kDebugMode) {
+      print("🧩 Custom Item snackbar shown, navigated for SKU: $barcode");
+    }
   }
 
 //Build #1.0.268: 1. add below function in  BarcodeKeyboardListenerState lib
@@ -6311,6 +6664,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                     });
                                                   }
 
+                                                  unawaited(_publishMqttCart());
                                                   if (kDebugMode) {
                                                     print(
                                                         "✅ Quantity updated for PRODUCT or CUSTOM ITEM");
@@ -7664,50 +8018,19 @@ class _RightOrderPanelState extends State<RightOrderPanel>
 // 🔥 ONLY WRITE IN WHOLE CHECKOUT
                                   await box.put(localKey, updated);
 
-// DEBUG
-
-                                  // ===== VERIFY HIVE WRITE =====
-                                  final verifyWrite = await box.get(localKey);
-
-                                  debugPrint(
-                                      "\n🟥🟥🟥 VERIFY AFTER SAVE (CHECKOUT) 🟥🟥🟥");
-                                  debugPrint("OrderID: $localKey");
-
-                                  final items = verifyWrite?['items'] ?? [];
-                                  for (final i in items) {
-                                    debugPrint(
-                                        "ITEM → ${i['item_name']} | discount_meta=${i['discount_meta']}");
-                                  }
-
-                                  final products =
-                                      verifyWrite?['products'] ?? [];
-                                  for (final p in products) {
-                                    debugPrint(
-                                        "PRODUCT → ${p['name']} | discount_meta=${p['discount_meta']}");
-                                  }
-
-                                  debugPrint("🟥🟥🟥 END VERIFY 🟥🟥🟥\n");
-
-                                  final finalStored = await box.get(localKey);
-                                  debugPrint(
-                                      "🧠 FINAL STORED HIVE ORDER =====================");
-                                  debugPrint(const JsonEncoder.withIndent('  ')
-                                      .convert(finalStored));
-                                  debugPrint(
-                                      "===============================================");
-// DEBUG
-                                  final verify = await box.get(localKey);
-                                  debugPrint("🧠 STORED ORDER AFTER SAVE:");
-                                  debugPrint(jsonEncode(verify));
-                                  await CustomerDisplayHelper
-                                      .updateCustomerDisplay(
-                                          frozenCheckoutOrderId,
-                                          summaryEnabled: true);
+                                   if (kDebugMode) {
+                                     final verifyWrite = await box.get(localKey);
+                                     debugPrint("OrderID saved for Checkout: $localKey items=${verifyWrite?['items']?.length}");
+                                   }
+                                   unawaited(CustomerDisplayHelper
+                                       .updateCustomerDisplay(
+                                           frozenCheckoutOrderId,
+                                           summaryEnabled: true));
 
                                   // =======================================================
                                   // 🔹 NAVIGATE TO SUMMARY SCREEN
                                   // =======================================================
-                                  final result = await Navigator.push(
+                                  await Navigator.push(
                                     context,
                                     PageRouteBuilder(
                                       pageBuilder: (context, animation,
@@ -7759,6 +8082,19 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                       },
                                     ),
                                   );
+
+                                  // Reset CFD state back to CART when user returns back from summary screen
+                                  try {
+                                    final backRaw = await box.get(localKey);
+                                    if (backRaw != null && backRaw is Map) {
+                                      final backMap = Map<String, dynamic>.from(backRaw);
+                                      backMap['_update_source'] = 'cart';
+                                      await box.put(localKey, backMap);
+                                    }
+                                    await CustomerDisplayHelper.updateCustomerDisplay(
+                                        frozenCheckoutOrderId,
+                                        summaryEnabled: false);
+                                  } catch (_) {}
                                 } catch (e, s) {
                                   debugPrint("❌ Error syncing order: $e");
                                   debugPrint("$s");

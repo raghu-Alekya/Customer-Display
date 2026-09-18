@@ -8,6 +8,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_core
   flutter_udid
   isar_community_flutter_libs
+  nsd_windows
   thermal_printer
   url_launcher_windows
 )

@@ -35,7 +35,7 @@ enum PaymentStatus {
 }
 
 // Enum for payment method types
-enum PaymentMode { cash, card, wallet, ebt }
+enum PaymentMode { cash, card, payLater, ebt }
 
 class PaymentDialog extends StatefulWidget {
   final PaymentStatus status; // Current payment status
@@ -46,7 +46,7 @@ class PaymentDialog extends StatefulWidget {
   final VoidCallback? onPrint; // Callback for printing receipt
   final VoidCallback? onNextPayment; // Callback for proceeding to next payment
   final Function(String, {String? email})?
-      onDone; // Callback for completing the payment flow
+  onDone; // Callback for completing the payment flow
   final VoidCallback? onNoReceipt; // Callback when user doesn't want receipt
   final VoidCallback? onExitCancel; // Callback for canceling exit
   final VoidCallback? onExitConfirm; // Callback for confirming exit
@@ -105,13 +105,13 @@ class PaymentDialog extends StatefulWidget {
 class _PaymentDialogState extends State<PaymentDialog> {
   String _selectedOption = 'Print'; // Default selected receipt option
   final TextEditingController _contactController =
-      TextEditingController(); // For email/phone input
+  TextEditingController(); // For email/phone input
   String? _validationError; // To hold validation error messages
   String capitalize(String s) =>
       s[0].toUpperCase() +
-      s.substring(1); //Build #1.0.34: added for "Cash" in success popup dialog
+          s.substring(1); //Build #1.0.34: added for "Cash" in success popup dialog
   bool _isVoidCancelLoading =
-      false; // Build #1.0.49: Track loading for void cancel
+  false; // Build #1.0.49: Track loading for void cancel
   bool _isVoidConfirmLoading = false; // Track loading for void confirm
   bool _isDoneLoading = false; // Track loading for done action
   bool _isNoReceiptLoading = false; // Track loading for no receipt action
@@ -136,7 +136,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min, // Keep dialog as small as possible
             crossAxisAlignment:
-                CrossAxisAlignment.center, // Center content horizontally
+            CrossAxisAlignment.center, // Center content horizontally
             children: [
               _buildStatusIcon(), // Display appropriate status icon
               const SizedBox(height: 24), // Vertical spacing
@@ -243,7 +243,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                       ),
                       child: isSelected
                           ? const Icon(Icons.check,
-                              color: Colors.white, size: 18)
+                          color: Colors.white, size: 18)
                           : null,
                     ),
 
@@ -291,7 +291,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                     text: c["expiry_date"]?.toString() ?? '',
                                     style: const TextStyle(
                                       fontWeight:
-                                          FontWeight.w700, // ✅ value bold
+                                      FontWeight.w700, // ✅ value bold
                                     ),
                                   ),
                                 ],
@@ -316,7 +316,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                         '${double.tryParse(c["min_amount"].toString())?.toStringAsFixed(2) ?? '0.00'}',
                                     style: const TextStyle(
                                       fontWeight:
-                                          FontWeight.w700, // ✅ amount bold
+                                      FontWeight.w700, // ✅ amount bold
                                     ),
                                   ),
                                 ],
@@ -332,7 +332,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                     // 💰 AMOUNT
                     Text(
                       '${TextConstants.currencySymbol}'
-                      '${double.tryParse(c["amount"].toString())?.toStringAsFixed(2) ?? '0.00'}',
+                          '${double.tryParse(c["amount"].toString())?.toStringAsFixed(2) ?? '0.00'}',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -353,33 +353,33 @@ class _PaymentDialogState extends State<PaymentDialog> {
             child: ElevatedButton(
               onPressed: isSelected
                   ? () async {
-                      final String couponCode = c["code"].toString();
+                final String couponCode = c["code"].toString();
 
-                      // Generate QR
-                      final qrPainter = QrPainter(
-                        data: couponCode,
-                        version: QrVersions.auto,
-                        gapless: true,
-                      );
+                // Generate QR
+                final qrPainter = QrPainter(
+                  data: couponCode,
+                  version: QrVersions.auto,
+                  gapless: true,
+                );
 
-                      final ui.Image qrImage = await qrPainter.toImage(200);
-                      final byteData = await qrImage.toByteData(
-                          format: ui.ImageByteFormat.png);
+                final ui.Image qrImage = await qrPainter.toImage(200);
+                final byteData = await qrImage.toByteData(
+                    format: ui.ImageByteFormat.png);
 
-                      if (byteData == null) return;
+                if (byteData == null) return;
 
-                      final Uint8List qrBytes = byteData.buffer.asUint8List();
-                      final String qrBase64 = base64Encode(qrBytes);
+                final Uint8List qrBytes = byteData.buffer.asUint8List();
+                final String qrBase64 = base64Encode(qrBytes);
 
-                      // 🔥 Prepare print content
-                      await _prepareCouponPrintTicket(
-                        couponCode: couponCode,
-                        qrBase64: qrBase64,
-                      );
+                // 🔥 Prepare print content
+                await _prepareCouponPrintTicket(
+                  couponCode: couponCode,
+                  qrBase64: qrBase64,
+                );
 
-                      // 🖨 Direct print
-                      await _printTicket();
-                    }
+                // 🖨 Direct print
+                await _printTicket();
+              }
                   : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
@@ -388,7 +388,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+                const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
               ),
               child: const Text(
                 "Print",
@@ -493,7 +493,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
     }
     switch (result) {
       case Ok<BluetoothPrinter>():
-        // BluetoothPrinter printer = result.value;
+      // BluetoothPrinter printer = result.value;
         break;
       case Error<BluetoothPrinter>():
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -547,27 +547,27 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
     switch (widget.status) {
       case PaymentStatus.successful:
-        //iconColor = Colors.green;
-        //backgroundColor = Colors.green.withOpacity(0.1);
-        //icon = Icons.check_circle_outline;
+      //iconColor = Colors.green;
+      //backgroundColor = Colors.green.withOpacity(0.1);
+      //icon = Icons.check_circle_outline;
         svgPath = 'assets/svg/check_broken.svg'; // Success icon path
         break;
       case PaymentStatus.partial:
-        //iconColor = Colors.orange;
-        //backgroundColor = Colors.orange.withOpacity(0.1);
-        //icon = Icons.check_circle_outline;
+      //iconColor = Colors.orange;
+      //backgroundColor = Colors.orange.withOpacity(0.1);
+      //icon = Icons.check_circle_outline;
         svgPath =
-            'assets/svg/check_broken_partial.svg'; // Partial payment icon path
+        'assets/svg/check_broken_partial.svg'; // Partial payment icon path
         break;
       case PaymentStatus.receipt:
-        //iconColor = Colors.blue;
-        //backgroundColor = Colors.blue.withOpacity(0.1);
-        //icon = Icons.print;
+      //iconColor = Colors.blue;
+      //backgroundColor = Colors.blue.withOpacity(0.1);
+      //icon = Icons.print;
         isPng = true; // Using PNG instead of SVG
         svgPath = 'assets/printer.png'; // Receipt printer icon path
         break;
-      // If you don't have this image, replace with an Icon:
-      // return Icon(icon, size: 90, color: iconColor);
+    // If you don't have this image, replace with an Icon:
+    // return Icon(icon, size: 90, color: iconColor);
       case PaymentStatus.exitConfirmation:
         svgPath = 'assets/svg/check_broken_exit.svg';
 
@@ -585,17 +585,17 @@ class _PaymentDialogState extends State<PaymentDialog> {
       ),
       child: isPng
           ? Image.asset(
-              // Use Image.asset for PNG
-              svgPath,
-              width: 50,
-              height: 50,
-            )
+        // Use Image.asset for PNG
+        svgPath,
+        width: 50,
+        height: 50,
+      )
           : SvgPicture.asset(
-              // Use SvgPicture for SVG
-              svgPath,
-              width: 50,
-              height: 50,
-            ),
+        // Use SvgPicture for SVG
+        svgPath,
+        width: 50,
+        height: 50,
+      ),
     );
   }
 
@@ -631,8 +631,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
         color: themeHelper.themeMode == ThemeMode.dark
             ? ThemeNotifier.textDark
             : widget.status == PaymentStatus.exitConfirmation
-                ? Colors.black87
-                : Colors.blueGrey[800],
+            ? Colors.black87
+            : Colors.blueGrey[800],
       ),
     ).poppins();
   }
@@ -651,7 +651,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
     if (widget.status == PaymentStatus.receipt) {
       return Row(
         mainAxisAlignment:
-            MainAxisAlignment.center, // Center the receipt options
+        MainAxisAlignment.center, // Center the receipt options
         children: [
           _buildReceiptOptionButton(
             // Print receipt option
@@ -819,7 +819,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
           Expanded(
             child: _buildButton(
               TextConstants.noKeepIt,
-              () {
+                  () {
                 if (kDebugMode) {
                   print("DEBUG: Void cancel button pressed");
                 }
@@ -845,7 +845,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
           Expanded(
             child: _buildButton(
               TextConstants.yesVoid,
-              () {
+                  () {
                 if (kDebugMode) {
                   print("DEBUG: Void confirm button pressed");
                 }
@@ -881,7 +881,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
           Expanded(
             child: _buildButton(
               TextConstants.continueText,
-              () {
+                  () {
                 // Build #1.0.104: Fixed: Exit button loader issue
                 if (kDebugMode) {
                   print("DEBUG: continue button pressed");
@@ -902,12 +902,12 @@ class _PaymentDialogState extends State<PaymentDialog> {
     if (widget.status == PaymentStatus.receipt) {
       return Column(
         crossAxisAlignment:
-            CrossAxisAlignment.center, // Center children horizontally
+        CrossAxisAlignment.center, // Center children horizontally
         children: [
           Center(
             child: SizedBox(
               width:
-                  MediaQuery.of(context).size.width * 0.25, // Responsive width
+              MediaQuery.of(context).size.width * 0.25, // Responsive width
               child: TextField(
                 controller: _contactController, // Controller for input text
                 decoration: InputDecoration(
@@ -967,13 +967,13 @@ class _PaymentDialogState extends State<PaymentDialog> {
           Center(
             child: SizedBox(
               width:
-                  MediaQuery.of(context).size.width * 0.25, // Responsive width
+              MediaQuery.of(context).size.width * 0.25, // Responsive width
               child: Row(
                 children: [
                   Expanded(
                     child: _buildButton(
                       TextConstants.noReceipt,
-                      () async {
+                          () async {
                         if (kDebugMode) {
                           print("DEBUG: No receipt button pressed");
                         }
@@ -1001,7 +1001,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                   Expanded(
                     child: _buildButton(
                       TextConstants.done, // "Done" button
-                      () {
+                          () {
                         final contactInfo = _contactController.text.trim();
                         bool isValid = true;
                         // Validate only if Email or SMS is selected
@@ -1010,7 +1010,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                           if (contactInfo.isEmpty) {
                             setState(() {
                               _validationError =
-                                  'Please enter a valid ${_selectedOption.toLowerCase()}.';
+                              'Please enter a valid ${_selectedOption.toLowerCase()}.';
                             });
                             isValid = false;
                           }
@@ -1031,7 +1031,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                             widget.onEmail?.call(contactInfo); // Email receipt
                             widget.onDone?.call(_selectedOption,
                                 email:
-                                    contactInfo); // Build #1.0.159: Pass email to onDone btn action
+                                contactInfo); // Build #1.0.159: Pass email to onDone btn action
                           } else if (_selectedOption == TextConstants.sms) {
                             widget.onSMS?.call(contactInfo); // SMS receipt
                             widget.onDone?.call(_selectedOption);
@@ -1075,7 +1075,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
               Expanded(
                 child: _buildButton(
                   TextConstants.noReceipt,
-                  () async {
+                      () async {
                     if (kDebugMode) print("DEBUG: No receipt button pressed");
 
                     setState(() {
@@ -1110,52 +1110,52 @@ class _PaymentDialogState extends State<PaymentDialog> {
                 widget.status == PaymentStatus.successful
                     ? TextConstants.print
                     : widget.status == PaymentStatus.partial
-                        ? TextConstants.nextPayment
-                        : TextConstants.print, // fallback
+                    ? TextConstants.nextPayment
+                    : TextConstants.print, // fallback
 
                 // Dynamic callback based on status
                 widget.status == PaymentStatus.successful
                     ? () {
-                        final contactInfo = _contactController.text.trim();
-                        bool isValid = true;
+                  final contactInfo = _contactController.text.trim();
+                  bool isValid = true;
 
-                        if (_selectedOption == TextConstants.email ||
-                            _selectedOption == TextConstants.sms) {
-                          if (contactInfo.isEmpty) {
-                            setState(() {
-                              _validationError =
-                                  'Please enter a valid ${_selectedOption.toLowerCase()}.';
-                            });
-                            isValid = false;
-                          }
-                        }
+                  if (_selectedOption == TextConstants.email ||
+                      _selectedOption == TextConstants.sms) {
+                    if (contactInfo.isEmpty) {
+                      setState(() {
+                        _validationError =
+                        'Please enter a valid ${_selectedOption.toLowerCase()}.';
+                      });
+                      isValid = false;
+                    }
+                  }
 
-                        if (isValid) {
-                          if (kDebugMode)
-                            print(
-                                "DEBUG: Done button pressed, selectedOption: $_selectedOption");
+                  if (isValid) {
+                    if (kDebugMode)
+                      print(
+                          "DEBUG: Done button pressed, selectedOption: $_selectedOption");
 
-                          setState(() {
-                            _isDoneLoading = true;
-                          });
+                    setState(() {
+                      _isDoneLoading = true;
+                    });
 
-                          if (_selectedOption == TextConstants.print) {
-                            widget.onDone?.call(
-                                _selectedOption); // Let onDone handle printing
-                          } else if (_selectedOption == TextConstants.email) {
-                            widget.onEmail?.call(contactInfo);
-                            widget.onDone
-                                ?.call(_selectedOption, email: contactInfo);
-                          } else if (_selectedOption == TextConstants.sms) {
-                            widget.onSMS?.call(contactInfo);
-                            widget.onDone?.call(_selectedOption);
-                          }
-                        }
-                      }
+                    if (_selectedOption == TextConstants.print) {
+                      widget.onDone?.call(
+                          _selectedOption); // Let onDone handle printing
+                    } else if (_selectedOption == TextConstants.email) {
+                      widget.onEmail?.call(contactInfo);
+                      widget.onDone
+                          ?.call(_selectedOption, email: contactInfo);
+                    } else if (_selectedOption == TextConstants.sms) {
+                      widget.onSMS?.call(contactInfo);
+                      widget.onDone?.call(_selectedOption);
+                    }
+                  }
+                }
                     : widget.status == PaymentStatus.partial
-                        ? (widget.onNextPayment ??
-                            () {}) // Next payment for partial
-                        : () {},
+                    ? (widget.onNextPayment ??
+                        () {}) // Next payment for partial
+                    : () {},
 
                 backgroundColor: const Color(0xFF1BA672),
                 isLoading: _isDoneLoading,
@@ -1170,8 +1170,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
   // Build #1.0.49: updated code
   Widget _buildButton(String text, VoidCallback? onPressed,
       {Color backgroundColor = Colors.blue,
-      Color textColor = Colors.white,
-      bool isLoading = false}) {
+        Color textColor = Colors.white,
+        bool isLoading = false}) {
     if (kDebugMode) {
       print("DEBUG: Building button '$text', isLoading: $isLoading");
     }
@@ -1191,20 +1191,20 @@ class _PaymentDialogState extends State<PaymentDialog> {
       ),
       child: isLoading
           ? const SizedBox(
-              width: 28, // Increased loader size
-              height: 28,
-              child: CircularProgressIndicator(
-                strokeWidth: 3, // Slightly thicker stroke for visibility
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            )
+        width: 28, // Increased loader size
+        height: 28,
+        child: CircularProgressIndicator(
+          strokeWidth: 3, // Slightly thicker stroke for visibility
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+      )
           : Text(
-              text,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
-            ).poppins(),
+        text,
+        style: const TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+        ),
+      ).poppins(),
     );
   }
 

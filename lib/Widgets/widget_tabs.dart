@@ -31,6 +31,10 @@ import '../Repositories/Assets/asset_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
 import '../Utilities/svg_images_utility.dart';
+import '../mqtt_server/cart_item.dart';
+import '../mqtt_server/cart_state.dart';
+import '../mqtt_server/cfd_store_payload.dart';
+import '../mqtt_server/store_messaging_service.dart';
 import 'OrderPopupHelper.dart';
 import 'widget_custom_num_pad.dart';
 import 'package:http/http.dart' as http;
@@ -91,6 +95,47 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   String _payoutAmount = "";
   double _maxCashbackLimit = 0.0;
   late final OrderRepository _orderRepository;
+  DateTime? _lastCfdPushAt;
+  bool _cfdPushInFlight = false;
+
+  Future<void> _pushCfdAfterAppsChange(int orderId) async {
+    if (orderId <= 0) return;
+
+    final now = DateTime.now();
+    if (_cfdPushInFlight) {
+      if (kDebugMode) print('🔇 CFD push already in flight — skipping');
+      return;
+    }
+    if (_lastCfdPushAt != null &&
+        now.difference(_lastCfdPushAt!) < const Duration(milliseconds: 120)) {
+      if (kDebugMode) print('🔇 CFD push debounced (too soon after last push)');
+      return;
+    }
+
+    _cfdPushInFlight = true;
+    _lastCfdPushAt = now;
+
+    try {
+      try {
+        CustomerDisplayHelper.skipNextPendingOrderRefresh = false;
+      } catch (_) {}
+
+      await _publishCfdFromHiveOnce(orderId);
+    } finally {
+      _cfdPushInFlight = false;
+    }
+  }
+
+  Future<void> _publishCfdFromHiveOnce(int orderId) async {
+    try {
+      await CustomerDisplayHelper.updateCustomerDisplay(
+        orderId,
+        summaryEnabled: false,
+      );
+    } catch (e) {
+      if (kDebugMode) print('⚠️ CFD update failed: $e');
+    }
+  }
 
   // Adding a separate state variable for selected tab
   late int _selectedTabIndex;
@@ -728,6 +773,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
             _persistedTabIndex = index;
             if (index != 2) _isEnteringItemPrice = false;
           });
+          final activeId = _orderHelper.activeOrderId;
+          if (activeId != null && activeId > 0) {
+            unawaited(_pushCfdAfterAppsChange(activeId));
+          }
         },
         child: SizedBox(
           //height: 80,
@@ -2831,6 +2880,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       };
 
       await offlineBox.put(key, updatedOrder);
+      await _pushCfdAfterAppsChange(orderId);
 
       print("💾 Discount saved successfully");
       print("   • Type:        ${updatedOrder['merchantDiscountType']}");
@@ -3323,7 +3373,8 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         _cashbackAmount = "";
         _isCashbackLoading = false;
       });
-
+      await offlineBox.put(key, updatedOrder);
+      await _pushCfdAfterAppsChange(orderId);
       await _orderHelper.loadData();
       await _loadOrderData();
       OrderHelper.notifyOrderPanelToRefresh();
@@ -4261,8 +4312,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         "categories": categories,
         "tags": tags,
         "selected_category_id": selectedCategoryId,
-        "selected_category_name": _selectedCategoryName,
-        "selected_category_tax_slug": taxSlug,
         "pos_tax_class": posTaxClass,
         "pos_tax_percent": posTaxPercent,
         "tax_status": taxStatus,
@@ -4299,6 +4348,9 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       await StorageProvider.productCache.put("sku_$normalizedSku", {
         "products": [customItem]
       });
+      await _pushCfdAfterAppsChange(ensuredOrderId);
+      await Future.delayed(const Duration(milliseconds: 150));
+      await _pushCfdAfterAppsChange(ensuredOrderId);
 
       // ── Reset UI ─────────────────────────────────────────────
       setState(() {
@@ -4329,67 +4381,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
     }
   }
 
-  ///  Converts any deeply nested Map/List from Hive into JSON-safe Map<String, dynamic>
-  dynamic _convertToJsonSafe(dynamic value) {
-    if (value == null) return null;
-
-    if (value is Map) {
-      // Convert
-      return value.map((k, v) => MapEntry(k.toString(), _convertToJsonSafe(v)));
-    } else if (value is List) {
-      return value.map(_convertToJsonSafe).toList();
-    } else {
-      return value;
-    }
-  }
-
   Future<Map<String, dynamic>?> _getPayoutProductFromIsar() async {
-    // FAST PATH
-    if (_productMetaInitialized && _productMetaCache.isNotEmpty) {
-      for (final p in _productMetaCache.values) {
-        final name = (p["fast_key_item_name"] ?? p["name"] ?? "")
-            .toString()
-            .toLowerCase();
-
-        if (name.contains("payout")) {
-          return p;
-        }
-      }
-    }
-
-    try {
-      final isar = await IsarService.instance;
-      final entries = await isar.isarCacheEntrys.where().findAll();
-
-      for (final entry in entries) {
-        if (!entry.key.startsWith("products_")) continue;
-
-        final List<dynamic> products = jsonDecode(entry.json);
-        for (final raw in products) {
-          if (raw is! Map) continue;
-
-          final map = Map<String, dynamic>.from(raw);
-          final name = (map["fast_key_item_name"] ?? map["name"] ?? "")
-              .toString()
-              .toLowerCase();
-
-          if (name.contains("payout")) {
-            final pid = int.tryParse(
-                (map["fast_key_product_id"] ?? map["id"])?.toString() ?? "");
-
-            if (pid != null) {
-              _productMetaCache[pid] = map;
-              _productMetaInitialized = true;
-            }
-            return map;
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint("Payout Isar lookup failed → $e");
-    }
-
-    return null;
+    return const {
+      "fast_key_product_id": 999999,
+      "fast_key_item_name": "Payout",
+      "fast_key_item_price": 0,
+      "fast_key_item_image":
+          "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/payout-2-1.png",
+      "type": "simple",
+    };
   }
 
   //Build #1.0.78: Explanation
@@ -4414,7 +4414,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
     try {
       final offlineBox = StorageProvider.offlineOrders;
-      final productBox = StorageProvider.productCache;
       final payoutAmount = double.parse(_payoutAmount);
 
       final orderHelper = OrderHelper();
@@ -4449,34 +4448,15 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       final payouts = (existingOrder["payouts"] as List? ?? [])
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
-      if (payouts.isNotEmpty) {
-        setState(() => _isPayoutLoading = false);
-        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-          const SnackBar(
-            content: Text("A payout already exists for this order."),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
-      Map<String, dynamic>? payoutProduct = await _getPayoutProductFromIsar();
 
-// Fallback only if not found in catalog
-      payoutProduct ??= {
-        "fast_key_product_id": DateTime.now().millisecondsSinceEpoch,
-        "fast_key_item_name": "Payout",
-        "fast_key_item_price": 0,
-        "fast_key_item_image":
-            "https://merchantretail.alektasolutions.com/wp-content/uploads/2025/11/payout-2-1.png",
-        "type": "simple",
-      };
+      final payoutProduct = await _getPayoutProductFromIsar();
 
-      print("🟢 FOUND PAYOUT PRODUCT → $payoutProduct");
       final payoutEntry = {
         "order_id": orderId,
-        "payout_product_id": payoutProduct["fast_key_product_id"],
-        "product_name": payoutProduct["fast_key_item_name"],
-        "product_image": payoutProduct["fast_key_item_image"],
+        "payout_product_id": payoutProduct?["fast_key_product_id"] ??
+            DateTime.now().millisecondsSinceEpoch,
+        "product_name": payoutProduct?["fast_key_item_name"] ?? "Payout",
+        "product_image": payoutProduct?["fast_key_item_image"] ?? "",
         "amount": -payoutAmount,
         "type": "payout",
         "timestamp": DateTime.now().toIso8601String(),
@@ -4488,36 +4468,94 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
 
-      double total = 0.0;
+      final customItems = (existingOrder["custom_items"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      final cashbacks = (existingOrder["cashbacks"] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      double productTotal = 0.0;
       for (var p in products) {
-        total += (p["price"] ?? 0) * (p["quantity"] ?? 1);
+        final price = double.tryParse(p["price"]?.toString() ?? "0") ?? 0.0;
+        final qty = int.tryParse(p["quantity"]?.toString() ??
+                p["items_count"]?.toString() ??
+                "1") ??
+            1;
+        productTotal += price * qty;
       }
+
+      for (var c in customItems) {
+        final price = double.tryParse(c["custom_item_price"]?.toString() ??
+                c["amount"]?.toString() ??
+                c["price"]?.toString() ??
+                "0") ??
+            0.0;
+        final qty = int.tryParse(c["quantity"]?.toString() ??
+                c["items_count"]?.toString() ??
+                "1") ??
+            1;
+        productTotal += price * qty;
+      }
+
+      double payoutsTotal = payouts.fold<double>(
+        0.0,
+        (s, p) => s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0),
+      );
+
+      double cashbacksTotal = cashbacks.fold<double>(
+        0.0,
+        (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0),
+      );
+
+      final double grossTotal = productTotal + payoutsTotal + cashbacksTotal;
+      final double orderDiscount =
+          (existingOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+
+      double merchantDiscountVal = 0.0;
+      final mType =
+          existingOrder['merchantDiscountType']?.toString() ?? 'fixed';
+      final mPerc = double.tryParse(
+              existingOrder['merchantDiscountPercentage']?.toString() ?? '0') ??
+          0.0;
+      final mFixed = double.tryParse(
+              existingOrder['merchantDiscountFixed']?.toString() ?? '0') ??
+          0.0;
+
+      if (mType == 'percentage' && mPerc > 0) {
+        merchantDiscountVal = (grossTotal * mPerc) / 100.0;
+      } else {
+        merchantDiscountVal = mFixed;
+      }
+      if (merchantDiscountVal < 0.000001) merchantDiscountVal = 0.0;
+
+      final double orderTax =
+          (existingOrder['order_tax'] as num?)?.toDouble() ??
+              (existingOrder['tax_discount'] as num?)?.toDouble() ??
+              0.0;
+      final double cashbackFee =
+          (existingOrder['cashbackFee'] as num?)?.toDouble() ??
+              (existingOrder['cashback_fee'] as num?)?.toDouble() ??
+              0.0;
+
+      final double netTotal = grossTotal - orderDiscount - merchantDiscountVal;
+      final double netPayable = netTotal + orderTax + cashbackFee;
 
       final updatedOrder = {
         ...existingOrder,
         "products": products,
+        "custom_items": customItems,
         "payouts": payouts,
-        "gross_total": total + (-payoutAmount),
+        "cashbacks": cashbacks,
+        "gross_total": grossTotal,
+        "net_total": netTotal,
+        "net_payable": netPayable,
+        "merchantDiscount": merchantDiscountVal,
       };
 
       await offlineBox.put(key, updatedOrder);
-      try {
-        await CustomerDisplayHelper.updateCustomerDisplay(
-          orderId,
-          summaryEnabled: false,
-        );
-
-        print("📺 Customer display updated after payout");
-      } catch (e) {
-        print("❌ Customer display update failed: $e");
-      }
-
-      // ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-      //   SnackBar(
-      //     content: Text("Payout of ₹${payoutAmount.toStringAsFixed(2)} added successfully"),
-      //     backgroundColor: Colors.green,
-      //   ),
-      // );
+      await _pushCfdAfterAppsChange(orderId);
 
       setState(() {
         _payoutAmount = "";

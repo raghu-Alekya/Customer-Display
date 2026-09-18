@@ -3885,7 +3885,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
                               CustomerDisplayHelper.skipNextPendingOrderRefresh = true;
 
-                              await CustomerDisplayService.showCustomerData(
+                              unawaited(CustomerDisplayService.showCustomerData(
                                 orderId: frozenSummaryOrderId,
                                 items: customerDisplayItems,
 
@@ -3908,7 +3908,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                                 loyaltyContact: '',
                                 redeemedAmount: redeemValue,
                                 summaryEnabled: true,
-                              );
+                              ));
                             } catch (e) {
                               print(">>> Customer display update failed: $e");
                             }

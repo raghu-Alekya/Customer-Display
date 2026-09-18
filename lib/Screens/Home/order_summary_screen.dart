@@ -11,10 +11,11 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
-import 'package:intl/intl.dart'; // Added for date formatting
+import 'package:intl/intl.dart';
 import 'package:pinaka_pos/Database/assets_db_helper.dart';
 import 'package:pinaka_pos/Helper/Extentions/extensions.dart';
 import 'package:pinaka_pos/Helper/Extentions/money_rounding_helper.dart';
+import 'package:pinaka_pos/Screens/Home/pos_home_screen.dart';
 import 'package:pinaka_pos/Screens/Home/redeem_points_popup_screen.dart';
 import 'package:pinaka_pos/Utilities/printer_settings.dart';
 import 'package:provider/provider.dart';
@@ -36,6 +37,7 @@ import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/api_response.dart';
 import '../../Helper/customerdisplayhelper.dart';
+import '../../Helper/offline_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Payment/payment_model.dart';
 import '../../Models/Payment/void_payment_model.dart';
@@ -48,24 +50,28 @@ import '../../Utilities/result_utility.dart';
 import '../../Utilities/svg_images_utility.dart';
 import '../../Widgets/PaymentNumPad.dart';
 import '../../Widgets/offline_order_sync_service.dart';
+import '../../Widgets/pay_later_widget.dart';
 import '../../Widgets/scanner_guard.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_payment_dialog.dart';
 import '../../Widgets/widget_topbar.dart';
+import '../../mqtt_server/cart_item.dart';
+import '../../mqtt_server/cart_state.dart';
+import '../../mqtt_server/cfd_store_payload.dart';
+import '../../mqtt_server/store_messaging_service.dart';
 import '../../services/CustomerDisplayService.dart';
 import '../../services/customer_services.dart';
-import '../Auth/login_screen.dart';
-import 'Settings/image_utils.dart';
-import 'Settings/printer_setup_screen.dart';
-import 'categories_screen.dart';
-import 'edit_product_screen.dart';
+
+
 import 'package:android_intent_plus/android_intent.dart';
 
 import 'package:thermal_printer/thermal_printer.dart';
 
-import 'pos_home_screen.dart';
+import 'Settings/image_utils.dart';
+import 'Settings/printer_setup_screen.dart';
 import 'isar_payments/local_payments_db_helper.dart';
 import 'isar_payments/local_payments_model.dart';
+
 
 class LastPaymentInfo {
   final String method;
@@ -133,9 +139,9 @@ bool _couponHiveEntryIsRedeem(Map<String, dynamic> c) {
 }
 
 Map<String, dynamic> _mergeRedeemIntoCouponResponse(
-  dynamic prevCouponResponse,
-  String redeemCode,
-) {
+    dynamic prevCouponResponse,
+    String redeemCode,
+    ) {
   Map<String, dynamic> base = {};
   if (prevCouponResponse is Map) {
     base = Map<String, dynamic>.from(prevCouponResponse);
@@ -151,11 +157,11 @@ Map<String, dynamic> _mergeRedeemIntoCouponResponse(
   }
   final trimmed = redeemCode.trim();
   final keptIssued =
-      prevCoupons.where((c) => !_couponHiveEntryIsRedeem(c)).toList();
+  prevCoupons.where((c) => !_couponHiveEntryIsRedeem(c)).toList();
   final otherRedeems = prevCoupons
       .where((c) =>
-          _couponHiveEntryIsRedeem(c) &&
-          c['code']?.toString().trim() != trimmed)
+  _couponHiveEntryIsRedeem(c) &&
+      c['code']?.toString().trim() != trimmed)
       .toList();
   base['coupons'] = [
     ...keptIssued,
@@ -166,10 +172,10 @@ Map<String, dynamic> _mergeRedeemIntoCouponResponse(
 }
 
 void _enrichRedeemCouponIdsFromWoo(
-  Map<String, dynamic> offlineOrder,
-  Map<String, dynamic> wooResult,
-  String appliedCode,
-) {
+    Map<String, dynamic> offlineOrder,
+    Map<String, dynamic> wooResult,
+    String appliedCode,
+    ) {
   final cr = offlineOrder['coupon_response'];
   if (cr is! Map) return;
   final map = Map<String, dynamic>.from(cr);
@@ -219,9 +225,9 @@ String _orderSummaryLineVariationName(Map<String, dynamic> item) {
 
 String _orderSummaryNormalizeSku(dynamic raw) {
   return (raw ?? '').toString().trim().toLowerCase().replaceAll(
-        RegExp(r'[^a-z0-9]'),
-        '',
-      );
+    RegExp(r'[^a-z0-9]'),
+    '',
+  );
 }
 
 bool _cachedProductMapIndicatesEbt(Map<String, dynamic> p) {
@@ -258,8 +264,8 @@ bool _cachedProductMapIndicatesEbt(Map<String, dynamic> p) {
 
 /// When SQLite/Hive mismatch left lines without badges, use TopBar merged product list (same as POS search).
 Future<void> _mergeOrderSummaryLineItemsFromProductCache(
-  List<Map<String, dynamic>> lineItems,
-) async {
+    List<Map<String, dynamic>> lineItems,
+    ) async {
   try {
     final all = await TopBar.mergedCachedProductsForSearch();
     final byId = <int, Map<String, dynamic>>{};
@@ -291,7 +297,7 @@ Future<void> _mergeOrderSummaryLineItemsFromProductCache(
           line[AppDBConst.itemProductId] ??
           line['item_product_id'];
       final int? pid =
-          pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
+      pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
       if (pid == null || pid <= 0) continue;
 
       final p = byId[pid];
@@ -318,8 +324,8 @@ Future<void> _mergeOrderSummaryLineItemsFromProductCache(
         if (!isChildVariation) continue;
 
         final vId = int.tryParse(
-              (p['id'] ?? p['variation_id'] ?? 0).toString(),
-            ) ??
+          (p['id'] ?? p['variation_id'] ?? 0).toString(),
+        ) ??
             0;
         if (vId <= 0) continue;
 
@@ -338,17 +344,67 @@ Future<void> _mergeOrderSummaryLineItemsFromProductCache(
         if (lType.isEmpty || lType == 'product') {
           line['item_type'] = 'variant';
         }
+        // NEW: Merge meta_data (loyalty points etc.) from cached Indigo product
+        // === IMPROVED: Merge meta_data (loyalty points + other merchant data) ===
+        if (p != null) {
+          print('🔍 [Merge Meta] Found cached product for ID: ${p['fast_key_product_id'] ?? p['id']} | Name: ${p['name'] ?? p['fast_key_item_name']}');
+
+          dynamic meta = p['meta_data'] ?? p['metaData'];
+
+          if (meta is List) {
+            line['meta_data'] = List<Map<String, dynamic>>.from(meta);
+            print('✅ [Merge Meta] Copied meta_data List with ${meta.length} entries');
+          } else if (meta is Map) {
+            line['meta_data'] = [Map<String, dynamic>.from(meta)];
+            print('✅ [Merge Meta] Converted single meta Map to List');
+          } else {
+            // Try alternative keys
+            meta = p['metaData'] ?? p['metadata'] ?? p['meta'] ?? null;
+            if (meta is List) {
+              line['meta_data'] = List<Map<String, dynamic>>.from(meta);
+              print('✅ [Merge Meta] Found meta_data using fallback key');
+            } else {
+              print('⚠️ [Merge Meta] No meta_data found in cached product');
+            }
+          }
+
+          // Always provide fallback key
+          if (line['meta_data'] != null) {
+            line['metaData'] = line['meta_data'];
+          }
+
+          // Extract loyalty points + debug print
+          if (line['meta_data'] is List) {
+            bool foundLoyalty = false;
+            for (var m in line['meta_data']) {
+              if (m is Map && m['key'] == '_product_loyalty_points') {
+                final points = int.tryParse(m['value']?.toString() ?? '0') ?? 0;
+                line['loyalty_points'] = points;
+                print('🎯 [Merge Meta] Loyalty Points Found: $points for ${p['name']}');
+                foundLoyalty = true;
+                break;
+              }
+            }
+            if (!foundLoyalty) {
+              print('ℹ️ [Merge Meta] No _product_loyalty_points found in meta_data');
+            }
+          }
+        } else {
+          print('⚠️ [Merge Meta] No cached product (p == null)');
+        }
+
       }
     }
   } catch (_) {}
+
 }
 
 /// Pending orders often load line items from SQLite without EBT/variation flags
 /// while the same cart still exists in Hive `products`. Merge so badges match the order panel.
 void _mergeOrderSummaryLineItemsFromHive(
-  List<Map<String, dynamic>> lineItems,
-  Map<String, dynamic>? hiveOrder,
-) {
+    List<Map<String, dynamic>> lineItems,
+    Map<String, dynamic>? hiveOrder,
+    ) {
   if (hiveOrder == null) return;
   final rawProducts = hiveOrder['products'];
   if (rawProducts is! List || rawProducts.isEmpty) return;
@@ -361,7 +417,7 @@ void _mergeOrderSummaryLineItemsFromHive(
         line[AppDBConst.itemProductId] ??
         line['item_product_id'];
     final int? pid =
-        pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
+    pidRaw is int ? pidRaw : int.tryParse(pidRaw?.toString() ?? '');
 
     Map<String, dynamic>? matched;
     for (final p in rawProducts) {
@@ -369,7 +425,7 @@ void _mergeOrderSummaryLineItemsFromHive(
       final m = Map<String, dynamic>.from(p);
       final pPidRaw = m['product_id'] ?? m['id'];
       final pPid =
-          pPidRaw is int ? pPidRaw : int.tryParse(pPidRaw?.toString() ?? '');
+      pPidRaw is int ? pPidRaw : int.tryParse(pPidRaw?.toString() ?? '');
       if (pid != null && pPid != null && pPid == pid) {
         matched = m;
         break;
@@ -501,7 +557,7 @@ class NoScrollbarBehavior extends ScrollBehavior {
   @override
   Widget buildScrollbar(
       BuildContext context, Widget child, ScrollableDetails details) {
-    return child; // prevents scrollbar from showing
+    return child;
   }
 }
 
@@ -515,7 +571,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isCustomerFieldDisabled = false;
 
   final PaymentBloc paymentBloc =
-      PaymentBloc(PaymentRepository()); // Added PaymentBloc
+  PaymentBloc(PaymentRepository()); // Added PaymentBloc
   final ScrollController _scrollController = ScrollController();
   int? userId; // Build #1.0.29: To store user ID
   String? userDisplayName; // Build #1.0.29: To store user ID
@@ -569,17 +625,298 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   DateTime? _lastOrderSyncAt;
   String? _lastSyncedOrderKey;
 
-  bool _isCardPaymentCancelled = false;
+  double? _pendingTaxRefTax;
+  double? _pendingTaxRefBase;
+  double? _pendingTaxRefRate;
 
   double ebtTotal = 0.0;
   double payByEbt = 0.0; // ADD THIS
   TextEditingController ebtAmountController = TextEditingController();
 
+  Map<String, dynamic>? _selectedPayLaterUser;  // ← ADD THIS LINE
+  bool _isPayLaterSelected = false;
+  // static int _cfdSequence = 0;
+  bool _suppressCfdSync = false;
+
+  // int _computeTotalItems() {
+  //   //   return orderItems.fold(0, (sum, item) {
+  //   //     final name = item['item_name']?.toString().toLowerCase() ?? '';
+  //   //     if (name == 'payout' || name == 'cashback') {
+  //   //       return sum;
+  //   //     }
+  //   //     final qty = int.tryParse(item['items_count']?.toString() ?? '1') ?? 1;
+  //   //     return sum + qty;
+  //   //   });
+  //   // }
+  // Push current Order Summary totals + items to CFD (MQTT + native).
+  /// Call after: coupon apply, coupon remove, customer number add, merchant discount change.
+  /// Push current Order Summary state to CFD (MQTT + native).
+  /// Call after coupon apply/remove, customer number, merchant discount, etc.
+  // Future<void> _syncCfdFromOrderSummary() async {
+  //   final int? id = widget.offlineOrderId ?? widget.orderId ?? orderId;
+  //   if (id == null || id <= 0) {
+  //     if (kDebugMode) print('⚠️ CFD sync skipped – no order id');
+  //     return;
+  //   }
+  //
+  //   try {
+  //     // ── Native secondary display ────────────────────────────────────
+  //     await CustomerDisplayHelper.updateCustomerDisplay(
+  //       id,
+  //       summaryEnabled: true,
+  //     );
+  //
+  //     // ── MQTT CFD ────────────────────────────────────────────────────
+  //     try {
+  //       final messaging =
+  //       Provider.of<StoreMessagingService>(context, listen: false);
+  //
+  //       final store = await CfdStorePayload.load();
+  //
+  //       final List<CartItem> items = orderItems
+  //           .map((e) => CartItem.fromOrderItem(Map<String, dynamic>.from(e)))
+  //           .toList();
+  //
+  //       // POS stores coupon as negative (e.g. -7.00). CFD expects positive discount.
+  //       final double couponAbs = discount.abs();
+  //       final double mDiscAbs = merchantDiscount.abs();
+  //       final double net = (grossTotal - couponAbs - mDiscAbs);
+  //       final double netPay = computedNetPayable;
+  //       final int itemCount = _computeTotalItems();
+  //
+  //       final state = CartState(
+  //         sessionId: 'ORDER-$id',
+  //         sequence: 0,
+  //         screen: 'CART',
+  //         items: items,
+  //         tax: tax,
+  //         message: null,
+  //         orderId: id,
+  //         subtotalOverride: grossTotal,
+  //         orderDiscount: couponAbs,          // ← coupon amount (positive)
+  //         merchantDiscount: mDiscAbs,
+  //         cashbackFee: cashbackFee,
+  //         netPayable: netPay,                // ← Net Payable (bottom total)
+  //         totalItems: itemCount,
+  //         orderDate: _displayDate.isNotEmpty
+  //             ? _displayDate
+  //             : widget.formattedDate,
+  //         orderTime: _displayTime.isNotEmpty
+  //             ? _displayTime
+  //             : widget.formattedTime,
+  //         summaryEnabled: true,              // ← MUST be true for bottom panel
+  //         storeId: store.storeId,
+  //         storeName: store.storeName,
+  //         storeLogoUrl: store.storeLogoUrl,
+  //         storeBaseUrl: store.storeBaseUrl,
+  //         slideshowUrls: store.slideshowUrls,
+  //       );
+  //
+  //       await messaging.publishState(state);
+  //
+  //       if (kDebugMode) {
+  //         print(
+  //           '📤 [CFD] coupon apply → gross=$grossTotal coupon=$couponAbs '
+  //               'tax=$tax netPayable=$netPay items=$itemCount summary=true',
+  //         );
+  //       }
+  //     } catch (e) {
+  //       if (kDebugMode) print('⚠️ MQTT CFD publish failed: $e');
+  //     }
+  //   } catch (e, st) {
+  //     if (kDebugMode) {
+  //       print('❌ _syncCfdFromOrderSummary: $e');
+  //       print(st);
+  //     }
+  //   }
+  // }
+
+  Future<void> _publishMqttThankYouThenWelcome() async {
+    try {
+      final messaging =
+      Provider.of<StoreMessagingService>(context, listen: false);
+      final store = await CfdStorePayload.load();
+
+      // ── 1) THANK YOU (empty cart – no old items) ──
+      final thankYou = CartState(
+        sessionId: 'ORDER-${orderId ?? 0}',
+        sequence: CfdSequence.next(),
+        screen: 'THANK_YOU',
+        items: const [],
+        tax: 0,
+        message: null,
+        orderId: orderId,
+        subtotalOverride: 0,
+        orderDiscount: 0,
+        merchantDiscount: 0,
+        cashbackFee: 0,
+        netPayable: 0,
+        totalItems: 0,
+        orderDate: '',
+        orderTime: '',
+        summaryEnabled: false,
+        storeId: store.storeId,
+        storeName: store.storeName,
+        storeLogoUrl: store.storeLogoUrl,
+        storeBaseUrl: store.storeBaseUrl,
+        slideshowUrls: store.slideshowUrls,
+        loyaltyContact: '',
+        availablePoints: 0,
+      );
+      await messaging.publishState(thankYou);
+
+      if (kDebugMode) {
+        print('📤 [MQTT] THANK_YOU published for order ${orderId ?? 0}');
+      }
+
+      // Hold so CFD can show Thank You
+      await Future.delayed(const Duration(seconds: 3));
+
+      // ── 2) WELCOME with store name (no items) ──
+      final welcome = CartState(
+        sessionId: 'ORDER-0',
+        sequence: CfdSequence.next(),
+        screen: 'WELCOME', // or 'IDLE' – both map to Welcome layout on CFD
+        items: const [],
+        tax: 0,
+        message: null,
+        orderId: null,
+        subtotalOverride: 0,
+        orderDiscount: 0,
+        merchantDiscount: 0,
+        cashbackFee: 0,
+        netPayable: 0,
+        totalItems: 0,
+        orderDate: '',
+        orderTime: '',
+        summaryEnabled: false,
+        storeId: store.storeId,
+        storeName: store.storeName, // "Welcome to {storeName}"
+        storeLogoUrl: store.storeLogoUrl,
+        storeBaseUrl: store.storeBaseUrl,
+        slideshowUrls: store.slideshowUrls,
+        loyaltyContact: '',
+        availablePoints: 0,
+      );
+      await messaging.publishState(welcome);
+
+      if (kDebugMode) {
+        print(
+          '📤 [MQTT] WELCOME published → store="${store.storeName}"',
+        );
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        print('⚠️ _publishMqttThankYouThenWelcome failed: $e');
+        print(st);
+      }
+    }
+  }
+
+  Future<void> _syncCfdFromOrderSummary() async {
+    final int? id = widget.offlineOrderId ?? widget.orderId ?? orderId;
+    if (id == null || id <= 0) return;
+
+    try {
+      // Optional native first – MQTT must win after this
+      try {
+        await CustomerDisplayHelper.updateCustomerDisplay(
+          id,
+          summaryEnabled: true,
+        );
+      } catch (_) {}
+
+      final messaging =
+      Provider.of<StoreMessagingService>(context, listen: false);
+      final store = await CfdStorePayload.load();
+
+      final List<CartItem> items = orderItems
+          .map((e) => CartItem.fromOrderItem(Map<String, dynamic>.from(e)))
+          .toList();
+
+      // EXACT values shown on Order Summary screen (not Hive)
+      final double couponAbs = discount.abs();           // e.g. 7.00
+      final double mDiscAbs = merchantDiscount.abs();    // e.g. 12.39
+      final double netPay = computedNetPayable;          // e.g. 115.07
+      final int itemCount = _computeTotalItems();
+
+      String loyaltyContact = mobileController.text.trim();
+      int availablePts = availablePoints;
+      try {
+        final box = StorageProvider.offlineOrders;
+        final raw = await box.get(id.toString());
+        if (raw is Map) {
+          final order = Map<String, dynamic>.from(raw);
+          if (loyaltyContact.isEmpty) {
+            loyaltyContact = (order['loyaltyContact'] ?? '').toString();
+          }
+          availablePts = int.tryParse(
+              (order['available_points'] ?? availablePoints).toString()) ??
+              availablePoints;
+        }
+      } catch (_) {}
+
+      final state = CartState(
+        sessionId: 'ORDER-$id',
+        sequence: CfdSequence.next(),
+        screen: 'CART',
+        items: items,
+        tax: tax,
+        message: null,
+        orderId: id,
+        subtotalOverride: grossTotal,      // 123.95
+        orderDiscount: couponAbs,          // 7.00  → CFD Coupon row
+        merchantDiscount: mDiscAbs,        // 12.39 → CFD Merchant Discount row
+        cashbackFee: cashbackFee,          // 1.00
+        netPayable: netPay,                // 115.07
+        totalItems: itemCount,
+        orderDate:
+        _displayDate.isNotEmpty ? _displayDate : widget.formattedDate,
+        orderTime:
+        _displayTime.isNotEmpty ? _displayTime : widget.formattedTime,
+        summaryEnabled: true,
+        storeId: store.storeId,
+        storeName: store.storeName,
+        storeLogoUrl: store.storeLogoUrl,
+        storeBaseUrl: store.storeBaseUrl,
+        slideshowUrls: store.slideshowUrls,
+        loyaltyContact: loyaltyContact,
+        availablePoints: availablePts,
+      );
+
+      await messaging.publishState(state); // LAST – must win
+
+      if (kDebugMode) {
+        print(
+          '📤 [CFD] OrderSummary → gross=$grossTotal '
+              'coupon=$couponAbs mDisc=$mDiscAbs tax=$tax '
+              'cbFee=$cashbackFee net=$netPay',
+        );
+      }
+    } catch (e, st) {
+      if (kDebugMode) print('❌ _syncCfdFromOrderSummary: $e\n$st');
+    }
+  }
+
+  int _computeTotalItems() {
+    return orderItems.fold(0, (sum, item) {
+      final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+      final String itemNameLower = (item['item_name'] ?? '').toString().toLowerCase();
+
+      if (itemType.contains('discount') || itemNameLower.contains('merchant discount')) {
+        return sum;
+      }
+      final qty = int.tryParse(item['items_count']?.toString() ?? '1') ?? 1;
+      return sum + qty;
+    });
+  }
+
   PaymentMode _paymentModeFromMethod(dynamic method) {
     final String m = (method ?? '').toString().trim().toLowerCase();
     if (m == TextConstants.ebtText.toLowerCase()) return PaymentMode.ebt;
     if (m == TextConstants.card.toLowerCase()) return PaymentMode.card;
-    if (m == TextConstants.wallet.toLowerCase()) return PaymentMode.wallet;
+    if (m == TextConstants.wallet.toLowerCase()) return PaymentMode.payLater;
+    if (m == 'pay later') return PaymentMode.payLater;   // ⭐ ADDED: route Pay Later to Wallet mode
     return PaymentMode.cash;
   }
 
@@ -610,7 +947,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   bool isLoading = false; // Add this to track loading state
   bool isSummaryLoading = false;
   String?
-      _processingPaymentMethod; // Track which payment method is currently processing
+  _processingPaymentMethod; // Track which payment method is currently processing
   // final TextEditingController _paymentController = TextEditingController();
   var _printerSettings = PrinterSettings();
   List<int> bytes = [];
@@ -623,8 +960,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   double payByCard = 0.0;
   Map<String, dynamic>? offlineOrder;
 
+  bool _isCardPaymentCancelled = false;
+
   double?
-      _currentPaymentRemainingBalance; // Track remaining balance from current payment
+  _currentPaymentRemainingBalance; // Track remaining balance from current payment
   Map<String, dynamic>? _lastPaymentDetails; // Store details of last payment
 
   double discountValue = 0.0;
@@ -650,6 +989,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
   bool _isProcessing = false; // Add this flag
 
+  String _formatNetPayable(double value) {
+    return value < 0
+        ? '-${TextConstants.currencySymbol}${value.abs().toStringAsFixed(2)}'
+        : '${TextConstants.currencySymbol}${value.toStringAsFixed(2)}';
+  }
+
   Future<void> _calculateBalanceFromPaymentHistory() async {
     try {
       if (orderId == null || orderId == 0) {
@@ -662,17 +1007,22 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       }
 
       final payments =
-          await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
+      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
       final box = StorageProvider.offlineOrders;
       final key = orderId.toString();
       final rawStored = await box.get(key);
       final stored =
-          Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
+      Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
       final double originalEbt =
           (stored["originalEbt"] as num?)?.toDouble() ?? ebtTotal;
+      // redeemedValue = (stored["redeemed_value"] as num?)?.toDouble() ?? 0.0;
+      //       // final double effectivePayable =
+      //       // (computedNetPayable - redeemedValue).clamp(0.0, double.infinity);
+
       redeemedValue = (stored["redeemed_value"] as num?)?.toDouble() ?? 0.0;
-      final double effectivePayable =
-          (computedNetPayable - redeemedValue).clamp(0.0, double.infinity);
+      final double effectivePayable = computedNetPayable < 0
+          ? (computedNetPayable - redeemedValue)
+          : (computedNetPayable - redeemedValue).clamp(0.0, double.infinity);
 
       if (payments.isEmpty) {
         final double remainingEbt =
@@ -727,7 +1077,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         previousBalance = balanceBeforePayment; // Store for next iteration
       }
 
-      
+
       double actualRemaining = effectivePayable - totalPaid;
 
       if (actualRemaining < 0) {
@@ -768,40 +1118,43 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         // Payment method totals
         payByCash = payments
             .where((p) =>
-                p.paymentMethod.toLowerCase() ==
-                TextConstants.cash.toLowerCase())
+        p.paymentMethod.toLowerCase() ==
+            TextConstants.cash.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
 
         payByCard = payments
             .where((p) =>
-                p.paymentMethod.toLowerCase() ==
-                TextConstants.card.toLowerCase())
+        p.paymentMethod.toLowerCase() ==
+            TextConstants.card.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
 
         payByEbt = payments
             .where((p) =>
-                p.paymentMethod.toLowerCase() ==
-                TextConstants.ebtText.toLowerCase())
+        p.paymentMethod.toLowerCase() ==
+            TextConstants.ebtText.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
 
         payByOther = payments
             .where((p) =>
-                p.paymentMethod.toLowerCase() !=
-                    TextConstants.cash.toLowerCase() &&
-                p.paymentMethod.toLowerCase() !=
-                    TextConstants.card.toLowerCase() &&
-                p.paymentMethod.toLowerCase() !=
-                    TextConstants.ebtText.toLowerCase())
+        p.paymentMethod.toLowerCase() !=
+            TextConstants.cash.toLowerCase() &&
+            p.paymentMethod.toLowerCase() !=
+                TextConstants.card.toLowerCase() &&
+            p.paymentMethod.toLowerCase() !=
+                TextConstants.ebtText.toLowerCase())
             .fold(0.0, (sum, p) => sum + p.amount);
 
         // Match API-path logic: non-EBT overflow should reduce remaining EBT.
         final double nonEbtOrderValue =
-            (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
-        final double nonEbtPaid = payByCash + payByOther+payByCard;
+        (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
+        // final double nonEbtPaid = payByCash + payByOther;
+
+        final double nonEbtPaid = payByCash + payByOther+payByCard ;
+
         final double overflowToEbt =
-            nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
+        nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
         final double remainingEbt =
-            (originalEbt - payByEbt).clamp(0.0, double.infinity);
+        (originalEbt - payByEbt).clamp(0.0, double.infinity);
         ebtTotal = (remainingEbt - overflowToEbt).clamp(0.0, double.infinity);
 
         isPaymentStarted = totalPaid > 0;
@@ -827,7 +1180,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     if (orderId == null || orderId == 0) return;
 
     final payments =
-        await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
+    await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId!);
 
     if (payments.isEmpty) {
       print("📊 No payment history found for Order #$orderId");
@@ -1021,8 +1374,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         order['lastPayment'] = _lastPayment!.toJson();
       }
 
-      // 9. WRITE BACK TO HIVE
+      // 9. WRITE BACK TO HIVE & SQLITE
       await box.put(key, order);
+      if (orderId != null && orderId! > 0) {
+        unawaited(OfflineHelper.updateOfflineOrderStatus(
+          orderId!,
+          order['order_status']?.toString() ?? (isComplete ? 'processing' : 'pending_offline'),
+          paymentMethod: paymentMethod,
+        ));
+      }
 
       print(" [SAVE] Written to Hive successfully");
 
@@ -1087,7 +1447,7 @@ Previous Remaining: \$${remaining.toStringAsFixed(2)}
             _successPopupShown = true;
             final boxData = await box.get(key);
             final cr =
-                boxData is Map ? (boxData as Map)["coupon_response"] : null;
+            boxData is Map ? (boxData as Map)["coupon_response"] : null;
             final couponResponse = cr is Map
                 ? Map<String, dynamic>.from(cr as Map)
                 : <String, dynamic>{};
@@ -1114,6 +1474,28 @@ Previous Remaining: \$${remaining.toStringAsFixed(2)}
         );
       }
     }
+  }
+
+  @override
+  void didUpdateWidget(OrderSummaryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Check if the order items list has changed
+    if (_orderItemsHaveChanged(oldWidget.orderItems, widget.orderItems)) {
+      // Recalculate tax and gross/net values (these will update customer display)
+      _recalculateTaxOnDiscountedItems();
+      _recalculateGrossAndNetFromLineItemDiscounts();
+      _recalculateEbtTotalAfterDiscount();  // if you use EBT
+    }
+  }
+
+
+  bool _orderItemsHaveChanged(List<Map<String, dynamic>> oldItems, List<Map<String, dynamic>> newItems) {
+    if (oldItems.length != newItems.length) return true;
+    // Compare serialized JSON strings for deep equality
+    final oldJson = jsonEncode(oldItems);
+    final newJson = jsonEncode(newItems);
+    return oldJson != newJson;
   }
 
   Future<void> _refreshPaymentData() async {
@@ -1254,8 +1636,15 @@ Previous Remaining: \$${remaining.toStringAsFixed(2)}
         order['lastPayment'] = _lastPayment!.toJson();
       }
 
-      // 9.  WRITE BACK TO HIVE
+      // 9.  WRITE BACK TO HIVE & SQLITE
       await box.put(key, order);
+      if (orderId != null && orderId! > 0) {
+        unawaited(OfflineHelper.updateOfflineOrderStatus(
+          orderId!,
+          order['order_status']?.toString() ?? (remaining <= 0 ? 'processing' : 'pending_offline'),
+          paymentMethod: payment.paymentMethod,
+        ));
+      }
 
       print(" [SAVE] Written to Hive successfully");
 
@@ -1328,7 +1717,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     final String datetime =
-        DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
     final localPayment = LocalPayment(
       orderId: orderId ?? 0,
@@ -1351,7 +1740,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     try {
       // Save to Isar
       final savedPayment =
-          await LocalPaymentDBHelper.instance.savePayment(localPayment);
+      await LocalPaymentDBHelper.instance.savePayment(localPayment);
 
       if (kDebugMode) {
         print("\n PAYMENT SAVED TO ISAR SUCCESSFULLY!");
@@ -1432,7 +1821,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         // Order items
         'order_items':
-            orderItems.map((item) => Map<String, dynamic>.from(item)).toList(),
+        orderItems.map((item) => Map<String, dynamic>.from(item)).toList(),
 
         // Financial details
         'gross_total': grossTotal,
@@ -1509,7 +1898,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final rawUpdated = await box.get(key);
       final updatedOrder =
-          Map<String, dynamic>.from(rawUpdated is Map ? rawUpdated : {});
+      Map<String, dynamic>.from(rawUpdated is Map ? rawUpdated : {});
 
       //  Extract updated values
       final double updatedPaid =
@@ -1619,7 +2008,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final rawExisting = await box.get(key);
       final existing =
-          Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+      Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
       final payments = existing['payments'] as List<dynamic>? ?? [];
 
       return payments.map((p) => Map<String, dynamic>.from(p)).toList();
@@ -1792,7 +2181,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       print("Auto-filling current payment remaining balance: $amountToUse");
       _rawAmount = (amountToUse * 100).round();
       amountController.text =
-          '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
 
       setState(() {
         _isAmountEntered = true;
@@ -1831,6 +2220,29 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
+  // ADD THIS NEW METHOD - does not change any existing code
+  void _recalculateEbtTotalAfterDiscount() {
+    final double originalEbt = widget.ebtAmount;
+    if (originalEbt <= 0) return;
+
+    final double originalNetPayable = widget.netPayable > 0
+        ? widget.netPayable
+        : (widget.grossTotal + widget.orderTax);
+
+    if (originalNetPayable <= 0) return;
+
+    // Calculate proportion of EBT in original order
+    final double ebtRatio = originalEbt / originalNetPayable;
+
+    // Apply same ratio to new net payable
+    final double newEbtTotal = (computedNetPayable * ebtRatio)
+        .clamp(0.0, originalEbt);
+
+    // Only update remaining EBT (not already paid portion)
+    final double alreadyPaidEbt = payByEbt;
+    ebtTotal = (newEbtTotal - alreadyPaidEbt).clamp(0.0, double.infinity);
+  }
+
 // Show success popup
   Future<void> _showPaymentSuccessPopup(
       double amount, LocalPayment payment) async {
@@ -1861,7 +2273,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       // ✅ STEP 3: RESET DISPLAY (FINAL STATE)
       await CustomerDisplayService.resetDisplay();
-
+      unawaited(_publishMqttThankYouThenWelcome());
       print("✅ Payment complete → display reset");
       // ✅ SHOW SUCCESS SNACKBAR
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1875,7 +2287,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final key = (orderId ?? 0).toString();
       final boxDataKey = await box.get(key);
       final cr =
-          boxDataKey is Map ? (boxDataKey as Map)["coupon_response"] : null;
+      boxDataKey is Map ? (boxDataKey as Map)["coupon_response"] : null;
       final couponResponse = cr is Map
           ? Map<String, dynamic>.from(cr as Map)
           : <String, dynamic>{};
@@ -1936,7 +2348,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     StreamSubscription? subscription;
     subscription = paymentBloc.createPaymentStream.listen(
-      (paymentResponse) async {
+          (paymentResponse) async {
         if (paymentResponse.status == Status.COMPLETED &&
             paymentResponse.data != null) {
           final serverPaymentId = paymentResponse.data!.paymentId;
@@ -2017,7 +2429,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   Future<void> retrySyncUnsyncedPayments() async {
     final unsyncedPayments =
-        await LocalPaymentDBHelper.instance.getUnsyncedPayments();
+    await LocalPaymentDBHelper.instance.getUnsyncedPayments();
 
     if (unsyncedPayments.isEmpty) {
       if (kDebugMode) {
@@ -2053,17 +2465,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   void _selectPaymentMethod(
-    String method, {
-    bool autoFillAmount = false,
-    double? maxAllowedAmount,
-  }) {
+      String method, {
+        bool autoFillAmount = false,
+        double? maxAllowedAmount,
+      }) {
     setState(() {
       selectedPaymentMethod = method;
 
       if (autoFillAmount && maxAllowedAmount != null) {
         _rawAmount = (maxAllowedAmount * 100).toInt();
         amountController.text =
-            '${TextConstants.currencySymbol}${maxAllowedAmount.toStringAsFixed(2)}';
+        '${TextConstants.currencySymbol}${maxAllowedAmount.toStringAsFixed(2)}';
         _isAmountEntered = true;
         _amountErrorText = null;
       }
@@ -2088,7 +2500,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       _rawAmount = (allowedAmount * 100).round();
 
       amountController.text =
-          '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${allowedAmount.toStringAsFixed(2)}';
 
       _amountErrorText = null;
       _isAmountEntered = _rawAmount > 0;
@@ -2098,9 +2510,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   void _handlePay() {
     if (balanceAmount <= 0 &&
         (double.tryParse(amountController.text
-                    .replaceAll(TextConstants.currencySymbol, '')
-                    .trim()) ??
-                0) >
+            .replaceAll(TextConstants.currencySymbol, '')
+            .trim()) ??
+            0) >
             0) {
       print(
           "⚠️ DEFENSIVE RESET: balance=0 but amount entered > 0 → forcing reset after possible void");
@@ -2140,13 +2552,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (enteredCents > ebtCents) {
         setState(() {
           _amountErrorText =
-              "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
+          "Amount cannot exceed available EBT balance (\$${ebtTotal.toStringAsFixed(2)})";
         });
         return;
       }
     }
 
-    
+
     // ✅ All payment methods (Cash, Card, Wallet, EBT) now call the local storage API
     _callCreatePaymentAPI(); // uses validated amount
     _resetAmountAfterPay();
@@ -2189,7 +2601,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // Get existing order
       final rawExisting = await box.get(key);
       final existing =
-          Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+      Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
 
       // Get existing payments array or create new one
       List<dynamic> payments = existing['payments'] ?? [];
@@ -2372,7 +2784,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         Text(
                           'Time: ${DateFormat('HH:mm:ss').format(time)}',
                           style:
-                              TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          TextStyle(fontSize: 12, color: Colors.grey[600]),
                         ),
                     ],
                   ),
@@ -2411,7 +2823,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final rawExisting = await box.get(key);
       final existing =
-          Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+      Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
       final payments = existing['payments'] as List<dynamic>? ?? [];
 
       return payments.map((p) => Map<String, dynamic>.from(p)).toList();
@@ -2460,6 +2872,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     _mergeOrderSummaryLineItemsFromHive(orderItems, hiveOrder);
     await _mergeOrderSummaryLineItemsFromProductCache(orderItems);
   }
+
 
   // === LOYALTY POINTS CALCULATION (FIXED + DEBUG) ===
 // FIX: Added Hive fallback so meta_data missing from orderItems is recovered
@@ -2661,7 +3074,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   static const MethodChannel customerDisplayChannel = MethodChannel(
-    'com.example.flutter_customer_display/sunmi_display',
+    'com.alekta.pinakapos/sunmi_display',
   );
 
   Future<void> _handleCustomerAddFromDisplay(String contact) async {
@@ -2703,8 +3116,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final data = result["data"] ?? {};
 
       final pts = int.tryParse(
-            data["available_points"]?.toString() ?? "0",
-          ) ??
+        data["available_points"]?.toString() ?? "0",
+      ) ??
           0;
 
       // final redeemedAmount =
@@ -2732,6 +3145,22 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
         mobileController.text = contact;
       });
+
+      // FIX: persist points + contact to Hive so later calls to
+      // CustomerDisplayHelper.updateCustomerDisplay() (e.g. after applying
+      // or removing a coupon) don't reset available points back to 0.
+      try {
+        final rawLatest = await offlineBox.get(localKey);
+        if (rawLatest is Map) {
+          final latestOrder = Map<String, dynamic>.from(rawLatest);
+          latestOrder["loyaltyContact"] = contact;
+          latestOrder["available_points"] = pts;
+          await offlineBox.put(localKey, latestOrder);
+          print("💾 [Loyalty] Persisted available_points=$pts to Hive for order $localKey");
+        }
+      } catch (e) {
+        print("⚠️ [Loyalty] Failed to persist available_points to Hive: $e");
+      }
     } catch (e) {
       print("ERROR: $e");
     }
@@ -2746,10 +3175,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       //     (computedNetPayable - redeemedValue) - tenderAmount;
     });
 
-    
+
   }
 
-   // /// bala tax code
+  // /// bala tax code
 
   double _proportionalCouponDiscountForItem(Map<String, dynamic> item) {
     // Only distribute coupon discount across real product lines
@@ -2830,6 +3259,327 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     return lineDiscount + couponShare;
   }
+
+  // Future<void> _recalculateTaxOnDiscountedItems() async {
+  //   if (orderItems.isEmpty) return;
+  //
+  //   double toDouble(dynamic v) =>
+  //       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+  //
+  //   double resolveTaxRate(Map<String, dynamic> item) {
+  //     for (final key in ['tax_rate', 'tax', 'tax_percent']) {
+  //       final raw = item[key];
+  //       if (raw != null) {
+  //         final r = toDouble(raw);
+  //         if (r > 0) return r / 100.0;
+  //       }
+  //     }
+  //     return 0.0;
+  //   }
+  //
+  //   double lineItemOnlyDiscount(Map<String, dynamic> item) {
+  //     double n(dynamic v) =>
+  //         v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+  //
+  //     List<double> autoDiscountValues = [
+  //       n(item['_pos_auto_discount']),
+  //       n(item['auto_discount']),
+  //       n(item['autoDiscount']),
+  //       n(item['auto_discount_total']),
+  //       n(item['display_auto_discount']),
+  //     ];
+  //     double posAuto = autoDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
+  //
+  //     List<double> comboDiscountValues = [
+  //       n(item['combo_discount_total']),
+  //       n(item['comboDiscountTotal']),
+  //       n(item['combo_discount']),
+  //     ];
+  //     double combo = comboDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
+  //
+  //     List<double> multipackDiscountValues = [
+  //       n(item['multipack_discount_total']),
+  //       n(item['multipackDiscountTotal']),
+  //       n(item['multipack_discount']),
+  //     ];
+  //     double multipack = multipackDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
+  //
+  //     List<double> mixmatchDiscountValues = [
+  //       n(item['mixmatch_discount_total']),
+  //       n(item['mixMatchDiscountTotal']),
+  //       n(item['mixmatch_discount']),
+  //     ];
+  //     double mixmatch = mixmatchDiscountValues.where((v) => v > 0).fold(0.0, (max, v) => v > max ? v : max);
+  //
+  //     final String dtype = (item['discount_type'] ?? '').toString().toLowerCase();
+  //
+  //     if (dtype.isEmpty) {
+  //       double total = posAuto + combo + multipack + mixmatch;
+  //       return total > 0 ? total : 0.0;
+  //     }
+  //
+  //     if (dtype == 'auto') return posAuto;
+  //     if (dtype == 'combo' || dtype == 'mixmatch')
+  //       return combo > 0 ? combo : posAuto;
+  //     if (dtype == 'multipack') return multipack > 0 ? multipack : posAuto;
+  //     return posAuto + combo + multipack + mixmatch;
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // 🔥 STEP 1: Calculate product totals and tax rates (exclude payout/cashback)
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   double productGrossTotal = 0.0;
+  //   double productDiscountTotal = 0.0;
+  //   double payoutCashbackTotal = 0.0;
+  //   double totalLineGross = 0.0;
+  //   double totalLineDiscount = 0.0;
+  //   double totalTaxFromItems = 0.0;
+  //   bool anyItemHasDiscountOrTaxRate = false;
+  //   double weightedTaxRate = 0.0;
+  //
+  //   // 🔥 NEW: Track product tax rates directly from Hive like the order panel
+  //   final Map<int, double> _hiveTaxRateByProductId = {};
+  //   final Map<int, String> _hiveTaxStatusByProductId = {};
+  //
+  //   // Load tax rates from offline order products
+  //   if (offlineOrder != null) {
+  //     final hiveProducts = (offlineOrder?['products'] as List?) ?? [];
+  //     for (final p in hiveProducts) {
+  //       final int pid = int.tryParse(
+  //           (p['product_id'] ?? p['id'] ?? '0').toString()) ?? 0;
+  //       if (pid <= 0) continue;
+  //       final double rate = double.tryParse(p['tax_rate']?.toString() ?? '0') ?? 0.0;
+  //       final String status = (p['tax_status'] ?? 'taxable').toString().toLowerCase();
+  //       if (rate > 0) _hiveTaxRateByProductId[pid] = rate;
+  //       _hiveTaxStatusByProductId[pid] = status;
+  //     }
+  //   }
+  //
+  //   for (final item in orderItems) {
+  //     final String itemType = (item['item_type'] ?? '').toString().toLowerCase();
+  //     final String itemName = (item['item_name'] ?? '').toString().toLowerCase();
+  //
+  //     if (itemType.contains('discount') ||
+  //         itemType.contains('coupon') ||
+  //         itemType.contains('loyalty') ||
+  //         itemName.contains('merchant discount')) {
+  //       continue;
+  //     }
+  //
+  //     final bool isPayout = itemType.contains('payout') || itemName.contains('payout');
+  //     final bool isCashback = itemType.contains('cashback') || itemName.contains('cashback');
+  //     final bool isPayoutOrCashback = isPayout || isCashback;
+  //
+  //     final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+  //     final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
+  //     final double lineTotal = unitPrice * qty;
+  //
+  //     final double itemDiscount = lineItemOnlyDiscount(item);
+  //     final double taxableBase = (lineTotal - itemDiscount).clamp(0.0, double.infinity);
+  //
+  //     totalLineGross += lineTotal;
+  //     totalLineDiscount += itemDiscount;
+  //
+  //     if (!isPayoutOrCashback) {
+  //       productGrossTotal += lineTotal;
+  //       productDiscountTotal += itemDiscount;
+  //     } else {
+  //       payoutCashbackTotal += lineTotal;
+  //     }
+  //
+  //     if (itemDiscount > 0) anyItemHasDiscountOrTaxRate = true;
+  //
+  //     double itemTax = 0.0;
+  //     final double taxRate = resolveTaxRate(item);
+  //
+  //     if (taxRate > 0) {
+  //       anyItemHasDiscountOrTaxRate = true;
+  //       itemTax = taxableBase * taxRate;
+  //       if (taxableBase > 0) {
+  //         weightedTaxRate += (taxableBase * taxRate);
+  //       }
+  //     } else {
+  //       final double rawTax = toDouble(item['item_tax'] ?? item['tax_amount']);
+  //       if (rawTax > 0 && lineTotal > 0) {
+  //         anyItemHasDiscountOrTaxRate = true;
+  //         itemTax = rawTax * (taxableBase / lineTotal);
+  //         if (taxableBase > 0) {
+  //           weightedTaxRate += (taxableBase * (rawTax / lineTotal));
+  //         }
+  //       }
+  //       // 🔥 FIX: If no tax found, try to get from Hive product map
+  //       else if (itemTax <= 0) {
+  //         final int productId = int.tryParse((item['product_id'] ?? 0).toString()) ?? 0;
+  //         if (productId > 0) {
+  //           final double hiveTaxRate = _hiveTaxRateByProductId[productId] ?? 0.0;
+  //           if (hiveTaxRate > 0 && taxableBase > 0) {
+  //             itemTax = (taxableBase * hiveTaxRate) / 100.0;
+  //             weightedTaxRate += (taxableBase * (hiveTaxRate / 100.0));
+  //             anyItemHasDiscountOrTaxRate = true;
+  //           }
+  //         }
+  //       }
+  //     }
+  //
+  //     totalTaxFromItems += itemTax;
+  //   }
+  //
+  //   // Calculate the weighted average tax rate
+  //   final double totalTaxableBase = productGrossTotal - productDiscountTotal;
+  //   if (totalTaxableBase > 0) {
+  //     weightedTaxRate = weightedTaxRate / totalTaxableBase;
+  //   } else {
+  //     weightedTaxRate = 0.0;
+  //   }
+  //
+  //   totalTaxFromItems = double.parse(totalTaxFromItems.toStringAsFixed(4));
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // 🔥 STEP 2: Calculate Merchant Discount on PRODUCTS ONLY
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   final String mdType = offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
+  //   final double productNetAfterDiscounts = productGrossTotal - productDiscountTotal;
+  //
+  //   if (mdType == 'percentage' && merchantDiscountPercentage > 0 && productNetAfterDiscounts > 0) {
+  //     merchantDiscount = -((productNetAfterDiscounts * merchantDiscountPercentage) / 100.0);
+  //     merchantDiscount = double.parse(merchantDiscount.toStringAsFixed(2));
+  //   } else {
+  //     merchantDiscount = 0.0;
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // 🔥 STEP 3: Calculate TAX - CORRECTED VERSION
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   double finalTax = 0.0;
+  //
+  //   final double couponDiscount = discount < 0 ? discount.abs() : 0.0;
+  //   final double taxableNetAmount = (productNetAfterDiscounts + merchantDiscount - couponDiscount).clamp(0.0, double.infinity);
+  //
+  //   print("🔧 TAX CALCULATION - CORRECTED:");
+  //   print("   📍 productGrossTotal: $productGrossTotal");
+  //   print("   📍 productDiscountTotal: $productDiscountTotal");
+  //   print("   📍 productNetAfterDiscounts: $productNetAfterDiscounts");
+  //   print("   📍 merchantDiscount: $merchantDiscount");
+  //   print("   📍 couponDiscount: $couponDiscount");
+  //   print("   📍 taxableNetAmount: $taxableNetAmount");
+  //   print("   📍 weightedTaxRate: ${(weightedTaxRate * 100).toStringAsFixed(2)}%");
+  //   print("   📍 totalTaxFromItems: $totalTaxFromItems");
+  //   print("   ───────────────────────────────────────────────");
+  //
+  //   // 🔥 PRIMARY METHOD: Calculate tax directly from the weighted tax rate
+  //   // This is what the order panel does - it uses the tax rate from Hive
+  //   if (weightedTaxRate > 0 && taxableNetAmount > 0) {
+  //     print("   ✅ Calculating tax directly from weighted tax rate");
+  //     print("   🧮 Calculation: $taxableNetAmount × ${(weightedTaxRate * 100).toStringAsFixed(2)}%");
+  //     finalTax = roundTaxHalfUp(taxableNetAmount * weightedTaxRate);
+  //     print("   🧾 Final tax: $finalTax");
+  //   }
+  //   // SECONDARY METHOD: If we have item tax data, use proportional scaling
+  //   else if (anyItemHasDiscountOrTaxRate && totalTaxFromItems > 0 && productGrossTotal > 0) {
+  //     final double originalBase = productNetAfterDiscounts;
+  //     if (originalBase > 0) {
+  //       print("   ✅ Using item tax data with proportional scaling");
+  //       print("   🧮 Calculation: $totalTaxFromItems × ($taxableNetAmount / $originalBase)");
+  //       print("   🧮 Ratio: ${(taxableNetAmount / originalBase).toStringAsFixed(4)}");
+  //       double scaledTax = totalTaxFromItems * (taxableNetAmount / originalBase);
+  //       finalTax = roundTaxHalfUp(scaledTax);
+  //       print("   🧾 Final tax: $finalTax");
+  //     } else {
+  //       finalTax = 0.0;
+  //     }
+  //   }
+  //   // TERTIARY METHOD: Calculate from product gross using weighted tax rate
+  //   else if (weightedTaxRate > 0 && productGrossTotal > 0) {
+  //     print("   ✅ Calculating tax from product gross with weighted tax rate");
+  //     print("   🧮 Calculation: $taxableNetAmount × ${(weightedTaxRate * 100).toStringAsFixed(2)}%");
+  //     finalTax = roundTaxHalfUp(taxableNetAmount * weightedTaxRate);
+  //     print("   🧾 Final tax: $finalTax");
+  //   }
+  //   // FALLBACK: Use server tax
+  //   else {
+  //     print("   ⚠️ Fallback: Using server tax directly");
+  //     print("   📍 widget.orderTax: ${widget.orderTax}");
+  //     finalTax = widget.orderTax;
+  //     print("   🧾 Final tax: $finalTax");
+  //   }
+  //
+  //   // Ensure we have a reasonable tax value
+  //   finalTax = double.parse(finalTax.toStringAsFixed(2));
+  //
+  //   print("   ───────────────────────────────────────────────");
+  //   print("   🎯 FINAL TAX: $finalTax");
+  //   print("   ✅ Expected tax rate applied to taxable amount");
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // 🔥 STEP 4: Calculate final totals
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   final double newNetTotal = grossTotal + discount + merchantDiscount;
+  //   final double newNetPayable = newNetTotal + finalTax + cashbackFee;
+  //
+  //   final bool totalsChanged = (finalTax - tax).abs() > 0.000005 ||
+  //       (newNetPayable - computedNetPayable).abs() > 0.000005;
+  //   if (!totalsChanged) return;
+  //
+  //   setState(() {
+  //     tax = finalTax;
+  //     NetTotal = newNetTotal;
+  //     computedNetPayable = newNetPayable;
+  //     orderTotal = newNetPayable;
+  //
+  //     if (tenderAmount <= 0) {
+  //       balanceAmount = newNetPayable;
+  //     }
+  //   });
+  //
+  //   final String orderKey = widget.offlineOrderId?.toString() ??
+  //       widget.orderId?.toString() ??
+  //       orderId?.toString() ??
+  //       "";
+  //
+  //   if (orderKey.isNotEmpty) {
+  //     try {
+  //       final box = StorageProvider.offlineOrders;
+  //       final rawOrder = await box.get(orderKey);final offlineOrder = Map<String, dynamic>.from(rawOrder);
+  //       if (rawOrder != null) {
+  //
+  //         offlineOrder["tax_discount"] = finalTax;
+  //         offlineOrder["order_tax"] = finalTax;
+  //         offlineOrder["grand_total"] = newNetPayable;
+  //         offlineOrder["net_payable"] = newNetPayable;
+  //         if (tenderAmount <= 0) {
+  //           offlineOrder["balanceAmount"] = newNetPayable;
+  //           offlineOrder["balance_amount"] = newNetPayable;
+  //           offlineOrder["remaining_balance"] = newNetPayable;
+  //         }
+  //         offlineOrder["merchantDiscount"] = merchantDiscount.abs();
+  //         offlineOrder["merchant_discount"] = merchantDiscount.abs();
+  //         offlineOrder["merchantDiscountPercentage"] = merchantDiscountPercentage;
+  //         offlineOrder["NetTotal"] = newNetTotal;
+  //         offlineOrder["net_total"] = newNetTotal;
+  //
+  //         await box.put(orderKey, offlineOrder);
+  //         if (kDebugMode) {
+  //           print(
+  //               "💾 [CD/Summary] Updated Hive with recalculated tax: $finalTax, netPayable: $newNetPayable");
+  //         }
+  //       }
+  //     } catch (e) {
+  //       if (kDebugMode) {
+  //         print("❌ [CD/Summary] Failed to update Hive order tax: $e");
+  //       }
+  //     }
+  //   }
+  //
+  //   await Future.delayed(const Duration(milliseconds: 100));
+  //
+  //   if (widget.offlineOrderId != null) {
+  //     await CustomerDisplayHelper.updateCustomerDisplay(
+  //       widget.offlineOrderId!,
+  //       summaryEnabled: true,
+  //     );
+  //   }
+  // }
+
 
   Future<void> _recalculateTaxOnDiscountedItems() async {
     if (orderItems.isEmpty) return;
@@ -3007,6 +3757,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 🔥 STEP 2: Calculate Merchant Discount on PRODUCTS ONLY
+    //
+    // FIX: For a percentage discount, recompute it based on the current
+    // (post-item-discount) product net so it stays proportionally correct.
+    // For a FIXED dollar discount, do NOT recompute a formula — just read the
+    // dollar amount the user actually entered/saved. The order panel writes
+    // this under 'merchantDiscountFixed' (see getCurrentMerchantDiscount() in
+    // widget_order_panel.dart), so we must read that same key here. Older data
+    // may have used 'merchantDiscount' as a plain dollar value, so that's kept
+    // as a fallback. Previously this branch unconditionally set
+    // merchantDiscount = 0.0, which is why fixed/$ merchant discounts never
+    // appeared on the Order Summary screen.
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     final String mdType = offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
     final double productNetAfterDiscounts = productGrossTotal - productDiscountTotal;
@@ -3015,7 +3776,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       merchantDiscount = -((productNetAfterDiscounts * merchantDiscountPercentage) / 100.0);
       merchantDiscount = double.parse(merchantDiscount.toStringAsFixed(2));
     } else {
-      merchantDiscount = 0.0;
+      final double storedFixed =
+          (offlineOrder?['merchantDiscountFixed'] as num?)?.toDouble() ??
+              (offlineOrder?['merchantDiscount'] as num?)?.toDouble() ??
+              0.0;
+      merchantDiscount = storedFixed != 0 ? -(storedFixed.abs()) : 0.0;
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3038,7 +3803,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     print("   ───────────────────────────────────────────────");
 
     // 🔥 PRIMARY METHOD: Calculate tax directly from the weighted tax rate
-    // This is what the order panel does - it uses the tax rate from Hive
     if (weightedTaxRate > 0 && taxableNetAmount > 0) {
       print("   ✅ Calculating tax directly from weighted tax rate");
       print("   🧮 Calculation: $taxableNetAmount × ${(weightedTaxRate * 100).toStringAsFixed(2)}%");
@@ -3110,9 +3874,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     if (orderKey.isNotEmpty) {
       try {
         final box = StorageProvider.offlineOrders;
-        final rawOrder = await box.get(orderKey);
+        final rawOrder = await box.get(orderKey);final offlineOrder = Map<String, dynamic>.from(rawOrder);
         if (rawOrder != null) {
-          final offlineOrder = Map<String, dynamic>.from(rawOrder);
+
           offlineOrder["tax_discount"] = finalTax;
           offlineOrder["order_tax"] = finalTax;
           offlineOrder["grand_total"] = newNetPayable;
@@ -3148,6 +3912,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         widget.offlineOrderId!,
         summaryEnabled: true,
       );
+      // Skip intermediate CFD publishes during coupon apply/remove (prevents flicker)
+      if (_suppressCfdSync) return;
+
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      if (widget.offlineOrderId != null) {
+        // Single path only — _syncCfdFromOrderSummary updates native + MQTT
+        unawaited(_syncCfdFromOrderSummary());
+      }
     }
   }
 
@@ -3302,6 +4075,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       print('   NetTotal (pre-merchant) : $newNetTotal');
       print('   Merchant Discount     : $merchantDiscount');
       print('   New Net Payable       : $newNetPayable');
+
     }
 
     setState(() {
@@ -3364,6 +4138,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           widget.offlineOrderId!,
           summaryEnabled: true,
         );
+        if (merchantDiscountChanged || netPayableChanged) {
+          // Skip intermediate CFD publishes during coupon apply/remove (prevents flicker)
+          if (_suppressCfdSync) return;
+          // Single path only — avoid double native + MQTT publish
+          if (widget.offlineOrderId != null || orderId != null) {
+            unawaited(_syncCfdFromOrderSummary());
+          }
+        }
       }
     }
   }
@@ -3388,12 +4170,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
+
+
   @override
   void initState() {
     super.initState();
 
     const MethodChannel _customerDisplayChannel = MethodChannel(
-      'com.example.flutter_customer_display/sunmi_display',
+      'com.alekta.pinakapos/sunmi_display',
     );
 
     _customerDisplayChannel.setMethodCallHandler((call) async {
@@ -3485,12 +4269,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // remaining initState code...
 
     ScannerGuard.isCouponPopupOpen = true;
+
+
+    orderItems = List.from(widget.orderItems); // ensure copy
+
     // IMPORTANT: Call after merges
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _mergeOrderSummaryLineItemsFromProductCache(orderItems);
-      _mergeOrderSummaryLineItemsFromHive(orderItems, offlineOrder); // if exists
+      _mergeOrderSummaryLineItemsFromHive(orderItems, offlineOrder);
 
-      _calculateAndPrintLoyaltyPoints();   // ← ADD THIS
+      _calculateAndPrintLoyaltyPoints();
+      _syncEbtTotalWithOrderItems();   // ← ADD THIS
       if (mounted) setState(() {});
     });
 
@@ -3498,9 +4287,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         widget.orderItems.map((e) => Map<String, dynamic>.from(e)).toList();
     grossTotal = widget.grossTotal;
     discount =
-        (widget.orderDiscount != 0) ? -(widget.orderDiscount.abs()) : 0.0;
+    (widget.orderDiscount != 0) ? -(widget.orderDiscount.abs()) : 0.0;
     merchantDiscount =
-        (widget.merchantDiscount != 0) ? -(widget.merchantDiscount.abs()) : 0.0;
+    (widget.merchantDiscount != 0) ? -(widget.merchantDiscount.abs()) : 0.0;
     // tax = getAdjustedSummaryTax();
     orderId = widget.orderId;
     ebtTotal = widget.ebtAmount;
@@ -3518,7 +4307,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (await box.containsKey(key)) {
         final rawExisting = await box.get(key);
         final existing =
-            Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
+        Map<String, dynamic>.from(rawExisting is Map ? rawExisting : {});
         if (widget.ebtAmount > 0 &&
             existing["originalEbt"] != widget.ebtAmount) {
           existing["originalEbt"] = widget.ebtAmount;
@@ -3536,8 +4325,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         if (offlineOrder != null &&
             offlineOrder!['merchantDiscountPercentage'] != null) {
           merchantDiscountPercentage = double.tryParse(
-                  offlineOrder!['merchantDiscountPercentage']?.toString() ??
-                      '0') ??
+              offlineOrder!['merchantDiscountPercentage']?.toString() ??
+                  '0') ??
               0.0;
         }
 
@@ -3586,9 +4375,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         await _recalculateGrossAndNetFromLineItemDiscounts();
       }
 
+// ✅ FIX: Recalculate EBT proportionally after merchant discount is applied
+      _recalculateEbtTotalAfterDiscount();
+      _syncEbtTotalWithOrderItems();   // ← ADD THIS
+
+
       if (mounted) setState(() {});
 
       await _calculateBalanceFromPaymentHistory();
+
       await _printPaymentHistorySummary();
       if (_currentPaymentRemainingBalance != null) {
         print("\n ACTIVE PAYMENT SESSION DETECTED");
@@ -3762,7 +4557,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   static const MethodChannel _paymentChannel =
-      MethodChannel("sunmi_payment_channel");
+  MethodChannel("sunmi_payment_channel");
 
   Future<void> _openSunmiVoidScreen({
     required double amount,
@@ -3864,7 +4659,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       selectedPaymentMethod = TextConstants.card;
 
       final String datetime =
-          DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+      DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
       final localPayment = LocalPayment(
         orderId: widget.orderId ?? 0,
@@ -3887,14 +4682,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         isSynced: false,
         createdAt: DateTime.now(),
         remainingBalance:
-            (balanceAmount - paidAmount).clamp(0.0, double.infinity),
+        (balanceAmount - paidAmount).clamp(0.0, double.infinity),
         status:
-            PaymentDbStatus.pending, // Will be marked completed later if needed
+        PaymentDbStatus.pending, // Will be marked completed later if needed
       );
 
       // 1. Save to Isar
       final savedPayment =
-          await LocalPaymentDBHelper.instance.savePayment(localPayment);
+      await LocalPaymentDBHelper.instance.savePayment(localPayment);
 
       // 2. Save to Hive (this is what powers your session history)
       await _savePaymentToHive(
@@ -3945,11 +4740,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Future<void> _createPaymentFromSunmi(
-    double amount,
-    Map<String, dynamic> sunmi,
-  ) async {
+      double amount,
+      Map<String, dynamic> sunmi,
+      ) async {
     final String datetime =
-        DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
     final paymentRequest = PaymentRequestModel(
       title: "Card",
@@ -3981,92 +4776,92 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     StreamSubscription? subscription;
     subscription =
         paymentBloc.createPaymentStream.listen((paymentResponse) async {
-      print("");
-      print(" ================= SUNMI PAYMENT FULL RESPONSE =================");
+          print("");
+          print(" ================= SUNMI PAYMENT FULL RESPONSE =================");
 
-      print("STATUS → ${paymentResponse.status}");
-      print("RAW RESPONSE OBJECT → $paymentResponse");
+          print("STATUS → ${paymentResponse.status}");
+          print("RAW RESPONSE OBJECT → $paymentResponse");
 
-      //  ERROR
-      if (paymentResponse.status == Status.ERROR) {
-        print(" ERROR MESSAGE → ${paymentResponse.message}");
-        print(" ERROR DATA → ${paymentResponse.data}");
-        print(
-            "===============================================================");
-        subscription?.cancel();
-        return;
-      }
+          //  ERROR
+          if (paymentResponse.status == Status.ERROR) {
+            print(" ERROR MESSAGE → ${paymentResponse.message}");
+            print(" ERROR DATA → ${paymentResponse.data}");
+            print(
+                "===============================================================");
+            subscription?.cancel();
+            return;
+          }
 
-      //  SUCCESS
-      if (paymentResponse.status == Status.COMPLETED &&
-          paymentResponse.data != null) {
-        final data = paymentResponse.data!;
+          //  SUCCESS
+          if (paymentResponse.status == Status.COMPLETED &&
+              paymentResponse.data != null) {
+            final data = paymentResponse.data!;
 
-        print(" MESSAGE → ${data.message}");
-        print(" PAYMENT ID → ${data.paymentId}");
-        print(" ORDER ID → ${data.orderId}");
-        print("ORDER STATUS → ${data.orderStatus}");
+            print(" MESSAGE → ${data.message}");
+            print(" PAYMENT ID → ${data.paymentId}");
+            print(" ORDER ID → ${data.orderId}");
+            print("ORDER STATUS → ${data.orderStatus}");
 
-        // =====================================================
-        //  STORE LAST PAYMENT INFO (FOR VOID)
-        //=====================
-        _lastPayment = LastPaymentInfo(
-          method: TextConstants.card,
-          amount: amount,
-          paymentId: data.paymentId?.toString(),
+            // =====================================================
+            //  STORE LAST PAYMENT INFO (FOR VOID)
+            //=====================
+            _lastPayment = LastPaymentInfo(
+              method: TextConstants.card,
+              amount: amount,
+              paymentId: data.paymentId?.toString(),
 
-          sunmiTxnId: sunmi["transactionId"]?.toString(),
-          sunmiOrderId: sunmi["orderId"]?.toString(),
-          sunmiDeviceId: sunmi["deviceID"]?.toString(), //  FIX
-        );
+              sunmiTxnId: sunmi["transactionId"]?.toString(),
+              sunmiOrderId: sunmi["orderId"]?.toString(),
+              sunmiDeviceId: sunmi["deviceID"]?.toString(), //  FIX
+            );
 
 // Keep for API void usage
-        paymentId = data.paymentId?.toString();
+            paymentId = data.paymentId?.toString();
 
-        // =====================================================
-        //  SAVE TO HIVE (SURVIVES APP RESTART)
-        // =====================================================
-        try {
-          final box = StorageProvider.offlineOrders;
-          final key = (orderId ?? 0).toString();
+            // =====================================================
+            //  SAVE TO HIVE (SURVIVES APP RESTART)
+            // =====================================================
+            try {
+              final box = StorageProvider.offlineOrders;
+              final key = (orderId ?? 0).toString();
 
-          final hasKey = await box.containsKey(key);
-          final raw = hasKey ? await box.get(key) : null;
-          final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
+              final hasKey = await box.containsKey(key);
+              final raw = hasKey ? await box.get(key) : null;
+              final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
 
-          existing["lastPayment"] = _lastPayment!.toJson();
-          await box.put(key, existing);
+              existing["lastPayment"] = _lastPayment!.toJson();
+              await box.put(key, existing);
 
-          print("💾 LAST PAYMENT SAVED TO HIVE");
-          print("   → method = ${_lastPayment!.method}");
-          print("   → amount = ${_lastPayment!.amount}");
-          print("   → sunmiTxn = ${_lastPayment!.sunmiTxnId}");
-          print("   → paymentId = ${_lastPayment!.paymentId}");
-        } catch (e) {
-          print(" Failed saving last payment to Hive: $e");
-        }
+              print("💾 LAST PAYMENT SAVED TO HIVE");
+              print("   → method = ${_lastPayment!.method}");
+              print("   → amount = ${_lastPayment!.amount}");
+              print("   → sunmiTxn = ${_lastPayment!.sunmiTxnId}");
+              print("   → paymentId = ${_lastPayment!.paymentId}");
+            } catch (e) {
+              print(" Failed saving last payment to Hive: $e");
+            }
 
-        // 🔹 FULL DATA DUMP
-        try {
-          print("📦 FULL DATA JSON ↓↓↓");
-          print(jsonEncode(data.toJson()));
-        } catch (e) {
-          print("⚠ toJson() not available");
-          print(data);
-        }
-      }
+            // 🔹 FULL DATA DUMP
+            try {
+              print("📦 FULL DATA JSON ↓↓↓");
+              print(jsonEncode(data.toJson()));
+            } catch (e) {
+              print("⚠ toJson() not available");
+              print(data);
+            }
+          }
 
-      print("===============================================================");
-      subscription?.cancel();
-    });
+          print("===============================================================");
+          subscription?.cancel();
+        });
   }
 
   Future<void> updateOfflineOrderRedeem(
-    String orderId,
-    double redeemedValue,
-    int redeemedPoints,
-    int updatedAvailablePoints,
-  ) async {
+      String orderId,
+      double redeemedValue,
+      int redeemedPoints,
+      int updatedAvailablePoints,
+      ) async {
     final box = StorageProvider.offlineOrders;
     final existing = await box.get(orderId);
 
@@ -4164,7 +4959,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (await box.containsKey(key)) {
         final rawStored = await box.get(key);
         final stored =
-            Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
+        Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
         redeemedValue = (stored["redeemed_value"] as num?)?.toDouble() ?? 0.0;
       }
     } catch (_) {
@@ -4178,7 +4973,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (await box.containsKey(key)) {
         final rawStored = await box.get(key);
         final stored =
-            Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
+        Map<String, dynamic>.from(rawStored is Map ? rawStored : {});
         if (stored["remainingEbt"] != null) {
           ebtTotal = (stored["remainingEbt"] as num).toDouble();
         } else if (stored["originalEbt"] != null) {
@@ -4194,18 +4989,18 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     _paymentListSubscription?.cancel();
     _paymentListSubscription =
         paymentBloc.paymentsListStream.listen((response) async {
-      if (response.status == Status.COMPLETED) {
-        final data = response.data ?? [];
-        if (data.isNotEmpty) {
-          await _processPaymentList(data);
-        } else {
-          // API returned empty - use LocalPayment as source of truth
-          // (fixes balance showing net payable when payments exist locally but not yet synced)
-          await _calculateBalanceFromPaymentHistory();
-        }
-      }
-      if (mounted) setState(() => isSummaryLoading = false);
-    });
+          if (response.status == Status.COMPLETED) {
+            final data = response.data ?? [];
+            if (data.isNotEmpty) {
+              await _processPaymentList(data);
+            } else {
+              // API returned empty - use LocalPayment as source of truth
+              // (fixes balance showing net payable when payments exist locally but not yet synced)
+              await _calculateBalanceFromPaymentHistory();
+            }
+          }
+          if (mounted) setState(() => isSummaryLoading = false);
+        });
   }
 
   Future<void> _processPaymentList(List<PaymentListModel> payments) async {
@@ -4260,13 +5055,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     //  REMAINING EBT AFTER EBT PAYMENTS
     // ===================================================
     final double remainingEbt =
-        originalEbt - ebtPaid < 0 ? 0.0 : originalEbt - ebtPaid;
+    originalEbt - ebtPaid < 0 ? 0.0 : originalEbt - ebtPaid;
 
     // ===================================================
     //  NON-EBT PORTION
     // ===================================================
     final double nonEbtOrderValue =
-        basePayable - originalEbt < 0 ? 0.0 : basePayable - originalEbt;
+    basePayable - originalEbt < 0 ? 0.0 : basePayable - originalEbt;
 
     final double nonEbtPaid = cashTotal + otherTotal;
 
@@ -4274,10 +5069,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     //  CASH / CARD OVERFLOW REDUCES EBT
     // ===================================================
     final double overflowToEbt =
-        nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
+    nonEbtPaid > nonEbtOrderValue ? nonEbtPaid - nonEbtOrderValue : 0.0;
 
     final double finalRemainingEbt =
-        remainingEbt - overflowToEbt < 0 ? 0.0 : remainingEbt - overflowToEbt;
+    remainingEbt - overflowToEbt < 0 ? 0.0 : remainingEbt - overflowToEbt;
 
     // ===================================================
     //  APPLY REDEEM (DISCOUNT ONLY)
@@ -4372,12 +5167,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   void deleteItemFromOrder(dynamic itemId) async {
-    // TODO: Implement actual deletion logic
     setState(() {
       orderItems.removeWhere((item) => item[AppDBConst.itemId] == itemId);
+      _syncEbtTotalWithOrderItems();   // ← ADD THIS
     });
   }
-
 
 
   Future<void> _voidCardPaymentViaKickbackAPI({
@@ -4399,9 +5193,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       if (kDebugMode) {
         print("🔄 Voiding card via kickback API");
-
-        print("   uriiiiiiiiiii: $uri");
-
         print("   order_id: $wooOrderId");
         print("   payment_id: $paymentId");
         print("   transaction_id: $transactionId");
@@ -4421,7 +5212,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       );
 
       if (kDebugMode) {
-        print("card void response: ${response.statusCode}");
+        print("Kickback void response: ${response.statusCode}");
         print("Body: ${response.body}");
       }
 
@@ -4429,10 +5220,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       jsonDecode(response.body) as Map<String, dynamic>;
 
       if (body["success"] == true) {
-        if (kDebugMode) print("✅ card void successful");
+        if (kDebugMode) print("✅ Kickback card void successful");
       } else {
         if (kDebugMode) {
-          print(" card void failed: ${body["message"]}");
+          print("Kickback card void failed: ${body["message"]}");
         }
       }
     } catch (e, st) {
@@ -4590,6 +5381,524 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final token = result.first[AppDBConst.userToken] as String;
     if (kDebugMode) print('Token from DB: $token');
     return token;
+  }
+
+  /// Pay Later only supports paying the FULL balance — disable the button
+  /// whenever the user has typed a partial amount into the keypad.
+  bool _isPartialAmountEntered() {
+    final double enteredAmount = double.tryParse(
+      amountController.text
+          .replaceAll(TextConstants.currencySymbol, '')
+          .trim(),
+    ) ??
+        0.0;
+
+    final double effectiveBalance =
+        _currentPaymentRemainingBalance ?? balanceAmount;
+
+    return enteredAmount > 0 && enteredAmount < (effectiveBalance - 0.01);
+  }
+
+  // Future<void> _handlePayLaterPayment() async {
+  //   // Safety guard — button is already disabled for this case, but re-check.
+  //   setState(() => _amountErrorText = null);
+  //
+  //   // ⭐ NEW: Require an amount to be entered/selected first — same validation
+  //   // Cash and Card use. Without this, tapping Pay Later at $0.00 skipped
+  //   // straight to the popup + sync, which is wrong.
+  //   final double enteredAmount = double.tryParse(
+  //     amountController.text
+  //         .replaceAll(TextConstants.currencySymbol, '')
+  //         .trim(),
+  //   ) ??
+  //       0.0;
+  //
+  //   if (enteredAmount <= 0 && computedNetPayable > 0) {
+  //     setState(() => _amountErrorText = TextConstants.amountValidation);
+  //     return;
+  //   }
+  //
+  //   if (_isPartialAmountEntered()) {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(
+  //         content: Text("Pay Later cannot be used with a partial amount"),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //     return;
+  //   }
+  //
+  //   final double effectiveBalance =
+  //       _currentPaymentRemainingBalance ?? balanceAmount;
+  //
+  //   if (effectiveBalance <= 0) {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(
+  //         content: Text("Nothing to pay"),
+  //         backgroundColor: Colors.orange,
+  //       ),
+  //     );
+  //     return;
+  //   }
+  //
+  //   // ── Show the Pay Later customer-picker popup ───────────────────────────
+  //   final dynamic selectedUser = await showDialog<dynamic>(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (_) => Dialog(
+  //       backgroundColor: Colors.transparent,
+  //       elevation: 0,
+  //       insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+  //       child: PayLaterWidget(),
+  //     ),
+  //   );
+  //
+  //   // Cancel tapped (or dialog dismissed) → just stay on Order Summary.
+  //   if (selectedUser == null) {
+  //     if (kDebugMode) print(" Pay Later cancelled by user");
+  //     return;
+  //   }
+  //
+  //   setState(() {
+  //     _selectedPayLaterUser = Map<String, dynamic>.from(selectedUser as Map);
+  //     _isPayLaterSelected = true;
+  //     _processingPaymentMethod = "Pay Later";
+  //     isLoading = true;
+  //   });
+  //
+  //   _showPaymentProgressDialog(context);
+  //
+  //   try {
+  //     final box = StorageProvider.offlineOrders;
+  //     final String orderKey = widget.offlineOrderId?.toString() ??
+  //         widget.orderId?.toString() ??
+  //         orderId?.toString() ??
+  //         "";
+  //
+  //     if (orderKey.isEmpty) {
+  //       _hidePaymentProgressDialog();
+  //       setState(() {
+  //         isLoading = false;
+  //         _processingPaymentMethod = null;
+  //       });
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(
+  //           content: Text("Could not resolve order"),
+  //           backgroundColor: Colors.red,
+  //         ),
+  //       );
+  //       return;
+  //     }
+  //
+  //     final raw = await box.get(orderKey);
+  //     final Map<String, dynamic> order =
+  //     raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+  //
+  //     // ── Attach Pay Later customer to the offline order BEFORE syncing ────
+  //     order['selectedPayLaterUser'] =
+  //     Map<String, dynamic>.from(_selectedPayLaterUser!);
+  //     order['is_pay_later_order'] = true;
+  //     order['payment_method'] = "Pay Later";
+  //
+  //     await box.put(orderKey, order);
+  //
+  //     if (kDebugMode) {
+  //       print("✅ Pay Later user saved to Hive before sync: "
+  //           "${_selectedPayLaterUser!['name']} (ID: ${_selectedPayLaterUser!['user_id']})");
+  //     }
+  //
+  //     // ── Sync the order (with the Pay Later user attached) to the server ──
+  //     final result = await OrderRepository().syncSingleOfflineOrder(order);
+  //
+  //     if (result == null || result is! Map) {
+  //       _hidePaymentProgressDialog();
+  //       setState(() {
+  //         isLoading = false;
+  //         _processingPaymentMethod = null;
+  //       });
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(
+  //           content: Text("Failed to sync Pay Later order"),
+  //           backgroundColor: Colors.red,
+  //         ),
+  //       );
+  //       return;
+  //     }
+  //
+  //     _hidePaymentProgressDialog();
+  //
+  //     // ── Treat this as a full payment (Pay Later covers the whole balance)─
+  //     final double amount = effectiveBalance;
+  //     final double newTender = tenderAmount + amount;
+  //
+  //     _lastPayment = LastPaymentInfo(
+  //       method: "Pay Later",
+  //       amount: amount,
+  //       paymentId: "paylater_${DateTime.now().millisecondsSinceEpoch}",
+  //       sunmiTxnId: null,
+  //     );
+  //
+  //     final String datetimeStr =
+  //     DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+  //
+  //     final localPayment = LocalPayment(
+  //       orderId: orderId ?? 0,
+  //       title: "Pay Later",
+  //       amount: amount,
+  //       paymentMethod: "Pay Later",
+  //       shiftId: shiftId,
+  //       vendorId: vendorId,
+  //       userId: userId ?? 0,
+  //       serviceType: serviceType,
+  //       datetime: datetimeStr,
+  //       notes:
+  //       "Pay Later – assigned to ${_selectedPayLaterUser?['name'] ?? 'customer'} "
+  //           "(ID: ${_selectedPayLaterUser?['user_id']})",
+  //       isSynced: true,
+  //       createdAt: DateTime.now(),
+  //       remainingBalance: 0.0,
+  //       status: PaymentDbStatus.completed,
+  //     );
+  //
+  //     final savedPayment =
+  //     await LocalPaymentDBHelper.instance.savePayment(localPayment);
+  //
+  //     await _savePaymentToHive(
+  //       amount: amount,
+  //       paymentMethod: "Pay Later",
+  //       transactionId: "paylater_${savedPayment.id}",
+  //       localPayment: savedPayment,
+  //     );
+  //     await _saveLocalPaymentToHive(savedPayment);
+  //
+  //     setState(() {
+  //       isPaymentStarted = true;
+  //       isLoading = false;
+  //       _processingPaymentMethod = null;
+  //       paidAmount = amount;
+  //       tenderAmount = newTender;
+  //       balanceAmount = 0.0;
+  //       changeAmount = 0.0;
+  //       payByOther += amount; // Pay Later rolls up under "Other" totals
+  //       _currentPaymentRemainingBalance = null;
+  //       _lastPaymentDetails = null;
+  //       _successPopupShown = true;
+  //     });
+  //
+  //     _resetAmountAfterPay();
+  //
+  //     final cr = order["coupon_response"];
+  //     final couponResponse =
+  //     cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+  //
+  //     // ── Show the same full-payment success popup as cash/card/EBT ────────
+  //     _showPaymentDialog(
+  //       context,
+  //       newTender,
+  //       changeAmount: 0.0,
+  //       showChange: false,
+  //       couponResponse: couponResponse,
+  //     );
+  //   } catch (e, st) {
+  //     if (kDebugMode) {
+  //       print("❌ _handlePayLaterPayment error: $e");
+  //       print(st);
+  //     }
+  //     _hidePaymentProgressDialog();
+  //     setState(() {
+  //       isLoading = false;
+  //       _processingPaymentMethod = null;
+  //     });
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text("Pay Later error: $e"),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //   }
+  // }
+
+  ///// above code was old and working
+
+  Future<void> _handlePayLaterPayment() async {
+    // Safety guard — button is already disabled for this case, but re-check.
+    setState(() => _amountErrorText = null);
+
+    // ⭐ NEW: Require an amount to be entered/selected first — same validation
+    // Cash and Card use. Without this, tapping Pay Later at $0.00 skipped
+    // straight to the popup + sync, which is wrong.
+    final double enteredAmount = double.tryParse(
+      amountController.text
+          .replaceAll(TextConstants.currencySymbol, '')
+          .trim(),
+    ) ??
+        0.0;
+
+    if (enteredAmount <= 0 && computedNetPayable > 0) {
+      setState(() => _amountErrorText = TextConstants.amountValidation);
+      return;
+    }
+
+    if (_isPartialAmountEntered()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Pay Later cannot be used with a partial amount"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final double effectiveBalance =
+        _currentPaymentRemainingBalance ?? balanceAmount;
+
+    if (effectiveBalance <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Nothing to pay"),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // ⭐ FIX: Cap the entered amount to the effective balance (like Cash/Card)
+    // This prevents Pay Later from taking more than the remaining balance
+    double amountToUse = enteredAmount;
+
+    // If entered amount exceeds balance, cap it to the balance
+    if (enteredAmount > effectiveBalance) {
+      amountToUse = effectiveBalance;
+
+      // Update the UI to show the capped amount
+      _rawAmount = (amountToUse * 100).round();
+      amountController.text =
+      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+      setState(() {
+        _isAmountEntered = true;
+        _amountErrorText = null;
+      });
+
+      // Show a snackbar to inform the user
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Amount adjusted to remaining balance (${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)})'
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
+    if (amountToUse <= 0) {
+      setState(() => _amountErrorText = TextConstants.amountValidation);
+      return;
+    }
+
+    // ── Show the Pay Later customer-picker popup ───────────────────────────
+    final dynamic selectedUser = await showDialog<dynamic>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+        child: PayLaterWidget(),
+      ),
+    );
+
+    // Cancel tapped (or dialog dismissed) → just stay on Order Summary.
+    if (selectedUser == null) {
+      if (kDebugMode) print(" Pay Later cancelled by user");
+      return;
+    }
+
+    setState(() {
+      _selectedPayLaterUser = Map<String, dynamic>.from(selectedUser as Map);
+      _isPayLaterSelected = true;
+      _processingPaymentMethod = "Pay Later";
+      isLoading = true;
+    });
+
+    _showPaymentProgressDialog(context);
+
+    try {
+      final box = StorageProvider.offlineOrders;
+      final String orderKey = widget.offlineOrderId?.toString() ??
+          widget.orderId?.toString() ??
+          orderId?.toString() ??
+          "";
+
+      if (orderKey.isEmpty) {
+        _hidePaymentProgressDialog();
+        setState(() {
+          isLoading = false;
+          _processingPaymentMethod = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Could not resolve order"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final raw = await box.get(orderKey);
+      final Map<String, dynamic> order =
+      raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+
+      // ── Attach Pay Later customer to the offline order BEFORE syncing ────
+      order['selectedPayLaterUser'] =
+      Map<String, dynamic>.from(_selectedPayLaterUser!);
+      order['is_pay_later_order'] = true;
+      order['payment_method'] = "Pay Later";
+
+      await box.put(orderKey, order);
+
+      if (kDebugMode) {
+        print("✅ Pay Later user saved to Hive before sync: "
+            "${_selectedPayLaterUser!['name']} (ID: ${_selectedPayLaterUser!['user_id']})");
+      }
+
+      // ── Sync the order (with the Pay Later user attached) to the server ──
+      final result = await OrderRepository().syncSingleOfflineOrder(order);
+
+      if (result == null || result is! Map) {
+        _hidePaymentProgressDialog();
+        setState(() {
+          isLoading = false;
+          _processingPaymentMethod = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Failed to sync Pay Later order"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      _hidePaymentProgressDialog();
+
+      // ⭐ FIX: Use the capped amount (amountToUse) instead of effectiveBalance
+      // This ensures Pay Later only takes the exact amount entered (capped at balance)
+      final double amount = amountToUse;
+      final double newTender = tenderAmount + amount;
+
+      _lastPayment = LastPaymentInfo(
+        method: "Pay Later",
+        amount: amount,
+        paymentId: "paylater_${DateTime.now().millisecondsSinceEpoch}",
+        sunmiTxnId: null,
+      );
+
+      final String datetimeStr =
+      DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
+      final localPayment = LocalPayment(
+        orderId: orderId ?? 0,
+        title: "Pay Later",
+        amount: amount,
+        paymentMethod: "Pay Later",
+        shiftId: shiftId,
+        vendorId: vendorId,
+        userId: userId ?? 0,
+        serviceType: serviceType,
+        datetime: datetimeStr,
+        notes:
+        "Pay Later – assigned to ${_selectedPayLaterUser?['name'] ?? 'customer'} "
+            "(ID: ${_selectedPayLaterUser?['user_id']})",
+        isSynced: true,
+        createdAt: DateTime.now(),
+        remainingBalance: (effectiveBalance - amount).clamp(0.0, double.infinity),
+        status: PaymentDbStatus.completed,
+      );
+
+      final savedPayment =
+      await LocalPaymentDBHelper.instance.savePayment(localPayment);
+
+      await _savePaymentToHive(
+        amount: amount,
+        paymentMethod: "Pay Later",
+        transactionId: "paylater_${savedPayment.id}",
+        localPayment: savedPayment,
+      );
+      await _saveLocalPaymentToHive(savedPayment);
+
+      // Calculate new balance after this payment
+      final double newBalance = (effectiveBalance - amount).clamp(0.0, double.infinity);
+      final bool isFullPayment = newBalance <= 0.01;
+
+      setState(() {
+        isPaymentStarted = true;
+        isLoading = false;
+        _processingPaymentMethod = null;
+        paidAmount = amount;
+        tenderAmount = newTender;
+        balanceAmount = newBalance;
+        changeAmount = 0.0;
+        payByOther += amount; // Pay Later rolls up under "Other" totals
+
+        if (isFullPayment) {
+          _currentPaymentRemainingBalance = null;
+          _lastPaymentDetails = null;
+          _successPopupShown = true;
+        } else {
+          _currentPaymentRemainingBalance = newBalance;
+          _lastPaymentDetails = {
+            'amount': amount,
+            'method': "Pay Later",
+            'remainingBalance': newBalance,
+            'previousBalance': effectiveBalance,
+            'datetime': DateTime.now().toIso8601String(),
+            'paymentNumber': (_lastPaymentDetails?['paymentNumber'] ?? 0) + 1,
+          };
+        }
+      });
+
+      _resetAmountAfterPay();
+
+      final cr = order["coupon_response"];
+      final couponResponse =
+      cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+
+      // ── Show appropriate dialog based on payment status ──
+      if (isFullPayment) {
+        _successPopupShown = true;
+        await CustomerDisplayService.showThankYou();
+        await orderHelper.setActiveOrder(null);
+        await CustomerDisplayService.resetDisplay();
+        unawaited(_publishMqttThankYouThenWelcome());
+
+        _showPaymentDialog(
+          context,
+          newTender,
+          changeAmount: 0.0,
+          showChange: false,
+          couponResponse: couponResponse,
+        );
+      } else {
+        _showPartialPaymentDialog(context, amount);
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        print("❌ _handlePayLaterPayment error: $e");
+        print(st);
+      }
+      _hidePaymentProgressDialog();
+      setState(() {
+        isLoading = false;
+        _processingPaymentMethod = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Pay Later error: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _handleEbtCardPaymentViaAPI() async {
@@ -4830,7 +6139,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         await CustomerDisplayService.showThankYou();
         await orderHelper.setActiveOrder(null);
         await CustomerDisplayService.resetDisplay();
-
+        unawaited(_publishMqttThankYouThenWelcome());
         final boxData = await box.get(orderKey);
         final cr = boxData is Map ? boxData["coupon_response"] : null;
         final couponResponse = cr is Map
@@ -4867,421 +6176,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       _isCardPaymentCancelled = false;
     }
   }
-
-  // Future<void> _handleCardPaymentViaAPI() async {
-  //   _isCardPaymentCancelled = false;
-  //
-  //   final double enteredAmount = double.tryParse(
-  //     amountController.text
-  //         .replaceAll(TextConstants.currencySymbol, '')
-  //         .trim(),
-  //   ) ??
-  //       0.0;
-  //
-  //   if (enteredAmount <= 0) {
-  //     setState(() => _amountErrorText = TextConstants.amountValidation);
-  //     return;
-  //   }
-  //
-  //   _recalculateGrossAndNetFromLineItemDiscounts();
-  //   await _recalculateTaxOnDiscountedItems();
-  //   await _calculateBalanceFromPaymentHistory();
-  //
-  //   final double effectiveBalance =
-  //       _currentPaymentRemainingBalance ?? balanceAmount;
-  //   final double amount = enteredAmount.clamp(0.0, effectiveBalance + 0.01);
-  //
-  //   if ((enteredAmount - amount).abs() > 0.01) {
-  //     setState(() {
-  //       _rawAmount = (amount * 100).round();
-  //       amountController.text =
-  //       '${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}';
-  //       _isAmountEntered = true;
-  //     });
-  //
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(
-  //         content: Text(
-  //             'Amount adjusted to available balance (\$${amount.toStringAsFixed(2)})'),
-  //         backgroundColor: Colors.orange,
-  //         duration: const Duration(seconds: 2),
-  //       ),
-  //     );
-  //   }
-  //
-  //   _amountErrorText = null;
-  //
-  //   final double balanceBeforePayment = effectiveBalance;
-  //   final bool willBeFullPayment = amount >= (balanceBeforePayment - 0.01);
-  //
-  //   if (kDebugMode) {
-  //     print(
-  //         '💰 CARD PAYMENT → Amount: \$$amount | Balance before: \$$balanceBeforePayment');
-  //   }
-  //
-  //   setState(() {
-  //     isLoading = true;
-  //     _processingPaymentMethod = TextConstants.card;
-  //   });
-  //   _showPaymentProgressDialog(context);
-  //
-  //   try {
-  //     // ── Detect void and clear cached wooOrderId if needed ──────────────
-  //     try {
-  //       final String orderKey = widget.offlineOrderId?.toString() ??
-  //           widget.orderId?.toString() ??
-  //           orderId?.toString() ??
-  //           '';
-  //       if (orderKey.isNotEmpty) {
-  //         final box = StorageProvider.offlineOrders;
-  //         final rawHive = await box.get(orderKey);
-  //         if (rawHive is Map) {
-  //           final hiveMap = Map<String, dynamic>.from(rawHive);
-  //           final int localOrderId = int.tryParse(orderKey) ?? 0;
-  //           if (localOrderId > 0) {
-  //             final payments = await LocalPaymentDBHelper.instance
-  //                 .getPaymentsByOrderId(localOrderId);
-  //             final bool hasVoidedPayment = payments
-  //                 .any((p) => p.status == PaymentDbStatus.voided || p.amount < 0);
-  //             if (hasVoidedPayment) {
-  //               hiveMap['synced'] = false;
-  //               await box.put(orderKey, hiveMap);
-  //               if (kDebugMode) {
-  //                 print(
-  //                     '🔄 Void detected → cleared cached wooOrderId for fresh sync');
-  //               }
-  //             }
-  //           }
-  //         }
-  //       }
-  //     } catch (e) {
-  //       if (kDebugMode) {
-  //         print('⚠️ Void-detection pre-check failed (non-fatal): $e');
-  //       }
-  //     }
-  //
-  //     int wooOrderId =
-  //     await _resolveWooOrderIdForPayment(forceSync: false);
-  //     if (wooOrderId == 0) {
-  //       _hidePaymentProgressDialog();
-  //       setState(() {
-  //         isLoading = false;
-  //         _processingPaymentMethod = null;
-  //       });
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         const SnackBar(
-  //             content: Text('Could not resolve order'),
-  //             backgroundColor: Colors.red),
-  //       );
-  //       return;
-  //     }
-  //
-  //     if (_isCardPaymentCancelled) return;
-  //
-  //     final String token = await _getTokenFromDb();
-  //     if (_isCardPaymentCancelled) return;
-  //
-  //     final requestBody = {
-  //       'order_id': wooOrderId,
-  //       'amount': amount ,
-  //       'payment_method': 'card',
-  //       'shift_id': shiftId,
-  //     };
-  //
-  //     if (kDebugMode) {
-  //       print('========== CARD PAYMENT REQUEST ==========');
-  //       print('Body: ${jsonEncode(requestBody)}');
-  //       print('==========================================');
-  //     }
-  //
-  //     final uri = Uri.parse(
-  //         '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment');
-  //     //
-  //     // final http.Response response = await http.post(
-  //     //   uri,
-  //     //   headers: {
-  //     //     'Content-Type': 'application/json',
-  //     //     'Authorization': 'Bearer $token',
-  //     //   },
-  //     //   body: jsonEncode(requestBody),
-  //     // );
-  //
-  //     final http.Response response = await _postWithRedirect(
-  //       uri,
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //         'Authorization': 'Bearer $token',
-  //       },
-  //       body: jsonEncode(requestBody),
-  //     );
-  //
-  //     _hidePaymentProgressDialog();
-  //     setState(() {
-  //       isLoading = false;
-  //       _processingPaymentMethod = null;
-  //     });
-  //
-  //     if (kDebugMode) {
-  //       print('URL: $uri');
-  //       print('Response Status Code: ${response.statusCode}');
-  //       print('Response Body: ${response.body}');
-  //     }
-  //
-  //     // final Map<String, dynamic> body =
-  //     // jsonDecode(response.body) as Map<String, dynamic>;
-  //
-  //     Map<String, dynamic> body;
-  //     try {
-  //       body = jsonDecode(response.body) as Map<String, dynamic>;
-  //     } catch (e) {
-  //       _hidePaymentProgressDialog();
-  //       setState(() {
-  //         isLoading = false;
-  //         _processingPaymentMethod = null;
-  //       });
-  //       if (mounted) {
-  //         ScaffoldMessenger.of(context).showSnackBar(
-  //           SnackBar(
-  //             content: const Text("Payment failed. Please try again."),
-  //             backgroundColor: Colors.red,
-  //             duration: const Duration(seconds: 3),
-  //             action: SnackBarAction(
-  //               label: 'Retry',
-  //               textColor: Colors.white,
-  //               onPressed: () {
-  //                 _handleCardPaymentViaAPI();
-  //               },
-  //             ),
-  //           ),
-  //         );
-  //       }
-  //       return;
-  //     }
-  //
-  //     if (body['success'] != true) {
-  //       final String msg =
-  //           body['message']?.toString() ?? 'Card payment failed';
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //           SnackBar(content: Text(msg), backgroundColor: Colors.red));
-  //       _resetAmountAfterPay();
-  //       return;
-  //     }
-  //
-  //     final String? serverPaymentId = _extractServerPaymentId(body);
-  //
-  //     // ── KEY FIX: use helper that reads both top-level and nested fields ──
-  //     final String? cardTransactionId = _extractCardTransactionId(body);
-  //
-  //     if (kDebugMode) {
-  //       print(
-  //           'cardTransactionId extracted → $cardTransactionId (serverPaymentId: $serverPaymentId)');
-  //     }
-  //
-  //     // ── Cache wooOrderId from response ──────────────────────────────────
-  //     final int responseWooOrderId =
-  //         (body['order_id'] as num?)?.toInt() ?? wooOrderId;
-  //     if (responseWooOrderId > 0) {
-  //       try {
-  //         final box = StorageProvider.offlineOrders;
-  //         final String orderKey = widget.offlineOrderId?.toString() ??
-  //             widget.orderId?.toString() ??
-  //             orderId?.toString() ??
-  //             '';
-  //         if (orderKey.isNotEmpty) {
-  //           final rawHive = await box.get(orderKey);
-  //           if (rawHive is Map) {
-  //             final hiveMap = Map<String, dynamic>.from(rawHive);
-  //             hiveMap['wooOrderId'] = responseWooOrderId;
-  //             hiveMap['synced'] = true;
-  //             hiveMap['sync_at'] = DateTime.now().toIso8601String();
-  //             await box.put(orderKey, hiveMap);
-  //             if (kDebugMode) {
-  //               print(
-  //                   '✅ wooOrderId cached from payment response → $responseWooOrderId');
-  //             }
-  //           }
-  //         }
-  //       } catch (e) {
-  //         if (kDebugMode) {
-  //           print('⚠️ Failed to cache wooOrderId from response: $e');
-  //         }
-  //       }
-  //     }
-  //
-  //     // ── Build _lastPayment with transactionId populated ─────────────────
-  //     _lastPayment = LastPaymentInfo(
-  //       method: TextConstants.card,
-  //       amount: amount,
-  //       paymentId: serverPaymentId,
-  //       transactionId: cardTransactionId, // ← now correctly set
-  //     );
-  //
-  //     if (kDebugMode) {
-  //       print('💾 _lastPayment built:');
-  //       print('   method        : ${_lastPayment!.method}');
-  //       print('   amount        : ${_lastPayment!.amount}');
-  //       print('   paymentId     : ${_lastPayment!.paymentId}');
-  //       print('   transactionId : ${_lastPayment!.transactionId}');
-  //     }
-  //
-  //     // ── Persist lastPayment (including transactionId) to Hive ───────────
-  //     try {
-  //       final box = StorageProvider.offlineOrders;
-  //       final String orderKey = widget.offlineOrderId?.toString() ??
-  //           widget.orderId?.toString() ??
-  //           orderId?.toString() ??
-  //           '';
-  //       if (orderKey.isNotEmpty) {
-  //         final rawHive = await box.get(orderKey);
-  //         if (rawHive is Map) {
-  //           final hiveMap = Map<String, dynamic>.from(rawHive);
-  //           hiveMap['lastPayment'] = _lastPayment!.toJson();
-  //           await box.put(orderKey, hiveMap);
-  //           if (kDebugMode) {
-  //             print(
-  //                 '✅ lastPayment persisted to Hive → transactionId: $cardTransactionId');
-  //           }
-  //         }
-  //       }
-  //     } catch (e) {
-  //       if (kDebugMode) {
-  //         print('⚠️ Failed to persist lastPayment to Hive: $e');
-  //       }
-  //     }
-  //
-  //     // ── Save locally ─────────────────────────────────────────────────────
-  //     final String datetimeStr =
-  //     DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-  //     final localPayment = LocalPayment(
-  //       orderId: orderId ?? 0,
-  //       title: TextConstants.card,
-  //       amount: amount,
-  //       paymentMethod: TextConstants.card,
-  //       shiftId: shiftId,
-  //       vendorId: vendorId,
-  //       userId: userId ?? 0,
-  //       serviceType: serviceType,
-  //       datetime: datetimeStr,
-  //       notes: 'Card payment via API',
-  //       isSynced: true,
-  //       createdAt: DateTime.now(),
-  //       remainingBalance:
-  //       (balanceBeforePayment - amount).clamp(0.0, double.infinity),
-  //       status: PaymentDbStatus.pending,
-  //     );
-  //
-  //     final savedPayment =
-  //     await LocalPaymentDBHelper.instance.savePayment(localPayment);
-  //
-  //     if (serverPaymentId != null) {
-  //       await LocalPaymentDBHelper.instance
-  //           .markAsSynced(savedPayment.id, int.tryParse(serverPaymentId) ?? 0);
-  //     }
-  //
-  //     await _savePaymentToHive(
-  //       amount: amount,
-  //       paymentMethod: TextConstants.card,
-  //       transactionId: 'card_api_${savedPayment.id}',
-  //       localPayment: savedPayment,
-  //     );
-  //     await _saveLocalPaymentToHive(savedPayment);
-  //
-  //     // ── Refresh balance ──────────────────────────────────────────────────
-  //     await _calculateBalanceFromPaymentHistory();
-  //
-  //     final double finalRemaining =
-  //         _currentPaymentRemainingBalance ?? balanceAmount;
-  //     final bool isActuallyFull = finalRemaining <= 0.01;
-  //
-  //     final double newTenderAmount = payByCard;
-  //     final double newChangeAmount = amount > balanceBeforePayment
-  //         ? (amount - balanceBeforePayment)
-  //         : 0.0;
-  //
-  //     // ── EBT recalculation ────────────────────────────────────────────────
-  //     final double originalEbt = ebtTotal;
-  //     final double nonEbtOrderValue =
-  //     (computedNetPayable - originalEbt).clamp(0.0, double.infinity);
-  //     final double totalNonEbtPaid = payByCash + payByOther + newTenderAmount;
-  //     final double overflowToEbt =
-  //     totalNonEbtPaid > nonEbtOrderValue
-  //         ? (totalNonEbtPaid - nonEbtOrderValue)
-  //         : 0.0;
-  //     final double newEbtTotal =
-  //     (originalEbt - overflowToEbt).clamp(0.0, double.infinity);
-  //
-  //     Future.microtask(() => _recalculateEbtAfterNonEbtPayment?.call());
-  //
-  //     setState(() {
-  //       balanceAmount = finalRemaining;
-  //       payByCard = newTenderAmount;
-  //       ebtTotal = newEbtTotal;
-  //       _currentPaymentRemainingBalance =
-  //       isActuallyFull ? null : finalRemaining;
-  //       _lastPaymentDetails = {
-  //         'amount': amount,
-  //         'method': TextConstants.card,
-  //         'remainingBalance': finalRemaining,
-  //         'previousBalance': balanceBeforePayment,
-  //         'datetime': DateTime.now().toIso8601String(),
-  //         'paymentNumber':
-  //         (_lastPaymentDetails?['paymentNumber'] ?? 0) + 1,
-  //       };
-  //     });
-  //
-  //     _resetAmountAfterPay();
-  //
-  //     // ── Show success or partial dialog ───────────────────────────────────
-  //     if (isActuallyFull) {
-  //       _successPopupShown = true;
-  //       final box = StorageProvider.offlineOrders;
-  //       final key =
-  //       (orderId ?? widget.offlineOrderId ?? 0).toString();
-  //       final raw = await box.get(key);
-  //       final couponResponse =
-  //       (raw is Map && raw['coupon_response'] is Map)
-  //           ? Map<String, dynamic>.from(raw['coupon_response'])
-  //           : <String, dynamic>{};
-  //
-  //       if (mounted) {
-  //         await CustomerDisplayService.showThankYou();
-  //         _showPaymentDialog(
-  //           context,
-  //           newTenderAmount,
-  //           changeAmount: newChangeAmount,
-  //           showChange: newChangeAmount > 0,
-  //           couponResponse: couponResponse,
-  //         );
-  //       }
-  //     } else {
-  //       if (mounted) {
-  //         _showPartialPaymentDialog(context, amount);
-  //       }
-  //     }
-  //   } catch (e, st) {
-  //     _hidePaymentProgressDialog();
-  //     setState(() {
-  //       isLoading = false;
-  //       _processingPaymentMethod = null;
-  //       selectedPaymentMethod = TextConstants.cash;
-  //     });
-  //     _resetAmountAfterPay();
-  //
-  //     if (kDebugMode) {
-  //       print('❌ _handleCardPaymentViaAPI error: $e');
-  //       print(st);
-  //     }
-  //
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(
-  //           content: Text('Card payment error: $e'),
-  //           backgroundColor: Colors.red),
-  //     );
-  //   }
-  // }
-
-  //// Above coe was working fine
-
 
   Future<void> _handleCardPaymentViaAPI() async {
     _isCardPaymentCancelled = false;
@@ -5411,6 +6305,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final uri = Uri.parse(
           '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.payments}/create-payment');
+      //
+      // final http.Response response = await http.post(
+      //   uri,
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //     'Authorization': 'Bearer $token',
+      //   },
+      //   body: jsonEncode(requestBody),
+      // );
 
       final http.Response response = await _postWithRedirect(
         uri,
@@ -5432,6 +6335,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         print('Response Status Code: ${response.statusCode}');
         print('Response Body: ${response.body}');
       }
+
+      // final Map<String, dynamic> body =
+      // jsonDecode(response.body) as Map<String, dynamic>;
 
       Map<String, dynamic> body;
       try {
@@ -5461,77 +6367,23 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return;
       }
 
-      // ── FIX: Check if payment was actually approved ──
-      final String? paymentStatus = body['status']?.toString().toLowerCase();
-      final bool isPaymentApproved = paymentStatus == 'ready' ||
-          paymentStatus == 'approved' ||
-          paymentStatus == 'approval';
-
-      if (body['success'] != true || !isPaymentApproved) {
-        // Payment was declined or failed
-        // Get the status message from response or use a generic one
-        String statusMessage = body['message']?.toString() ?? 'Transaction declined';
-
-        // Map specific status codes to user-friendly messages
-        final String? responseCode = body['transaction_details']?['transactionResult']?['responseCode']?.toString();
-        final String? responseMessage = body['transaction_details']?['transactionResult']?['responseMessage']?.toString();
-
-        // Build a user-friendly decline message
-        String displayMessage = 'Card payment declined';
-
-        // If we have a specific decline reason, use it
-        if (responseMessage != null && responseMessage.isNotEmpty) {
-          // Clean up the message - remove technical terms
-          if (responseMessage.toLowerCase().contains('time-out')) {
-            displayMessage = 'Transaction timeout - Transaction declined';
-          } else if (responseMessage.toLowerCase().contains('decline')) {
-            displayMessage = 'Transaction declined - please use another card';
-          } else if (responseCode != null && responseCode.isNotEmpty) {
-            displayMessage = 'Transaction declined (Code: $responseCode)';
-          } else {
-            displayMessage = responseMessage;
-          }
-        } else if (statusMessage.toLowerCase().contains('time-out')) {
-          displayMessage = 'Transaction timeout - please try again';
-        } else if (statusMessage.toLowerCase().contains('decline')) {
-          displayMessage = 'Transaction declined - please use another card';
-        }
-
-        if (kDebugMode) {
-          print('❌ Card payment declined: $displayMessage');
-          print('   Status: $paymentStatus');
-          print('   Original message: ${body['message']}');
-          print('   Response message: $responseMessage');
-          print('   Response code: $responseCode');
-        }
-
+      if (body['success'] != true) {
+        final String msg =
+            body['message']?.toString() ?? 'Card payment failed';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(displayMessage),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-            // action: SnackBarAction(
-            //   label: 'Retry',
-            //   textColor: Colors.white,
-            //   onPressed: () {
-            //     _handleCardPaymentViaAPI();
-            //   },
-            // ),
-          ),
-        );
+            SnackBar(content: Text(msg), backgroundColor: Colors.red));
         _resetAmountAfterPay();
         return;
       }
 
-      // ── Payment was APPROVED - continue with success flow ──
       final String? serverPaymentId = _extractServerPaymentId(body);
 
+      // ── KEY FIX: use helper that reads both top-level and nested fields ──
       final String? cardTransactionId = _extractCardTransactionId(body);
 
       if (kDebugMode) {
         print(
             'cardTransactionId extracted → $cardTransactionId (serverPaymentId: $serverPaymentId)');
-        print('✅ Payment APPROVED with status: $paymentStatus');
       }
 
       // ── Cache wooOrderId from response ──────────────────────────────────
@@ -5570,7 +6422,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         method: TextConstants.card,
         amount: amount,
         paymentId: serverPaymentId,
-        transactionId: cardTransactionId,
+        transactionId: cardTransactionId, // ← now correctly set
       );
 
       if (kDebugMode) {
@@ -5947,6 +6799,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
 
+
   Future<void> _callCreatePaymentAPI({bool skipPopup = false}) async {
     if (kDebugMode) {
       print(
@@ -5963,10 +6816,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       if (kDebugMode) print("⚡ FAKE PAYMENT SUCCESS MODE ACTIVE ⚡");
 
       double amount = double.tryParse(
-            amountController.text
-                .replaceAll(TextConstants.currencySymbol, '')
-                .trim(),
-          ) ??
+        amountController.text
+            .replaceAll(TextConstants.currencySymbol, '')
+            .trim(),
+      ) ??
           0.0;
 
       final double currentBalance = balanceAmount;
@@ -6029,7 +6882,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         final d = await box.get(key);
         final cr = d is Map ? d["coupon_response"] : null;
         final couponResponse =
-            cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+        cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
 
         // Update Hive order status
         // final box = StorageProvider.offlineOrders;
@@ -6039,6 +6892,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           final order = Map<String, dynamic>.from(raw);
           order['order_status'] = TextConstants.completed;
           await box.put(key, order);
+        }
+
+        if (orderId != null && orderId! > 0) {
+          unawaited(OfflineHelper.updateOfflineOrderStatus(
+            orderId!,
+            TextConstants.completed,
+            paymentMethod: selectedPaymentMethod,
+          ));
         }
 
         _showPaymentDialog(
@@ -6083,7 +6944,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       try {
         final saved =
-            await LocalPaymentDBHelper.instance.savePayment(localPayment);
+        await LocalPaymentDBHelper.instance.savePayment(localPayment);
         _lastPayment?.paymentId = "local_${saved.id}";
         _updateHivePaymentData(localPayment);
 
@@ -6115,10 +6976,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
 
     double amount = double.tryParse(
-          amountController.text
-              .replaceAll(TextConstants.currencySymbol, '')
-              .trim(),
-        ) ??
+      amountController.text
+          .replaceAll(TextConstants.currencySymbol, '')
+          .trim(),
+    ) ??
         0.0;
 
     if (!isCard) {
@@ -6162,136 +7023,148 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     StreamSubscription? subscription;
     subscription =
         paymentBloc.createPaymentStream.listen((paymentResponse) async {
-      if (kDebugMode) print("Payment stream response: $paymentResponse");
+          if (kDebugMode) print("Payment stream response: $paymentResponse");
 
-      if (paymentResponse.status == Status.ERROR) {
-        if (!skipPopup)
-          _hidePaymentProgressDialog();
-        else if (Navigator.canPop(context)) Navigator.pop(context);
+          if (paymentResponse.status == Status.ERROR) {
+            if (!skipPopup)
+              _hidePaymentProgressDialog();
+            else if (Navigator.canPop(context)) Navigator.pop(context);
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Payment failed: ${paymentResponse.message}"),
-            backgroundColor: Colors.red,
-          ),
-        );
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Payment failed: ${paymentResponse.message}"),
+                backgroundColor: Colors.red,
+              ),
+            );
 
-        setState(() {
-          _processingPaymentMethod = null;
-          isLoading = false;
-          _successPopupShown = false;
-        });
+            setState(() {
+              _processingPaymentMethod = null;
+              isLoading = false;
+              _successPopupShown = false;
+            });
 
-        subscription?.cancel();
-        return;
-      }
+            subscription?.cancel();
+            return;
+          }
 
-      if (paymentResponse.status == Status.COMPLETED &&
-          paymentResponse.data != null &&
-          paymentResponse.data!.message == "Payment Created Successfully") {
-        if (!skipPopup) _hidePaymentProgressDialog();
+          if (paymentResponse.status == Status.COMPLETED &&
+              paymentResponse.data != null &&
+              paymentResponse.data!.message == "Payment Created Successfully") {
+            if (!skipPopup) _hidePaymentProgressDialog();
 
-        final paymentData = paymentResponse.data!;
-        paidAmount = amount;
-        paymentId = paymentData.paymentId.toString();
+            final paymentData = paymentResponse.data!;
+            paidAmount = amount;
+            paymentId = paymentData.paymentId.toString();
 
-        final bool isFullPayment = amount >= remainingBalance;
-        final bool isPartialPayment = !isFullPayment && amount > 0;
+            final bool isFullPayment = amount >= remainingBalance;
+            final bool isPartialPayment = !isFullPayment && amount > 0;
 
-        // Update balances
-        tenderAmount += amount;
-        final String paidMethod = selectedPaymentMethod!.toLowerCase().trim();
-        if (paidMethod == TextConstants.cash.toLowerCase()) {
-          payByCash += amount;
-        } else if (paidMethod == TextConstants.card.toLowerCase()) {
-          payByCard += amount;
-        } else if (paidMethod == TextConstants.ebtText.toLowerCase()) {
-          payByEbt += amount;
-          ebtTotal = (ebtTotal - amount).clamp(0.0, double.infinity);
-        } else {
-          payByOther += amount;
-        }
-        if (isFullPayment) {
-          balanceAmount = 0.0;
-          changeAmount = amount - remainingBalance;
-        } else {
-          balanceAmount = remainingBalance - amount;
-          changeAmount = 0.0;
-        }
-        balanceAmount = double.parse(balanceAmount.toStringAsFixed(2));
+            // Update balances
+            tenderAmount += amount;
+            final String paidMethod = selectedPaymentMethod!.toLowerCase().trim();
+            if (paidMethod == TextConstants.cash.toLowerCase()) {
+              payByCash += amount;
+            } else if (paidMethod == TextConstants.card.toLowerCase()) {
+              payByCard += amount;
+            } else if (paidMethod == TextConstants.ebtText.toLowerCase()) {
+              payByEbt += amount;
+              ebtTotal = (ebtTotal - amount).clamp(0.0, double.infinity);
+            } else {
+              payByOther += amount;
+            }
+            if (isFullPayment) {
+              balanceAmount = 0.0;
+              changeAmount = amount - remainingBalance;
+            } else {
+              balanceAmount = remainingBalance - amount;
+              changeAmount = 0.0;
+            }
+            balanceAmount = double.parse(balanceAmount.toStringAsFixed(2));
 
-        // ─── Save last payment info ───
-        _lastPayment = LastPaymentInfo(
-          method: selectedPaymentMethod!,
-          amount: amount,
-          paymentId: paymentId,
-          sunmiTxnId: null,
-        );
+            // ─── Save last payment info ───
+            _lastPayment = LastPaymentInfo(
+              method: selectedPaymentMethod!,
+              amount: amount,
+              paymentId: paymentId,
+              sunmiTxnId: null,
+            );
 
-        try {
-          final box = StorageProvider.offlineOrders;
-          final key = (orderId ?? 0).toString();
-          final hasKey = await box.containsKey(key);
-          final raw = hasKey ? await box.get(key) : null;
-          final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
-          existing["lastPayment"] = _lastPayment!.toJson();
-          existing["balanceAmount"] = balanceAmount;
-          existing["paidAmount"] = tenderAmount;
-          existing["tenderAmount"] = tenderAmount;
-          existing["ebtTotal"] = ebtTotal;
-          await box.put(key, existing);
-        } catch (e) {
-          print("⚠ Hive update error: $e");
-        }
+            try {
+              final box = StorageProvider.offlineOrders;
+              final key = (orderId ?? 0).toString();
+              final hasKey = await box.containsKey(key);
+              final raw = hasKey ? await box.get(key) : null;
+              final existing = Map<String, dynamic>.from(raw is Map ? raw : {});
+              existing["lastPayment"] = _lastPayment!.toJson();
+              existing["balanceAmount"] = balanceAmount;
+              existing["paidAmount"] = tenderAmount;
+              existing["tenderAmount"] = tenderAmount;
+              existing["ebtTotal"] = ebtTotal;
+              await box.put(key, existing);
+            } catch (e) {
+              print("⚠ Hive update error: $e");
+            }
 
-        if (mounted)
-          setState(() {
-            _processingPaymentMethod = null;
-            isLoading = false;
-            _currentPaymentRemainingBalance =
+            if (mounted)
+              setState(() {
+                _processingPaymentMethod = null;
+                isLoading = false;
+                _currentPaymentRemainingBalance =
                 isPartialPayment ? balanceAmount : null;
-            _lastPaymentDetails = {
-              'amount': amount,
-              'method': selectedPaymentMethod!,
-              'remainingBalance': balanceAmount,
-              'previousBalance': remainingBalance,
-              'datetime': DateTime.now().toIso8601String(),
-            };
-          });
+                _lastPaymentDetails = {
+                  'amount': amount,
+                  'method': selectedPaymentMethod!,
+                  'remainingBalance': balanceAmount,
+                  'previousBalance': remainingBalance,
+                  'datetime': DateTime.now().toIso8601String(),
+                };
+              });
 
-        // ─── Full: success receipt dialog | Partial: "next payment" dialog ───
-        // Progress overlay was already closed above for both paths (!skipPopup).
-        if (isFullPayment && !_successPopupShown) {
-          _successPopupShown = true;
+            // ─── Full: success receipt dialog | Partial: "next payment" dialog ───
+            // Progress overlay was already closed above for both paths (!skipPopup).
+            if (isFullPayment && !_successPopupShown) {
+              _successPopupShown = true;
 
-          final box = StorageProvider.offlineOrders;
-          final key = (orderId ?? 0).toString();
-          final rawBox = await box.get(key);
-          final cr = rawBox is Map ? rawBox["coupon_response"] : null;
-          final couponResponse =
+              final box = StorageProvider.offlineOrders;
+              final key = (orderId ?? 0).toString();
+              final rawBox = await box.get(key);
+              final cr = rawBox is Map ? rawBox["coupon_response"] : null;
+              final couponResponse =
               cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
 
-          _showPaymentDialog(
-            context,
-            amount,
-            changeAmount: changeAmount,
-            showChange: changeAmount > 0,
-            couponResponse: couponResponse,
-          );
-        } else if (isPartialPayment && amount > 0) {
-          await _showPartialPaymentDialog(context, amount);
-        }
+              _showPaymentDialog(
+                context,
+                amount,
+                changeAmount: changeAmount,
+                showChange: changeAmount > 0,
+                couponResponse: couponResponse,
+              );
+            } else if (isPartialPayment && amount > 0) {
+              await _showPartialPaymentDialog(context, amount);
+            }
 
-        amountController.clear();
-        _fetchPaymentsByOrderId();
-        subscription?.cancel();
-      }
-    });
+            amountController.clear();
+            _fetchPaymentsByOrderId();
+            subscription?.cancel();
+          }
+        });
   }
 
   void _hidePaymentProgressDialog() {
     if (Navigator.canPop(context)) {
       Navigator.pop(context);
+    }
+  }
+
+  bool get _hasEbtItemsInOrder =>
+      orderItems.any((item) => _orderSummaryLineEbtEligible(item));
+
+  void _syncEbtTotalWithOrderItems() {
+    if (!_hasEbtItemsInOrder && ebtTotal != 0.0) {
+      ebtTotal = 0.0;
+      if (kDebugMode) {
+        print("🧹 No EBT-eligible items remain → ebtTotal reset to 0");
+      }
     }
   }
 
@@ -6349,42 +7222,42 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               horizontal: 30, vertical: 8),
                           decoration: themeHelper.themeMode == ThemeMode.dark
                               ? ShapeDecoration(
-                                  color: const Color(
-                                      0xFF1F1D2B), // dark background
-                                  shape: RoundedRectangleBorder(
-                                    // side: BorderSide(
-                                    //   width: 0,
-                                    //   color: Colors.black.withOpacity(0.20),
-                                    // ),
-                                    borderRadius: BorderRadius.only(
-                                      bottomLeft: Radius.circular(
-                                          ResponsiveLayout.getRadius(10)),
-                                      bottomRight: Radius.circular(
-                                          ResponsiveLayout.getRadius(10)),
-                                    ),
-                                  ),
-                                )
+                            color: const Color(
+                                0xFF1F1D2B), // dark background
+                            shape: RoundedRectangleBorder(
+                              // side: BorderSide(
+                              //   width: 0,
+                              //   color: Colors.black.withOpacity(0.20),
+                              // ),
+                              borderRadius: BorderRadius.only(
+                                bottomLeft: Radius.circular(
+                                    ResponsiveLayout.getRadius(10)),
+                                bottomRight: Radius.circular(
+                                    ResponsiveLayout.getRadius(10)),
+                              ),
+                            ),
+                          )
                               : BoxDecoration(
-                                  color: Colors.white, // light background
-                                  borderRadius: BorderRadius.only(
-                                    bottomLeft: Radius.circular(
-                                        ResponsiveLayout.getRadius(10)),
-                                    bottomRight: Radius.circular(
-                                        ResponsiveLayout.getRadius(10)),
-                                  ),
-                                ),
+                            color: Colors.white, // light background
+                            borderRadius: BorderRadius.only(
+                              bottomLeft: Radius.circular(
+                                  ResponsiveLayout.getRadius(10)),
+                              bottomRight: Radius.circular(
+                                  ResponsiveLayout.getRadius(10)),
+                            ),
+                          ),
                           child: Container(
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
                               color: themeHelper.themeMode == ThemeMode.dark
                                   ? const Color(
-                                      0xFF303136) // dark mode background
+                                  0xFF303136) // dark mode background
                                   : Colors.white, // light mode background
                               border: Border.all(
                                 color: themeHelper.themeMode == ThemeMode.dark
                                     ? Color(
-                                        0xFF303136) // optional darker border for dark mode
+                                    0xFF303136) // optional darker border for dark mode
                                     : const Color(0xFFEDF2F9),
                                 width: 2,
                               ),
@@ -6393,7 +7266,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                 BoxShadow(
                                   color: themeHelper.themeMode == ThemeMode.dark
                                       ? Colors.black.withOpacity(
-                                          0.3) // subtle shadow in dark mode
+                                      0.3) // subtle shadow in dark mode
                                       : Colors.white,
                                   blurRadius: 8,
                                   offset: const Offset(2, 4),
@@ -6402,177 +7275,170 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               ],
                             ),
                             child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              // mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                _buildPaymentModeButton(
-                                  TextConstants.cash,
-                                  Image.asset(
-                                    'assets/cash.png',
-                                    width: ResponsiveLayout.getIconSize(24),
-                                    height: ResponsiveLayout.getIconSize(24),
-                                    fit: BoxFit.contain,
+                                Expanded(
+                                  child: _buildPaymentModeButton(
+                                    TextConstants.cash,
+                                    Image.asset(
+                                      'assets/cash.png',
+                                      width: ResponsiveLayout.getIconSize(24),
+                                      height: ResponsiveLayout.getIconSize(24),
+                                      fit: BoxFit.contain,
+                                    ),
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFF9CCD7B),
+                                        Color(0xFF9CCD7B),
+                                      ],
+                                    ),
+                                    borderColor: const Color(0xFF9CCD7B),
+                                    iconColor: const Color(0xFF9CCD7B),
+                                    isLoading: _processingPaymentMethod == TextConstants.cash && isLoading,
+                                    isDisabled: _processingPaymentMethod != null &&
+                                        _processingPaymentMethod != TextConstants.cash,
+                                    onTap: () async {
+                                      _selectPaymentMethod(TextConstants.cash);
+                                      _handlePay();
+                                    },
                                   ),
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF9CCD7B),
-                                      Color(0xFF9CCD7B)
-                                    ],
-                                  ),
-                                  borderColor: const Color(0xFF9CCD7B),
-                                  iconColor: Color(0xFF9CCD7B),
-                                  isLoading: _processingPaymentMethod ==
-                                          TextConstants.cash &&
-                                      isLoading,
-                                  isDisabled:
-                                      _processingPaymentMethod != null &&
-                                          _processingPaymentMethod !=
-                                              TextConstants.cash,
-                                  onTap: () async {
-                                    _selectPaymentMethod(TextConstants.cash);
-                                    // await CustomerService
-                                    //     .publishProcessingPayment(
-                                    //   orderId ?? 0,
-                                    //   orderItems, // your list of items
-                                    //   subtotal:
-                                    //       grossTotal, // same as you send to display now
-                                    //   tax: tax, // existing tax variable
-                                    //   total:
-                                    //       computedNetPayable, // or balanceAmount if you prefer
-                                    // );
-                                    _handlePay();
-                                  },
                                 ),
-                                _buildPaymentModeButton(
-                                  TextConstants.card,
-                                  Image.asset(
-                                    'assets/card.png',
-                                    width: ResponsiveLayout.getIconSize(24),
-                                    height: ResponsiveLayout.getIconSize(24),
-                                    fit: BoxFit.contain,
-                                  ),
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFFA484C8),
-                                      Color(0xFFA484C8)
-                                    ],
-                                  ),
-                                  borderColor: const Color(0xFFA484C8),
-                                  iconColor: Color(0xFFA484C8),
-                                  // isLoading: _processingPaymentMethod == TextConstants.card && isLoading,
-                                  // isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.card,
 
-                                  isLoading: false,
-                                  isDisabled: false,
-                                  onTap: () async {
-                                    _selectPaymentMethod(
-                                      TextConstants.card,
-                                      maxAllowedAmount: balanceAmount,
-                                    );
-                                    await _handleCardPaymentViaAPI();
-                                  },
+                                Expanded(
+                                  child: _buildPaymentModeButton(
+                                    TextConstants.card,
+                                    Image.asset(
+                                      'assets/card.png',
+                                      width: ResponsiveLayout.getIconSize(24),
+                                      height: ResponsiveLayout.getIconSize(24),
+                                      fit: BoxFit.contain,
+                                    ),
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFFA484C8),
+                                        Color(0xFFA484C8),
+                                      ],
+                                    ),
+                                    borderColor: const Color(0xFFA484C8),
+                                    iconColor: const Color(0xFFA484C8),
+                                    isLoading: false,
+                                    isDisabled: false,
+                                    onTap: () async {
+                                      _selectPaymentMethod(
+                                        TextConstants.card,
+                                        maxAllowedAmount: balanceAmount,
+                                      );
+                                      await _handleCardPaymentViaAPI();
+                                    },
+                                  ),
                                 ),
-                                _buildPaymentModeButton(
-                                  TextConstants.wallet,
-                                  Image.asset(
-                                    'assets/wallet.png',
-                                    width: ResponsiveLayout.getIconSize(24),
-                                    height: ResponsiveLayout.getIconSize(24),
-                                    fit: BoxFit.contain,
+
+                                Expanded(
+                                  child: _buildPaymentModeButton(
+                                    "Pay Later",
+                                    Image.asset(
+                                      'assets/wallet.png',
+                                      width: ResponsiveLayout.getIconSize(24),
+                                      height: ResponsiveLayout.getIconSize(24),
+                                      fit: BoxFit.contain,
+                                    ),
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFFCCB985),
+                                        Color(0xFFCCB985),
+                                      ],
+                                    ),
+                                    borderColor: const Color(0xFFCCB985),
+                                    iconColor: const Color(0xFFCCB985),
+                                    isLoading:
+                                    _processingPaymentMethod == "Pay Later" && isLoading,
+                                    isDisabled:
+                                    _isPartialAmountEntered() ||
+                                        balanceAmount <= 0 ||
+                                        (_processingPaymentMethod != null &&
+                                            _processingPaymentMethod != "Pay Later"),
+                                    onTap: () async {
+                                      await _handlePayLaterPayment();
+                                    },
                                   ),
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFFCCB985),
-                                      Color(0xFFCCB985)
-                                    ],
-                                  ),
-                                  borderColor: const Color(0xFFCCB985),
-                                  iconColor: Color(0xFFCCB985),
-                                  // isLoading: _processingPaymentMethod == TextConstants.wallet && isLoading,
-                                  // isDisabled: _processingPaymentMethod != null && _processingPaymentMethod != TextConstants.wallet,
-                                  // ❌ FORCE DISABLE
-                                  isLoading: false,
-                                  isDisabled: true,
-                                  onTap: () {
-                                    _selectPaymentMethod(
-                                      TextConstants.wallet,
-                                      //autoFillAmount: true,
-                                      maxAllowedAmount: balanceAmount,
-                                    );
-                                    _handlePay();
-                                  },
                                 ),
-                                _buildPaymentModeButton(
-                                  TextConstants.ebtText,
-                                  Image.asset(
-                                    'assets/ebt.png',
-                                    width: ResponsiveLayout.getIconSize(24),
-                                    height: ResponsiveLayout.getIconSize(24),
-                                    fit: BoxFit.contain,
-                                  ),
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF84A2CB),
-                                      Color(0xFF84A2CB)
-                                    ],
-                                  ),
-                                  borderColor: const Color(0xFF84A2CB),
-                                  iconColor: Colors.white,
-                                  isLoading: _processingPaymentMethod ==
+
+                                if (ebtTotal > 0 && _hasEbtItemsInOrder)
+                                  Expanded(
+                                    child: _buildPaymentModeButton(
+                                      TextConstants.ebtText,
+                                      Image.asset(
+                                        'assets/ebt.png',
+                                        width: ResponsiveLayout.getIconSize(24),
+                                        height: ResponsiveLayout.getIconSize(24),
+                                        fit: BoxFit.contain,
+                                      ),
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFF84A2CB),
+                                          Color(0xFF84A2CB),
+                                        ],
+                                      ),
+                                      borderColor: const Color(0xFF84A2CB),
+                                      iconColor: Colors.white,
+                                      isLoading: _processingPaymentMethod ==
                                           TextConstants.ebtText &&
-                                      isLoading,
-                                  isDisabled:
-                                      _processingPaymentMethod != null &&
-                                          _processingPaymentMethod !=
-                                              TextConstants.ebtText,
-                                  onTap: () async {
-                                    //  Check if there is any EBT left
-                                    if (ebtTotal <= 0) {
-                                      setState(() => _amountErrorText = "No EBT balance available");
-                                      return;
-                                    }
+                                          isLoading,
+                                      isDisabled: _processingPaymentMethod != null &&
+                                          _processingPaymentMethod != TextConstants.ebtText,
+                                      onTap: () async {
+                                        if (ebtTotal <= 0) {
+                                          setState(() {
+                                            _amountErrorText = "No EBT balance available";
+                                          });
+                                          return;
+                                        }
 
-                                    //  Determine the maximum allowed amount
-                                    final allowedAmount = balanceAmount.clamp(0.0, ebtTotal);
+                                        final allowedAmount =
+                                        balanceAmount.clamp(0.0, ebtTotal);
 
-                                    if (allowedAmount <= 0) {
-                                      setState(() =>
-                                      _amountErrorText = "Cannot pay with EBT, balance is zero");
-                                      return;
-                                    }
+                                        if (allowedAmount <= 0) {
+                                          setState(() {
+                                            _amountErrorText =
+                                            "Cannot pay with EBT, balance is zero";
+                                          });
+                                          return;
+                                        }
 
-                                    //  Respect user-entered partial amount when present.
-                                    final enteredAmount = double.tryParse(
-                                      amountController.text
-                                          .replaceAll(TextConstants.currencySymbol, '')
-                                          .trim(),
-                                    ) ??
-                                        0.0;
+                                        final enteredAmount = double.tryParse(
+                                          amountController.text
+                                              .replaceAll(
+                                              TextConstants.currencySymbol, '')
+                                              .trim(),
+                                        ) ??
+                                            0.0;
 
-                                    final amountToUse = enteredAmount > 0
-                                        ? enteredAmount.clamp(0.0, allowedAmount)
-                                        : allowedAmount;
+                                        final amountToUse = enteredAmount > 0
+                                            ? enteredAmount.clamp(0.0, allowedAmount)
+                                            : allowedAmount;
 
-                                    if (amountToUse <= 0) {
-                                      setState(
-                                              () => _amountErrorText = TextConstants.amountValidation);
-                                      return;
-                                    }
+                                        if (amountToUse <= 0) {
+                                          setState(() {
+                                            _amountErrorText =
+                                                TextConstants.amountValidation;
+                                          });
+                                          return;
+                                        }
 
-                                    //  Select EBT and fill amount
-                                    _selectPaymentMethod(TextConstants.ebtText);
+                                        _selectPaymentMethod(TextConstants.ebtText);
 
-                                    setState(() {
-                                      _rawAmount = (amountToUse * 100).round();
-                                      amountController.text =
-                                      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
-                                      _isAmountEntered = true;
-                                      _amountErrorText = null;
-                                    });
+                                        setState(() {
+                                          _rawAmount = (amountToUse * 100).round();
+                                          amountController.text =
+                                          '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+                                          _isAmountEntered = true;
+                                          _amountErrorText = null;
+                                        });
 
-                                    //  Call EBT API (same as card API flow)
-                                    await _handleEbtCardPaymentViaAPI();
-                                  },
-                                ),
+                                        await _handleEbtCardPaymentViaAPI();
+                                      },
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -6589,14 +7455,92 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     );
   }
 
+  // void _showPaymentProgressDialog(BuildContext context) {
+  //   final bool isDark = Theme.of(context).brightness == Brightness.dark;
+  //
+  //   // THEME COLORS (same pattern as coupon popup)
+  //   final Color dialogBg = isDark ? const Color(0xFF252837) : Colors.white;
+  //   final Color textPrimary = isDark ? Colors.white : const Color(0xFF1F2937);
+  //   final Color textSecondary =
+  //   isDark ? Colors.white70 : const Color(0xFF6B7280);
+  //
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (_) {
+  //       return WillPopScope(
+  //         onWillPop: () async => false,
+  //         child: Dialog(
+  //           elevation: 0,
+  //           backgroundColor: Colors.transparent,
+  //           child: Center(
+  //             child: Container(
+  //               width: 300,
+  //               padding: const EdgeInsets.symmetric(
+  //                 vertical: 28,
+  //                 horizontal: 24,
+  //               ),
+  //               decoration: BoxDecoration(
+  //                 color: dialogBg,
+  //                 borderRadius: BorderRadius.circular(18),
+  //                 boxShadow: [
+  //                   if (!isDark)
+  //                     BoxShadow(
+  //                       color: Colors.black.withOpacity(0.08),
+  //                       blurRadius: 16,
+  //                       offset: const Offset(0, 8),
+  //                     ),
+  //                 ],
+  //               ),
+  //               child: Column(
+  //                 mainAxisSize: MainAxisSize.min,
+  //                 children: [
+  //                   SizedBox(
+  //                     width: 44,
+  //                     height: 44,
+  //                     child: CircularProgressIndicator(
+  //                       strokeWidth: 3,
+  //                       valueColor: AlwaysStoppedAnimation<Color>(
+  //                         isDark ? Colors.white70 : const Color(0xFF1BA672),
+  //                       ),
+  //                     ),
+  //                   ),
+  //                   const SizedBox(height: 20),
+  //                   Text(
+  //                     "Payment in progress",
+  //                     textAlign: TextAlign.center,
+  //                     style: TextStyle(
+  //                       fontSize: 17,
+  //                       fontWeight: FontWeight.w600,
+  //                       color: textPrimary,
+  //                     ),
+  //                   ),
+  //                   const SizedBox(height: 6),
+  //                   if (_processingPaymentMethod != null)
+  //                     Text(
+  //                       "Processing ${_processingPaymentMethod!}",
+  //                       textAlign: TextAlign.center,
+  //                       style: TextStyle(
+  //                         fontSize: 13,
+  //                         height: 1.3,
+  //                         color: textSecondary,
+  //                       ),
+  //                     ),
+  //                 ],
+  //               ),
+  //             ),
+  //           ),
+  //         ),
+  //       );
+  //     },
+  //   );
+  // }
+
   void _showPaymentProgressDialog(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-
-    // THEME COLORS (same pattern as coupon popup)
     final Color dialogBg = isDark ? const Color(0xFF252837) : Colors.white;
     final Color textPrimary = isDark ? Colors.white : const Color(0xFF1F2937);
-    final Color textSecondary =
-        isDark ? Colors.white70 : const Color(0xFF6B7280);
+    final Color textSecondary = isDark ? Colors.white70 : const Color(0xFF6B7280);
 
     showDialog(
       context: context,
@@ -6610,10 +7554,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             child: Center(
               child: Container(
                 width: 300,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 28,
-                  horizontal: 24,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 24),
                 decoration: BoxDecoration(
                   color: dialogBg,
                   borderRadius: BorderRadius.circular(18),
@@ -6660,6 +7601,43 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           color: textSecondary,
                         ),
                       ),
+                    // const SizedBox(height: 24),
+                    // // ✅ CANCEL BUTTON
+                    // SizedBox(
+                    //   width: double.infinity,
+                    //   height: 40,
+                    //   child: OutlinedButton(
+                    //     style: OutlinedButton.styleFrom(
+                    //       foregroundColor: Colors.red,
+                    //       side: const BorderSide(color: Colors.red, width: 1.5),
+                    //       shape: RoundedRectangleBorder(
+                    //         borderRadius: BorderRadius.circular(10),
+                    //       ),
+                    //     ),
+                    //     onPressed: () {
+                    //       // Set cancel flag
+                    //       _isCardPaymentCancelled = true;
+                    //       // Close the progress dialog
+                    //       if (Navigator.canPop(context)) {
+                    //         Navigator.pop(context);
+                    //       }
+                    //       // Reset loading state
+                    //       if (mounted) {
+                    //         setState(() {
+                    //           isLoading = false;
+                    //           _processingPaymentMethod = null;
+                    //         });
+                    //       }
+                    //     },
+                    //     child: const Text(
+                    //       "Cancel Payment",
+                    //       style: TextStyle(
+                    //         fontSize: 14,
+                    //         fontWeight: FontWeight.w600,
+                    //       ),
+                    //     ),
+                    //   ),
+                    // ),
                   ],
                 ),
               ),
@@ -6706,7 +7684,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
                   borderRadius:
-                      BorderRadius.circular(ResponsiveLayout.getRadius(15)),
+                  BorderRadius.circular(ResponsiveLayout.getRadius(15)),
                 ),
                 child: Row(
                   children: [
@@ -6770,8 +7748,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   void _showCouponAppliedSnackBar(
-    BuildContext context,
-  ) {
+      BuildContext context,
+      ) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -6814,15 +7792,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final order = orderHelper.activeOrderId != null
         ? orderHelper.orders.firstWhere(
-            (o) => o[AppDBConst.orderServerId] == orderHelper.activeOrderId,
-            orElse: () => {},
-          )
+          (o) => o[AppDBConst.orderServerId] == orderHelper.activeOrderId,
+      orElse: () => {},
+    )
         : {};
 
     if (order.isNotEmpty && order[AppDBConst.orderDate] != null) {
       try {
         final DateTime createdDateTime =
-            DateTime.parse(order[AppDBConst.orderDate].toString());
+        DateTime.parse(order[AppDBConst.orderDate].toString());
         _displayDate =
             DateFormat(TextConstants.dateFormat).format(createdDateTime);
         _displayTime =
@@ -6926,10 +7904,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
               // Remaining balance
               final double effectiveRemaining =
-                  (_currentPaymentRemainingBalance != null &&
-                          _currentPaymentRemainingBalance! > 0)
-                      ? _currentPaymentRemainingBalance!
-                      : balanceAmount;
+              (_currentPaymentRemainingBalance != null &&
+                  _currentPaymentRemainingBalance! > 0)
+                  ? _currentPaymentRemainingBalance!
+                  : balanceAmount;
 
 // Always update customer display
               if (orderId != null) {
@@ -7020,13 +7998,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             ),
           ),
 
-          const SizedBox(width: 70),
+          const SizedBox(width: 20),
 
-          const SizedBox(width: 160),
+          const SizedBox(width: 180),
           Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+
                 // ---------------- CUSTOMER INPUT CONTAINER ----------------
                 Expanded(
                   child: Container(
@@ -7050,28 +8029,29 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           'Customer :',
                           style: TextStyle(
                             color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white70
-                                    : const Color(0xFF115ACD),
+                            Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white70
+                                : const Color(0xFF115ACD),
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(width: 10),
+
                         Expanded(
                           child: Container(
                             height: 40,
                             padding: const EdgeInsets.symmetric(horizontal: 15),
                             decoration: BoxDecoration(
                               color: Theme.of(context).brightness ==
-                                      Brightness.dark
+                                  Brightness.dark
                                   ? const Color(0xFF2C2C2E)
                                   : Colors.white,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                 width: 1,
                                 color: Theme.of(context).brightness ==
-                                        Brightness.dark
+                                    Brightness.dark
                                     ? Colors.grey.shade700
                                     : Colors.black.withOpacity(0.20),
                               ),
@@ -7081,34 +8061,34 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               builder: (context, innerSetState) {
                                 print(
                                     "BUILD -> isCustomerFieldDisabled=$isCustomerFieldDisabled, "
-                                    "showCustomerInput=$showCustomerInput");
+                                        "showCustomerInput=$showCustomerInput");
                                 return TextField(
                                   controller: mobileController,
                                   enabled: true,
                                   readOnly: showCustomerInput,
                                   enableInteractiveSelection:
-                                      !showCustomerInput,
+                                  !showCustomerInput,
                                   keyboardType: TextInputType.number,
                                   inputFormatters: [
                                     TextInputFormatter.withFunction(
-                                        (oldValue, newValue) {
-                                      final text = newValue.text;
+                                            (oldValue, newValue) {
+                                          final text = newValue.text;
 
-                                      // If input is only digits → Mobile number
-                                      if (RegExp(r'^\d*$').hasMatch(text)) {
-                                        if (text.length > 10) {
-                                          return oldValue; // block extra digits
-                                        }
-                                      }
-                                      // Otherwise → Email
-                                      else {
-                                        if (text.length > 50) {
-                                          return oldValue; // block extra characters
-                                        }
-                                      }
+                                          // If input is only digits → Mobile number
+                                          if (RegExp(r'^\d*$').hasMatch(text)) {
+                                            if (text.length > 10) {
+                                              return oldValue; // block extra digits
+                                            }
+                                          }
+                                          // Otherwise → Email
+                                          else {
+                                            if (text.length > 50) {
+                                              return oldValue; // block extra characters
+                                            }
+                                          }
 
-                                      return newValue;
-                                    }),
+                                          return newValue;
+                                        }),
                                   ],
                                   onChanged: (value) {
                                     setState(() {
@@ -7129,7 +8109,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                     fontSize: 16,
                                     fontWeight: FontWeight.w500,
                                     color: Theme.of(context).brightness ==
-                                            Brightness.dark
+                                        Brightness.dark
                                         ? Colors.white
                                         : const Color(0xFF313131),
                                   ),
@@ -7146,226 +8126,665 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 const SizedBox(width: 18),
 
                 // ---------------- ADD / CANCEL BUTTON (SAME LOGIC) ----------------
+//                 InkWell(
+//                   onTap: isButtonDisabled
+//                       ? null
+//                       : () async {
+//                     // ---------- CANCEL ----------
+//                     if (showCustomerInput) {
+//                       // Only allow cancel if not disabled
+//                       if (isPaymentDone || redeemedValue > 0) return;
+//
+//                       setState(() {
+//                         mobileController.clear();
+//                         showCustomerInput = false;
+//                         isPhoneValid = false;
+//                         isEmailValid = false;
+//                         isRedeemActive = false;
+//                         // Enable field again
+//                         isCustomerFieldDisabled = false;
+//                       });
+//
+//                       final offlineBox = StorageProvider.offlineOrders;
+//                       final localKey = widget.offlineOrderId?.toString();
+//
+//                       if (localKey != null) {
+//                         final existing = await offlineBox.get(localKey);
+//                         if (existing != null) {
+//                           final d = Map<String, dynamic>.from(
+//                               existing is Map ? existing : {});
+//                           d["loyaltyContact"] = "";
+//                           await offlineBox.put(localKey, d);
+//                         }
+//                       }
+//
+//                       final localOrderId = widget.offlineOrderId;
+//                       if (localOrderId != null) {
+//                         await CustomerDisplayHelper.updateCustomerDisplay(
+//                           localOrderId,
+//                           summaryEnabled: true,
+//                         );
+//                       }
+//                       return;
+//                     }
+//
+//                     // ---------- ADD ----------
+//                     // ---------- ADD ----------
+//                     if (!(isPhoneValid || isEmailValid)) return;
+//
+//                     // ✅ Close keyboard immediately
+//                     FocusManager.instance.primaryFocus?.unfocus();
+//
+//                     setState(() => isAddLoading = true);
+//
+//                     final contact = mobileController.text.trim();
+//
+//                     try {
+//                       // ======================================
+//                       // 1️⃣ LOAD OFFLINE ORDER FROM HIVE
+//                       // ======================================
+//                       final offlineBox = StorageProvider.offlineOrders;
+//
+//                       final localKey = widget.offlineOrderId?.toString();
+//
+//                       if (localKey == null) {
+//                         throw Exception("Offline order not found");
+//                       }
+//
+//                       final existing = await offlineBox.get(localKey);
+//
+//                       if (existing == null) {
+//                         throw Exception("Order data missing");
+//                       }
+//
+//                       final offlineOrder =
+//                       Map<String, dynamic>.from(existing);
+//
+//                       print("🟡 OFFLINE ORDER LOADED");
+//
+//                       // ======================================
+//                       // 2️⃣ SYNC ORDER WITH BACKEND
+//                       // ======================================
+//                       final syncResponse =
+//                       await orderBloc.syncSingleOfflineOrder(
+//                         offlineOrder,
+//                       );
+//
+//                       print("✅ SYNC RESPONSE points: $syncResponse");
+//
+//                       if (syncResponse == null) {
+//                         throw Exception("Sync failed");
+//                       }
+//
+//                       // ======================================
+//                       // 3️⃣ GET WOO ORDER ID
+//                       // ======================================
+//                       final int syncedOrderId = syncResponse["id"] ?? 0;
+//
+//                       if (syncedOrderId == 0) {
+//                         throw Exception("Backend order id missing");
+//                       }
+//
+//                       print("🟢 WOO ORDER ID lo: $syncedOrderId");
+//
+//                       // ======================================
+//                       // 4️⃣ CALL CREATE CUSTOMER API
+//                       // ======================================
+//                       final rawResponse =
+//                       await orderBloc.addLoyaltyPoints(
+//                         orderId: syncedOrderId,
+//                         contact: contact,
+//                       );
+//
+//                       print("🌐 CUSTOMER RESPONSE: $rawResponse");
+//
+//                       final result = jsonDecode(rawResponse);
+//
+//                       print("✅ FULL CUSTOMER RESULT: $result");
+//
+//                       if (result == null) {
+//                         throw Exception("Empty customer response");
+//                       }
+//
+//                       if (result["success"] == false) {
+//                         throw Exception(
+//                           result["message"] ?? "Customer API failed",
+//                         );
+//                       }
+//
+//                       final data = result["data"] ?? {};
+//
+//                       final pts = int.tryParse(
+//                         data["available_points"]?.toString() ?? "0",
+//                       ) ??
+//                           0;
+//                       // ======================================
+//                       // 5️⃣ UPDATE UI
+//                       // ======================================
+//                       setState(() {
+//                         loyaltyData = data;
+//                         availablePoints = pts;
+//                         isRedeemActive = true;
+//                         showCustomerInput = true;
+//
+//                         // Disable field after successful add
+//                         isCustomerFieldDisabled = true;
+//                       });
+//
+//                       print(
+//                           "AFTER ADD -> isCustomerFieldDisabled = $isCustomerFieldDisabled");
+//                       // ======================================
+//                       // 6️⃣ SAVE CONTACT LOCALLY
+//                       // ======================================
+//                       offlineOrder["loyaltyContact"] = contact;
+//                       offlineOrder["available_points"] = pts; // FIX: persist so it survives later refreshes
+//
+//                       await offlineBox.put(localKey, offlineOrder);
+//
+//                       // ======================================
+//                       // 7️⃣ UPDATE CUSTOMER DISPLAY
+//                       // ======================================
+//                       // ======================================
+// // 7️⃣ DO NOT REFRESH CUSTOMER DISPLAY
+// // ======================================
+// //                       try {
+// //                         await const MethodChannel(
+// //                           'com.alekta.pinakapos/sunmi_display',
+// //                         ).invokeMethod(
+// //                           'showCustomerData',
+// //                           {
+// //                             'orderId': int.tryParse(localKey) ?? 0,
+// //                             'items': List<Map<String, dynamic>>.from(
+// //                               offlineOrder['products'] ?? [],
+// //                             ),
+// //
+// //                             'grossTotal': grossTotal,
+// //                             'discount': discount,
+// //                             'merchantDiscount': merchantDiscount,
+// //                             'netTotal': NetTotal,
+// //                             'tax': tax,
+// //                             'netPayable': computedNetPayable,
+// //                             'orderDate': offlineOrder['order_date'] ?? '',
+// //                             'orderTime': offlineOrder['order_time'] ?? '',
+// //                             'cashbackFee':
+// //                             (offlineOrder['cashback_fee'] as num?)
+// //                                 ?.toDouble() ??
+// //                                 0.0,
+// //                             'loyaltyContact': contact,
+// //                             'availablePoints': pts,
+// //                             'summaryEnabled': true,
+// //                           },
+// //                         );
+// //                       } on PlatformException catch (e) {
+// //                         if (e.code != 'NO_DISPLAY') {
+// //                           rethrow;
+// //                         }
+// //                       }
+//
+//                       try {
+//                         // Use the SAME item list/count logic as Order Summary's
+//                         // _computeTotalItems(), so the customer display's count
+//                         // matches exactly (excludes merchant-discount rows only).
+//                         final List<Map<String, dynamic>> rawDisplayProducts =
+//                         List<Map<String, dynamic>>.from(
+//                           offlineOrder['products'] ?? [],
+//                         );
+//
+//                         final List<Map<String, dynamic>> filteredDisplayProducts =
+//                         rawDisplayProducts.where((p) {
+//                           final t = (p['item_type'] ?? p['type'] ?? '')
+//                               .toString()
+//                               .toLowerCase();
+//                           final n = (p['item_name'] ??
+//                               p['name'] ??
+//                               '')
+//                               .toString()
+//                               .toLowerCase();
+//                           return !(t.contains('discount') ||
+//                               n.contains('merchant discount'));
+//                         }).toList();
+//
+//                         // final int totalItemsForDisplay =
+//                         // filteredDisplayProducts.fold<int>(0, (sum, p) {
+//                         //   final qty = int.tryParse(
+//                         //     (p['items_count'] ??
+//                         //         p['quantity'] ??
+//                         //         p['qty'] ??
+//                         //         1)
+//                         //         .toString(),
+//                         //   ) ??
+//                         //       1;
+//                         //   return sum + qty;
+//                         // });
+//                         final int totalItemsForDisplay = _computeTotalItems();
+//
+//                         await const MethodChannel(
+//                           'com.alekta.pinakapos/sunmi_display',
+//                         ).invokeMethod(
+//                           'showCustomerData',
+//                           {
+//                             'orderId': int.tryParse(localKey) ?? 0,
+//                             'items': filteredDisplayProducts,
+//                             'totalItems': totalItemsForDisplay,
+//
+//                             'grossTotal': grossTotal,
+//                             'discount': discount,
+//                             'merchantDiscount': merchantDiscount,
+//                             'netTotal': NetTotal,
+//                             'tax': tax,
+//                             'netPayable': computedNetPayable,
+//                             'orderDate': offlineOrder['order_date'] ?? '',
+//                             'orderTime': offlineOrder['order_time'] ?? '',
+//                             'cashbackFee':
+//                             (offlineOrder['cashback_fee'] as num?)
+//                                 ?.toDouble() ??
+//                                 0.0,
+//                             'loyaltyContact': contact,
+//                             'availablePoints': pts,
+//                             'summaryEnabled': true,
+//                           },
+//                         );
+//                       } on PlatformException catch (e) {
+//                         if (e.code != 'NO_DISPLAY') {
+//                           rethrow;
+//                         }
+//                       }
+//                       if (mounted) {
+//                         ScaffoldMessenger.of(context).showSnackBar(
+//                           const SnackBar(
+//                             content: Text("Customer Added Successfully!"),
+//                             backgroundColor: Colors.green,
+//                             duration: Duration(seconds: 1),
+//                           ),
+//                         );
+//                       }
+//                     } catch (e) {
+//                       print("Print the error : $e");
+//
+//
+//                     } finally {
+//                       if (mounted) {
+//                         setState(() => isAddLoading = false);
+//                       }
+//                     }
+//                   },
+//                   child: Container(
+//                     height: 44,
+//                     width: 126,
+//                     alignment: Alignment.center,
+//                     decoration: BoxDecoration(
+//                       color: isButtonDisabled
+//                           ? Colors.grey.shade400 // 🔒 Disabled / Pending
+//                           : showCustomerInput
+//                           ? Colors.red // ❌ Cancel
+//                           : const Color(0xFF3B4259), // ➕ Add
+//                       borderRadius: BorderRadius.circular(6),
+//                     ),
+//                     child: isAddLoading
+//                         ? const SizedBox(
+//                       height: 16,
+//                       width: 16,
+//                       child: CircularProgressIndicator(
+//                         strokeWidth: 2,
+//                         color: Colors.white,
+//                       ),
+//                     )
+//                         : Text(
+//                       showCustomerInput ? '× Cancel' : '+ Add',
+//                       style: const TextStyle(
+//                         color: Colors.white,
+//                         fontSize: 13,
+//                         fontWeight: FontWeight.w600,
+//                       ),
+//                     ),
+//                   ),
+//                 )
+
+                // ---------------- ADD / CANCEL BUTTON (SAME LOGIC) ----------------
                 InkWell(
                   onTap: isButtonDisabled
                       ? null
                       : () async {
-                          // ---------- CANCEL ----------
-                          if (showCustomerInput) {
-                            // Only allow cancel if not disabled
-                            if (isPaymentDone || redeemedValue > 0) return;
+                    // ---------- CANCEL ----------
+                    if (showCustomerInput) {
+                      // Only allow cancel if not disabled
+                      if (isPaymentDone || redeemedValue > 0) return;
 
-                            setState(() {
-                              mobileController.clear();
-                              showCustomerInput = false;
-                              isPhoneValid = false;
-                              isEmailValid = false;
-                              isRedeemActive = false;
-                              // Enable field again
-                              isCustomerFieldDisabled = false;
-                            });
+                      setState(() {
+                        mobileController.clear();
+                        showCustomerInput = false;
+                        isPhoneValid = false;
+                        isEmailValid = false;
+                        isRedeemActive = false;
+                        // Enable field again
+                        isCustomerFieldDisabled = false;
+                        // FIX: reset points in UI state when cancelling
+                        availablePoints = 0;
+                        loyaltyData = null;
+                      });
 
-                            final offlineBox = StorageProvider.offlineOrders;
-                            final localKey = widget.offlineOrderId?.toString();
+                      final offlineBox = StorageProvider.offlineOrders;
+                      final localKey = widget.offlineOrderId?.toString();
 
-                            if (localKey != null) {
-                              final existing = await offlineBox.get(localKey);
-                              if (existing != null) {
-                                final d = Map<String, dynamic>.from(
-                                    existing is Map ? existing : {});
-                                d["loyaltyContact"] = "";
-                                await offlineBox.put(localKey, d);
-                              }
-                            }
+                      if (localKey != null) {
+                        final existing = await offlineBox.get(localKey);
+                        if (existing != null) {
+                          final d = Map<String, dynamic>.from(
+                              existing is Map ? existing : {});
+                          d["loyaltyContact"] = "";
+                          d["available_points"] = 0; // FIX: clear persisted points too
+                          await offlineBox.put(localKey, d);
+                        }
+                      }
 
-                            final localOrderId = widget.offlineOrderId;
-                            if (localOrderId != null) {
-                              await CustomerDisplayHelper.updateCustomerDisplay(
-                                localOrderId,
-                                summaryEnabled: true,
-                              );
-                            }
-                            return;
+                      final localOrderId = widget.offlineOrderId;
+                      if (localOrderId != null) {
+                        // FIX: push the cleared contact/points straight to the
+                        // customer display, same channel/shape as the ADD flow,
+                        // so it doesn't keep showing the old number/points.
+                        try {
+                          final List<Map<String, dynamic>> rawDisplayProducts =
+                          List<Map<String, dynamic>>.from(
+                            offlineOrder?['products'] ?? [],
+                          );
+
+                          final List<Map<String, dynamic>> filteredDisplayProducts =
+                          rawDisplayProducts.where((p) {
+                            final t = (p['item_type'] ?? p['type'] ?? '')
+                                .toString()
+                                .toLowerCase();
+                            final n = (p['item_name'] ??
+                                p['name'] ??
+                                '')
+                                .toString()
+                                .toLowerCase();
+                            return !(t.contains('discount') ||
+                                n.contains('merchant discount'));
+                          }).toList();
+
+                          final int totalItemsForDisplay = _computeTotalItems();
+
+                          await const MethodChannel(
+                            'com.alekta.pinakapos/sunmi_display',
+                          ).invokeMethod(
+                            'showCustomerData',
+                            {
+                              'orderId': localOrderId,
+                              'items': filteredDisplayProducts,
+                              'totalItems': totalItemsForDisplay,
+
+                              'grossTotal': grossTotal,
+                              'discount': discount,
+                              'merchantDiscount': merchantDiscount,
+                              'netTotal': NetTotal,
+                              'tax': tax,
+                              'netPayable': computedNetPayable,
+                              'orderDate': offlineOrder?['order_date'] ?? '',
+                              'orderTime': offlineOrder?['order_time'] ?? '',
+                              'cashbackFee':
+                              (offlineOrder?['cashback_fee'] as num?)
+                                  ?.toDouble() ??
+                                  0.0,
+                              'loyaltyContact': '',
+                              'availablePoints': 0,
+                              'summaryEnabled': true,
+                            },
+                          );
+                        } on PlatformException catch (e) {
+                          if (e.code != 'NO_DISPLAY') {
+                            rethrow;
                           }
+                        }
+                        unawaited(_syncCfdFromOrderSummary());
+                        await CustomerDisplayHelper.updateCustomerDisplay(
+                          localOrderId,
+                          summaryEnabled: true,
+                        );
+                      }
+                      return;
+                    }
 
-                          // ---------- ADD ----------
-                          // ---------- ADD ----------
-                          if (!(isPhoneValid || isEmailValid)) return;
+                    // ---------- ADD ----------
+                    // ---------- ADD ----------
+                    if (!(isPhoneValid || isEmailValid)) return;
 
-                          // ✅ Close keyboard immediately
-                          FocusManager.instance.primaryFocus?.unfocus();
+                    // ✅ Close keyboard immediately
+                    FocusManager.instance.primaryFocus?.unfocus();
 
-                          setState(() => isAddLoading = true);
+                    setState(() => isAddLoading = true);
 
-                          final contact = mobileController.text.trim();
+                    final contact = mobileController.text.trim();
 
-                          try {
-                            // ======================================
-                            // 1️⃣ LOAD OFFLINE ORDER FROM HIVE
-                            // ======================================
-                            final offlineBox = StorageProvider.offlineOrders;
+                    try {
+                      // ======================================
+                      // 1️⃣ LOAD OFFLINE ORDER FROM HIVE
+                      // ======================================
+                      final offlineBox = StorageProvider.offlineOrders;
 
-                            final localKey = widget.offlineOrderId?.toString();
+                      final localKey = widget.offlineOrderId?.toString();
 
-                            if (localKey == null) {
-                              throw Exception("Offline order not found");
-                            }
+                      if (localKey == null) {
+                        throw Exception("Offline order not found");
+                      }
 
-                            final existing = await offlineBox.get(localKey);
+                      final existing = await offlineBox.get(localKey);
 
-                            if (existing == null) {
-                              throw Exception("Order data missing");
-                            }
+                      if (existing == null) {
+                        throw Exception("Order data missing");
+                      }
 
-                            final offlineOrder =
-                                Map<String, dynamic>.from(existing);
+                      final offlineOrder =
+                      Map<String, dynamic>.from(existing);
 
-                            print("🟡 OFFLINE ORDER LOADED");
+                      print("🟡 OFFLINE ORDER LOADED");
 
-                            // ======================================
-                            // 2️⃣ SYNC ORDER WITH BACKEND
-                            // ======================================
-                            final syncResponse =
-                                await orderBloc.syncSingleOfflineOrder(
-                              offlineOrder,
-                            );
+                      // ======================================
+                      // 2️⃣ SYNC ORDER WITH BACKEND
+                      // ======================================
+                      final syncResponse =
+                      await orderBloc.syncSingleOfflineOrder(
+                        offlineOrder,
+                      );
 
-                            print("✅ SYNC RESPONSE points: $syncResponse");
+                      print("✅ SYNC RESPONSE points: $syncResponse");
 
-                            if (syncResponse == null) {
-                              throw Exception("Sync failed");
-                            }
+                      if (syncResponse == null) {
+                        throw Exception("Sync failed");
+                      }
 
-                            // ======================================
-                            // 3️⃣ GET WOO ORDER ID
-                            // ======================================
-                            final int syncedOrderId = syncResponse["id"] ?? 0;
+                      // ======================================
+                      // 3️⃣ GET WOO ORDER ID
+                      // ======================================
+                      final int syncedOrderId = syncResponse["id"] ?? 0;
 
-                            if (syncedOrderId == 0) {
-                              throw Exception("Backend order id missing");
-                            }
+                      if (syncedOrderId == 0) {
+                        throw Exception("Backend order id missing");
+                      }
 
-                            print("🟢 WOO ORDER ID lo: $syncedOrderId");
+                      print("🟢 WOO ORDER ID lo: $syncedOrderId");
 
-                            // ======================================
-                            // 4️⃣ CALL CREATE CUSTOMER API
-                            // ======================================
-                            final rawResponse =
-                                await orderBloc.addLoyaltyPoints(
-                              orderId: syncedOrderId,
-                              contact: contact,
-                            );
+                      // ======================================
+                      // 4️⃣ CALL CREATE CUSTOMER API
+                      // ======================================
+                      final rawResponse =
+                      await orderBloc.addLoyaltyPoints(
+                        orderId: syncedOrderId,
+                        contact: contact,
+                      );
 
-                            print("🌐 CUSTOMER RESPONSE: $rawResponse");
+                      print("🌐 CUSTOMER RESPONSE: $rawResponse");
 
-                            final result = jsonDecode(rawResponse);
+                      final result = jsonDecode(rawResponse);
 
-                            print("✅ FULL CUSTOMER RESULT: $result");
+                      print("✅ FULL CUSTOMER RESULT: $result");
 
-                            if (result == null) {
-                              throw Exception("Empty customer response");
-                            }
+                      if (result == null) {
+                        throw Exception("Empty customer response");
+                      }
 
-                            if (result["success"] == false) {
-                              throw Exception(
-                                result["message"] ?? "Customer API failed",
-                              );
-                            }
+                      if (result["success"] == false) {
+                        throw Exception(
+                          result["message"] ?? "Customer API failed",
+                        );
+                      }
 
-                            final data = result["data"] ?? {};
+                      final data = result["data"] ?? {};
 
-                            final pts = int.tryParse(
-                                  data["available_points"]?.toString() ?? "0",
-                                ) ??
-                                0;
-                            // ======================================
-                            // 5️⃣ UPDATE UI
-                            // ======================================
-                            setState(() {
-                              loyaltyData = data;
-                              availablePoints = pts;
-                              isRedeemActive = true;
-                              showCustomerInput = true;
+                      final pts = int.tryParse(
+                        data["available_points"]?.toString() ?? "0",
+                      ) ??
+                          0;
+                      // ======================================
+                      // 5️⃣ UPDATE UI
+                      // ======================================
+                      setState(() {
+                        loyaltyData = data;
+                        availablePoints = pts;
+                        isRedeemActive = true;
+                        showCustomerInput = true;
 
-                              // Disable field after successful add
-                              isCustomerFieldDisabled = true;
-                            });
+                        // Disable field after successful add
+                        isCustomerFieldDisabled = true;
+                      });
 
-                            print(
-                                "AFTER ADD -> isCustomerFieldDisabled = $isCustomerFieldDisabled");
-                            // ======================================
-                            // 6️⃣ SAVE CONTACT LOCALLY
-                            // ======================================
-                            offlineOrder["loyaltyContact"] = contact;
+                      print(
+                          "AFTER ADD -> isCustomerFieldDisabled = $isCustomerFieldDisabled");
+                      // ======================================
+                      // 6️⃣ SAVE CONTACT LOCALLY
+                      // ======================================
+                      offlineOrder["loyaltyContact"] = contact;
+                      offlineOrder["available_points"] = pts; // FIX: persist so it survives later refreshes
 
-                            await offlineBox.put(localKey, offlineOrder);
+                      await offlineBox.put(localKey, offlineOrder);
 
-                            // ======================================
-                            // 7️⃣ UPDATE CUSTOMER DISPLAY
-                            // ======================================
-                            // ======================================
+                      // ======================================
+                      // 7️⃣ UPDATE CUSTOMER DISPLAY
+                      // ======================================
+                      // ======================================
 // 7️⃣ DO NOT REFRESH CUSTOMER DISPLAY
 // ======================================
-                            try {
-                              await const MethodChannel(
-                                'com.example.flutter_customer_display/sunmi_display',
-                              ).invokeMethod(
-                                'showCustomerData',
-                                {
-                                  'orderId': int.tryParse(localKey) ?? 0,
-                                  'items': List<Map<String, dynamic>>.from(
-                                    offlineOrder['products'] ?? [],
-                                  ),
-                                  'grossTotal': grossTotal,
-                                  'discount': discount,
-                                  'merchantDiscount': merchantDiscount,
-                                  'netTotal': NetTotal,
-                                  'tax': tax,
-                                  'netPayable': computedNetPayable,
-                                  'orderDate': offlineOrder['order_date'] ?? '',
-                                  'orderTime': offlineOrder['order_time'] ?? '',
-                                  'cashbackFee':
-                                      (offlineOrder['cashback_fee'] as num?)
-                                              ?.toDouble() ??
-                                          0.0,
-                                  'loyaltyContact': contact,
-                                  'availablePoints': pts,
-                                  'summaryEnabled': true,
-                                },
-                              );
-                            } on PlatformException catch (e) {
-                              if (e.code != 'NO_DISPLAY') {
-                                rethrow;
-                              }
-                            }
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text("Customer Added Successfully!"),
-                                  backgroundColor: Colors.green,
-                                  duration: Duration(seconds: 1),
-                                ),
-                              );
-                            }
-                          } catch (e) {
-                            print("❌ ERROR: $e");
+//                       try {
+//                         await const MethodChannel(
+//                           'com.alekta.pinakapos/sunmi_display',
+//                         ).invokeMethod(
+//                           'showCustomerData',
+//                           {
+//                             'orderId': int.tryParse(localKey) ?? 0,
+//                             'items': List<Map<String, dynamic>>.from(
+//                               offlineOrder['products'] ?? [],
+//                             ),
+//
+//                             'grossTotal': grossTotal,
+//                             'discount': discount,
+//                             'merchantDiscount': merchantDiscount,
+//                             'netTotal': NetTotal,
+//                             'tax': tax,
+//                             'netPayable': computedNetPayable,
+//                             'orderDate': offlineOrder['order_date'] ?? '',
+//                             'orderTime': offlineOrder['order_time'] ?? '',
+//                             'cashbackFee':
+//                             (offlineOrder['cashback_fee'] as num?)
+//                                 ?.toDouble() ??
+//                                 0.0,
+//                             'loyaltyContact': contact,
+//                             'availablePoints': pts,
+//                             'summaryEnabled': true,
+//                           },
+//                         );
+//                       } on PlatformException catch (e) {
+//                         if (e.code != 'NO_DISPLAY') {
+//                           rethrow;
+//                         }
+//                       }
 
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    "Failed: ${e.toString()}",
-                                  ),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                            }
-                          } finally {
-                            if (mounted) {
-                              setState(() => isAddLoading = false);
-                            }
-                          }
-                        },
+                      try {
+                        // Use the SAME item list/count logic as Order Summary's
+                        // _computeTotalItems(), so the customer display's count
+                        // matches exactly (excludes merchant-discount rows only).
+                        final List<Map<String, dynamic>> rawDisplayProducts =
+                        List<Map<String, dynamic>>.from(
+                          offlineOrder['products'] ?? [],
+                        );
+
+                        final List<Map<String, dynamic>> filteredDisplayProducts =
+                        rawDisplayProducts.where((p) {
+                          final t = (p['item_type'] ?? p['type'] ?? '')
+                              .toString()
+                              .toLowerCase();
+                          final n = (p['item_name'] ??
+                              p['name'] ??
+                              '')
+                              .toString()
+                              .toLowerCase();
+                          return !(t.contains('discount') ||
+                              n.contains('merchant discount'));
+                        }).toList();
+
+                        // final int totalItemsForDisplay =
+                        // filteredDisplayProducts.fold<int>(0, (sum, p) {
+                        //   final qty = int.tryParse(
+                        //     (p['items_count'] ??
+                        //         p['quantity'] ??
+                        //         p['qty'] ??
+                        //         1)
+                        //         .toString(),
+                        //   ) ??
+                        //       1;
+                        //   return sum + qty;
+                        // });
+                        final int totalItemsForDisplay = _computeTotalItems();
+
+                        await const MethodChannel(
+                          'com.alekta.pinakapos/sunmi_display',
+                        ).invokeMethod(
+                          'showCustomerData',
+                          {
+                            'orderId': int.tryParse(localKey) ?? 0,
+                            'items': filteredDisplayProducts,
+                            'totalItems': totalItemsForDisplay,
+
+                            'grossTotal': grossTotal,
+                            'discount': discount,
+                            'merchantDiscount': merchantDiscount,
+                            'netTotal': NetTotal,
+                            'tax': tax,
+                            'netPayable': computedNetPayable,
+                            'orderDate': offlineOrder['order_date'] ?? '',
+                            'orderTime': offlineOrder['order_time'] ?? '',
+                            'cashbackFee':
+                            (offlineOrder['cashback_fee'] as num?)
+                                ?.toDouble() ??
+                                0.0,
+                            'loyaltyContact': contact,
+                            'availablePoints': pts,
+                            'summaryEnabled': true,
+                          },
+                        );
+                      } on PlatformException catch (e) {
+                        if (e.code != 'NO_DISPLAY') {
+                          rethrow;
+                        }
+                      }
+                      unawaited(_syncCfdFromOrderSummary());
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Customer Added Successfully!"),
+                            backgroundColor: Colors.green,
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      print("Print the error : $e");
+
+
+                    } finally {
+                      if (mounted) {
+                        setState(() => isAddLoading = false);
+                      }
+                    }
+                  },
                   child: Container(
                     height: 44,
                     width: 126,
@@ -7374,27 +8793,27 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       color: isButtonDisabled
                           ? Colors.grey.shade400 // 🔒 Disabled / Pending
                           : showCustomerInput
-                              ? Colors.red // ❌ Cancel
-                              : const Color(0xFF3B4259), // ➕ Add
+                          ? Colors.red // ❌ Cancel
+                          : const Color(0xFF3B4259), // ➕ Add
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: isAddLoading
                         ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                         : Text(
-                            showCustomerInput ? '× Cancel' : '+ Add',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                      showCustomerInput ? '× Cancel' : '+ Add',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 )
               ],
@@ -7416,7 +8835,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
                   borderRadius:
-                      BorderRadius.circular(ResponsiveLayout.getRadius(15)),
+                  BorderRadius.circular(ResponsiveLayout.getRadius(15)),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(
@@ -7460,7 +8879,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         Text(
                           userRole ?? TextConstants.unknown,
                           style:
-                              const TextStyle(color: Colors.grey, fontSize: 12),
+                          const TextStyle(color: Colors.grey, fontSize: 12),
                         ),
                       ],
                     ),
@@ -7503,16 +8922,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final theme = Theme.of(context);
 
-    int totalItems = orderItems.fold(0, (sum, item) {
-      final name = item['item_name']?.toString().toLowerCase() ?? '';
-
-      if (name == 'payout' || name == 'cashback') {
-        return sum;
-      }
-
-      final qty = int.tryParse(item['items_count']?.toString() ?? '1') ?? 1;
-      return sum + qty;
-    });
+    int totalItems = _computeTotalItems();
 
     return Align(
       alignment: Alignment.centerLeft,
@@ -7573,8 +8983,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                             ),
                           ),
 
-                         
-                      
+
+
                         ],
                       ),
                     ],
@@ -7707,7 +9117,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 child: Container(
                     decoration: BoxDecoration(
                       borderRadius:
-                          BorderRadius.circular(ResponsiveLayout.getRadius(10)),
+                      BorderRadius.circular(ResponsiveLayout.getRadius(10)),
                       color: themeHelper.themeMode == ThemeMode.dark
                           ? ThemeNotifier.secondaryBackground
                           : Colors.white,
@@ -7728,7 +9138,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Container(
                 decoration: BoxDecoration(
                   borderRadius:
-                      BorderRadius.circular(ResponsiveLayout.getRadius(6)),
+                  BorderRadius.circular(ResponsiveLayout.getRadius(6)),
                   color: themeHelper.themeMode == ThemeMode.dark
                       ? ThemeNotifier.secondaryBackground
                       : Colors.white,
@@ -7739,247 +9149,255 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   curve: Curves.easeInOut,
                   child: _showFullSummary
                       ? Container(
-                          height: ResponsiveLayout.getHeight(205),
-                          margin: EdgeInsets.only(
-                            top: ResponsiveLayout.getPadding(0),
-                            right: ResponsiveLayout.getPadding(1),
-                            left: ResponsiveLayout.getPadding(1),
-                            bottom: ResponsiveLayout.getPadding(3),
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.only(
-                                topRight: Radius.circular(8),
-                                topLeft: Radius.circular(8)),
-                            color: themeHelper.themeMode == ThemeMode.dark
-                                ? ThemeNotifier.orderPanelSummary
-                                : Colors.white,
-                            boxShadow: [
-                              // Shadow at the top
-                              BoxShadow(
-                                color: themeHelper.themeMode == ThemeMode.dark
-                                    ? Color(0xFFF0F0F0).withOpacity(
-                                        0.15) // dark mode top shadow
-                                    : Colors.black.withOpacity(
-                                        0.15), // light mode top shadow
-                                // color: Colors.black.withOpacity(0.15),
-                                offset: Offset(
-                                    0, -4), // 0 horizontal, -4 vertical (up)
-                                blurRadius: 6,
-                                spreadRadius: -0.5,
+                    height: ResponsiveLayout.getHeight(205),
+                    margin: EdgeInsets.only(
+                      top: ResponsiveLayout.getPadding(0),
+                      right: ResponsiveLayout.getPadding(1),
+                      left: ResponsiveLayout.getPadding(1),
+                      bottom: ResponsiveLayout.getPadding(3),
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.only(
+                          topRight: Radius.circular(8),
+                          topLeft: Radius.circular(8)),
+                      color: themeHelper.themeMode == ThemeMode.dark
+                          ? ThemeNotifier.orderPanelSummary
+                          : Colors.white,
+                      boxShadow: [
+                        // Shadow at the top
+                        BoxShadow(
+                          color: themeHelper.themeMode == ThemeMode.dark
+                              ? Color(0xFFF0F0F0).withOpacity(
+                              0.15) // dark mode top shadow
+                              : Colors.black.withOpacity(
+                              0.15), // light mode top shadow
+                          // color: Colors.black.withOpacity(0.15),
+                          offset: Offset(
+                              0, -4), // 0 horizontal, -4 vertical (up)
+                          blurRadius: 6,
+                          spreadRadius: -0.5,
+                        ),
+                      ],
+                    ),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: ResponsiveLayout.getPadding(8),
+                    ),
+                    child: isSummaryLoading
+                        ? Center(child: CircularProgressIndicator())
+                        : ScrollConfiguration(
+                      behavior: NoScrollbarBehavior()
+                          .copyWith(overscroll: false),
+                      // thumbVisibility: true,
+                      // radius: Radius.circular(10),
+                      child: SingleChildScrollView(
+                        physics: BouncingScrollPhysics(),
+                        child: Column(
+                          children: [
+                            _buildOrderCalculation(
+                              TextConstants.grossTotal,
+                              grossTotal < 0
+                                  ? '-${TextConstants.currencySymbol}${grossTotal.abs().toStringAsFixed(2)}'
+                                  : '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
+                              isTotal: true,
+                            ),
+                            //Raghu--**
+                            if (merchantDiscount < 0)
+                              _buildOrderCalculation(
+                                merchantDiscountPercentage > 0
+                                    ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
+                                    : TextConstants
+                                    .merchantDiscount,
+                                '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
                               ),
-                            ],
-                          ),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: ResponsiveLayout.getPadding(8),
-                          ),
-                          child: isSummaryLoading
-                              ? Center(child: CircularProgressIndicator())
-                              : ScrollConfiguration(
-                                  behavior: NoScrollbarBehavior()
-                                      .copyWith(overscroll: false),
-                                  // thumbVisibility: true,
-                                  // radius: Radius.circular(10),
-                                  child: SingleChildScrollView(
-                                    physics: BouncingScrollPhysics(),
-                                    child: Column(
-                                      children: [
-                                        _buildOrderCalculation(
-                                          TextConstants.grossTotal,
-                                          grossTotal < 0
-                                              ? '-${TextConstants.currencySymbol}${grossTotal.abs().toStringAsFixed(2)}'
-                                              : '${TextConstants.currencySymbol}${grossTotal.toStringAsFixed(2)}',
-                                          isTotal: true,
-                                        ),
-                                        //Raghu--**
-                                        if (merchantDiscount < 0)
-                                          _buildOrderCalculation(
-                                            merchantDiscountPercentage > 0
-                                                ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
-                                                : TextConstants
-                                                    .merchantDiscount,
-                                            '-${TextConstants.currencySymbol}${merchantDiscount.abs().toStringAsFixed(2)}',
-                                          ),
-                                        _buildOrderCalculation(
-                                            TextConstants.discountText,
-                                            '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}',
-                                            isDiscount: true),
+                            _buildOrderCalculation(
+                                TextConstants.discountText,
+                                '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}',
+                                isDiscount: true),
 
-                                        ShaderMask(
-                                          shaderCallback: (Rect bounds) {
-                                            return LinearGradient(
-                                              begin: Alignment.centerLeft,
-                                              end: Alignment.centerRight,
-                                              colors: themeHelper.themeMode ==
-                                                      ThemeMode.dark
-                                                  ? [
-                                                      Colors.white
-                                                          .withOpacity(0.1),
-                                                      Colors.white
-                                                          .withOpacity(0.7),
-                                                      Colors.white
-                                                          .withOpacity(0.1),
-                                                    ]
-                                                  : [
-                                                      Colors.black
-                                                          .withOpacity(0.1),
-                                                      Colors.black
-                                                          .withOpacity(0.7),
-                                                      Colors.black
-                                                          .withOpacity(0.1),
-                                                    ],
-                                              stops: const [0.0, 0.5, 1.0],
-                                            ).createShader(bounds);
-                                          },
-                                          blendMode: BlendMode.srcIn,
-                                          child: DottedLine(
-                                            dashLength: 6,
-                                            dashGapLength: 4,
-                                            lineThickness: 1,
-                                            direction: Axis.horizontal,
-                                            dashColor: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                ? Colors.white
-                                                : Colors
-                                                    .black, // ✅ ensures gradient works correctly
-                                          ),
-                                        ),
-                                        //Raghu--***
-                                                                            
-                                        _buildOrderCalculation(
-                                          TextConstants.NetTotal,
-                                            NetTotal < 0
-                                              ? '-${TextConstants.currencySymbol}${NetTotal.abs().toStringAsFixed(2)}'
-                                              : '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
-                                        ),
-                                        
-                                        _buildOrderCalculation(
-                                          TextConstants.taxText,
-                                          '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}',
-                                        ),
-                                        //Raghu--*
+                            ShaderMask(
+                              shaderCallback: (Rect bounds) {
+                                return LinearGradient(
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                  colors: themeHelper.themeMode ==
+                                      ThemeMode.dark
+                                      ? [
+                                    Colors.white
+                                        .withOpacity(0.1),
+                                    Colors.white
+                                        .withOpacity(0.7),
+                                    Colors.white
+                                        .withOpacity(0.1),
+                                  ]
+                                      : [
+                                    Colors.black
+                                        .withOpacity(0.1),
+                                    Colors.black
+                                        .withOpacity(0.7),
+                                    Colors.black
+                                        .withOpacity(0.1),
+                                  ],
+                                  stops: const [0.0, 0.5, 1.0],
+                                ).createShader(bounds);
+                              },
+                              blendMode: BlendMode.srcIn,
+                              child: DottedLine(
+                                dashLength: 6,
+                                dashGapLength: 4,
+                                lineThickness: 1,
+                                direction: Axis.horizontal,
+                                dashColor: themeHelper.themeMode ==
+                                    ThemeMode.dark
+                                    ? Colors.white
+                                    : Colors
+                                    .black, // ✅ ensures gradient works correctly
+                              ),
+                            ),
+                            //Raghu--***
 
-                                        if (cashbackFee > 0)
-                                          _buildOrderCalculation(
-                                            TextConstants.cashbackFee,
-                                            '${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}',
-                                          ),
+                            _buildOrderCalculation(
+                              TextConstants.NetTotal,
+                              NetTotal < 0
+                                  ? '-${TextConstants.currencySymbol}${NetTotal.abs().toStringAsFixed(2)}'
+                                  : '${TextConstants.currencySymbol}${NetTotal.toStringAsFixed(2)}',
+                            ),
 
-                                        /// Service Charges
-                                        _buildOrderCalculation(
-                                            TextConstants.servicecharges,
-                                            '${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}'),
+                            _buildOrderCalculation(
+                              TextConstants.taxText,
+                              '${TextConstants.currencySymbol}${tax.toStringAsFixed(2)}',
+                            ),
+                            //Raghu--*
 
-                                        if (redeemedValue > 0)
-                                          _buildOrderCalculation(
-                                            "Redeemed Amount",
-                                            '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
-                                          ),
+                            if (cashbackFee > 0)
+                              _buildOrderCalculation(
+                                TextConstants.cashbackFee,
+                                '${TextConstants.currencySymbol}${cashbackFee.toStringAsFixed(2)}',
+                              ),
 
-                                        ShaderMask(
-                                          shaderCallback: (Rect bounds) {
-                                            return LinearGradient(
-                                              begin: Alignment.centerLeft,
-                                              end: Alignment.centerRight,
-                                              colors: themeHelper.themeMode ==
-                                                      ThemeMode.dark
-                                                  ? [
-                                                      Colors.white
-                                                          .withOpacity(0.1),
-                                                      Colors.white
-                                                          .withOpacity(0.7),
-                                                      Colors.white
-                                                          .withOpacity(0.1),
-                                                    ]
-                                                  : [
-                                                      Colors.black
-                                                          .withOpacity(0.1),
-                                                      Colors.black
-                                                          .withOpacity(0.7),
-                                                      Colors.black
-                                                          .withOpacity(0.1),
-                                                    ],
-                                              stops: const [0.0, 0.5, 1.0],
-                                            ).createShader(bounds);
-                                          },
-                                          blendMode: BlendMode.srcIn,
-                                          child: DottedLine(
-                                            dashLength: 6,
-                                            dashGapLength: 4,
-                                            lineThickness: 1,
-                                            direction: Axis.horizontal,
-                                            dashColor: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                ? Colors.white
-                                                : Colors
-                                                    .black, // ✅ ensures gradient works correctly
-                                          ),
-                                        ),
+                            /// Service Charges
+                            _buildOrderCalculation(
+                                TextConstants.servicecharges,
+                                '${TextConstants.currencySymbol}${servicecharges.toStringAsFixed(2)}'),
 
-                                        _buildOrderCalculation(
-                                          TextConstants.netPayable,
-                                          computedNetPayable < 0
-                                              ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}'
-                                              : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
-                                          isTotal: true,
-                                        ),
+                            if (redeemedValue > 0)
+                              _buildOrderCalculation(
+                                "Redeemed Amount",
+                                '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
+                              ),
 
-                                        // if (redeemedValue > 0)
-                                        //   _buildOrderCalculation(
-                                        //     "Redeemed Amount",
-                                        //     '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
-                                        //   ),
-                                        _buildOrderCalculation(
-                                          "Pay by Card",
-                                          '${TextConstants.currencySymbol}${payByCard.toStringAsFixed(2)}',
-                                        ),
+                            ShaderMask(
+                              shaderCallback: (Rect bounds) {
+                                return LinearGradient(
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                  colors: themeHelper.themeMode ==
+                                      ThemeMode.dark
+                                      ? [
+                                    Colors.white
+                                        .withOpacity(0.1),
+                                    Colors.white
+                                        .withOpacity(0.7),
+                                    Colors.white
+                                        .withOpacity(0.1),
+                                  ]
+                                      : [
+                                    Colors.black
+                                        .withOpacity(0.1),
+                                    Colors.black
+                                        .withOpacity(0.7),
+                                    Colors.black
+                                        .withOpacity(0.1),
+                                  ],
+                                  stops: const [0.0, 0.5, 1.0],
+                                ).createShader(bounds);
+                              },
+                              blendMode: BlendMode.srcIn,
+                              child: DottedLine(
+                                dashLength: 6,
+                                dashGapLength: 4,
+                                lineThickness: 1,
+                                direction: Axis.horizontal,
+                                dashColor: themeHelper.themeMode ==
+                                    ThemeMode.dark
+                                    ? Colors.white
+                                    : Colors
+                                    .black, // ✅ ensures gradient works correctly
+                              ),
+                            ),
 
-                                        _buildOrderCalculation(
-                                            TextConstants.payByCash,
-                                            '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
-                                        _buildOrderCalculation(
-                                          "Pay by EBT",
-                                          '${TextConstants.currencySymbol}${payByEbt.toStringAsFixed(2)}',
-                                        ),
+                            // _buildOrderCalculation(
+                            //   TextConstants.netPayable,
+                            //   computedNetPayable < 0
+                            //       ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}'
+                            //       : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                            //   isTotal: true,
+                            // ),
 
-                                        _buildOrderCalculation(
-                                            TextConstants.payByOther,
-                                            '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
+                            _buildOrderCalculation(
+                              TextConstants.netPayable,
+                              computedNetPayable < 0
+                                  ? '-${TextConstants.currencySymbol}${computedNetPayable.abs().toStringAsFixed(2)}'
+                                  : '${TextConstants.currencySymbol}${computedNetPayable.toStringAsFixed(2)}',
+                              isTotal: true,
+                            ),
 
-                                        _buildOrderCalculation(
-                                            TextConstants.tenderAmount,
-                                            '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'),
+                            // if (redeemedValue > 0)
+                            //   _buildOrderCalculation(
+                            //     "Redeemed Amount",
+                            //     '-${TextConstants.currencySymbol}${redeemedValue.toStringAsFixed(2)}',
+                            //   ),
+                            _buildOrderCalculation(
+                              "Pay by Card",
+                              '${TextConstants.currencySymbol}${payByCard.toStringAsFixed(2)}',
+                            ),
 
-                                        _buildOrderCalculation(
-                                            TextConstants.change,
-                                            '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
+                            _buildOrderCalculation(
+                                TextConstants.payByCash,
+                                '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}'),
+                            _buildOrderCalculation(
+                              "Pay by EBT",
+                              '${TextConstants.currencySymbol}${payByEbt.toStringAsFixed(2)}',
+                            ),
 
-                                        const SizedBox(height: 6),
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              "Order Earned Points",
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w600,
-                                                color: Colors.amber[800],
-                                              ),
-                                            ),
-                                            Text(
-                                              "${_order['total_loyalty_points'] ?? 0} pts",
-                                              style: TextStyle(
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.amber[700],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
+                            _buildOrderCalculation(
+                                TextConstants.payByOther,
+                                '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}'),
+
+                            _buildOrderCalculation(
+                                TextConstants.tenderAmount,
+                                '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}'),
+
+                            _buildOrderCalculation(
+                                TextConstants.change,
+                                '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}'),
+                            // After Change Amount Row
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  "Order Earned Points",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.amber[800],
                                   ),
                                 ),
-                        )
+                                Text(
+                                  "${_order['total_loyalty_points'] ?? 0} pts",
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.amber[700],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
                       : SizedBox.shrink(),
                 ),
               ),
@@ -7998,9 +9416,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.only(
                       bottomRight:
-                          Radius.circular(ResponsiveLayout.getRadius(6)),
+                      Radius.circular(ResponsiveLayout.getRadius(6)),
                       bottomLeft:
-                          Radius.circular(ResponsiveLayout.getRadius(6)),
+                      Radius.circular(ResponsiveLayout.getRadius(6)),
                       topLeft: _showFullSummary
                           ? Radius.zero
                           : Radius.circular(ResponsiveLayout.getRadius(6)),
@@ -8044,9 +9462,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           Text(
                             _showFullSummary
                                 ? '${TextConstants.netPayable} : '
-                                    '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}'
+                                '${_formatNetPayable(computedNetPayable - redeemedValue)}'
                                 : '${TextConstants.netPayable} '
-                                    '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}',
+                                '${_formatNetPayable(computedNetPayable - redeemedValue)}',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
@@ -8079,13 +9497,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   final OrderHelper orderHelper =
-      OrderHelper(); // Helper instance to manage orders
+  OrderHelper(); // Helper instance to manage orders
 
   // Build #1.0.10: Fetches order items for the active order
   Future<void> fetchOrderItems() async {
     if (orderHelper.activeOrderId != null) {
       var orderData =
-          await orderHelper.getOrderById(orderHelper.activeOrderId!);
+      await orderHelper.getOrderById(orderHelper.activeOrderId!);
       List<Map<String, dynamic>> items = await orderHelper
           .getOrderItems(orderData.first[AppDBConst.orderServerId]);
 
@@ -8100,7 +9518,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             final raw = await box.get(key);
             if (raw is Map) {
               dbMerchantDiscountPerc = double.tryParse(
-                      raw['merchantDiscountPercentage']?.toString() ?? '0') ??
+                  raw['merchantDiscountPercentage']?.toString() ?? '0') ??
                   0.0;
             }
           }
@@ -8109,13 +9527,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         setState(() {
           orderId = orderData.first[AppDBConst.orderServerId] as int? ?? 0;
           orderDateTime =
-              "${orderData.first[AppDBConst.orderDate]} ${orderData.first[AppDBConst.orderTime]}";
+          "${orderData.first[AppDBConst.orderDate]} ${orderData.first[AppDBConst.orderTime]}";
           discount =
               (orderData.first[AppDBConst.orderDiscount] as num?)?.toDouble() ??
                   0.0; // Fetch discount
           final dbMerchantDiscount =
               (orderData.first[AppDBConst.merchantDiscount] as num?)
-                      ?.toDouble() ??
+                  ?.toDouble() ??
                   0.0;
           // Keep merchant discount algebraic (negative) for summary display/total logic.
           merchantDiscount = dbMerchantDiscount != 0
@@ -8128,7 +9546,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               (orderData.first[AppDBConst.orderTotal] as num?)?.toDouble() ??
                   0.0; // Build #1.0.80
           cashbackFee = (orderData.first[AppDBConst.orderCashbackFee] as num?)
-                  ?.toDouble() ??
+              ?.toDouble() ??
               0.0;
           orderStatus = (orderData.first[AppDBConst.orderStatus] as String?) ??
               TextConstants.processing; // Build  #1.0.177
@@ -8183,6 +9601,321 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
+//   Widget _buildOrderItem(int index) {
+//     final themeHelper = Provider.of<ThemeNotifier>(context);
+//     final orderItem = orderItems[index];
+//
+//     final String itemType =
+//         orderItem['item_type']?.toString().toLowerCase() ?? '';
+//     final String itemNameLower =
+//     (orderItem['item_name']?.toString() ?? '').toLowerCase();
+//
+//     // Hide merchant discount line-items from the list (keep it in totals section).
+//     if (itemType.contains('discount') ||
+//         itemNameLower.contains('merchant discount')) {
+//       return const SizedBox.shrink();
+//     }
+//
+//     final bool isPayout = itemType.contains(TextConstants.payoutText);
+//     final bool isCoupon = itemType.contains(TextConstants.couponText);
+//     final bool isCashback = itemType.contains("cashback");
+//     final bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+//
+//     // Parse variation_id: Woo/Hive use variation_id; SQLite uses item_variation_id.
+//     final int varId = _orderSummaryLineVariationId(orderItem);
+//     final bool hasVariationId = varId > 0;
+//
+//     // Only show variant icon for actual product line items (not payout/coupon/custom/cashback)
+//     final bool isProductItem = !isPayoutOrCoupon;
+//     final bool isVariantFlag =
+//         orderItem['is_variant'] == true || orderItem['is_variant'] == 1;
+//     // item_variation_custom_name is populated from API even for simple lines
+//     // (fallback is the full line-item name), so never treat name alone as variant.
+//     final bool isVariant = isProductItem &&
+//         (isVariantFlag ||
+//             (itemType == 'variant' || itemType == 'variation') ||
+//             hasVariationId);
+//
+//     final bool isEbtEligible = _orderSummaryLineEbtEligible(orderItem);
+//
+//     final String itemName = orderItem['item_name']?.toString() ?? '';
+//     final double itemPrice = (orderItem['item_price'] ?? 0).toDouble();
+//     final int itemCount = (orderItem['items_count'] ?? 0).toInt();
+//
+//     final double originalTotal = (orderItem['item_sum_price'] ?? 0).toDouble();
+//
+//     // --------------------------------------------------
+//     // ✅ DISCOUNT EXTRACTION
+//     // --------------------------------------------------
+//     // -----------------------------
+// // DISCOUNT EXTRACTION
+// // -----------------------------
+//     final String discountType =
+//         orderItem['discount_type']?.toString().toLowerCase() ?? '';
+//
+//     double _num(dynamic value) {
+//       if (value is num) return value.toDouble();
+//       return double.tryParse(value?.toString() ?? '') ?? 0.0;
+//     }
+//
+//     // Pending/offline orders may use *_total or camelCase keys.
+//     double autoDiscount = _num(orderItem['auto_discount']) != 0
+//         ? _num(orderItem['auto_discount'])
+//         : _num(orderItem['auto_discount_total']) != 0
+//         ? _num(orderItem['auto_discount_total'])
+//         : _num(orderItem['autoDiscount']) != 0
+//         ? _num(orderItem['autoDiscount'])
+//         : _num(orderItem['autoDiscountTotal']) != 0
+//         ? _num(orderItem['autoDiscountTotal'])
+//         : _num(orderItem['display_auto_discount']);
+//
+//     double comboDiscount = [
+//       orderItem['combo_discount_total'],
+//       orderItem['comboDiscountTotal'],
+//       orderItem['combo_discount'],
+//     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
+//
+//     double mixMatchDiscount = [
+//       orderItem['mixmatch_discount_total'],
+//       orderItem['mixMatchDiscountTotal'],
+//       orderItem['mixmatch_discount'],
+//     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
+//
+//     double multipackDiscount = [
+//       orderItem['multipack_discount_total'],
+//       orderItem['multipackDiscountTotal'],
+//       orderItem['multipack_discount'],
+//     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
+//
+//     /// 🔥 FIX: backend sometimes moves discount into auto_discount
+//     if (discountType == 'mixmatch' &&
+//         autoDiscount > 0 &&
+//         mixMatchDiscount == 0) {
+//       mixMatchDiscount = autoDiscount;
+//       autoDiscount = 0;
+//     }
+//
+//     if (discountType == 'combo' && autoDiscount > 0 && comboDiscount == 0) {
+//       comboDiscount = autoDiscount;
+//       autoDiscount = 0;
+//     }
+//
+//     if (discountType == 'multipack' &&
+//         autoDiscount > 0 &&
+//         multipackDiscount == 0) {
+//       multipackDiscount = autoDiscount;
+//       autoDiscount = 0;
+//     }
+//
+//     /// Flags
+//     final bool hasAutoDiscount = autoDiscount > 0;
+//     final bool isComboDiscount = comboDiscount > 0 || mixMatchDiscount > 0;
+//     final bool isMultipackDiscount = multipackDiscount > 0;
+//
+//     /// Final price
+//     final double finalItemTotal = originalTotal -
+//         autoDiscount -
+//         comboDiscount -
+//         mixMatchDiscount -
+//         multipackDiscount;
+//
+//     print(
+//       "SUMMARY ITEM -> ${orderItem['item_name']} "
+//           "TYPE:$discountType "
+//           "AUTO:$autoDiscount "
+//           "COMBO:$comboDiscount "
+//           "MIX:$mixMatchDiscount "
+//           "MULTIPACK:$multipackDiscount",
+//     );
+//     return Column(
+//       children: [
+//         Padding(
+//           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+//           child: SizedBox(
+//             height: 40,
+//             child: Row(
+//               crossAxisAlignment: CrossAxisAlignment.start,
+//               children: [
+//                 /// LEFT + CENTER COLUMN
+//                 Expanded(
+//                   child: Column(
+//                     crossAxisAlignment: CrossAxisAlignment.start,
+//                     children: [
+//                       /// ROW 1 — NAME + QTY
+//                       SizedBox(
+//                         height: 16,
+//                         child: Row(
+//                           children: [
+//                             SizedBox(
+//                               width: 150,
+//                               child: Text(
+//                                 itemName.length > 30
+//                                     ? '${itemName.substring(0, 30)}...'
+//                                     : itemName,
+//                                 maxLines: 1,
+//                                 overflow: TextOverflow.ellipsis,
+//                                 style: TextStyle(
+//                                   fontSize: 12.5,
+//                                   height: 1.0,
+//                                   fontWeight: FontWeight.bold,
+//                                   color: themeHelper.themeMode == ThemeMode.dark
+//                                       ? ThemeNotifier.textDark
+//                                       : ThemeNotifier.textLight,
+//                                 ),
+//                               ),
+//                             ),
+//                             const SizedBox(width: 8),
+//                             if (!isPayoutOrCoupon)
+//                               Text(
+//                                 "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
+//                                 style: TextStyle(
+//                                   fontSize: 14,
+//                                   height: 1.0,
+//                                   fontWeight: FontWeight.bold,
+//                                   color: themeHelper.themeMode == ThemeMode.dark
+//                                       ? ThemeNotifier.textDark
+//                                       : Colors.black87,
+//                                 ),
+//                               ),
+//                           ],
+//                         ),
+//                       ),
+//
+//                       /// ROW 2 — BADGES
+//                       /// ROW 2 — BADGES
+//                       if (isEbtEligible ||
+//                           isVariant ||
+//                           hasAutoDiscount ||
+//                           isComboDiscount ||
+//                           isMultipackDiscount)
+//                         SizedBox(
+//                           height: 12,
+//                           child: Row(
+//                             children: [
+//                               if (isEbtEligible)
+//                                 Container(
+//                                   height: 14,
+//                                   padding:
+//                                   const EdgeInsets.symmetric(horizontal: 6),
+//                                   alignment: Alignment.center,
+//                                   decoration: BoxDecoration(
+//                                     color: Colors.green,
+//                                     borderRadius: BorderRadius.circular(3),
+//                                   ),
+//                                   child: const Text(
+//                                     "EBT",
+//                                     style: TextStyle(
+//                                       fontSize: 8,
+//                                       color: Colors.white,
+//                                       fontWeight: FontWeight.bold,
+//                                     ),
+//                                   ),
+//                                 ),
+//                               if (isVariant) ...[
+//                                 const SizedBox(width: 5),
+//                                 SvgPicture.asset(
+//                                   SvgUtils.variationIcon,
+//                                   height: 8,
+//                                   width: 8,
+//                                 ),
+//                               ],
+//                               if (hasAutoDiscount) ...[
+//                                 const SizedBox(width: 5),
+//                                 _discountBadge(
+//                                   "Autodiscount",
+//                                   Colors.red,
+//                                   amount: autoDiscount,
+//                                 ),
+//                               ],
+//                               if (isComboDiscount) ...[
+//                                 const SizedBox(width: 5),
+//                                 _discountBadge(
+//                                   "combo discount",
+//                                   Colors.orange,
+//                                   amount: comboDiscount + mixMatchDiscount,
+//                                 ),
+//                               ],
+//                               if (isMultipackDiscount) ...[
+//                                 const SizedBox(width: 5),
+//                                 _discountBadge(
+//                                   "Multipack",
+//                                   Colors.blue,
+//                                   amount: multipackDiscount,
+//                                 ),
+//                               ],
+//                             ],
+//                           ),
+//                         ),
+//                     ],
+//                   ),
+//                 ),
+//
+//                 /// RIGHT PRICE COLUMN
+//                 SizedBox(
+//                   //width: 55,
+//                   child: Column(
+//                     crossAxisAlignment: CrossAxisAlignment.start,
+//                     children: [
+//                       /// FINAL PRICE
+//                       SizedBox(
+//                         height: 16,
+//                         child: Text(
+//                           isCoupon || isPayout
+//                               ? "-${TextConstants.currencySymbol}${originalTotal.abs().toStringAsFixed(2)}"
+//                               : "${TextConstants.currencySymbol}${finalItemTotal.toStringAsFixed(2)}",
+//                           style: TextStyle(
+//                             fontSize: 14,
+//                             height: 1.0,
+//                             fontWeight: FontWeight.bold,
+//                             color: isCoupon || isPayout
+//                                 ? Colors.red
+//                                 : themeHelper.themeMode == ThemeMode.dark
+//                                 ? ThemeNotifier.textDark
+//                                 : ThemeNotifier.textLight,
+//                           ),
+//                         ),
+//                       ),
+//
+//                       /// STRIKED ORIGINAL
+//                       SizedBox(
+//                         height: 12,
+//                         child: ((hasAutoDiscount ||
+//                             isComboDiscount ||
+//                             isMultipackDiscount) &&
+//                             !isPayoutOrCoupon)
+//                             ? Text(
+//                           "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
+//                           style: const TextStyle(
+//                             fontSize: 12,
+//                             height: 1.0,
+//                             color: Colors.grey,
+//                             decoration: TextDecoration.lineThrough,
+//                           ),
+//                         )
+//                             : const SizedBox.shrink(),
+//                       ),
+//
+//                       const SizedBox(height: 12),
+//                     ],
+//                   ),
+//                 ),
+//               ],
+//             ),
+//           ),
+//         ),
+//
+//         /// ✅ DIVIDER — NOW IT WILL SHOW
+//         Divider(
+//           height: 1,
+//           thickness: 0.8,
+//           color: themeHelper.themeMode == ThemeMode.dark
+//               ? Colors.black26
+//               : Colors.grey.shade300,
+//         ),
+//       ],
+//     );
+//   }
+
   Widget _buildOrderItem(int index) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final orderItem = orderItems[index];
@@ -8190,7 +9923,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final String itemType =
         orderItem['item_type']?.toString().toLowerCase() ?? '';
     final String itemNameLower =
-        (orderItem['item_name']?.toString() ?? '').toLowerCase();
+    (orderItem['item_name']?.toString() ?? '').toLowerCase();
 
     // Hide merchant discount line-items from the list (keep it in totals section).
     if (itemType.contains('discount') ||
@@ -8203,6 +9936,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final bool isCashback = itemType.contains("cashback");
     final bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
 
+    // 🔥 CHECK IF WEIGHTED ITEM
+    final bool isWeightedItem = itemType.contains('weighted');
+
     // Parse variation_id: Woo/Hive use variation_id; SQLite uses item_variation_id.
     final int varId = _orderSummaryLineVariationId(orderItem);
     final bool hasVariationId = varId > 0;
@@ -8211,8 +9947,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final bool isProductItem = !isPayoutOrCoupon;
     final bool isVariantFlag =
         orderItem['is_variant'] == true || orderItem['is_variant'] == 1;
-    // item_variation_custom_name is populated from API even for simple lines
-    // (fallback is the full line-item name), so never treat name alone as variant.
     final bool isVariant = isProductItem &&
         (isVariantFlag ||
             (itemType == 'variant' || itemType == 'variation') ||
@@ -8226,12 +9960,28 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final double originalTotal = (orderItem['item_sum_price'] ?? 0).toDouble();
 
+    // 🔥 EXTRACT WEIGHT DATA FOR WEIGHTED ITEMS
+    double weightQty = 0.0;
+    double unitPrice = 0.0;
+    if (isWeightedItem) {
+      weightQty = (orderItem['weight_qty'] ??
+          orderItem['weightQty'] ??
+          orderItem['weight'] ??
+          0.0).toDouble();
+      unitPrice = (orderItem['unit_price'] ??
+          orderItem['regular_price'] ??
+          orderItem['item_price'] ??
+          0.0).toDouble();
+
+      print('🟢 DISPLAY ITEM: ${orderItem['item_name']} | '
+          'unitPricePerLb=$unitPrice | '
+          'weightLbs=$weightQty | '
+          'lineTotal=${unitPrice * weightQty}');
+    }
+
     // --------------------------------------------------
     // ✅ DISCOUNT EXTRACTION
     // --------------------------------------------------
-    // -----------------------------
-// DISCOUNT EXTRACTION
-// -----------------------------
     final String discountType =
         orderItem['discount_type']?.toString().toLowerCase() ?? '';
 
@@ -8240,16 +9990,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       return double.tryParse(value?.toString() ?? '') ?? 0.0;
     }
 
-    // Pending/offline orders may use *_total or camelCase keys.
     double autoDiscount = _num(orderItem['auto_discount']) != 0
         ? _num(orderItem['auto_discount'])
         : _num(orderItem['auto_discount_total']) != 0
-            ? _num(orderItem['auto_discount_total'])
-            : _num(orderItem['autoDiscount']) != 0
-                ? _num(orderItem['autoDiscount'])
-                : _num(orderItem['autoDiscountTotal']) != 0
-                    ? _num(orderItem['autoDiscountTotal'])
-                    : _num(orderItem['display_auto_discount']);
+        ? _num(orderItem['auto_discount_total'])
+        : _num(orderItem['autoDiscount']) != 0
+        ? _num(orderItem['autoDiscount'])
+        : _num(orderItem['autoDiscountTotal']) != 0
+        ? _num(orderItem['autoDiscountTotal'])
+        : _num(orderItem['display_auto_discount']);
 
     double comboDiscount = [
       orderItem['combo_discount_total'],
@@ -8269,10 +10018,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       orderItem['multipack_discount'],
     ].map((e) => _num(e)).firstWhere((v) => v != 0, orElse: () => 0);
 
-    /// 🔥 FIX: backend sometimes moves discount into auto_discount
-    if (discountType == 'mixmatch' &&
-        autoDiscount > 0 &&
-        mixMatchDiscount == 0) {
+    if (discountType == 'mixmatch' && autoDiscount > 0 && mixMatchDiscount == 0) {
       mixMatchDiscount = autoDiscount;
       autoDiscount = 0;
     }
@@ -8282,33 +10028,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       autoDiscount = 0;
     }
 
-    if (discountType == 'multipack' &&
-        autoDiscount > 0 &&
-        multipackDiscount == 0) {
+    if (discountType == 'multipack' && autoDiscount > 0 && multipackDiscount == 0) {
       multipackDiscount = autoDiscount;
       autoDiscount = 0;
     }
 
-    /// Flags
     final bool hasAutoDiscount = autoDiscount > 0;
     final bool isComboDiscount = comboDiscount > 0 || mixMatchDiscount > 0;
     final bool isMultipackDiscount = multipackDiscount > 0;
 
-    /// Final price
     final double finalItemTotal = originalTotal -
         autoDiscount -
         comboDiscount -
         mixMatchDiscount -
         multipackDiscount;
 
-    print(
-      "SUMMARY ITEM -> ${orderItem['item_name']} "
-      "TYPE:$discountType "
-      "AUTO:$autoDiscount "
-      "COMBO:$comboDiscount "
-      "MIX:$mixMatchDiscount "
-      "MULTIPACK:$multipackDiscount",
-    );
     return Column(
       children: [
         Padding(
@@ -8348,23 +10082,87 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                             ),
                             const SizedBox(width: 8),
                             if (!isPayoutOrCoupon)
-                              Text(
-                                "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} x $itemCount",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  height: 1.0,
-                                  fontWeight: FontWeight.bold,
-                                  color: themeHelper.themeMode == ThemeMode.dark
-                                      ? ThemeNotifier.textDark
-                                      : Colors.black87,
-                                ),
+                              Builder(
+                                builder: (_) {
+                                  // 🔥 FOR WEIGHTED ITEMS - SHOW WEIGHT INFO
+                                  if (isWeightedItem && weightQty > 0 && unitPrice > 0) {
+                                    final double lineTotal = unitPrice * weightQty;
+                                    return Text(
+                                      "\$${unitPrice.toStringAsFixed(2)} × ${weightQty.toStringAsFixed(3)} lb",
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        height: 1.0,
+                                        fontWeight: FontWeight.bold,
+                                        color: themeHelper.themeMode == ThemeMode.dark
+                                            ? ThemeNotifier.textDark
+                                            : Colors.black87,
+                                      ),
+                                    );
+                                  }
+                                  // 🔥 NORMAL ITEMS
+                                  return Text(
+                                    "${TextConstants.currencySymbol}${itemPrice.toStringAsFixed(2)} × $itemCount",
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      height: 1.0,
+                                      fontWeight: FontWeight.bold,
+                                      color: themeHelper.themeMode == ThemeMode.dark
+                                          ? ThemeNotifier.textDark
+                                          : Colors.black87,
+                                    ),
+                                  );
+                                },
                               ),
                           ],
                         ),
                       ),
 
-                      /// ROW 2 — BADGES
-                      /// ROW 2 — BADGES
+                      /// ROW 2 — WEIGHT BADGE (for weighted items)
+                      // if (isWeightedItem && weightQty > 0)
+                      //   SizedBox(
+                      //     height: 12,
+                      //     child: Row(
+                      //       children: [
+                      //         Container(
+                      //           height: 14,
+                      //           padding: const EdgeInsets.symmetric(horizontal: 6),
+                      //           alignment: Alignment.center,
+                      //           decoration: BoxDecoration(
+                      //             color: Colors.orange,
+                      //             borderRadius: BorderRadius.circular(3),
+                      //           ),
+                      //           child: Text(
+                      //             "${weightQty.toStringAsFixed(3)} lb",
+                      //             style: const TextStyle(
+                      //               fontSize: 8,
+                      //               color: Colors.white,
+                      //               fontWeight: FontWeight.bold,
+                      //             ),
+                      //           ),
+                      //         ),
+                      //         const SizedBox(width: 5),
+                      //         Container(
+                      //           height: 14,
+                      //           padding: const EdgeInsets.symmetric(horizontal: 6),
+                      //           alignment: Alignment.center,
+                      //           decoration: BoxDecoration(
+                      //             color: Colors.blue.shade300,
+                      //             borderRadius: BorderRadius.circular(3),
+                      //           ),
+                      //           child: Text(
+                      //             "\$${unitPrice.toStringAsFixed(2)}/lb",
+                      //             style: const TextStyle(
+                      //               fontSize: 8,
+                      //               color: Colors.white,
+                      //               fontWeight: FontWeight.bold,
+                      //             ),
+                      //           ),
+                      //         ),
+                      //       ],
+                      //     ),
+                      //   ),
+
+                      /// ROW 2 — BADGES (existing)
                       if (isEbtEligible ||
                           isVariant ||
                           hasAutoDiscount ||
@@ -8377,8 +10175,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                               if (isEbtEligible)
                                 Container(
                                   height: 14,
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 6),
+                                  padding: const EdgeInsets.symmetric(horizontal: 6),
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(
                                     color: Colors.green,
@@ -8434,7 +10231,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                 /// RIGHT PRICE COLUMN
                 SizedBox(
-                  //width: 55,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -8444,6 +10240,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         child: Text(
                           isCoupon || isPayout
                               ? "-${TextConstants.currencySymbol}${originalTotal.abs().toStringAsFixed(2)}"
+                              : isWeightedItem
+                              ? "${TextConstants.currencySymbol}${(unitPrice * weightQty).toStringAsFixed(2)}"
                               : "${TextConstants.currencySymbol}${finalItemTotal.toStringAsFixed(2)}",
                           style: TextStyle(
                             fontSize: 14,
@@ -8452,8 +10250,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                             color: isCoupon || isPayout
                                 ? Colors.red
                                 : themeHelper.themeMode == ThemeMode.dark
-                                    ? ThemeNotifier.textDark
-                                    : ThemeNotifier.textLight,
+                                ? ThemeNotifier.textDark
+                                : ThemeNotifier.textLight,
                           ),
                         ),
                       ),
@@ -8462,22 +10260,20 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                       SizedBox(
                         height: 12,
                         child: ((hasAutoDiscount ||
-                                    isComboDiscount ||
-                                    isMultipackDiscount) &&
-                                !isPayoutOrCoupon)
+                            isComboDiscount ||
+                            isMultipackDiscount) &&
+                            !isPayoutOrCoupon)
                             ? Text(
-                                "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  height: 1.0,
-                                  color: Colors.grey,
-                                  decoration: TextDecoration.lineThrough,
-                                ),
-                              )
+                          "${TextConstants.currencySymbol}${originalTotal.toStringAsFixed(2)}",
+                          style: const TextStyle(
+                            fontSize: 12,
+                            height: 1.0,
+                            color: Colors.grey,
+                            decoration: TextDecoration.lineThrough,
+                          ),
+                        )
                             : const SizedBox.shrink(),
                       ),
-
-                      const SizedBox(height: 12),
                     ],
                   ),
                 ),
@@ -8486,7 +10282,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           ),
         ),
 
-        /// ✅ DIVIDER — NOW IT WILL SHOW
+        /// DIVIDER
         Divider(
           height: 1,
           thickness: 0.8,
@@ -8502,7 +10298,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   /// 🔹 Reusable badge widget
   Widget _discountBadge(String text, Color color, {double? amount}) {
     final double? displayAmount =
-        (amount != null && amount > 0) ? amount : null;
+    (amount != null && amount > 0) ? amount : null;
     return Text(
       displayAmount == null
           ? text
@@ -8524,24 +10320,28 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     final themeHelper = Provider.of<ThemeNotifier>(context);
     if (label == TextConstants.tenderAmount) {
       amount =
-          '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${tenderAmount.toStringAsFixed(2)}';
     } else if (label == TextConstants.change) {
       amount =
-          '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${changeAmount.toStringAsFixed(2)}';
     } else if (label == TextConstants.total) {
       amount =
-          '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
+      '${TextConstants.currencySymbol}${(grossTotal - discount).toStringAsFixed(2)}'; // Adjust total with discount
     } else if (label == TextConstants.payByCash) {
       amount = '${TextConstants.currencySymbol}${payByCash.toStringAsFixed(2)}';
     } else if (label == TextConstants.payByOther) {
       amount =
-          '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
+      '${TextConstants.currencySymbol}${payByOther.toStringAsFixed(2)}';
     } else if (label == TextConstants.discountText) {
       amount =
-          '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}'; // Display discount from DB
+      '-${TextConstants.currencySymbol}${discount.abs().toStringAsFixed(2)}'; // Display discount from DB
+      // } else if (label == TextConstants.netPayable) {
+      //   amount =
+      //   '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}';
+      // }
+
     } else if (label == TextConstants.netPayable) {
-      amount =
-          '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}';
+      amount = _formatNetPayable(computedNetPayable - redeemedValue);
     }
 
     // Determine colors and icons based on label
@@ -8661,8 +10461,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   onTap: isPaymentStarted
                       ? null
                       : () async {
-                          await _removeRedeemedAmount();
-                        },
+                    await _removeRedeemedAmount();
+                  },
                   child: Padding(
                     padding: const EdgeInsets.only(left: 5),
                     child: Icon(
@@ -8701,7 +10501,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         "🔄 Redeem Requested: $redeemedAmount | Current computedNetPayable: $computedNetPayable | Tendered: $tenderAmount");
 
     final double availableBalance =
-        (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
+    (computedNetPayable - tenderAmount).clamp(0.0, double.infinity);
     final double actualRedeem = redeemedAmount.clamp(0.0, availableBalance);
 
     setState(() {
@@ -8741,6 +10541,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     } catch (e) {
       print("⚠️ Failed to save redeem to Hive: $e");
     }
+    unawaited(_syncCfdFromOrderSummary());
 
     print("✅ REDEEM APPLIED SUCCESSFULLY!");
     print("   Redeemed     : -${actualRedeem.toStringAsFixed(2)}");
@@ -8792,8 +10593,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
 // 🔥 GET WOO ORDER ID
     final int order = int.tryParse(
-          offlineOrder["wooOrderId"]?.toString() ?? "0",
-        ) ??
+      offlineOrder["wooOrderId"]?.toString() ?? "0",
+    ) ??
         0;
 
     if (order == 0) {
@@ -8832,12 +10633,12 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // API VALUES
       // =====================================
       final double updatedOrderTotal = double.tryParse(
-            data["order_total"]?.toString() ?? "0",
-          ) ??
+        data["order_total"]?.toString() ?? "0",
+      ) ??
           widget.netPayable;
       final int updatedPoints = int.tryParse(
-            data["available_points"]?.toString() ?? "0",
-          ) ??
+        data["available_points"]?.toString() ?? "0",
+      ) ??
           availablePoints;
 
 // UPDATE UI
@@ -8855,6 +10656,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       // clear hive
       await removeOfflineOrderRedeem(localKey);
 
+      // FIX: removeOfflineOrderRedeem() only strips redeemed_value/points keys;
+      // it doesn't touch available_points. Re-persist the latest available
+      // points + contact right after, so subsequent
+      // CustomerDisplayHelper.updateCustomerDisplay() calls (e.g. triggered by
+      // applying/removing a coupon) don't show 0 available points.
+      try {
+        final rawLatest = await offlineBox.get(localKey);
+        if (rawLatest is Map) {
+          final latestOrder = Map<String, dynamic>.from(rawLatest);
+          latestOrder["loyaltyContact"] = contact;
+          latestOrder["available_points"] = updatedPoints;
+          await offlineBox.put(localKey, latestOrder);
+          print("💾 [Loyalty] Persisted available_points=$updatedPoints to Hive for order $localKey");
+        }
+      } catch (e) {
+        print("⚠️ [Loyalty] Failed to persist available_points to Hive: $e");
+      }
+
 // tell android immediately
       await customerDisplayChannel.invokeMethod(
         "customerDisplayResult",
@@ -8865,6 +10684,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           "removeRedeem": true,
         },
       );
+      unawaited(_syncCfdFromOrderSummary());
 
 // then refresh full display
 //       await CustomerDisplayHelper.updateCustomerDisplay(
@@ -8902,7 +10722,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     } finally {
       if (mounted) {
         setState(
-          () => isSummaryLoading = false,
+              () => isSummaryLoading = false,
         );
       }
     }
@@ -8972,7 +10792,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final themeHelper = Provider.of<ThemeNotifier>(context);
     bool hasEbtItem =
-        orderItems.any((item) => _orderSummaryLineEbtEligible(item));
+    orderItems.any((item) => _orderSummaryLineEbtEligible(item));
     final bool hasOnlyCashbackOrPayoutItems = orderItems.isNotEmpty &&
         orderItems.every((item) {
           final type = (item['item_type'] ?? item['type'] ?? '')
@@ -9009,7 +10829,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment:
-              CrossAxisAlignment.start, // Changed to start for better alignment
+          CrossAxisAlignment.start, // Changed to start for better alignment
           children: [
             Expanded(
               flex: 3,
@@ -9017,7 +10837,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 // Remove SingleChildScrollView to avoid height issues
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment:
-                    MainAxisAlignment.start, // Changed from spaceEvenly
+                MainAxisAlignment.start, // Changed from spaceEvenly
                 children: [
                   SizedBox(height: ResponsiveLayout.getHeight(6)),
 
@@ -9045,35 +10865,35 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   ),
                                   decoration: BoxDecoration(
                                     color:
-                                        themeHelper.themeMode == ThemeMode.dark
-                                            ? Color(0xFF1F1D2B)
-                                            : Colors.white,
+                                    themeHelper.themeMode == ThemeMode.dark
+                                        ? Color(0xFF1F1D2B)
+                                        : Colors.white,
                                     borderRadius: BorderRadius.circular(
                                         ResponsiveLayout.getRadius(8)),
                                   ),
                                   child: Column(
                                     crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                    CrossAxisAlignment.start,
                                     children: [
                                       Column(
                                         crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                        CrossAxisAlignment.start,
                                         children: [
                                           Container(
                                             height:
-                                                ResponsiveLayout.getHeight(60),
+                                            ResponsiveLayout.getHeight(60),
                                             padding: EdgeInsets.symmetric(
                                               horizontal:
-                                                  ResponsiveLayout.getPadding(
-                                                      16),
+                                              ResponsiveLayout.getPadding(
+                                                  16),
                                             ),
                                             decoration: BoxDecoration(
                                               color: themeHelper.themeMode ==
-                                                      ThemeMode.dark
+                                                  ThemeMode.dark
                                                   ? const Color(0xFF40424F)
                                                   : const Color(0xFFF9FBFF),
                                               borderRadius:
-                                                  BorderRadius.circular(10),
+                                              BorderRadius.circular(10),
                                               boxShadow: const [
                                                 BoxShadow(
                                                   color: Color(0x22000000),
@@ -9092,11 +10912,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                         .getFontSize(18),
                                                     fontWeight: FontWeight.w600,
                                                     color:
-                                                        themeHelper.themeMode ==
-                                                                ThemeMode.dark
-                                                            ? Colors.white
-                                                            : const Color(
-                                                                0xFF0D47A1),
+                                                    themeHelper.themeMode ==
+                                                        ThemeMode.dark
+                                                        ? Colors.white
+                                                        : const Color(
+                                                        0xFF0D47A1),
                                                   ),
                                                 ),
 
@@ -9108,95 +10928,95 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                     height: ResponsiveLayout
                                                         .getHeight(44),
                                                     padding:
-                                                        EdgeInsets.symmetric(
+                                                    EdgeInsets.symmetric(
                                                       horizontal:
-                                                          ResponsiveLayout
-                                                              .getPadding(12),
+                                                      ResponsiveLayout
+                                                          .getPadding(12),
                                                     ),
                                                     decoration: BoxDecoration(
                                                       color: themeHelper
-                                                                  .themeMode ==
-                                                              ThemeMode.dark
+                                                          .themeMode ==
+                                                          ThemeMode.dark
                                                           ? const Color(
-                                                              0xFF1F1D2B)
+                                                          0xFF1F1D2B)
                                                           : Colors.white,
                                                       borderRadius:
-                                                          BorderRadius.circular(
-                                                              8),
+                                                      BorderRadius.circular(
+                                                          8),
                                                       border: Border.all(
                                                         color: _amountErrorText !=
-                                                                null
+                                                            null
                                                             ? Colors.red
                                                             : themeHelper
-                                                                        .themeMode ==
-                                                                    ThemeMode
-                                                                        .dark
-                                                                ? Colors.white24
-                                                                : const Color(
-                                                                    0xFFB6C6E3),
+                                                            .themeMode ==
+                                                            ThemeMode
+                                                                .dark
+                                                            ? Colors.white24
+                                                            : const Color(
+                                                            0xFFB6C6E3),
                                                         width:
-                                                            _amountErrorText !=
-                                                                    null
-                                                                ? 1.5
-                                                                : 1.0,
+                                                        _amountErrorText !=
+                                                            null
+                                                            ? 1.5
+                                                            : 1.0,
                                                       ),
                                                       boxShadow: [
                                                         if (themeHelper
-                                                                .themeMode !=
+                                                            .themeMode !=
                                                             ThemeMode.dark)
                                                           BoxShadow(
                                                             color: Colors.black
                                                                 .withOpacity(
-                                                                    0.05),
+                                                                0.05),
                                                             blurRadius: 4,
                                                             offset:
-                                                                const Offset(
-                                                                    0, 2),
+                                                            const Offset(
+                                                                0, 2),
                                                           ),
                                                       ],
                                                     ),
                                                     alignment:
-                                                        Alignment.centerRight,
+                                                    Alignment.centerRight,
                                                     child: TextField(
                                                       controller:
-                                                          amountController,
+                                                      amountController,
                                                       keyboardType:
-                                                          const TextInputType
-                                                              .numberWithOptions(
-                                                              decimal: true),
+                                                      const TextInputType
+                                                          .numberWithOptions(
+                                                          decimal: true),
                                                       textInputAction:
-                                                          TextInputAction.done,
+                                                      TextInputAction.done,
                                                       enabled: true,
                                                       readOnly: true,
                                                       textAlign:
-                                                          TextAlign.right,
+                                                      TextAlign.right,
                                                       autofocus: false,
                                                       cursorColor: themeHelper
-                                                                  .themeMode ==
-                                                              ThemeMode.dark
+                                                          .themeMode ==
+                                                          ThemeMode.dark
                                                           ? Colors.white
                                                           : const Color(
-                                                              0xFF1F1D2B),
+                                                          0xFF1F1D2B),
                                                       decoration:
-                                                          InputDecoration(
+                                                      InputDecoration(
                                                         border:
-                                                            InputBorder.none,
+                                                        InputBorder.none,
                                                         isDense: true,
                                                         contentPadding:
-                                                            EdgeInsets.zero,
+                                                        EdgeInsets.zero,
                                                         hintText:
-                                                            '${TextConstants.currencySymbol}0.00',
+                                                        '${TextConstants.currencySymbol}0.00',
                                                         hintStyle: TextStyle(
                                                           color: themeHelper
-                                                                      .themeMode ==
-                                                                  ThemeMode.dark
+                                                              .themeMode ==
+                                                              ThemeMode.dark
                                                               ? Colors.white38
                                                               : Colors
-                                                                  .grey[400],
+                                                              .grey[400],
                                                           fontSize:
-                                                              ResponsiveLayout
-                                                                  .getFontSize(
-                                                                      22),
+                                                          ResponsiveLayout
+                                                              .getFontSize(
+                                                              22),
                                                         ),
 
                                                         // errorText: _amountErrorText,
@@ -9207,34 +11027,34 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       ),
                                                       style: TextStyle(
                                                         fontSize:
-                                                            ResponsiveLayout
-                                                                .getFontSize(
-                                                                    22),
+                                                        ResponsiveLayout
+                                                            .getFontSize(
+                                                            22),
                                                         fontWeight:
-                                                            FontWeight.bold,
+                                                        FontWeight.bold,
                                                         color: themeHelper
-                                                                    .themeMode ==
-                                                                ThemeMode.dark
+                                                            .themeMode ==
+                                                            ThemeMode.dark
                                                             ? const Color(
-                                                                0xFFFFFFFF)
+                                                            0xFFFFFFFF)
                                                             : const Color(
-                                                                0xFF1F1D2B),
+                                                            0xFF1F1D2B),
                                                       ),
                                                       inputFormatters: [
                                                         FilteringTextInputFormatter
                                                             .allow(RegExp(
-                                                                r'^\d*\.?\d{0,2}')),
+                                                            r'^\d*\.?\d{0,2}')),
                                                       ],
                                                       onTap: () {
                                                         // Select all text when tapped (makes overwriting easy)
                                                         amountController
-                                                                .selection =
+                                                            .selection =
                                                             TextSelection(
-                                                          baseOffset: 0,
-                                                          extentOffset:
+                                                              baseOffset: 0,
+                                                              extentOffset:
                                                               amountController
                                                                   .text.length,
-                                                        );
+                                                            );
                                                       },
                                                       // ────────────────────────────────────────────────
                                                       // IMPORTANT: Detect real user typing
@@ -9242,25 +11062,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       onChanged: (value) {
                                                         // Mark that user is actively typing → prevent auto-fill later
                                                         _userManuallyEnteredAmount =
-                                                            true;
+                                                        true;
 
                                                         // Optional: clean up pasted currency symbol
                                                         String clean = value
                                                             .replaceAll(
-                                                                TextConstants
-                                                                    .currencySymbol,
-                                                                '')
+                                                            TextConstants
+                                                                .currencySymbol,
+                                                            '')
                                                             .trim();
                                                         if (clean != value) {
                                                           amountController
-                                                                  .value =
+                                                              .value =
                                                               TextEditingValue(
-                                                            text: clean,
-                                                            selection: TextSelection
-                                                                .collapsed(
+                                                                text: clean,
+                                                                selection: TextSelection
+                                                                    .collapsed(
                                                                     offset: clean
                                                                         .length),
-                                                          );
+                                                              );
                                                         }
                                                       },
                                                     ),
@@ -9290,11 +11110,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                       SizedBox(
                                           height:
-                                              ResponsiveLayout.getHeight(8)),
+                                          ResponsiveLayout.getHeight(8)),
 
                                       SizedBox(
                                           height:
-                                              ResponsiveLayout.getHeight(12)),
+                                          ResponsiveLayout.getHeight(12)),
 
 // NUM PAD - FIXED LOGIC
                                       Expanded(
@@ -9350,31 +11170,31 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                             Expanded(
                                               child: PaymentNumPad(
                                                 numPadType:
-                                                    CustomTypeNumPad.payment,
+                                                CustomTypeNumPad.payment,
                                                 isDarkTheme:
-                                                    themeHelper.themeMode ==
-                                                        ThemeMode.dark,
+                                                themeHelper.themeMode ==
+                                                    ThemeMode.dark,
                                                 getPaidAmount: () =>
-                                                    amountController.text,
+                                                amountController.text,
                                                 balanceAmount:
-                                                    selectedPaymentMethod ==
-                                                            TextConstants
-                                                                .ebtText
-                                                        ? min(
-                                                            ebtTotal,
-                                                            _currentPaymentRemainingBalance ??
-                                                                balanceAmount,
-                                                          )
-                                                        : (_currentPaymentRemainingBalance ??
-                                                            balanceAmount),
+                                                selectedPaymentMethod ==
+                                                    TextConstants
+                                                        .ebtText
+                                                    ? min(
+                                                  ebtTotal,
+                                                  _currentPaymentRemainingBalance ??
+                                                      balanceAmount,
+                                                )
+                                                    : (_currentPaymentRemainingBalance ??
+                                                    balanceAmount),
                                                 onDigitPressed: (value) {
                                                   _userManuallyEnteredAmount =
-                                                      true; // User touched → block future auto-fill
+                                                  true; // User touched → block future auto-fill
 
                                                   int digit = value == '00'
                                                       ? 0
                                                       : int.tryParse(value) ??
-                                                          0;
+                                                      0;
 
                                                   int newAmount = value == '00'
                                                       ? _rawAmount * 100
@@ -9388,8 +11208,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   if (selectedPaymentMethod ==
                                                       TextConstants.ebtText) {
                                                     maxAmount = (min(ebtTotal,
-                                                                effectiveBalance) *
-                                                            100)
+                                                        effectiveBalance) *
+                                                        100)
                                                         .toInt();
                                                   } else if (selectedPaymentMethod ==
                                                       TextConstants.card) {
@@ -9407,7 +11227,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   double displayValue =
                                                       _rawAmount / 100.0;
                                                   amountController.text =
-                                                      '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+                                                  '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
                                                   setState(() {
                                                     _isAmountEntered =
@@ -9416,11 +11236,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                 },
                                                 onClearPressed: () {
                                                   _userManuallyEnteredAmount =
-                                                      true;
+                                                  true;
 
                                                   _rawAmount = 0;
                                                   amountController.text =
-                                                      '${TextConstants.currencySymbol}0.00';
+                                                  '${TextConstants.currencySymbol}0.00';
                                                   _amountErrorText = null;
 
                                                   setState(() {
@@ -9429,13 +11249,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                 },
                                                 onDeletePressed: () {
                                                   _userManuallyEnteredAmount =
-                                                      true;
+                                                  true;
 
                                                   _rawAmount = _rawAmount ~/ 10;
                                                   double displayValue =
                                                       _rawAmount / 100.0;
                                                   amountController.text =
-                                                      '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
+                                                  '${TextConstants.currencySymbol}${displayValue.toStringAsFixed(2)}';
 
                                                   setState(() {
                                                     _isAmountEntered =
@@ -9445,7 +11265,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                 onQuickAmountSelected:
                                                     (double selectedAmount) {
                                                   _userManuallyEnteredAmount =
-                                                      true;
+                                                  true;
 
                                                   double amountToUse =
                                                       selectedAmount;
@@ -9462,7 +11282,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       (amountToUse * 100)
                                                           .round();
                                                   amountController.text =
-                                                      '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
+                                                  '${TextConstants.currencySymbol}${amountToUse.toStringAsFixed(2)}';
 
                                                   setState(() {
                                                     _amountErrorText = null;
@@ -9475,16 +11295,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                 },
                                                 onPayPressed: () async {
                                                   String cleanAmount =
-                                                      amountController.text
-                                                          .replaceAll(
-                                                              TextConstants
-                                                                  .currencySymbol,
-                                                              '')
-                                                          .trim();
+                                                  amountController.text
+                                                      .replaceAll(
+                                                      TextConstants
+                                                          .currencySymbol,
+                                                      '')
+                                                      .trim();
 
                                                   double amount =
                                                       double.tryParse(
-                                                              cleanAmount) ??
+                                                          cleanAmount) ??
                                                           0.0;
 
                                                   double effectiveBalance =
@@ -9497,10 +11317,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   double previousBalance =
                                                       effectiveBalance;
                                                   double newBalance =
-                                                      (effectiveBalance -
-                                                              amount)
-                                                          .clamp(0,
-                                                              double.infinity);
+                                                  (effectiveBalance -
+                                                      amount)
+                                                      .clamp(0,
+                                                      double.infinity);
                                                   double newTenderAmount =
                                                       tenderAmount + amount;
                                                   double newChange = 0.0;
@@ -9526,17 +11346,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                         TextConstants.ebtText) {
                                                       payByEbt += amount;
                                                       ebtTotal = (ebtTotal -
-                                                              amount)
+                                                          amount)
                                                           .clamp(0,
-                                                              double.infinity);
+                                                          double.infinity);
                                                     }
 
                                                     isPaymentStarted = true;
 
                                                     int newPaymentNumber =
                                                         (_lastPaymentDetails?[
-                                                                    'paymentNumber'] ??
-                                                                0) +
+                                                        'paymentNumber'] ??
+                                                            0) +
                                                             1;
 
                                                     if (newBalance > 0) {
@@ -9545,24 +11365,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       _lastPaymentDetails = {
                                                         'amount': amount,
                                                         'method':
-                                                            selectedPaymentMethod,
+                                                        selectedPaymentMethod,
                                                         'remainingBalance':
-                                                            newBalance,
+                                                        newBalance,
                                                         'previousBalance':
-                                                            previousBalance,
+                                                        previousBalance,
                                                         'datetime': DateTime
-                                                                .now()
+                                                            .now()
                                                             .toIso8601String(),
                                                         'paymentNumber':
-                                                            newPaymentNumber,
+                                                        newPaymentNumber,
                                                         'totalPaid':
-                                                            newTenderAmount,
+                                                        newTenderAmount,
                                                       };
                                                     } else {
                                                       _currentPaymentRemainingBalance =
-                                                          null;
+                                                      null;
                                                       _lastPaymentDetails =
-                                                          null;
+                                                      null;
                                                     }
                                                   });
 
@@ -9571,7 +11391,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                   // ────────────────────────────────────────────────
                                                   _rawAmount = 0;
                                                   amountController.text =
-                                                      '${TextConstants.currencySymbol}0.00';
+                                                  '${TextConstants.currencySymbol}0.00';
                                                   _isAmountEntered = false;
 
                                                   // DO NOT call _autoFillRemainingBalance() here anymore!
@@ -9588,16 +11408,16 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                     final key = (orderId ?? 0)
                                                         .toString();
                                                     final boxData =
-                                                        await box.get(key);
+                                                    await box.get(key);
                                                     final cr = boxData is Map
                                                         ? (boxData as Map)[
-                                                            "coupon_response"]
+                                                    "coupon_response"]
                                                         : null;
                                                     final couponResponse = cr
-                                                            is Map
+                                                    is Map
                                                         ? Map<String,
-                                                                dynamic>.from(
-                                                            cr as Map)
+                                                        dynamic>.from(
+                                                        cr as Map)
                                                         : <String, dynamic>{};
 
                                                     _showPaymentDialog(
@@ -9606,7 +11426,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                       changeAmount: newChange,
                                                       showChange: newChange > 0,
                                                       couponResponse:
-                                                          couponResponse,
+                                                      couponResponse,
                                                     );
                                                   }
 
@@ -9648,336 +11468,156 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                   // Payment mode buttons - make flexible
                   Expanded(
-                    flex: 2,
-                    child: Container(
-                      width: double.infinity,
+                    // fit: FlexFit.loose,
+                    child: Padding(
                       padding: EdgeInsets.all(ResponsiveLayout.getPadding(8)),
-                      decoration: BoxDecoration(
-                        color: themeHelper.themeMode == ThemeMode.dark
-                            ? const Color(0xFF303136)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(
-                          ResponsiveLayout.getRadius(8),
-                        ),
-                        border: Border.all(
-                          color: const Color(0x2E4C5F7D), // #4C5F7D2E
-                          width: 2, // adjust as needed
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: themeHelper.themeMode == ThemeMode.dark
-                                ? Colors.black.withOpacity(0.3)
-                                : Colors.black12,
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            // Net Payable
-                            Container(
+                      child: Column(
+                        children: [
+                          /// Net Payable
+                          Expanded(
+                            child: Container(
                               width: double.infinity,
-                              padding: EdgeInsets.all(
-                                  ResponsiveLayout.getPadding(8)),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.start,
-                                children: [
-                                  // Net Payable
-                                  Container(
-                                    padding: const EdgeInsets.only(
-                                      top: 6,
-                                      right: 6,
-                                      bottom: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                          ? const Color(
-                                              0xFF091B34) // dark background
-                                          : const Color(
-                                              0xFFF4FCF7), // light mode background
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border(
-                                        top: BorderSide(
-                                          color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
-                                              ? const Color(0xFF091B34)
-                                              : const Color(0xFF3EAE4C),
-                                          width: 1,
-                                        ),
-                                        right: BorderSide(
-                                          color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
-                                              ? const Color(0xFF091B34)
-                                              : const Color(0xFF3EAE4C),
-                                          width: 1,
-                                        ),
-                                        bottom: BorderSide(
-                                          color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
-                                              ? const Color(0xFF091B34)
-                                              : const Color(0xFF3EAE4C),
-                                          width: 1,
-                                        ),
-                                        left: BorderSide
-                                            .none, // 🚫 no left border
-                                      ),
-                                    ),
-                                    child: _buildAmountDisplay(
-                                      TextConstants.netPayable,
-                                      '${TextConstants.currencySymbol}${(computedNetPayable - redeemedValue).clamp(0.0, double.infinity).toStringAsFixed(2)}',
-                                      leftBarColor: const Color(0xFF3EAE4C),
-                                      amountColor: themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                          ? Colors.white
-                                          : Colors.black,
-                                    ),
-                                  ),
-
-                                  SizedBox(
-                                      height: ResponsiveLayout.getHeight(8)),
-
-                                  // Balance Amount
-// If there's a remaining payment balance, show only that
-                                  if (_currentPaymentRemainingBalance != null &&
-                                      _currentPaymentRemainingBalance! > 0)
-                                    Column(
-                                      children: [
-                                        SizedBox(
-                                            height:
-                                                ResponsiveLayout.getHeight(10)),
-                                        Container(
-                                          padding: const EdgeInsets.only(
-                                            top: 6,
-                                            right: 6,
-                                            bottom: 6,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                ? const Color(0xFF091B34)
-                                                : const Color(0xFFE6F3FF),
-                                            borderRadius:
-                                                BorderRadius.circular(6),
-                                            border: Border(
-                                              top: BorderSide(
-                                                color: themeHelper.themeMode ==
-                                                        ThemeMode.dark
-                                                    ? const Color(0xFF091B34)
-                                                    : const Color(0xFF3B7DDD),
-                                                width: 1,
-                                              ),
-                                              right: BorderSide(
-                                                color: themeHelper.themeMode ==
-                                                        ThemeMode.dark
-                                                    ? const Color(0xFF091B34)
-                                                    : const Color(0xFF3B7DDD),
-                                                width: 1,
-                                              ),
-                                              bottom: BorderSide(
-                                                color: themeHelper.themeMode ==
-                                                        ThemeMode.dark
-                                                    ? const Color(0xFF091B34)
-                                                    : const Color(0xFF3B7DDD),
-                                                width: 1,
-                                              ),
-                                              left: BorderSide.none,
-                                            ),
-                                          ),
-                                          child: _buildPaymentAmountDisplay(
-                                            // "After ${_lastPaymentDetails?['method'] ?? 'Payment'}",
-                                            "Balance Amount",
-
-                                            '${TextConstants.currencySymbol}${_currentPaymentRemainingBalance!.toStringAsFixed(2)}',
-                                            leftBarColor:
-                                                const Color(0xFF3B7DDD),
-                                            amountColor:
-                                                themeHelper.themeMode ==
-                                                        ThemeMode.dark
-                                                    ? Colors.white
-                                                    : Colors.black,
-                                            isPaymentBalance: true,
-                                          ),
-                                        ),
-                                      ],
-                                    )
-// Otherwise show the main balance
-                                  else
-                                    Container(
-                                      padding: const EdgeInsets.only(
-                                        top: 6,
-                                        right: 6,
-                                        bottom: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: themeHelper.themeMode ==
-                                                ThemeMode.dark
-                                            ? const Color(0xFF091B34)
-                                            : const Color(0xFFFCF4F4),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border(
-                                          top: BorderSide(
-                                            color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                ? const Color(0xFF091B34)
-                                                : const Color(0xFFE85C43),
-                                            width: 1,
-                                          ),
-                                          right: BorderSide(
-                                            color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                ? const Color(0xFF091B34)
-                                                : const Color(0xFFE85C43),
-                                            width: 1,
-                                          ),
-                                          bottom: BorderSide(
-                                            color: themeHelper.themeMode ==
-                                                    ThemeMode.dark
-                                                ? const Color(0xFF091B34)
-                                                : const Color(0xFFE85C43),
-                                            width: 1,
-                                          ),
-                                          left: BorderSide.none,
-                                        ),
-                                      ),
-                                      child: _buildPaymentAmountDisplay(
-                                        TextConstants.balanceAmount,
-                                        balanceAmount < 0
-                                            ? '-${TextConstants.currencySymbol}${balanceAmount.abs().toStringAsFixed(2)}'
-                                            : '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
-                                        leftBarColor: const Color(0xFFE85C43),
-                                        amountColor: themeHelper.themeMode ==
-                                                ThemeMode.dark
-                                            ? Colors.white
-                                            : Colors.black,
-                                      ),
-                                    ),
-
-                                  SizedBox(
-                                      height: ResponsiveLayout.getHeight(15)),
-
-// EBT Amount
-                                  Container(
-                                    padding: const EdgeInsets.only(
-                                      top: 6,
-                                      right: 6,
-                                      bottom: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                          ? const Color(0xFF091B34)
-                                          : const Color(0xFFF4F7FC),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border(
-                                        top: BorderSide(
-                                          color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
-                                              ? const Color(0xFF091B34)
-                                              : const Color(0xFF3B7DDD),
-                                          width: 1,
-                                        ),
-                                        right: BorderSide(
-                                          color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
-                                              ? const Color(0xFF091B34)
-                                              : const Color(0xFF3B7DDD),
-                                          width: 1,
-                                        ),
-                                        bottom: BorderSide(
-                                          color: themeHelper.themeMode ==
-                                                  ThemeMode.dark
-                                              ? const Color(0xFF091B34)
-                                              : const Color(0xFF3B7DDD),
-                                          width: 1,
-                                        ),
-                                        left: BorderSide.none,
-                                      ),
-                                    ),
-                                    child: _buildAmountDisplay(
-                                      TextConstants.EBTAmount,
-                                      ebtTotal < 0
-                                          ? '-${TextConstants.currencySymbol}${ebtTotal.abs().toStringAsFixed(2)}'
-                                          : '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
-                                      leftBarColor: const Color(0xFF3B7DDD),
-                                      amountColor: themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                          ? Colors.white
-                                          : Colors.black,
-                                    ),
-                                  ),
-
-                                  SizedBox(
-                                      height: ResponsiveLayout.getHeight(15)),
-
-                                  // // EBT Amount
-                                  // Container(
-                                  //   padding: const EdgeInsets.only(
-                                  //     top: 6,
-                                  //     right: 6,
-                                  //     bottom: 6,
-                                  //   ),
-                                  //   decoration: BoxDecoration(
-                                  //     color: themeHelper.themeMode == ThemeMode.dark
-                                  //         ? const Color(0xFF091B34)
-                                  //         : const Color(0xFFF4F7FC),
-                                  //     borderRadius: BorderRadius.circular(6),
-                                  //     border: Border(
-                                  //       top: BorderSide(
-                                  //         color: themeHelper.themeMode == ThemeMode.dark
-                                  //             ? const Color(0xFF091B34)
-                                  //             : const Color(0xFF3B7DDD),
-                                  //         width: 1,
-                                  //       ),
-                                  //       right: BorderSide(
-                                  //         color: themeHelper.themeMode == ThemeMode.dark
-                                  //             ? const Color(0xFF091B34)
-                                  //             : const Color(0xFF3B7DDD),
-                                  //         width: 1,
-                                  //       ),
-                                  //       bottom: BorderSide(
-                                  //         color: themeHelper.themeMode == ThemeMode.dark
-                                  //             ? const Color(0xFF091B34)
-                                  //             : const Color(0xFF3B7DDD),
-                                  //         width: 1,
-                                  //       ),
-                                  //       left: BorderSide.none, // 🚫 no left border
-                                  //     ),
-                                  //   ),
-                                  //   child: _buildAmountDisplay(
-                                  //     TextConstants.EBTAmount,
-                                  //     ebtTotal < 0
-                                  //         ? '-${TextConstants.currencySymbol}${ebtTotal.abs().toStringAsFixed(2)}'
-                                  //         : '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}',
-                                  //     leftBarColor: const Color(0xFF3B7DDD),
-                                  //     amountColor: themeHelper.themeMode == ThemeMode.dark
-                                  //         ? Colors.white
-                                  //         : Colors.black,
-                                  //   ),
-                                  //
-                                  // ),
-                                ],
+                              padding: const EdgeInsets.only(top: 6, right: 6, bottom: 6),
+                              decoration: BoxDecoration(
+                                color: themeHelper.themeMode == ThemeMode.dark
+                                    ? const Color(0xFF091B34)
+                                    : const Color(0xFFF4FCF7),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border(
+                                  top: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3EAE4C)),
+                                  right: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3EAE4C)),
+                                  bottom: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3EAE4C)),
+                                  left: BorderSide.none,
+                                ),
                               ),
-                            )
+                              child: _buildAmountDisplay(
+                                TextConstants.netPayable,
+                                _formatNetPayable(computedNetPayable - redeemedValue),
+                                leftBarColor: const Color(0xFF3EAE4C),
+                                amountColor: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black,
+                                // Dynamic font size
+                                labelFontSize: _hasEbtItemsInOrder ? 11 : 18,     // ← was ebtTotal > 0
+                                amountFontSize: _hasEbtItemsInOrder ? 12 : 25,
+                              ),
+                            ),
+                          ),
+
+                          SizedBox(height: ResponsiveLayout.getHeight(10)),
+
+
+                          /// Balance Amount - Extra Large & Bold when no EBT
+                          Expanded(
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.only(top: 6, right: 6, bottom: 6),
+                              decoration: BoxDecoration(
+                                color: themeHelper.themeMode == ThemeMode.dark
+                                    ? const Color(0xFF091B34)
+                                    : (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0)
+                                    ? const Color(0xFFE6F3FF)
+                                    : const Color(0xFFFCF4F4),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border(
+                                  top: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0) ? const Color(0xFF3B7DDD) : const Color(0xFFE85C43)),
+                                  right: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0) ? const Color(0xFF3B7DDD) : const Color(0xFFE85C43)),
+                                  bottom: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : (_currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0) ? const Color(0xFF3B7DDD) : const Color(0xFFE85C43)),
+                                  left: BorderSide.none,
+                                ),
+                              ),
+                              child: _currentPaymentRemainingBalance != null && _currentPaymentRemainingBalance! > 0
+                                  ? _buildPaymentAmountDisplay(
+                                "Balance Amount",
+                                '${TextConstants.currencySymbol}${_currentPaymentRemainingBalance!.toStringAsFixed(2)}',
+                                leftBarColor: const Color(0xFF3B7DDD),
+                                amountColor: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black,
+                                isPaymentBalance: true,
+                                labelFontSize: _hasEbtItemsInOrder ? 11 : 14,     // ← was ebtTotal > 0
+                                amountFontSize: _hasEbtItemsInOrder ? 13 : 27,    // ← was ebtTotal > 0
+                                amountFontWeight: FontWeight.w900,             // Extra Bold
+                              )
+                                  : _buildPaymentAmountDisplay(
+                                TextConstants.balanceAmount,
+                                balanceAmount < 0
+                                    ? '-${TextConstants.currencySymbol}${balanceAmount.abs().toStringAsFixed(2)}'
+                                    : '${TextConstants.currencySymbol}${balanceAmount.toStringAsFixed(2)}',
+                                leftBarColor: const Color(0xFFE85C43),
+                                amountColor: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black,
+                                labelFontSize: _hasEbtItemsInOrder ? 11 : 14,     // ← was ebtTotal > 0
+                                amountFontSize: _hasEbtItemsInOrder ? 13 : 27,          // Bigger
+                                amountFontWeight: FontWeight.w900,                // Extra Bold
+                              ),
+                            ),
+                          ),
+
+                          if (ebtTotal > 0 && hasEbtItem) ...[
+                            SizedBox(height: ResponsiveLayout.getHeight(10)),
+                            /// EBT (smaller fonts when 3 items are shown)
+                            Expanded(
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.only(top: 6, right: 6, bottom: 6),
+                                decoration: BoxDecoration(
+                                  color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFFF4F7FC),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border(
+                                    top: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3B7DDD)),
+                                    right: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3B7DDD)),
+                                    bottom: BorderSide(color: themeHelper.themeMode == ThemeMode.dark ? const Color(0xFF091B34) : const Color(0xFF3B7DDD)),
+                                    left: BorderSide.none,
+                                  ),
+                                ),
+                                child: _buildAmountDisplay(
+                                  TextConstants.EBTAmount,
+                                  (() {
+                                    final double originalEbt = widget.ebtAmount;
+
+                                    if (originalEbt <= 0) {
+                                      return '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
+                                    }
+
+                                    final double originalNetPayable = widget.netPayable > 0
+                                        ? widget.netPayable
+                                        : (widget.grossTotal + widget.orderTax);
+
+                                    if (originalNetPayable <= 0) {
+                                      return '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
+                                    }
+
+                                    if ((computedNetPayable - originalNetPayable).abs() > 0.01) {
+                                      final ratio = originalEbt / originalNetPayable;
+                                      final proportionalEbt =
+                                      (computedNetPayable * ratio).clamp(0.0, originalEbt);
+
+                                      final displayEbt =
+                                      (proportionalEbt - payByEbt).clamp(0.0, double.infinity);
+
+                                      return '${TextConstants.currencySymbol}${displayEbt.toStringAsFixed(2)}';
+                                    }
+
+                                    return '${TextConstants.currencySymbol}${ebtTotal.toStringAsFixed(2)}';
+                                  })(),
+                                  leftBarColor: const Color(0xFF3B7DDD),
+                                  amountColor: themeHelper.themeMode == ThemeMode.dark ? Colors.white : Colors.black,
+                                  labelFontSize: 11,
+                                  amountFontSize: 12,
+                                ),
+                              ),
+                            ),
                           ],
-                        ),
+                        ],
                       ),
                     ),
                   ),
+
                   SizedBox(height: ResponsiveLayout.getHeight(10)),
 
                   // Payment options - make flexible
                   Expanded(
-                    flex: 2, // Give less space to payment options
+                    // flex: 2, // Give less space to payment options
                     child: Container(
                       width: double.infinity,
                       padding:
-                          EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                      EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                       decoration: BoxDecoration(
                         color: themeHelper.themeMode == ThemeMode.dark
                             ? const Color(0xFF303136)
@@ -10116,7 +11756,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                   print("🟦 Processing API response...");
 
                                   final redeemApi =
-                                      jsonDecode(result["apiResponse"]);
+                                  jsonDecode(result["apiResponse"]);
                                   print("📦 API Raw Response: $redeemApi");
 
                                   if (redeemApi == null) {
@@ -10135,21 +11775,21 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                                   // Extract values
                                   final double newRedeemValue = double.tryParse(
-                                          data["redeem_amount"].toString()) ??
+                                      data["redeem_amount"].toString()) ??
                                       0.0;
 
                                   final int usedPoints = int.tryParse(
-                                          data["redeem_points"].toString()) ??
+                                      data["redeem_points"].toString()) ??
                                       0;
 
                                   final int newAvailablePoints = int.tryParse(
-                                          data["available_points"]
-                                              .toString()) ??
+                                      data["available_points"]
+                                          .toString()) ??
                                       availablePoints;
 
                                   final double newBalanceAmount =
                                       double.tryParse(
-                                              data["order_total"].toString()) ??
+                                          data["order_total"].toString()) ??
                                           computedNetPayable;
 
                                   print("🔢 Extracted API Values:");
@@ -10223,15 +11863,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                 TextConstants.Issuecoupon,
                                 "assets/coupon.png",
                                 isActive:
-                                    !(offlineOrder?["coupon_applied"] == true ||
-                                        isCouponActive ||
-                                        computedNetPayable < 0),
+                                !(offlineOrder?["coupon_applied"] == true ||
+                                    isCouponActive ||
+                                    computedNetPayable < 0),
                                 onTap: () async {
                                   if (offlineOrder == null) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
                                           content:
-                                              Text("No offline order found")),
+                                          Text("No offline order found")),
                                     );
                                     return;
                                   }
@@ -10260,6 +11900,137 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   bool isGenerateCouponActive = false;
 
+  // Future<bool> _syncAndShowCouponPopup() async {
+  //   if (_isProcessing) return false;
+  //
+  //   setState(() => _isProcessing = true);
+  //   bool loaderOpen = true;
+  //
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (_) => const Center(child: CircularProgressIndicator()),
+  //   );
+  //
+  //   try {
+  //     final response = await OrderRepository().CouponApply(offlineOrder!);
+  //
+  //     if (loaderOpen) {
+  //       Navigator.of(context).pop();
+  //       loaderOpen = false;
+  //     }
+  //
+  //     if (response == null || response is! Map<String, dynamic>) {
+  //       _showErrorPopup("Coupon applied but no response data received.");
+  //       return false;
+  //     }
+  //
+  //     final coupons = response["coupons"] as List? ?? [];
+  //     if (coupons.isEmpty) {
+  //       _showErrorPopup("Coupon applied, but no coupon details returned.");
+  //       return false;
+  //     }
+  //
+  //     final coupon = coupons.first;
+  //     final double discountAmount =
+  //         (coupon["amount"] as num?)?.toDouble() ?? 0.0;
+  //     final String couponCode = coupon["code"]?.toString() ?? "";
+  //
+  //     // Optional: Early minimum amount check (if backend provides it)
+  //     final double minAmount =
+  //         (coupon["min_amount"] as num?)?.toDouble() ?? 0.0;
+  //     final double currentSubtotal = grossTotal; // or computed subtotal
+  //
+  //     if (minAmount > 0 && currentSubtotal < minAmount) {
+  //       _showErrorPopup(
+  //           "Coupon '$couponCode' requires minimum order of \$$minAmount");
+  //       return false;
+  //     }
+  //
+  //     // Update UI temporarily
+  //     setState(() {
+  //       couponValue = discountAmount;
+  //       ebtTotal = 0.0;
+  //       cashbackFee = 0.0;
+  //       isGenerateCouponActive = true;
+  //     });
+  //
+  //     // Show confirmation popup
+  //     final bool confirmed = await _showCouponResponsePopup(response);
+  //
+  //     if (!confirmed) {
+  //       debugPrint("🔵 Coupon popup closed with X – not saving to Hive");
+  //       setState(() => isGenerateCouponActive = false);
+  //       return false;
+  //     }
+  //
+  //     // === Save to Hive only after user confirmation ===
+  //     final box = StorageProvider.offlineOrders;
+  //     final String key = offlineOrder?['id']?.toString() ??
+  //         offlineOrder?['order_id']?.toString() ??
+  //         offlineOrder?['local_order_id']?.toString() ??
+  //         "";
+  //
+  //     if (key.isEmpty) return true;
+  //
+  //     final hasKey = await box.containsKey(key);
+  //     final raw = hasKey ? await box.get(key) : null;
+  //     final Map<String, dynamic> existing = raw is Map
+  //         ? Map<String, dynamic>.from(raw)
+  //         : Map<String, dynamic>.from(offlineOrder!);
+  //
+  //     // Prepare issued coupons
+  //     final List<Map<String, dynamic>> issueCoupons = [];
+  //     for (final c in response["coupons"] as List? ?? []) {
+  //       if (c is! Map) continue;
+  //       final m = Map<String, dynamic>.from(c);
+  //       if (m["generate_type"] != true) {
+  //         m["generate_type"] = false;
+  //       }
+  //       issueCoupons.add(m);
+  //     }
+  //
+  //     // Keep previous redeemed coupons
+  //     final prevCoupons = <Map<String, dynamic>>[];
+  //     final prevCr = existing["coupon_response"];
+  //     if (prevCr is Map && prevCr["coupons"] is List) {
+  //       for (final x in prevCr["coupons"] as List) {
+  //         if (x is Map) prevCoupons.add(Map<String, dynamic>.from(x));
+  //       }
+  //     }
+  //
+  //     final keptRedeems =
+  //     prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
+  //
+  //     final mergedResponse = Map<String, dynamic>.from(response);
+  //     mergedResponse["coupons"] = [...issueCoupons, ...keptRedeems];
+  //
+  //     existing["coupon_response"] = mergedResponse;
+  //     existing["coupon_applied"] = true;
+  //     existing["coupon_applied_at"] = DateTime.now().toIso8601String();
+  //     existing["coupon_amount"] = discountAmount;
+  //
+  //     await box.put(key, existing);
+  //     offlineOrder = existing;
+  //
+  //     debugPrint("✅ Generated Coupon saved in Hive for order $key");
+  //     return true;
+  //   } catch (e) {
+  //     if (loaderOpen) {
+  //       Navigator.of(context).pop();
+  //       loaderOpen = false;
+  //     }
+  //     _showErrorPopup("Something went wrong while applying coupon.");
+  //     debugPrint("❌ Coupon popup error: $e");
+  //     return false;
+  //   } finally {
+  //     setState(() => _isProcessing = false);
+  //   }
+  // }
+
+  ///above code was working code
+  ///
+
   Future<bool> _syncAndShowCouponPopup() async {
     if (_isProcessing) return false;
 
@@ -10273,6 +12044,44 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     );
 
     try {
+      // ✅ CRITICAL FIX: Save Pay Later user to offlineOrder and Hive BEFORE sync
+      if (offlineOrder != null && _selectedPayLaterUser != null) {
+        // Add to offlineOrder map
+        offlineOrder!['selectedPayLaterUser'] = Map<String, dynamic>.from(_selectedPayLaterUser!);
+        offlineOrder!['is_pay_later_order'] = true;
+
+        debugPrint("✅ Pay Later user added to offlineOrder: ${_selectedPayLaterUser!['name']} (ID: ${_selectedPayLaterUser!['user_id']})");
+
+        // ✅ CRITICAL: Save to Hive immediately so the sync function can read it
+        final box = StorageProvider.offlineOrders;
+        final String key = offlineOrder?['id']?.toString() ??
+            offlineOrder?['order_id']?.toString() ??
+            offlineOrder?['local_order_id']?.toString() ??
+            widget.offlineOrderId?.toString() ??
+            "";
+
+        if (key.isNotEmpty) {
+          await box.put(key, offlineOrder);
+          debugPrint("✅ Pay Later user saved to Hive before sync: ${_selectedPayLaterUser!['name']}");
+
+          // ✅ Verify it was saved
+          final verify = await box.get(key);
+          if (verify is Map) {
+            final savedUser = verify['selectedPayLaterUser'];
+            if (savedUser is Map) {
+              debugPrint("✅ Verification: Pay Later user found in Hive: ${savedUser['name']} (ID: ${savedUser['user_id']})");
+            } else {
+              debugPrint("⚠️ Verification: Pay Later user NOT found in Hive after save!");
+            }
+          }
+        } else {
+          debugPrint("⚠️ Could not save to Hive - key is empty");
+        }
+      } else {
+        debugPrint("⚠️ No Pay Later user selected or offlineOrder is null");
+      }
+
+      // Now call the repository with the updated offlineOrder
       final response = await OrderRepository().CouponApply(offlineOrder!);
 
       if (loaderOpen) {
@@ -10296,10 +12105,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           (coupon["amount"] as num?)?.toDouble() ?? 0.0;
       final String couponCode = coupon["code"]?.toString() ?? "";
 
-      // Optional: Early minimum amount check (if backend provides it)
       final double minAmount =
           (coupon["min_amount"] as num?)?.toDouble() ?? 0.0;
-      final double currentSubtotal = grossTotal; // or computed subtotal
+      final double currentSubtotal = grossTotal;
 
       if (minAmount > 0 && currentSubtotal < minAmount) {
         _showErrorPopup(
@@ -10307,7 +12115,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return false;
       }
 
-      // Update UI temporarily
       setState(() {
         couponValue = discountAmount;
         ebtTotal = 0.0;
@@ -10315,7 +12122,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         isGenerateCouponActive = true;
       });
 
-      // Show confirmation popup
       final bool confirmed = await _showCouponResponsePopup(response);
 
       if (!confirmed) {
@@ -10324,11 +12130,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return false;
       }
 
-      // === Save to Hive only after user confirmation ===
       final box = StorageProvider.offlineOrders;
       final String key = offlineOrder?['id']?.toString() ??
           offlineOrder?['order_id']?.toString() ??
           offlineOrder?['local_order_id']?.toString() ??
+          widget.offlineOrderId?.toString() ??
           "";
 
       if (key.isEmpty) return true;
@@ -10339,7 +12145,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           ? Map<String, dynamic>.from(raw)
           : Map<String, dynamic>.from(offlineOrder!);
 
-      // Prepare issued coupons
+      // ✅ PRESERVE PAY LATER USER DATA IN HIVE
+      if (_selectedPayLaterUser != null) {
+        existing['selectedPayLaterUser'] = Map<String, dynamic>.from(_selectedPayLaterUser!);
+        existing['is_pay_later_order'] = true;
+        debugPrint("✅ Pay Later user preserved in Hive: ${_selectedPayLaterUser!['name']}");
+      }
+
       final List<Map<String, dynamic>> issueCoupons = [];
       for (final c in response["coupons"] as List? ?? []) {
         if (c is! Map) continue;
@@ -10350,7 +12162,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         issueCoupons.add(m);
       }
 
-      // Keep previous redeemed coupons
       final prevCoupons = <Map<String, dynamic>>[];
       final prevCr = existing["coupon_response"];
       if (prevCr is Map && prevCr["coupons"] is List) {
@@ -10360,7 +12171,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
 
       final keptRedeems =
-          prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
+      prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
 
       final mergedResponse = Map<String, dynamic>.from(response);
       mergedResponse["coupons"] = [...issueCoupons, ...keptRedeems];
@@ -10373,7 +12184,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       await box.put(key, existing);
       offlineOrder = existing;
 
-      debugPrint("✅ Generated Coupon saved in Hive for order $key");
+      debugPrint("✅ Coupon saved in Hive for order $key");
+      if (_selectedPayLaterUser != null) {
+        debugPrint("✅ Pay Later user data verified in Hive: ${_selectedPayLaterUser!['name']} (ID: ${_selectedPayLaterUser!['user_id']})");
+      }
       return true;
     } catch (e) {
       if (loaderOpen) {
@@ -10387,121 +12201,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       setState(() => _isProcessing = false);
     }
   }
-
-  // Future<bool> _syncAndShowCouponPopup() async {
-  //   if (_isProcessing) return false;
-  //
-  //   setState(() => _isProcessing = true);
-  //
-  //   bool loaderOpen = true;
-  //
-  //   showDialog(
-  //     context: context,
-  //     barrierDismissible: false,
-  //     builder: (_) => const Center(child: CircularProgressIndicator()),
-  //   );
-  //
-  //   try {
-  //     final response = await OrderRepository().CouponApply(offlineOrder!);
-  //
-  //     if (loaderOpen) {
-  //       Navigator.of(context).pop();
-  //       loaderOpen = false;
-  //     }
-  //
-  //     // 🔒 HARD GUARD
-  //     if (response == null || response is! Map<String, dynamic>) {
-  //       _showErrorPopup("Coupon applied but no response data received.");
-  //       return false;
-  //     }
-  //
-  //     final coupons = response["coupons"] as List? ?? [];
-  //     if (coupons.isEmpty) {
-  //       _showErrorPopup("Coupon applied, but no coupon details returned.");
-  //       return false;
-  //     }
-  //
-  //     final coupon = coupons.first;
-  //     final double discountAmount =
-  //         (coupon["amount"] as num?)?.toDouble() ?? 0.0;
-  //
-  //     // ✅ Only update UI state here; save to Hive only after user clicks OK
-  //     setState(() {
-  //       couponValue = discountAmount;
-  //       ebtTotal = 0.0;
-  //       cashbackFee = 0.0;
-  //       isGenerateCouponActive = true;
-  //     });
-  //
-  //     // ✅ Await popup result: true = OK (confirm), false = X (cancel)
-  //     final bool confirmed = await _showCouponResponsePopup(response);
-  //
-  //     if (!confirmed) {
-  //       // User closed with X – don't save to Hive, reset UI state so they can issue again
-  //       debugPrint("🔵 Coupon popup closed with X – not saving to Hive");
-  //       setState(() {
-  //         isGenerateCouponActive = false;
-  //       });
-  //       return false;
-  //     }
-  //
-  //     final box = StorageProvider.offlineOrders;
-  //
-  //     final String key = offlineOrder?['id']?.toString() ??
-  //         offlineOrder?['order_id']?.toString() ??
-  //         offlineOrder?['local_order_id']?.toString() ??
-  //         "";
-  //
-  //     if (key.isEmpty) return true;
-  //
-  //     final hasKey = await box.containsKey(key);
-  //     final raw = hasKey ? await box.get(key) : null;
-  //     final Map<String, dynamic> existing = raw is Map
-  //         ? Map<String, dynamic>.from(raw)
-  //         : Map<String, dynamic>.from(offlineOrder!);
-  //
-  //     final List<Map<String, dynamic>> issueCoupons = [];
-  //     for (final c in response["coupons"] as List? ?? []) {
-  //       if (c is! Map) continue;
-  //       final m = Map<String, dynamic>.from(c);
-  //       if (m["generate_type"] != true) {
-  //         m["generate_type"] = false;
-  //       }
-  //       issueCoupons.add(m);
-  //     }
-  //     final prevCoupons = <Map<String, dynamic>>[];
-  //     final prevCr = existing["coupon_response"];
-  //     if (prevCr is Map && prevCr["coupons"] is List) {
-  //       for (final x in prevCr["coupons"] as List) {
-  //         if (x is Map) prevCoupons.add(Map<String, dynamic>.from(x));
-  //       }
-  //     }
-  //     final keptRedeems =
-  //     prevCoupons.where((c) => _couponHiveEntryIsRedeem(c)).toList();
-  //     final mergedResponse = Map<String, dynamic>.from(response);
-  //     mergedResponse["coupons"] = [...issueCoupons, ...keptRedeems];
-  //     existing["coupon_response"] = mergedResponse;
-  //     existing["coupon_applied"] = true;
-  //     existing["coupon_applied_at"] = DateTime.now().toIso8601String();
-  //     existing["coupon_amount"] = discountAmount;
-  //
-  //     await box.put(key, existing);
-  //     offlineOrder = existing;
-  //
-  //     debugPrint("✅ Coupon saved in Hive for order $key");
-  //     return true;
-  //   } catch (e) {
-  //     if (loaderOpen) {
-  //       Navigator.of(context).pop();
-  //       loaderOpen = false;
-  //     }
-  //     _showErrorPopup("Something went wrong while applying coupon.");
-  //     debugPrint("❌ Coupon popup error: $e");
-  //     return false;
-  //   } finally {
-  //     setState(() => _isProcessing = false);
-  //   }
-  // }
 
   void _showErrorPopup(String message) {
     showDialog(
@@ -10566,9 +12265,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return Dialog(
           backgroundColor: dialogBg,
           insetPadding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: Stack(
@@ -10683,7 +12382,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor:
-                                Colors.red.shade400, // soft light red
+                            Colors.red.shade400, // soft light red
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
@@ -10754,11 +12453,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Widget _buildCouponButton(
-    String title,
-    String iconPath, {
-    required VoidCallback onTap,
-    bool isActive = true,
-  }) {
+      String title,
+      String iconPath, {
+        required VoidCallback onTap,
+        bool isActive = true,
+      }) {
     return InkWell(
       onTap: isActive ? onTap : null,
       child: Container(
@@ -10818,11 +12517,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Widget _buildRedeemCouponButton(
-    String title,
-    String iconPath, {
-    required VoidCallback onTap,
-    bool isActive = true,
-  }) {
+      String title,
+      String iconPath, {
+        required VoidCallback onTap,
+        bool isActive = true,
+      }) {
     return InkWell(
       onTap: isActive ? onTap : null,
       child: Container(
@@ -10980,6 +12679,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final int safeOrderId = int.tryParse(orderKey) ?? widget.orderId ?? 0;
 
       final double restoredTax = widget.orderTax;
+      _suppressCfdSync = true;
 
       // ================= RESET VALUES =================
       setState(() {
@@ -11076,6 +12776,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           safeOrderId,
           summaryEnabled: true,
         );
+        _suppressCfdSync = false;
+        if (safeOrderId > 0) {
+          // One publish with final totals only
+          await _syncCfdFromOrderSummary();
+        }
       }
 
       // ================= SUCCESS =================
@@ -11121,7 +12826,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     // THEME COLORS
     final Color dialogBg = isDark ? const Color(0xFF252837) : Colors.white;
     final Color borderColor =
-        isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade300;
+    isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade300;
     final Color textPrimary = isDark ? Colors.white : Colors.black87;
     final Color textSecondary = isDark ? Colors.white70 : Colors.black54;
     final Color hintColor = isDark ? Colors.white38 : Colors.grey;
@@ -11146,143 +12851,143 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           /// 🔹 YOUR EXISTING DIALOG
           Center(
               child: WillPopScope(
-            onWillPop: () async {
-              ScannerGuard.isCouponPopupOpen = false;
-              return true;
-            },
-            child: BarcodeKeyboardListener(
-              bufferDuration: const Duration(milliseconds: 600),
-              onBarcodeScanned: (barcode) {
-                final code = barcode.trim();
-                print("🎯 Coupon QR/Barcode scanned → $code");
+                onWillPop: () async {
+                  ScannerGuard.isCouponPopupOpen = false;
+                  return true;
+                },
+                child: BarcodeKeyboardListener(
+                  bufferDuration: const Duration(milliseconds: 600),
+                  onBarcodeScanned: (barcode) {
+                    final code = barcode.trim();
+                    print("🎯 Coupon QR/Barcode scanned → $code");
 
-                _couponCtrl.text = code; // ✅ Correct prefill
-              },
-              child: Dialog(
-                backgroundColor: dialogBg,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Container(
-                  padding: const EdgeInsets.all(26),
-                  width: MediaQuery.of(context).size.width * 0.30,
-                  decoration: BoxDecoration(
-                    color: dialogBg,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      if (!isDark)
-                        BoxShadow(
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                          color: Colors.black.withOpacity(0.15),
-                        ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: Text(
-                          "Apply Coupon",
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: redPrimary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      TextField(
-                        controller: _couponCtrl,
-                        keyboardType: TextInputType.number,
-                        style: TextStyle(color: textPrimary),
-                        decoration: InputDecoration(
-                          labelText: "Enter Coupon Code",
-                          labelStyle: TextStyle(color: textSecondary),
-                          hintStyle: TextStyle(color: hintColor),
-                          filled: true,
-                          fillColor:
-                              isDark ? const Color(0xFF2C2C2C) : Colors.white,
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide(color: redPrimary, width: 1),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide:
-                                BorderSide(color: borderColor, width: 1.0),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 25),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            style: TextButton.styleFrom(
-                              foregroundColor: redPrimary,
-                              side: BorderSide(color: redPrimary, width: 1),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 18,
-                                vertical: 10,
-                              ),
+                    _couponCtrl.text = code; // ✅ Correct prefill
+                  },
+                  child: Dialog(
+                    backgroundColor: dialogBg,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.all(26),
+                      width: MediaQuery.of(context).size.width * 0.30,
+                      decoration: BoxDecoration(
+                        color: dialogBg,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          if (!isDark)
+                            BoxShadow(
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                              color: Colors.black.withOpacity(0.15),
                             ),
-                            onPressed: () {
-                              ScannerGuard.isCouponPopupOpen =
-                                  false; // CLOSE FLAG
-                              Navigator.pop(context);
-                            },
-                            child: const Text(
-                              "Cancel",
-                              style: TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: redPrimary,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 12,
-                              ),
-                            ),
-                            onPressed: () async {
-                              final code = _couponCtrl.text.trim();
-
-                              if (code.isEmpty) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content:
-                                        const Text("Please enter coupon code"),
-                                    backgroundColor: Colors.redAccent,
-                                  ),
-                                );
-                                return;
-                              }
-
-                              ScannerGuard.isCouponPopupOpen =
-                                  false; // CLOSE FLAG
-                              Navigator.pop(context);
-                              await _applyCoupon(code);
-                            },
-                            child: const Text("Apply"),
-                          ),
                         ],
-                      )
-                    ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Center(
+                            child: Text(
+                              "Apply Coupon",
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: redPrimary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          TextField(
+                            controller: _couponCtrl,
+                            keyboardType: TextInputType.number,
+                            style: TextStyle(color: textPrimary),
+                            decoration: InputDecoration(
+                              labelText: "Enter Coupon Code",
+                              labelStyle: TextStyle(color: textSecondary),
+                              hintStyle: TextStyle(color: hintColor),
+                              filled: true,
+                              fillColor:
+                              isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: redPrimary, width: 1),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderSide:
+                                BorderSide(color: borderColor, width: 1.0),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 25),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  foregroundColor: redPrimary,
+                                  side: BorderSide(color: redPrimary, width: 1),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 18,
+                                    vertical: 10,
+                                  ),
+                                ),
+                                onPressed: () {
+                                  ScannerGuard.isCouponPopupOpen =
+                                  false; // CLOSE FLAG
+                                  Navigator.pop(context);
+                                },
+                                child: const Text(
+                                  "Cancel",
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: redPrimary,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
+                                  ),
+                                ),
+                                onPressed: () async {
+                                  final code = _couponCtrl.text.trim();
+
+                                  if (code.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content:
+                                        const Text("Please enter coupon code"),
+                                        backgroundColor: Colors.redAccent,
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  ScannerGuard.isCouponPopupOpen =
+                                  false; // CLOSE FLAG
+                                  Navigator.pop(context);
+                                  await _applyCoupon(code);
+                                },
+                                child: const Text("Apply"),
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ))
+              ))
         ]);
       },
     ).then((_) {
@@ -11372,9 +13077,6 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
       final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
 
-      // Sync to server
-      // final result = await OrderRepository().syncSingleOfflineOrder(offlineOrder);
-
       if (result == null || result is! Map<String, dynamic>) {
         offlineOrder["coupon_response"] = originalCouponResponse;
         await box.put(orderKey, offlineOrder);
@@ -11417,53 +13119,87 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       _enrichRedeemCouponIdsFromWoo(offlineOrder, result, code);
       await box.put(orderKey, offlineOrder);
 
-      // ✅ UPDATE UI - Same logic as remove coupon
+      // ============================================================
+      // ✅ FIX: RECALCULATE TAX AFTER DISCOUNT IS APPLIED
+      // ============================================================
+
+      // Step 1: Update discount value first
       setState(() {
         discount = (newDiscount != 0) ? -newDiscount.abs() : 0.0;
-        tax = newTax;
-      //Raghu--**
-        // Recalculate NetTotal and computedNetPayable with same formula
-        NetTotal = grossTotal + discount + merchantDiscount;
-        computedNetPayable = NetTotal + tax + cashbackFee;
-        orderTotal = newTotal;
-        balanceAmount = computedNetPayable - tenderAmount;
-        if (balanceAmount < 0) balanceAmount = 0.0;
-
         isCouponAppliedFromApi = true;
-
-        // ✅ CRITICAL FIX: Restore merchant discount values (they should NOT change with coupon)
-        merchantDiscount = originalMerchantDiscount;
-        merchantDiscountPercentage = originalMerchantDiscountPercentage;
       });
 
-      // ✅ Update offlineOrder with restored merchant discount values
-      offlineOrder["merchantDiscount"] = originalMerchantDiscount;
-      offlineOrder["merchantDiscountPercentage"] = originalMerchantDiscountPercentage;
-      offlineOrder["merchantDiscountType"] = originalMerchantDiscountType;
-      await box.put(orderKey, offlineOrder);
-      //Raghu---**
-      // ✅ Recalculate with discounts
+      // Step 2: Recalculate tax based on discounted items
       await _recalculateTaxOnDiscountedItems();
+
+      // Step 3: Recalculate gross/net from line item discounts
       if (!widget.itemPricesAlreadyAdjusted) {
         await _recalculateGrossAndNetFromLineItemDiscounts();
       }
-
-      // ✅ Final recalculation
+      // Suppress CFD until ALL totals (discount, tax, merchant, net) are final
+      _suppressCfdSync = true;
+      // Step 4: Final totals update
       setState(() {
         NetTotal = grossTotal + discount + merchantDiscount;
         computedNetPayable = NetTotal + tax + cashbackFee;
         orderTotal = computedNetPayable;
         balanceAmount = computedNetPayable - tenderAmount;
         if (balanceAmount < 0) balanceAmount = 0.0;
+
+        // ✅ Restore merchant discount values
+        merchantDiscount = originalMerchantDiscount;
+        merchantDiscountPercentage = originalMerchantDiscountPercentage;
       });
 
-      // ✅ Update customer display
-      if (localOrderId != null) {
-        await CustomerDisplayHelper.updateCustomerDisplay(
-          localOrderId,
-          summaryEnabled: true,
-        );
+      // //  Update offlineOrder with restored merchant discount values
+      // offlineOrder["merchantDiscount"] = originalMerchantDiscount;
+      // offlineOrder["merchantDiscountPercentage"] = originalMerchantDiscountPercentage;
+      // offlineOrder["merchantDiscountType"] = originalMerchantDiscountType;
+      // await box.put(orderKey, offlineOrder);
+      //
+      // //  Update customer display
+      // if (localOrderId != null) {
+      //   await CustomerDisplayHelper.updateCustomerDisplay(
+      //     localOrderId,
+      //     summaryEnabled: true,
+      //   );
+      // }
+
+      final rawLatestForDisplay = await box.get(orderKey);
+      if (rawLatestForDisplay != null) {
+        final latestOrder = Map<String, dynamic>.from(rawLatestForDisplay);
+        final double positiveMerchantDiscount = originalMerchantDiscount.abs();
+        latestOrder["merchantDiscount"] = positiveMerchantDiscount;
+        latestOrder["merchant_discount"] = positiveMerchantDiscount;
+        latestOrder["merchantDiscountFixed"] = positiveMerchantDiscount;
+        latestOrder["merchantDiscountPercentage"] = originalMerchantDiscountPercentage;
+        latestOrder["merchantDiscountType"] = originalMerchantDiscountType;
+        await box.put(orderKey, latestOrder);
+        offlineOrder = latestOrder;
       }
+
+// Single source of truth for CFD – do NOT call Helper again after this
+      await _syncCfdFromOrderSummary();
+
+      // // ✅ Update customer display
+      // if (localOrderId != null) {
+      //   await CustomerDisplayHelper.updateCustomerDisplay(
+      //     localOrderId,
+      //     summaryEnabled: true,
+      //   );
+      // }
+
+      if (localOrderId != null) {
+        // await CustomerDisplayHelper.updateCustomerDisplay(
+        //   localOrderId,
+        //   summaryEnabled: true,
+        // );
+
+        await CustomerDisplayHelper.updateCustomerDisplay(localOrderId, summaryEnabled: true);
+
+      }
+      _suppressCfdSync = false;
+      await _syncCfdFromOrderSummary();
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -11474,7 +13210,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     } catch (e) {
       print("❌ Apply coupon error: $e");
-      // Restore logic
+      // Restore logic...
       try {
         final box = StorageProvider.offlineOrders;
         final String orderKey = widget.orderId?.toString() ??
@@ -11510,6 +13246,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
   }
 
+
   Future<void> _recalculateMerchantDiscount() async {
     // Get merchant discount type and percentage from offline order
     final String mdType = offlineOrder?['merchantDiscountType']?.toString() ?? 'fixed';
@@ -11542,6 +13279,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             offlineOrder!
         );
       }
+    } else {
+      // Fixed dollar-amount merchant discount: pull the stored value from Hive
+      // instead of resetting to 0. Previously this branch always zeroed it out,
+      // which is why fixed/$ merchant discounts never showed on this screen.
+      final double storedFixed =
+          (offlineOrder?['merchantDiscount'] as num?)?.toDouble() ?? 0.0;
+      merchantDiscount = storedFixed != 0 ? -(storedFixed.abs()) : 0.0;
     }
   }
 
@@ -11702,69 +13446,63 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   // }
 
   Widget _buildAmountDisplay(
-    String label,
-    String amount, {
-    required Color leftBarColor,
-    Color? amountColor = Colors.black,
-  }) {
+      String label,
+      String amount, {
+        required Color leftBarColor,
+        Color? amountColor = Colors.black,
+        double labelFontSize = 11,
+        double amountFontSize = 12,
+      }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
     return Container(
-      width: MediaQuery.of(context).size.width * 0.240, // fixed width
-      height: ResponsiveLayout.getHeight(40), // fixed height
+      width: MediaQuery.of(context).size.width * 0.240,
+      height: ResponsiveLayout.getHeight(40),
       alignment: Alignment.centerLeft,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // 🔴 LEFT INDICATOR BAR (VERTICALLY CENTERED)
           Container(
             width: 4,
-            height: ResponsiveLayout.getHeight(
-                40), // slightly taller for visual effect
+            height: ResponsiveLayout.getHeight(45),
             decoration: BoxDecoration(
               color: leftBarColor,
               borderRadius: const BorderRadius.only(
                 topRight: Radius.circular(8),
                 bottomRight: Radius.circular(8),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: leftBarColor.withOpacity(0.45),
-                  blurRadius: 8,
-                  offset: const Offset(1, 2),
-                ),
-              ],
             ),
           ),
-
           const SizedBox(width: 10),
-
-          // 📄 TEXT CONTENT
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                label,
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(11),
+                  fontSize: ResponsiveLayout.getFontSize(labelFontSize),
                   fontWeight: FontWeight.w500,
                   color: themeHelper.themeMode == ThemeMode.dark
                       ? Colors.white
                       : const Color(0xFF333333),
                 ),
+                child: Text(label),
               ),
               const SizedBox(height: 4),
-              Text(
-                amount,
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(12),
+                  fontSize: ResponsiveLayout.getFontSize(amountFontSize),
                   fontWeight: FontWeight.w700,
                   color: amountColor ??
                       (themeHelper.themeMode == ThemeMode.dark
                           ? Colors.white
                           : const Color(0xFF222222)),
                 ),
+                child: Text(amount),
               ),
             ],
           ),
@@ -11779,10 +13517,10 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       onTap: () {
         // Remove '$' and ensure the value is numeric
         String cleanAmount =
-            amount.replaceAll(TextConstants.currencySymbol, '');
+        amount.replaceAll(TextConstants.currencySymbol, '');
         double numericValue = double.parse(cleanAmount);
         amountController.text =
-            '${TextConstants.currencySymbol} ${numericValue.toStringAsFixed(2)}';
+        '${TextConstants.currencySymbol} ${numericValue.toStringAsFixed(2)}';
         setState(() {});
       },
       child: Container(
@@ -11872,15 +13610,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Widget _buildPaymentModeButton(
-    String label,
-    Widget iconWidget, {
-    required LinearGradient gradient,
-    required Color borderColor,
-    Color? iconColor, // optional
-    VoidCallback? onTap,
-    bool isLoading = false,
-    bool isDisabled = false,
-  }) {
+      String label,
+      Widget iconWidget, {
+        required LinearGradient gradient,
+        required Color borderColor,
+        Color? iconColor, // optional
+        VoidCallback? onTap,
+        bool isLoading = false,
+        bool isDisabled = false,
+      }) {
     double _scale = 1.0;
     final bool isEnabled = !isDisabled && !isLoading && onTap != null;
 
@@ -11889,25 +13627,25 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         return GestureDetector(
           onTapDown: isEnabled
               ? (_) {
-                  setState(() {
-                    _scale = 0.95; // press effect
-                  });
-                }
+            setState(() {
+              _scale = 0.95; // press effect
+            });
+          }
               : null,
           onTapUp: isEnabled
               ? (_) {
-                  setState(() {
-                    _scale = 1.0;
-                  });
-                  if (onTap != null) onTap();
-                }
+            setState(() {
+              _scale = 1.0;
+            });
+            if (onTap != null) onTap();
+          }
               : null,
           onTapCancel: isEnabled
               ? () {
-                  setState(() {
-                    _scale = 1.0;
-                  });
-                }
+            setState(() {
+              _scale = 1.0;
+            });
+          }
               : null,
           child: AnimatedScale(
             scale: _scale,
@@ -11916,13 +13654,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             child: Opacity(
               opacity: isEnabled ? 1.0 : 0.5,
               child: Container(
-                width: ResponsiveLayout.getWidth(178),
+                width: double.infinity,
                 height: ResponsiveLayout.getHeight(54),
                 margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
                 decoration: BoxDecoration(
                   gradient: gradient,
                   borderRadius:
-                      BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                  BorderRadius.circular(ResponsiveLayout.getRadius(8)),
                   border: Border.all(color: borderColor),
                   boxShadow: const [
                     BoxShadow(
@@ -11936,7 +13674,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   color: Colors.transparent,
                   child: InkWell(
                     borderRadius:
-                        BorderRadius.circular(ResponsiveLayout.getRadius(8)),
+                    BorderRadius.circular(ResponsiveLayout.getRadius(8)),
                     onTap: isEnabled ? onTap : null,
                     splashColor: Colors.white24,
                     highlightColor: Colors.transparent,
@@ -11952,14 +13690,14 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                           ),
                           child: isLoading
                               ? SizedBox(
-                                  width: ResponsiveLayout.getIconSize(24),
-                                  height: ResponsiveLayout.getIconSize(24),
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                        borderColor),
-                                  ),
-                                )
+                            width: ResponsiveLayout.getIconSize(24),
+                            height: ResponsiveLayout.getIconSize(24),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  borderColor),
+                            ),
+                          )
                               : iconWidget,
                         ),
                         SizedBox(width: ResponsiveLayout.getWidth(12)),
@@ -11985,11 +13723,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   Widget _buildPaymentOptionButton(
-    String title,
-    String iconPath, {
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
+      String title,
+      String iconPath, {
+        required bool isActive,
+        required VoidCallback onTap,
+      }) {
     return InkWell(
       onTap: isActive ? onTap : null,
       child: Container(
@@ -12088,11 +13826,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       serviceType: serviceType,
       datetime: voidDateTime,
       notes:
-          "Local void of ${method} payment – original ID: ${_lastPayment?.paymentId ?? 'local'}",
+      "Local void of ${method} payment – original ID: ${_lastPayment?.paymentId ?? 'local'}",
       isSynced: false,
       createdAt: now,
       remainingBalance:
-          (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
+      (balanceAmount + voidedAmount).clamp(0.0, double.infinity),
       status: PaymentDbStatus.voided,
       serverPaymentId: int.tryParse(_lastPayment?.paymentId ?? "0"),
     );
@@ -12102,7 +13840,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       //  2. Save void payment (Isar + Hive mirroring)
       // ────────────────────────────────────────────────
       final savedVoid =
-          await LocalPaymentDBHelper.instance.savePayment(negativePayment);
+      await LocalPaymentDBHelper.instance.savePayment(negativePayment);
       print(
           "Void saved in Isar → ID: ${savedVoid.id} | amount: -${voidedAmount.toStringAsFixed(2)}");
 
@@ -12122,6 +13860,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       await _calculateBalanceFromPaymentHistory();
       await _printPaymentHistorySummary();
 
+      // ── Call server void for card payments ──────────────────────────
       final String? serverPaymentId = _lastPayment?.paymentId;
       if (_lastPayment?.method.toLowerCase() == TextConstants.card.toLowerCase()) {
         await _voidServerPaymentIfCard(serverPaymentId: serverPaymentId);
@@ -12140,7 +13879,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         if (!isPartial) {
           // Most important resets for full void
           _currentPaymentRemainingBalance =
-              null; // no longer "in partial session"
+          null; // no longer "in partial session"
           _successPopupShown = false; // allow success dialog again
           isPaymentStarted = false; // visually reset "payment in progress"
         }
@@ -12375,7 +14114,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   .getPaymentsByOrderId(orderId!);
               final pendingPayments = payments
                   .where((p) =>
-                      p.amount > 0 && p.status == PaymentDbStatus.pending)
+              p.amount > 0 && p.status == PaymentDbStatus.pending)
                   .toList();
               if (pendingPayments.isNotEmpty) {
                 for (final p in pendingPayments) {
@@ -12573,7 +14312,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     try {
       final box = StorageProvider.offlineOrders;
       final String hiveKey =
-          localOrderId.toString(); // key is the local order ID
+      localOrderId.toString(); // key is the local order ID
 
       if (!(await box.containsKey(hiveKey))) return;
 
@@ -12616,7 +14355,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       order['updated_at'] = DateTime.now().toIso8601String();
 
       await box.put(key, order);
-      print("✅ Hive order #$localOrderId marked as processing");
+      await OfflineHelper.updateOfflineOrderStatus(localOrderId, 'processing');
+      print("✅ Hive & SQLite order #$localOrderId marked as processing");
     } catch (e) {
       print("❌ _markHiveOrderCompleted error: $e");
     }
@@ -12772,13 +14512,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   }
 
   void _showPaymentDialog(
-    BuildContext context,
-    double amount, {
-    double? changeAmount,
-    required bool showChange,
-    Map<String, dynamic>? couponResponse,
-    bool isVoidDisabled = false,
-  }) async {
+      BuildContext context,
+      double amount, {
+        double? changeAmount,
+        required bool showChange,
+        Map<String, dynamic>? couponResponse,
+        bool isVoidDisabled = false,
+      }) async {
     if (_isShowingPaymentDialog) {
       print("Payment dialog already showing → skipping duplicate call");
       return;
@@ -12823,14 +14563,22 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         order['updated_at'] = DateTime.now().toIso8601String();
 
         await box.put(key, order);
-        print("✅ Hive order #$orderId force-marked as completed");
+        if (orderId != null && orderId! > 0) {
+          await OfflineHelper.updateOfflineOrderStatus(orderId!, 'completed', paymentMethod: selectedPaymentMethod);
+        }
+        print("✅ Hive & SQLite order #$orderId force-marked as completed");
       } catch (e) {
         print("❌ forceMarkHiveOrderCompleted error: $e");
       }
     }
 
+    /// MQTT only: Thank You → Welcome (store name). Clears old cart on CFD.
+
     // ── Helper: background work (non-blocking) ───────────────
     void doBackgroundWork() {
+      unawaited(orderHelper.setActiveOrder(null));
+      unawaited(orderHelper.clearPersistedCartSelection());
+
       Future(() async {
         if (orderId != null && orderId! > 0) {
           final allPayments = await LocalPaymentDBHelper.instance
@@ -12861,21 +14609,71 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           print("❌ doBackgroundWork: sync failed: $e");
         }
 
-        // Update customer display
+        // MQTT: Thank You → Welcome after full payment path
         try {
-          final storeInfo = PinakaPreferences.getLoggedInStore();
-          if (storeInfo.isNotEmpty) {
-            await CustomerDisplayHelper.updateWelcomeWithStore(
-              storeInfo['storeId'] ?? '0',
-              storeInfo['storeName'] ?? 'Store',
-              storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
-              storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
-            );
-          } else {
-            await CustomerDisplayService.showWelcome();
-          }
+          // Capture messaging before async gap if needed – or call helper
+          // Helper uses context; if called from Future after navigate, prefer inline publish.
+          final store = await CfdStorePayload.load();
+          final messaging =
+          Provider.of<StoreMessagingService>(context, listen: false);
+
+          final thankYou = CartState(
+            sessionId: 'ORDER-${orderId ?? 0}',
+            sequence: CfdSequence.next(),
+            screen: 'THANK_YOU',
+            items: const [],
+            tax: 0,
+            message: null,
+            orderId: orderId,
+            subtotalOverride: 0,
+            orderDiscount: 0,
+            merchantDiscount: 0,
+            cashbackFee: 0,
+            netPayable: 0,
+            totalItems: 0,
+            orderDate: '',
+            orderTime: '',
+            summaryEnabled: false,
+            storeId: store.storeId,
+            storeName: store.storeName,
+            storeLogoUrl: store.storeLogoUrl,
+            storeBaseUrl: store.storeBaseUrl,
+            slideshowUrls: store.slideshowUrls,
+            loyaltyContact: '',
+            availablePoints: 0,
+          );
+          await messaging.publishState(thankYou);
+
+          await Future.delayed(const Duration(seconds: 3));
+
+          final welcome = CartState(
+            sessionId: 'ORDER-0',
+            sequence: CfdSequence.next(),
+            screen: 'WELCOME',
+            items: const [],
+            tax: 0,
+            message: null,
+            orderId: null,
+            subtotalOverride: 0,
+            orderDiscount: 0,
+            merchantDiscount: 0,
+            cashbackFee: 0,
+            netPayable: 0,
+            totalItems: 0,
+            orderDate: '',
+            orderTime: '',
+            summaryEnabled: false,
+            storeId: store.storeId,
+            storeName: store.storeName,
+            storeLogoUrl: store.storeLogoUrl,
+            storeBaseUrl: store.storeBaseUrl,
+            slideshowUrls: store.slideshowUrls,
+            loyaltyContact: '',
+            availablePoints: 0,
+          );
+          await messaging.publishState(welcome);
         } catch (e) {
-          print(">>> customer display error: $e");
+          if (kDebugMode) print('⚠️ MQTT thank-you/welcome failed: $e');
         }
       });
     }
@@ -12960,9 +14758,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               StreamSubscription? subscription;
               subscription =
                   paymentBloc.sendOrderDetailsStream.listen((response) {
-                subscription?.cancel();
-                print(">>> Email sent");
-              });
+                    subscription?.cancel();
+                    print(">>> Email sent");
+                  });
             }
 
             doBackgroundWork();
@@ -13185,7 +14983,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             final raw = await box.get(key);
             final cr = raw is Map ? raw["coupon_response"] : null;
             final couponResponse =
-                cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
+            cr is Map ? Map<String, dynamic>.from(cr) : <String, dynamic>{};
 
             // ✅ Re-show payment success popup
             _showPaymentDialog(
@@ -13210,8 +15008,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
                 final pendingPayments = payments
                     .where((p) =>
-                        p.status == PaymentDbStatus.pending &&
-                        (p.amount > 0 || isNegativeOrder))
+                p.status == PaymentDbStatus.pending &&
+                    (p.amount > 0 || isNegativeOrder))
                     .toList();
 
                 if (pendingPayments.isNotEmpty) {
@@ -13476,12 +15274,1964 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     return printerDB.first;
   }
 
+//   Future _preparePrintTicket() async {
+//     if (kDebugMode) {
+//       print("OrderSummaryScreen _preparePrintTicket call print receipt");
+//     }
+//
+//     var printerData = await loadPrinterData();
+//     var header = printerData?[AppDBConst.receiptHeaderText] ?? "";
+//     var footer = printerData?[AppDBConst.receiptFooterText] ?? "";
+//     var logo = printerData?[AppDBConst.receiptIconPath] ?? "";
+//
+//     bytes = [];
+//     final ticket = await _printerSettings.getTicket();
+//
+//     // -------------------------------
+//     // LOGO (unchanged)
+//     // -------------------------------
+//     final ByteData data;
+//     if (logo != "") {
+//       data = await GlobalUtility.fileToByteData(File(logo)) ??
+//           await rootBundle.load('assets/Bubbas_logo.png');
+//     } else {
+//       data = await rootBundle.load('assets/Bubbas_logo.png');
+//     }
+//
+//     if (data.lengthInBytes > 0) {
+//       final Uint8List imageBytes = data.buffer.asUint8List();
+//       final decodedImage = img.decodeImage(imageBytes)!;
+//       img.Image thumbnail = img.copyResize(decodedImage, height: 280);
+//       img.Image originalImg =
+//       img.copyResize(decodedImage, width: 470, height: 280);
+//       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
+//       var padding = (originalImg.width - thumbnail.width) / 2;
+//       drawImage(originalImg, thumbnail, dstX: padding.toInt());
+//       var grayscaleImage = img.grayscale(originalImg);
+//       // bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
+//     }
+//
+//     // -------------------------------
+//     // HEADER & STORE INFO (unchanged)
+//     // -------------------------------
+//     var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
+//     var storeId = "${merchantDetails?[AppDBConst.storeId]}";
+//     var storePhone = "${merchantDetails?[AppDBConst.storePhone]}";
+//
+//     var storeDetails = await AssetDBHelper.instance.getStoreDetails();
+//     var storeName = "${storeDetails?.name}";
+//     var address = "${storeDetails?.address},";
+//     var cityStateZip =
+//         "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
+//     var orderIdToPrint = '$orderId';
+//
+//     final userData = await UserDbHelper().getUserData();
+//     var cashierName =
+//         "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
+//     var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
+//
+//     if (header != "") {
+//       bytes += ticket.row([
+//         PosColumn(
+//             text: header, width: 12, styles: PosStyles(align: PosAlign.center)),
+//       ]);
+//     }
+//
+//     bytes += ticket.row([
+//       PosColumn(
+//         text: "***** CUST-INVOICE *****",
+//         width: 12,
+//         styles: PosStyles(align: PosAlign.center, bold: true),
+//       ),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//
+//     bytes += ticket.row([
+//       PosColumn(
+//         text: storeName,
+//         width: 12,
+//         styles: PosStyles(
+//           align: PosAlign.center,
+//           bold: true,
+//           height: PosTextSize.size2,
+//           width: PosTextSize.size2,
+//         ),
+//       ),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: address, width: 12, styles: PosStyles(align: PosAlign.center))
+//     ]);
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: cityStateZip,
+//           width: 12,
+//           styles: PosStyles(align: PosAlign.center))
+//     ]);
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: "Phone: $storePhone",
+//           width: 12,
+//           styles: PosStyles(align: PosAlign.center)),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: "-----------------------------------------------", width: 12),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: "Date: $_displayDate", width: 7),
+//       PosColumn(text: "Time: $_displayTime", width: 5),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: "Cashier: $cashierName", width: 7),
+//       PosColumn(text: "StoreID: $storeId", width: 5),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: "Role: $cashierRole", width: 7),
+//       PosColumn(text: "OrderID: $orderIdToPrint", width: 5),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: "-----------------------------------------------", width: 12),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//
+//     // -------------------------------
+//     // ITEM HEADER
+//     // -------------------------------
+//     bytes += ticket.row([
+//       PosColumn(text: "#", width: 1, styles: PosStyles(bold: true)),
+//       PosColumn(text: "Description", width: 5, styles: PosStyles(bold: true)),
+//       PosColumn(
+//           text: "Qty",
+//           width: 1,
+//           styles: PosStyles(align: PosAlign.center, bold: true)),
+//       PosColumn(
+//           text: "Rate",
+//           width: 2,
+//           styles: PosStyles(align: PosAlign.right, bold: true)),
+//       PosColumn(
+//           text: "Amt",
+//           width: 3,
+//           styles: PosStyles(align: PosAlign.right, bold: true)),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//
+//     String formatCurrency(double amount) {
+//       if (amount < 0) {
+//         return "-${TextConstants.currencySymbol}${amount.abs().toStringAsFixed(2)}";
+//       } else {
+//         return "${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}";
+//       }
+//     }
+//
+//     // -------------------------------
+//     // ITEMS LOOP (with Combo Discount added)
+//     // -------------------------------
+//     // for (int i = 0; i < orderItems.length; i++) {
+//     //   var item = orderItems[i];
+//     //
+//     //   String itemName = item['item_name'] ?? '';
+//     //   double unitPrice = (item['item_price'] ?? 0).toDouble();
+//     //   int qty = (item['items_count'] ?? 0).toInt();
+//     //   double lineTotal = (item['item_sum_price'] ?? 0).toDouble();
+//     //   String type = item['item_type']?.toString().toLowerCase() ?? '';
+//     //
+//     //   // Hide merchant discount/discount line-items from print item list
+//     //   final nameLower = itemName.toLowerCase();
+//     //   if (type.contains('discount') ||
+//     //       nameLower.contains('merchant discount')) {
+//     //     continue;
+//     //   }
+//     //
+//     //   bool isPayout = type.contains(TextConstants.payoutText);
+//     //   bool isCoupon = type.contains(TextConstants.couponText);
+//     //   bool isCashback = type.contains("cashback");
+//     //   bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+//     //
+//     //   String formattedRate = formatCurrency(unitPrice);
+//     //   String formattedTotal = formatCurrency(lineTotal);
+//     //
+//     //   bytes += ticket.row([
+//     //     PosColumn(text: "${i + 1}", width: 1),
+//     //     PosColumn(text: itemName, width: 5),
+//     //     PosColumn(
+//     //         text: "$qty", width: 1, styles: PosStyles(align: PosAlign.center)),
+//     //     PosColumn(
+//     //         text: formattedRate,
+//     //         width: 2,
+//     //         styles: PosStyles(align: PosAlign.right)),
+//     //     PosColumn(
+//     //         text: formattedTotal,
+//     //         width: 3,
+//     //         styles: PosStyles(align: PosAlign.right)),
+//     //   ]);
+//     //
+//     //   // ────────────────────────────────────────────────
+//     //   // DISCOUNT EXTRACTION & PRINTING
+//     //   // ────────────────────────────────────────────────
+//     //   String discountType = item['discount_type']?.toString() ?? '';
+//     //
+//     //   double autoDiscount = (discountType.isEmpty || discountType == 'auto')
+//     //       ? (item['auto_discount'] ?? 0).toDouble()
+//     //       : 0.0;
+//     //
+//     //   double multipackDiscount = (discountType == 'multipack')
+//     //       ? (item['auto_discount'] ?? 0).toDouble()
+//     //       : 0.0;
+//     //
+//     //   double comboDiscount =
+//     //   (discountType == 'combo' || discountType == 'mixmatch')
+//     //       ? (item['auto_discount'] ?? 0).toDouble()
+//     //       : 0.0;
+//     //
+//     //   // Auto Discount
+//     //   if (autoDiscount > 0 && !isPayoutOrCoupon) {
+//     //     bytes += ticket.row([
+//     //       PosColumn(text: "Auto Discount", width: 9),
+//     //       PosColumn(
+//     //         text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
+//     //         width: 3,
+//     //         styles: PosStyles(align: PosAlign.right),
+//     //       ),
+//     //     ]);
+//     //   }
+//     //
+//     //   // Combo / Mix & Match Discount
+//     //   if (comboDiscount > 0 && !isPayoutOrCoupon) {
+//     //     bytes += ticket.row([
+//     //       PosColumn(text: "Combo Discount", width: 9),
+//     //       PosColumn(
+//     //         text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
+//     //         width: 3,
+//     //         styles: PosStyles(align: PosAlign.right),
+//     //       ),
+//     //     ]);
+//     //   }
+//     //
+//     //   // Multipack Discount
+//     //   if (multipackDiscount > 0 && !isPayoutOrCoupon) {
+//     //     bytes += ticket.row([
+//     //       PosColumn(text: "Multipack Discount", width: 9),
+//     //       PosColumn(
+//     //         text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
+//     //         width: 3,
+//     //         styles: PosStyles(align: PosAlign.right),
+//     //       ),
+//     //     ]);
+//     //   }
+//     //
+//     //   bytes += ticket.emptyLines(1);
+//     // }
+//
+//     // Prefer discount coming from GetOrderModel/API (json['discount']) for printing.
+//     // Falls back to passed-in discountValue (offline) and finally the screen's discount.
+//
+//
+//     // -------------------------------
+//     // ITEMS LOOP (with Combo Discount added)
+//     // -------------------------------
+//     for (int i = 0; i < orderItems.length; i++) {
+//       var item = orderItems[i];
+//
+//       String itemName = item['item_name'] ?? '';
+//       double unitPrice = (item['item_price'] ?? 0).toDouble();
+//       int qty = (item['items_count'] ?? 0).toInt();
+//       double lineTotal = (item['item_sum_price'] ?? 0).toDouble();
+//       String type = item['item_type']?.toString().toLowerCase() ?? '';
+//
+//       // Hide merchant discount/discount line-items from print item list
+//       final nameLower = itemName.toLowerCase();
+//       if (type.contains('discount') ||
+//           nameLower.contains('merchant discount')) {
+//         continue;
+//       }
+//
+//       bool isPayout = type.contains(TextConstants.payoutText);
+//       bool isCoupon = type.contains(TextConstants.couponText);
+//       bool isCashback = type.contains("cashback");
+//       bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+//
+//       // ── WEIGHTED ITEM DETECTION (same logic as UI) ──
+//       final bool isWeightedItem = type.contains('weighted');
+//
+//       double weightQty = 0.0;
+//       double weightUnitPrice = 0.0;
+//       if (isWeightedItem) {
+//         weightQty = (item['weight_qty'] ??
+//             item['weightQty'] ??
+//             item['weight'] ??
+//             0.0).toDouble();
+//         weightUnitPrice = (item['unit_price'] ??
+//             item['regular_price'] ??
+//             item['item_price'] ??
+//             0.0).toDouble();
+//       }
+//
+//       // ── FORMAT RATE & QTY/WEIGHT columns ──
+//       String formattedQtyOrWeight;
+//       String formattedRate;
+//       String formattedTotal;
+//
+//       if (isWeightedItem && weightQty > 0 && weightUnitPrice > 0) {
+//         // e.g.  "2.000lb"   "$2.99/lb"   "$5.98"
+//         formattedQtyOrWeight = "${weightQty.toStringAsFixed(2)}lb";
+//         formattedRate = "${formatCurrency(weightUnitPrice)}";
+//         formattedTotal = formatCurrency(weightUnitPrice * weightQty);
+//       } else {
+//         formattedQtyOrWeight = "$qty";
+//         formattedRate = formatCurrency(unitPrice);
+//         formattedTotal = formatCurrency(lineTotal);
+//       }
+//
+//       bytes += ticket.row([
+//         PosColumn(text: "${i + 1}", width: 1),
+//         PosColumn(text: itemName, width: 5),
+//         PosColumn(
+//             text: formattedQtyOrWeight,
+//             width: 1,
+//             styles: PosStyles(align: PosAlign.center)),
+//         PosColumn(
+//             text: formattedRate,
+//             width: 2,
+//             styles: PosStyles(align: PosAlign.right)),
+//         PosColumn(
+//             text: formattedTotal,
+//             width: 3,
+//             styles: PosStyles(align: PosAlign.right)),
+//       ]);
+//
+//       // ────────────────────────────────────────────────
+//       // DISCOUNT EXTRACTION & PRINTING (unchanged)
+//       // ────────────────────────────────────────────────
+//       String discountType = item['discount_type']?.toString() ?? '';
+//
+//       double autoDiscount = (discountType.isEmpty || discountType == 'auto')
+//           ? (item['auto_discount'] ?? 0).toDouble()
+//           : 0.0;
+//
+//       double multipackDiscount = (discountType == 'multipack')
+//           ? (item['auto_discount'] ?? 0).toDouble()
+//           : 0.0;
+//
+//       double comboDiscount =
+//       (discountType == 'combo' || discountType == 'mixmatch')
+//           ? (item['auto_discount'] ?? 0).toDouble()
+//           : 0.0;
+//
+//       // Auto Discount
+//       if (autoDiscount > 0 && !isPayoutOrCoupon) {
+//         bytes += ticket.row([
+//           PosColumn(text: "Auto Discount", width: 9),
+//           PosColumn(
+//             text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
+//             width: 3,
+//             styles: PosStyles(align: PosAlign.right),
+//           ),
+//         ]);
+//       }
+//
+//       // Combo / Mix & Match Discount
+//       if (comboDiscount > 0 && !isPayoutOrCoupon) {
+//         bytes += ticket.row([
+//           PosColumn(text: "Combo Discount", width: 9),
+//           PosColumn(
+//             text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
+//             width: 3,
+//             styles: PosStyles(align: PosAlign.right),
+//           ),
+//         ]);
+//       }
+//
+//       // Multipack Discount
+//       if (multipackDiscount > 0 && !isPayoutOrCoupon) {
+//         bytes += ticket.row([
+//           PosColumn(text: "Multipack Discount", width: 9),
+//           PosColumn(
+//             text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
+//             width: 3,
+//             styles: PosStyles(align: PosAlign.right),
+//           ),
+//         ]);
+//       }
+//
+//       bytes += ticket.emptyLines(1);
+//     }
+//
+//     final double discount = () {
+//       final raw = _order["discount"] ??
+//           _order["order_discount"] ??
+//           _order["discount_amount"];
+//       final parsed = raw == null ? null : double.tryParse(raw.toString());
+//       final fromGetOrder =
+//           parsed ?? (discountValue != 0 ? discountValue : null);
+//       if (fromGetOrder == null) return this.discount;
+//       return fromGetOrder != 0 ? -(fromGetOrder.abs()) : 0.0;
+//     }();
+//
+//     // -------------------------------
+//     // TOTALS (unchanged from your version)
+//     // -------------------------------
+//     bytes += ticket.feed(1);
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: "-----------------------------------------------", width: 12),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.grossTotal, width: 8),
+//       PosColumn(
+//         text: formatCurrency(grossTotal),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     // Show Coupon (standardized negative display)
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.discountText, width: 8),
+//       PosColumn(
+//         text: discount != 0 ? formatCurrency(discount) : formatCurrency(0.0),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.taxText, width: 8),
+//       PosColumn(
+//         text: formatCurrency(tax),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+// //Raghu--**
+//     bytes += ticket.row([
+//       PosColumn(
+//         text: merchantDiscountPercentage > 0
+//             ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
+//             : TextConstants.merchantDiscount,
+//         width: 8,
+//       ),
+//       PosColumn(
+//         text: merchantDiscount != 0
+//             ? formatCurrency(merchantDiscount)
+//             : formatCurrency(0.0),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+// //Raghu--*
+//
+//     if (cashbackFee > 0) {
+//       bytes += ticket.row([
+//         PosColumn(text: TextConstants.cashbackFee, width: 8),
+//         PosColumn(
+//           text: formatCurrency(cashbackFee),
+//           width: 4,
+//           styles: PosStyles(align: PosAlign.right),
+//         ),
+//       ]);
+//     }
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.servicecharges, width: 8),
+//       PosColumn(
+//         text: formatCurrency(servicecharges),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: "-----------------------------------------------", width: 12),
+//     ]);
+//
+//     bytes += ticket.feed(1);
+//
+//     // Final Net Payable logic matching the summary screen precisely
+//     double printNetPayable = grossTotal +
+//         discount +
+//         merchantDiscount +
+//         tax +
+//         servicecharges +
+//         cashbackFee;
+//     if (printNetPayable < 0) printNetPayable = 0.0;
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.netPayable, width: 8),
+//       PosColumn(
+//         text: formatCurrency(printNetPayable),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     if (redeemedValue > 0) {
+//       bytes += ticket.row([
+//         PosColumn(text: "Redeemed Amount", width: 8),
+//         PosColumn(
+//           text: "-${formatCurrency(redeemedValue).replaceAll('-', '')}",
+//           width: 4,
+//           styles: PosStyles(align: PosAlign.right),
+//         ),
+//       ]);
+//     }
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.payByCash, width: 8),
+//       PosColumn(
+//         text: formatCurrency(payByCash),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: "Pay by EBT", width: 8),
+//       PosColumn(
+//         text: formatCurrency(payByEbt),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.payByOther, width: 8),
+//       PosColumn(
+//         text: formatCurrency(payByOther),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.tenderAmount, width: 8),
+//       PosColumn(
+//         text: formatCurrency(tenderAmount),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(text: TextConstants.change, width: 8),
+//       PosColumn(
+//         text: formatCurrency(changeAmount),
+//         width: 4,
+//         styles: PosStyles(align: PosAlign.right),
+//       ),
+//     ]);
+//
+//     bytes += ticket.row([
+//       PosColumn(
+//           text: "-----------------------------------------------", width: 12),
+//     ]);
+//
+//     if (footer != "") {
+//       bytes += ticket.feed(1);
+//       bytes += ticket.row([
+//         PosColumn(
+//             text: footer, width: 12, styles: PosStyles(align: PosAlign.center)),
+//       ]);
+//     }
+//   }
+
+
+  // Future _preparePrintTicket() async {
+  //   if (kDebugMode) {
+  //     print("OrderSummaryScreen _preparePrintTicket call print receipt");
+  //   }
+  //
+  //   var printerData = await loadPrinterData();
+  //   var header = printerData?[AppDBConst.receiptHeaderText] ?? "";
+  //   var footer = printerData?[AppDBConst.receiptFooterText] ?? "";
+  //   var logo = printerData?[AppDBConst.receiptIconPath] ?? "";
+  //
+  //   bytes = [];
+  //   final ticket = await _printerSettings.getTicket();
+  //
+  //   // -------------------------------
+  //   // LOGO (unchanged)
+  //   // -------------------------------
+  //   final ByteData data;
+  //   if (logo != "") {
+  //     data = await GlobalUtility.fileToByteData(File(logo)) ??
+  //         await rootBundle.load('assets/Bubbas_logo.png');
+  //   } else {
+  //     data = await rootBundle.load('assets/Bubbas_logo.png');
+  //   }
+  //
+  //   if (data.lengthInBytes > 0) {
+  //     final Uint8List imageBytes = data.buffer.asUint8List();
+  //     final decodedImage = img.decodeImage(imageBytes)!;
+  //     img.Image thumbnail = img.copyResize(decodedImage, height: 280);
+  //     img.Image originalImg =
+  //     img.copyResize(decodedImage, width: 470, height: 280);
+  //     img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
+  //     var padding = (originalImg.width - thumbnail.width) / 2;
+  //     drawImage(originalImg, thumbnail, dstX: padding.toInt());
+  //     var grayscaleImage = img.grayscale(originalImg);
+  //     // bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
+  //   }
+  //
+  //   // -------------------------------
+  //   // HEADER & STORE INFO (unchanged)
+  //   // -------------------------------
+  //   var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
+  //   var storeId = "${merchantDetails?[AppDBConst.storeId]}";
+  //   var storePhone = "${merchantDetails?[AppDBConst.storePhone]}";
+  //
+  //   var storeDetails = await AssetDBHelper.instance.getStoreDetails();
+  //   var storeName = "${storeDetails?.name}";
+  //   var address = "${storeDetails?.address},";
+  //   var cityStateZip =
+  //       "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
+  //   var orderIdToPrint = '$orderId';
+  //
+  //   final userData = await UserDbHelper().getUserData();
+  //   var cashierName =
+  //       "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
+  //   var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
+  //
+  //   if (header != "") {
+  //     bytes += ticket.row([
+  //       PosColumn(
+  //           text: header, width: 12, styles: PosStyles(align: PosAlign.center)),
+  //     ]);
+  //   }
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //       text: "***** CUST-INVOICE *****",
+  //       width: 12,
+  //       styles: PosStyles(align: PosAlign.center, bold: true),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //       text: storeName,
+  //       width: 12,
+  //       styles: PosStyles(
+  //         align: PosAlign.center,
+  //         bold: true,
+  //         height: PosTextSize.size2,
+  //         width: PosTextSize.size2,
+  //       ),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: address, width: 12, styles: PosStyles(align: PosAlign.center))
+  //   ]);
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: cityStateZip,
+  //         width: 12,
+  //         styles: PosStyles(align: PosAlign.center))
+  //   ]);
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "Phone: $storePhone",
+  //         width: 12,
+  //         styles: PosStyles(align: PosAlign.center)),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "Date: $_displayDate", width: 7),
+  //     PosColumn(text: "Time: $_displayTime", width: 5),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "Cashier: $cashierName", width: 7),
+  //     PosColumn(text: "StoreID: $storeId", width: 5),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "Role: $cashierRole", width: 7),
+  //     PosColumn(text: "OrderID: $orderIdToPrint", width: 5),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   // -------------------------------
+  //   // ITEM HEADER
+  //   // -------------------------------
+  //   bytes += ticket.row([
+  //     PosColumn(text: "#", width: 1, styles: PosStyles(bold: true)),
+  //     PosColumn(text: "Description", width: 5, styles: PosStyles(bold: true)),
+  //     PosColumn(
+  //         text: "Qty",
+  //         width: 1,
+  //         styles: PosStyles(align: PosAlign.center, bold: true)),
+  //     PosColumn(
+  //         text: "Rate",
+  //         width: 2,
+  //         styles: PosStyles(align: PosAlign.right, bold: true)),
+  //     PosColumn(
+  //         text: "Amt",
+  //         width: 3,
+  //         styles: PosStyles(align: PosAlign.right, bold: true)),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   String formatCurrency(double amount) {
+  //     if (amount < 0) {
+  //       return "-${TextConstants.currencySymbol}${amount.abs().toStringAsFixed(2)}";
+  //     } else {
+  //       return "${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}";
+  //     }
+  //   }
+  //
+  //   // Helper function to wrap long item names
+  //   List<String> wrapItemName(String name, int maxLength) {
+  //     List<String> lines = [];
+  //     String remaining = name;
+  //
+  //     while (remaining.isNotEmpty) {
+  //       if (remaining.length <= maxLength) {
+  //         lines.add(remaining);
+  //         break;
+  //       } else {
+  //         // Find a good break point (space) within the maxLength
+  //         int breakIndex = remaining.lastIndexOf(' ', maxLength);
+  //         if (breakIndex == -1) {
+  //           // No space found, force break at maxLength
+  //           breakIndex = maxLength;
+  //         }
+  //         lines.add(remaining.substring(0, breakIndex));
+  //         remaining = remaining.substring(breakIndex).trim();
+  //       }
+  //     }
+  //     return lines;
+  //   }
+  //
+  //   // -------------------------------
+  //   // ITEMS LOOP (with Weighted Item support + Name Wrapping)
+  //   // -------------------------------
+  //   for (int i = 0; i < orderItems.length; i++) {
+  //     var item = orderItems[i];
+  //
+  //     String itemName = item['item_name'] ?? '';
+  //     double unitPrice = (item['item_price'] ?? 0).toDouble();
+  //     int qty = (item['items_count'] ?? 0).toInt();
+  //     double lineTotal = (item['item_sum_price'] ?? 0).toDouble();
+  //     String type = item['item_type']?.toString().toLowerCase() ?? '';
+  //
+  //     // Hide merchant discount/discount line-items from print item list
+  //     final nameLower = itemName.toLowerCase();
+  //     if (type.contains('discount') ||
+  //         nameLower.contains('merchant discount')) {
+  //       continue;
+  //     }
+  //
+  //     bool isPayout = type.contains(TextConstants.payoutText);
+  //     bool isCoupon = type.contains(TextConstants.couponText);
+  //     bool isCashback = type.contains("cashback");
+  //     bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+  //
+  //     // ── WEIGHTED ITEM DETECTION ──
+  //     final bool isWeightedItem = type.contains('weighted');
+  //
+  //     double weightQty = 0.0;
+  //     double weightUnitPrice = 0.0;
+  //     if (isWeightedItem) {
+  //       weightQty = (item['weight_qty'] ??
+  //           item['weightQty'] ??
+  //           item['weight'] ??
+  //           0.0).toDouble();
+  //       weightUnitPrice = (item['unit_price'] ??
+  //           item['regular_price'] ??
+  //           item['item_price'] ??
+  //           0.0).toDouble();
+  //     }
+  //
+  //     // ── FORMAT QTY/WEIGHT ──
+  //     String formattedQtyOrWeight;
+  //     if (isWeightedItem && weightQty > 0) {
+  //       formattedQtyOrWeight = "${weightQty.toStringAsFixed(2)}lb";
+  //     } else {
+  //       formattedQtyOrWeight = "$qty";
+  //     }
+  //
+  //     // ── FORMAT RATE ──
+  //     String formattedRate;
+  //     if (isWeightedItem && weightUnitPrice > 0) {
+  //       formattedRate = formatCurrency(weightUnitPrice);
+  //     } else {
+  //       formattedRate = formatCurrency(unitPrice);
+  //     }
+  //
+  //     // ── FORMAT TOTAL ──
+  //     String formattedTotal;
+  //     if (isWeightedItem && weightQty > 0 && weightUnitPrice > 0) {
+  //       formattedTotal = formatCurrency(weightUnitPrice * weightQty);
+  //     } else {
+  //       formattedTotal = formatCurrency(lineTotal);
+  //     }
+  //
+  //     // ── WRAP LONG ITEM NAMES ──
+  //     List<String> nameLines = wrapItemName(itemName, 18); // Max 18 chars per line
+  //
+  //     // Print first line with all details
+  //     bytes += ticket.row([
+  //       PosColumn(text: "${i + 1}", width: 1),
+  //       PosColumn(text: nameLines[0], width: 5),
+  //       PosColumn(
+  //           text: formattedQtyOrWeight,
+  //           width: 1,
+  //           styles: PosStyles(align: PosAlign.center)),
+  //       PosColumn(
+  //           text: formattedRate,
+  //           width: 2,
+  //           styles: PosStyles(align: PosAlign.right)),
+  //       PosColumn(
+  //           text: formattedTotal,
+  //           width: 3,
+  //           styles: PosStyles(align: PosAlign.right)),
+  //     ]);
+  //
+  //     // Print additional name lines (if any) with indentation
+  //     for (int j = 1; j < nameLines.length; j++) {
+  //       bytes += ticket.row([
+  //         PosColumn(text: "", width: 1),           // Empty # column
+  //         PosColumn(text: "  ${nameLines[j]}", width: 5), // Indented description
+  //         PosColumn(text: "", width: 1),           // Empty qty
+  //         PosColumn(text: "", width: 2),           // Empty rate
+  //         PosColumn(text: "", width: 3),           // Empty amount
+  //       ]);
+  //     }
+  //
+  //     // ────────────────────────────────────────────────
+  //     // DISCOUNT EXTRACTION & PRINTING (unchanged)
+  //     // ────────────────────────────────────────────────
+  //     String discountType = item['discount_type']?.toString() ?? '';
+  //
+  //     double autoDiscount = (discountType.isEmpty || discountType == 'auto')
+  //         ? (item['auto_discount'] ?? 0).toDouble()
+  //         : 0.0;
+  //
+  //     double multipackDiscount = (discountType == 'multipack')
+  //         ? (item['auto_discount'] ?? 0).toDouble()
+  //         : 0.0;
+  //
+  //     double comboDiscount =
+  //     (discountType == 'combo' || discountType == 'mixmatch')
+  //         ? (item['auto_discount'] ?? 0).toDouble()
+  //         : 0.0;
+  //
+  //     // Auto Discount
+  //     if (autoDiscount > 0 && !isPayoutOrCoupon) {
+  //       bytes += ticket.row([
+  //         PosColumn(text: "  Auto Discount", width: 9),
+  //         PosColumn(
+  //           text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
+  //           width: 3,
+  //           styles: PosStyles(align: PosAlign.right),
+  //         ),
+  //       ]);
+  //     }
+  //
+  //     // Combo / Mix & Match Discount
+  //     if (comboDiscount > 0 && !isPayoutOrCoupon) {
+  //       bytes += ticket.row([
+  //         PosColumn(text: "  Combo Discount", width: 9),
+  //         PosColumn(
+  //           text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
+  //           width: 3,
+  //           styles: PosStyles(align: PosAlign.right),
+  //         ),
+  //       ]);
+  //     }
+  //
+  //     // Multipack Discount
+  //     if (multipackDiscount > 0 && !isPayoutOrCoupon) {
+  //       bytes += ticket.row([
+  //         PosColumn(text: "  Multipack Discount", width: 9),
+  //         PosColumn(
+  //           text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
+  //           width: 3,
+  //           styles: PosStyles(align: PosAlign.right),
+  //         ),
+  //       ]);
+  //     }
+  //
+  //     bytes += ticket.emptyLines(1);
+  //   }
+  //
+  //   final double discount = () {
+  //     final raw = _order["discount"] ??
+  //         _order["order_discount"] ??
+  //         _order["discount_amount"];
+  //     final parsed = raw == null ? null : double.tryParse(raw.toString());
+  //     final fromGetOrder =
+  //         parsed ?? (discountValue != 0 ? discountValue : null);
+  //     if (fromGetOrder == null) return this.discount;
+  //     return fromGetOrder != 0 ? -(fromGetOrder.abs()) : 0.0;
+  //   }();
+  //
+  //   // -------------------------------
+  //   // TOTALS (unchanged from your version)
+  //   // -------------------------------
+  //   bytes += ticket.feed(1);
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.grossTotal, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(grossTotal),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   // Show Coupon (standardized negative display)
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.discountText, width: 8),
+  //     PosColumn(
+  //       text: discount != 0 ? formatCurrency(discount) : formatCurrency(0.0),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.taxText, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(tax),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //       text: merchantDiscountPercentage > 0
+  //           ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
+  //           : TextConstants.merchantDiscount,
+  //       width: 8,
+  //     ),
+  //     PosColumn(
+  //       text: merchantDiscount != 0
+  //           ? formatCurrency(merchantDiscount)
+  //           : formatCurrency(0.0),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   if (cashbackFee > 0) {
+  //     bytes += ticket.row([
+  //       PosColumn(text: TextConstants.cashbackFee, width: 8),
+  //       PosColumn(
+  //         text: formatCurrency(cashbackFee),
+  //         width: 4,
+  //         styles: PosStyles(align: PosAlign.right),
+  //       ),
+  //     ]);
+  //   }
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.servicecharges, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(servicecharges),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   // Final Net Payable logic matching the summary screen precisely
+  //   double printNetPayable = grossTotal +
+  //       discount +
+  //       merchantDiscount +
+  //       tax +
+  //       servicecharges +
+  //       cashbackFee;
+  //   if (printNetPayable < 0) printNetPayable = 0.0;
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.netPayable, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(printNetPayable),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   if (redeemedValue > 0) {
+  //     bytes += ticket.row([
+  //       PosColumn(text: "Redeemed Amount", width: 8),
+  //       PosColumn(
+  //         text: "-${formatCurrency(redeemedValue).replaceAll('-', '')}",
+  //         width: 4,
+  //         styles: PosStyles(align: PosAlign.right),
+  //       ),
+  //     ]);
+  //   }
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.payByCash, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(payByCash),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "Pay by EBT", width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(payByEbt),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.payByOther, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(payByOther),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.tenderAmount, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(tenderAmount),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.change, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(changeAmount),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //
+  //
+  //   // ── NEW: Only print "Order Earned Points" when redeem/loyalty was active for this order ──
+  //   final bool _shouldPrintEarnedPoints =
+  //       isRedeemActive || redeemedValue > 0 || availablePoints > 0;
+  //
+  //   if (_shouldPrintEarnedPoints) {
+  //     final int earnedPoints =
+  //         (_order['total_loyalty_points'] as num?)?.toInt() ?? 0;
+  //
+  //     bytes += ticket.row([
+  //       PosColumn(text: "Order Earned Points", width: 8),
+  //       PosColumn(
+  //         text: "$earnedPoints pts",
+  //         width: 4,
+  //         styles: PosStyles(align: PosAlign.right),
+  //       ),
+  //     ]);
+  //   }
+  //
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   if (footer != "") {
+  //     bytes += ticket.feed(1);
+  //     bytes += ticket.row([
+  //       PosColumn(
+  //           text: footer, width: 12, styles: PosStyles(align: PosAlign.center)),
+  //     ]);
+  //   }
+  // }
+
+
+  // Future _preparePrintTicket() async {
+  //   if (kDebugMode) {
+  //     print("═══════════════════════════════════════════════════════════");
+  //     print("🖨️ ORDER SUMMARY SCREEN - PREPARE PRINT TICKET");
+  //     print("═══════════════════════════════════════════════════════════");
+  //     print("📋 Order ID: $orderId");
+  //     print("📋 Offline Order ID: ${widget.offlineOrderId}");
+  //     print("📋 Items Count: ${orderItems.length}");
+  //     print("📋 Total Payable: ${computedNetPayable.toStringAsFixed(2)}");
+  //     print("═══════════════════════════════════════════════════════════");
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 1: LOAD PRINTER DATA
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   var printerData = await loadPrinterData();
+  //   if (kDebugMode) {
+  //     print("📦 Printer Data Loaded:");
+  //     print("   Header: ${printerData?[AppDBConst.receiptHeaderText] ?? 'Not Set'}");
+  //     print("   Footer: ${printerData?[AppDBConst.receiptFooterText] ?? 'Not Set'}");
+  //     print("   Logo Path: ${printerData?[AppDBConst.receiptIconPath] ?? 'Not Set'}");
+  //   }
+  //
+  //   var header = printerData?[AppDBConst.receiptHeaderText] ?? "";
+  //   var footer = printerData?[AppDBConst.receiptFooterText] ?? "";
+  //   var logo = printerData?[AppDBConst.receiptIconPath] ?? "";
+  //
+  //   bytes = [];
+  //   final ticket = await _printerSettings.getTicket();
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 2: LOGO PROCESSING
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   if (kDebugMode) {
+  //     print("🖼️ Processing Logo...");
+  //   }
+  //
+  //   final ByteData data;
+  //   if (logo != "") {
+  //     if (kDebugMode) {
+  //       print("   Logo path provided: $logo");
+  //     }
+  //     data = await GlobalUtility.fileToByteData(File(logo)) ??
+  //         await rootBundle.load('assets/Bubbas_logo.png');
+  //   } else {
+  //     if (kDebugMode) {
+  //       print("   Using default logo: assets/Bubbas_logo.png");
+  //     }
+  //     data = await rootBundle.load('assets/Bubbas_logo.png');
+  //   }
+  //
+  //   if (data.lengthInBytes > 0) {
+  //     final Uint8List imageBytes = data.buffer.asUint8List();
+  //     final decodedImage = img.decodeImage(imageBytes)!;
+  //     img.Image thumbnail = img.copyResize(decodedImage, height: 280);
+  //     img.Image originalImg =
+  //     img.copyResize(decodedImage, width: 470, height: 280);
+  //     img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
+  //     var padding = (originalImg.width - thumbnail.width) / 2;
+  //     drawImage(originalImg, thumbnail, dstX: padding.toInt());
+  //     var grayscaleImage = img.grayscale(originalImg);
+  //     // bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
+  //     if (kDebugMode) {
+  //       print("✅ Logo processed successfully");
+  //     }
+  //   } else {
+  //     if (kDebugMode) {
+  //       print("⚠️ Logo image has 0 bytes, skipping");
+  //     }
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 3: STORE DETAILS - FIXED
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   if (kDebugMode) {
+  //     print("🏪 Loading Store Details...");
+  //   }
+  //
+  //   var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
+  //   var storeId = "${merchantDetails?[AppDBConst.storeId] ?? 'N/A'}";
+  //
+  //   var storeDetails = await AssetDBHelper.instance.getStoreDetails();
+  //
+  //   String storePhone = "";
+  //   if (storeDetails?.phoneNumber != null && storeDetails!.phoneNumber!.isNotEmpty) {
+  //     storePhone = storeDetails.phoneNumber!;
+  //   } else if (merchantDetails?[AppDBConst.storePhone] != null &&
+  //       merchantDetails![AppDBConst.storePhone].toString().isNotEmpty) {
+  //     storePhone = merchantDetails![AppDBConst.storePhone].toString();
+  //   }
+  //
+  //   String storeName = storeDetails?.name?.isNotEmpty == true
+  //       ? storeDetails!.name!
+  //       : "Store Name";
+  //
+  //   String address = storeDetails?.address != null && storeDetails!.address!.isNotEmpty
+  //       ? "${storeDetails.address},"
+  //       : "";
+  //
+  //   String city = storeDetails?.city?.isNotEmpty == true ? storeDetails!.city! : "";
+  //   String state = storeDetails?.state?.isNotEmpty == true ? storeDetails!.state! : "";
+  //   String zip = storeDetails?.zipCode?.isNotEmpty == true ? storeDetails!.zipCode! : "";
+  //
+  //   List<String> locationParts = [];
+  //   if (city.isNotEmpty) locationParts.add(city);
+  //   if (state.isNotEmpty) locationParts.add(state);
+  //   if (zip.isNotEmpty) locationParts.add(zip);
+  //
+  //   String cityStateZip = locationParts.isNotEmpty ? locationParts.join(", ") : "";
+  //
+  //   var orderIdToPrint = '$orderId';
+  //
+  //   if (kDebugMode) {
+  //     print("   Store Name: $storeName");
+  //     print("   Store ID: $storeId");
+  //     print("   Store Phone: ${storePhone.isNotEmpty ? storePhone : 'Not Set'}");
+  //     print("   Address: ${address.isNotEmpty ? address : 'Not Set'}");
+  //     print("   City/State/Zip: ${cityStateZip.isNotEmpty ? cityStateZip : 'Not Set'}");
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 4: USER/CASHIER DETAILS
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   final userData = await UserDbHelper().getUserData();
+  //   var cashierName = "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
+  //   var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
+  //
+  //   if (kDebugMode) {
+  //     print("👤 Cashier Details:");
+  //     print("   Name: $cashierName");
+  //     print("   Role: $cashierRole");
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 5: CUSTOMER CONTACT
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   String customerContact = "";
+  //   try {
+  //     final box = StorageProvider.offlineOrders;
+  //     final String orderKey = widget.offlineOrderId?.toString() ??
+  //         widget.orderId?.toString() ??
+  //         orderId?.toString() ??
+  //         "";
+  //     if (orderKey.isNotEmpty) {
+  //       if (kDebugMode) {
+  //         print("🔍 Looking for customer contact in Hive key: $orderKey");
+  //       }
+  //       final rawOrder = await box.get(orderKey);
+  //       if (rawOrder != null) {
+  //         final order = Map<String, dynamic>.from(rawOrder);
+  //         customerContact = order["loyaltyContact"]?.toString() ?? "";
+  //         if (kDebugMode) {
+  //           print("   Hive loyaltyContact: '$customerContact'");
+  //         }
+  //       } else {
+  //         if (kDebugMode) {
+  //           print("   No order found in Hive for key: $orderKey");
+  //         }
+  //       }
+  //     }
+  //
+  //     if (customerContact.isEmpty) {
+  //       customerContact = mobileController.text.trim();
+  //       if (kDebugMode) {
+  //         print("   Fallback to mobileController: '$customerContact'");
+  //       }
+  //     }
+  //
+  //     if (customerContact.isEmpty && loyaltyData != null) {
+  //       customerContact = loyaltyData?["contact"]?.toString() ?? "";
+  //       if (kDebugMode) {
+  //         print("   Fallback to loyaltyData: '$customerContact'");
+  //       }
+  //     }
+  //
+  //     if (kDebugMode) {
+  //       print("📞 FINAL Customer Contact: '${customerContact.isNotEmpty ? customerContact : 'Not Provided'}'");
+  //     }
+  //   } catch (e) {
+  //     if (kDebugMode) {
+  //       print("⚠️ Failed to get customer contact: $e");
+  //     }
+  //     customerContact = mobileController.text.trim();
+  //     if (kDebugMode) {
+  //       print("   Final fallback to mobileController: '$customerContact'");
+  //     }
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 6: DATE AND TIME
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   if (kDebugMode) {
+  //     print("📅 Date: $_displayDate");
+  //     print("🕐 Time: $_displayTime");
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 7: BUILD RECEIPT HEADER
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   if (kDebugMode) {
+  //     print("📄 Building Receipt...");
+  //     print("─────────────────────────────────────────────────────────────");
+  //   }
+  //
+  //   if (header.isNotEmpty) {
+  //     bytes += ticket.row([
+  //       PosColumn(text: header, width: 12, styles: PosStyles(align: PosAlign.center)),
+  //     ]);
+  //     if (kDebugMode) {
+  //       print("🏷️ Header: $header");
+  //     }
+  //   }
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //       text: "***** CUST-INVOICE *****",
+  //       width: 12,
+  //       styles: PosStyles(align: PosAlign.center, bold: true),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //       text: storeName,
+  //       width: 12,
+  //       styles: PosStyles(
+  //         align: PosAlign.center,
+  //         bold: true,
+  //         height: PosTextSize.size2,
+  //         width: PosTextSize.size2,
+  //       ),
+  //     ),
+  //   ]);
+  //   if (kDebugMode) {
+  //     print("🏪 Store: $storeName");
+  //   }
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   if (address.isNotEmpty && address != "N/A") {
+  //     bytes += ticket.row([
+  //       PosColumn(text: address, width: 12, styles: PosStyles(align: PosAlign.center))
+  //     ]);
+  //     if (kDebugMode) {
+  //       print("📭 Address: $address");
+  //     }
+  //   }
+  //
+  //   if (cityStateZip.isNotEmpty && cityStateZip != "N/A") {
+  //     bytes += ticket.row([
+  //       PosColumn(text: cityStateZip, width: 12, styles: PosStyles(align: PosAlign.center))
+  //     ]);
+  //     if (kDebugMode) {
+  //       print("📮 City/State/Zip: $cityStateZip");
+  //     }
+  //   }
+  //
+  //   if (storePhone.isNotEmpty && storePhone != "N/A") {
+  //     bytes += ticket.row([
+  //       PosColumn(text: "Phone: $storePhone", width: 12, styles: PosStyles(align: PosAlign.center)),
+  //     ]);
+  //     if (kDebugMode) {
+  //       print("📞 Store Phone: $storePhone");
+  //     }
+  //   }
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "Date: $_displayDate", width: 7),
+  //     PosColumn(text: "Time: $_displayTime", width: 5),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "Cashier: $cashierName", width: 7),
+  //     PosColumn(text: "StoreID: $storeId", width: 5),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "Role: $cashierRole", width: 7),
+  //     PosColumn(text: "OrderID: $orderIdToPrint", width: 5),
+  //   ]);
+  //
+  //   if (kDebugMode) {
+  //     print("👤 Cashier: $cashierName");
+  //     print("🏷️ Order ID: $orderIdToPrint");
+  //   }
+  //
+  //   if (customerContact.isNotEmpty) {
+  //     bytes += ticket.row([
+  //       PosColumn(text: "Customer: $customerContact", width: 12),
+  //     ]);
+  //     if (kDebugMode) {
+  //       print("📞 Customer: $customerContact");
+  //     }
+  //   } else {
+  //     if (kDebugMode) {
+  //       print("📞 Customer: Not Provided");
+  //     }
+  //   }
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 8: ITEM HEADER
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   bytes += ticket.row([
+  //     PosColumn(text: "#", width: 1, styles: PosStyles(bold: true)),
+  //     PosColumn(text: "Description", width: 5, styles: PosStyles(bold: true)),
+  //     PosColumn(
+  //         text: "Qty",
+  //         width: 2,  // ← Increased for weight
+  //         styles: PosStyles(align: PosAlign.center, bold: true)),
+  //     PosColumn(
+  //         text: "Rate",
+  //         width: 2,
+  //         styles: PosStyles(align: PosAlign.right, bold: true)),
+  //     PosColumn(
+  //         text: "Amt",
+  //         width: 2,  // ← Adjusted to keep total 12
+  //         styles: PosStyles(align: PosAlign.right, bold: true)),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   if (kDebugMode) {
+  //     print("─────────────────────────────────────────────────────────────");
+  //     print("🛒 ITEMS:");
+  //     print("   # | Description | Qty | Rate | Amt");
+  //     print("─────────────────────────────────────────────────────────────");
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 9: FORMATTING HELPERS
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   String formatCurrency(double amount) {
+  //     if (amount < 0) {
+  //       return "-${TextConstants.currencySymbol}${amount.abs().toStringAsFixed(2)}";
+  //     } else {
+  //       return "${TextConstants.currencySymbol}${amount.toStringAsFixed(2)}";
+  //     }
+  //   }
+  //
+  //   List<String> wrapItemName(String name, int maxLength) {
+  //     List<String> lines = [];
+  //     String remaining = name;
+  //
+  //     while (remaining.isNotEmpty) {
+  //       if (remaining.length <= maxLength) {
+  //         lines.add(remaining);
+  //         break;
+  //       } else {
+  //         int breakIndex = remaining.lastIndexOf(' ', maxLength);
+  //         if (breakIndex == -1) {
+  //           breakIndex = maxLength;
+  //         }
+  //         lines.add(remaining.substring(0, breakIndex));
+  //         remaining = remaining.substring(breakIndex).trim();
+  //       }
+  //     }
+  //     return lines;
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 10: ITEMS LOOP - FIXED FOR WEIGHTED ITEMS
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   int itemIndex = 0;
+  //   double printedGrossTotal = 0.0;
+  //   double printedTotalDiscount = 0.0;
+  //
+  //   for (int i = 0; i < orderItems.length; i++) {
+  //     var item = orderItems[i];
+  //
+  //     String itemName = item['item_name'] ?? '';
+  //     double unitPrice = (item['item_price'] ?? 0).toDouble();
+  //     int qty = (item['items_count'] ?? 0).toInt();
+  //     double lineTotal = (item['item_sum_price'] ?? 0).toDouble();
+  //     String type = item['item_type']?.toString().toLowerCase() ?? '';
+  //
+  //     final nameLower = itemName.toLowerCase();
+  //     if (type.contains('discount') || nameLower.contains('merchant discount')) {
+  //       if (kDebugMode) {
+  //         print("   ⏭️ Skipping discount line: $itemName");
+  //       }
+  //       continue;
+  //     }
+  //
+  //     bool isPayout = type.contains(TextConstants.payoutText);
+  //     bool isCoupon = type.contains(TextConstants.couponText);
+  //     bool isCashback = type.contains("cashback");
+  //     bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
+  //
+  //     final bool isWeightedItem = type.contains('weighted');
+  //
+  //     double weightQty = 0.0;
+  //     double weightUnitPrice = 0.0;
+  //     if (isWeightedItem) {
+  //       weightQty = (item['weight_qty'] ?? item['weightQty'] ?? item['weight'] ?? 0.0).toDouble();
+  //       weightUnitPrice = (item['unit_price'] ?? item['regular_price'] ?? item['item_price'] ?? 0.0).toDouble();
+  //     }
+  //
+  //     // FIXED: Weight on same line with proper spacing and wider column
+  //     String formattedQtyOrWeight;
+  //     if (isWeightedItem && weightQty > 0) {
+  //       formattedQtyOrWeight = "${weightQty.toStringAsFixed(2)}lb";
+  //     } else {
+  //       formattedQtyOrWeight = "$qty";
+  //     }
+  //
+  //     String formattedRate;
+  //     if (isWeightedItem && weightUnitPrice > 0) {
+  //       formattedRate = formatCurrency(weightUnitPrice);
+  //     } else {
+  //       formattedRate = formatCurrency(unitPrice);
+  //     }
+  //
+  //     String formattedTotal;
+  //     double displayTotal;
+  //     if (isWeightedItem && weightQty > 0 && weightUnitPrice > 0) {
+  //       displayTotal = weightUnitPrice * weightQty;
+  //       formattedTotal = formatCurrency(displayTotal);
+  //     } else {
+  //       displayTotal = lineTotal;
+  //       formattedTotal = formatCurrency(lineTotal);
+  //     }
+  //
+  //     printedGrossTotal += displayTotal;
+  //
+  //     List<String> nameLines = wrapItemName(itemName, 18);
+  //
+  //     itemIndex++;
+  //
+  //     bytes += ticket.row([
+  //       PosColumn(text: "$itemIndex", width: 1),
+  //       PosColumn(text: nameLines[0], width: 5),
+  //       PosColumn(
+  //           text: formattedQtyOrWeight,
+  //           width: 2,  // ← Changed from 1 to 2
+  //           styles: PosStyles(align: PosAlign.center)),
+  //       PosColumn(
+  //           text: formattedRate,
+  //           width: 2,
+  //           styles: PosStyles(align: PosAlign.right)),
+  //       PosColumn(
+  //           text: formattedTotal,
+  //           width: 2,  // ← Changed from 3 to 2
+  //           styles: PosStyles(align: PosAlign.right)),
+  //     ]);
+  //
+  //     if (kDebugMode) {
+  //       print("   $itemIndex | ${nameLines[0]} | $formattedQtyOrWeight | $formattedRate | $formattedTotal");
+  //     }
+  //
+  //     for (int j = 1; j < nameLines.length; j++) {
+  //       bytes += ticket.row([
+  //         PosColumn(text: "", width: 1),
+  //         PosColumn(text: "  ${nameLines[j]}", width: 5),
+  //         PosColumn(text: "", width: 2),
+  //         PosColumn(text: "", width: 2),
+  //         PosColumn(text: "", width: 2),
+  //       ]);
+  //       if (kDebugMode) {
+  //         print("     ${nameLines[j]}");
+  //       }
+  //     }
+  //
+  //     // Discount printing (unchanged)
+  //     String discountType = item['discount_type']?.toString() ?? '';
+  //     double autoDiscount = (discountType.isEmpty || discountType == 'auto')
+  //         ? (item['auto_discount'] ?? 0).toDouble()
+  //         : 0.0;
+  //     double multipackDiscount = (discountType == 'multipack')
+  //         ? (item['auto_discount'] ?? 0).toDouble()
+  //         : 0.0;
+  //     double comboDiscount = (discountType == 'combo' || discountType == 'mixmatch')
+  //         ? (item['auto_discount'] ?? 0).toDouble()
+  //         : 0.0;
+  //
+  //     if (autoDiscount > 0 && !isPayoutOrCoupon) {
+  //       bytes += ticket.row([
+  //         PosColumn(text: "  Auto Discount", width: 9),
+  //         PosColumn(
+  //           text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
+  //           width: 3,
+  //           styles: PosStyles(align: PosAlign.right),
+  //         ),
+  //       ]);
+  //       printedTotalDiscount += autoDiscount;
+  //     }
+  //
+  //     if (comboDiscount > 0 && !isPayoutOrCoupon) {
+  //       bytes += ticket.row([
+  //         PosColumn(text: "  Combo Discount", width: 9),
+  //         PosColumn(
+  //           text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
+  //           width: 3,
+  //           styles: PosStyles(align: PosAlign.right),
+  //         ),
+  //       ]);
+  //       printedTotalDiscount += comboDiscount;
+  //     }
+  //
+  //     if (multipackDiscount > 0 && !isPayoutOrCoupon) {
+  //       bytes += ticket.row([
+  //         PosColumn(text: "  Multipack Discount", width: 9),
+  //         PosColumn(
+  //           text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
+  //           width: 3,
+  //           styles: PosStyles(align: PosAlign.right),
+  //         ),
+  //       ]);
+  //       printedTotalDiscount += multipackDiscount;
+  //     }
+  //
+  //     bytes += ticket.emptyLines(1);
+  //   }
+  //
+  //   if (kDebugMode) {
+  //     print("─────────────────────────────────────────────────────────────");
+  //     print("📊 Item Totals:");
+  //     print("   Gross Total (from items): ${formatCurrency(printedGrossTotal)}");
+  //     print("   Total Discounts: ${formatCurrency(printedTotalDiscount)}");
+  //     print("─────────────────────────────────────────────────────────────");
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 11: DISCOUNT VALUE (Coupon / Order Level)
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   final double couponDiscountValue = () {
+  //     final raw = _order["discount"] ??
+  //         _order["order_discount"] ??
+  //         _order["discount_amount"];
+  //     final parsed = raw == null ? null : double.tryParse(raw.toString());
+  //     final fromGetOrder =
+  //         parsed ?? (discountValue != 0 ? discountValue : null);
+  //     if (fromGetOrder == null) return this.discount;
+  //     return fromGetOrder != 0 ? -(fromGetOrder.abs()) : 0.0;
+  //   }();
+  //
+  //   if (kDebugMode) {
+  //     print("🏷️ Coupon/Order Discount: ${formatCurrency(couponDiscountValue)}");
+  //     print("📊 Merchant Discount: ${formatCurrency(merchantDiscount)}");
+  //     print("📊 Tax: ${formatCurrency(tax)}");
+  //     print("📊 Cashback Fee: ${formatCurrency(cashbackFee)}");
+  //     print("📊 Redeemed Value: ${formatCurrency(redeemedValue)}");
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 12: TOTALS SECTION
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   bytes += ticket.feed(1);
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   // Gross Total
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.grossTotal, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(grossTotal),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   // Coupon/Order Discount
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.discountText, width: 8),
+  //     PosColumn(
+  //       text: couponDiscountValue != 0 ? formatCurrency(couponDiscountValue) : formatCurrency(0.0),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   // Tax
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.taxText, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(tax),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   // Merchant Discount
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //       text: merchantDiscountPercentage > 0
+  //           ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
+  //           : TextConstants.merchantDiscount,
+  //       width: 8,
+  //     ),
+  //     PosColumn(
+  //       text: merchantDiscount != 0
+  //           ? formatCurrency(merchantDiscount)
+  //           : formatCurrency(0.0),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   // Cashback Fee
+  //   if (cashbackFee > 0) {
+  //     bytes += ticket.row([
+  //       PosColumn(text: TextConstants.cashbackFee, width: 8),
+  //       PosColumn(
+  //         text: formatCurrency(cashbackFee),
+  //         width: 4,
+  //         styles: PosStyles(align: PosAlign.right),
+  //       ),
+  //     ]);
+  //   }
+  //
+  //   // Service Charges
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.servicecharges, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(servicecharges),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   bytes += ticket.feed(1);
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 13: NET PAYABLE
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   double printNetPayable = grossTotal +
+  //       couponDiscountValue +
+  //       merchantDiscount +
+  //       tax +
+  //       servicecharges +
+  //       cashbackFee;
+  //   if (printNetPayable < 0) printNetPayable = 0.0;
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.netPayable, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(printNetPayable),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right, bold: true),
+  //     ),
+  //   ]);
+  //
+  //   if (kDebugMode) {
+  //     print("💰 Net Payable: ${formatCurrency(printNetPayable)}");
+  //   }
+  //
+  //   // Redeemed Amount
+  //   if (redeemedValue > 0) {
+  //     bytes += ticket.row([
+  //       PosColumn(text: "Redeemed Amount", width: 8),
+  //       PosColumn(
+  //         text: "-${formatCurrency(redeemedValue).replaceAll('-', '')}",
+  //         width: 4,
+  //         styles: PosStyles(align: PosAlign.right),
+  //       ),
+  //     ]);
+  //     if (kDebugMode) {
+  //       print("🎯 Redeemed: -${formatCurrency(redeemedValue)}");
+  //     }
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 14: PAYMENT BREAKDOWN
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.payByCash, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(payByCash),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: "Pay by EBT", width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(payByEbt),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.payByOther, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(payByOther),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.tenderAmount, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(tenderAmount),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   bytes += ticket.row([
+  //     PosColumn(text: TextConstants.change, width: 8),
+  //     PosColumn(
+  //       text: formatCurrency(changeAmount),
+  //       width: 4,
+  //       styles: PosStyles(align: PosAlign.right),
+  //     ),
+  //   ]);
+  //
+  //   if (kDebugMode) {
+  //     print("💵 Payment Breakdown:");
+  //     print("   Cash: ${formatCurrency(payByCash)}");
+  //     print("   EBT: ${formatCurrency(payByEbt)}");
+  //     print("   Other: ${formatCurrency(payByOther)}");
+  //     print("   Tendered: ${formatCurrency(tenderAmount)}");
+  //     print("   Change: ${formatCurrency(changeAmount)}");
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 15: LOYALTY/EARNED POINTS (only if redeem was used)
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   final bool shouldPrintEarnedPoints =
+  //       isRedeemActive || redeemedValue > 0 || availablePoints > 0;
+  //
+  //   if (shouldPrintEarnedPoints) {
+  //     final int earnedPoints =
+  //         (_order['total_loyalty_points'] as num?)?.toInt() ?? 0;
+  //
+  //     bytes += ticket.row([
+  //       PosColumn(text: "Order Earned Points", width: 8),
+  //       PosColumn(
+  //         text: "$earnedPoints pts",
+  //         width: 4,
+  //         styles: PosStyles(align: PosAlign.right),
+  //       ),
+  //     ]);
+  //
+  //     if (kDebugMode) {
+  //       print("⭐ Order Earned Points: $earnedPoints pts");
+  //     }
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 16: FOOTER
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   bytes += ticket.row([
+  //     PosColumn(
+  //         text: "-----------------------------------------------", width: 12),
+  //   ]);
+  //
+  //   if (footer.isNotEmpty) {
+  //     bytes += ticket.feed(1);
+  //     bytes += ticket.row([
+  //       PosColumn(
+  //           text: footer, width: 12, styles: PosStyles(align: PosAlign.center)),
+  //     ]);
+  //     if (kDebugMode) {
+  //       print("📝 Footer: $footer");
+  //     }
+  //   }
+  //
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   // STEP 17: FINAL SUMMARY
+  //   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //   if (kDebugMode) {
+  //     print("═══════════════════════════════════════════════════════════");
+  //     print("✅ RECEIPT PREPARED SUCCESSFULLY");
+  //     print("═══════════════════════════════════════════════════════════");
+  //     print("📊 Final Summary:");
+  //     print("   Gross Total: ${formatCurrency(grossTotal)}");
+  //     print("   Coupon Discount: ${formatCurrency(couponDiscountValue)}");
+  //     print("   Merchant Discount: ${formatCurrency(merchantDiscount)}");
+  //     print("   Tax: ${formatCurrency(tax)}");
+  //     print("   Cashback Fee: ${formatCurrency(cashbackFee)}");
+  //     print("   Net Payable: ${formatCurrency(printNetPayable)}");
+  //     print("   Total Tendered: ${formatCurrency(tenderAmount)}");
+  //     print("   Change: ${formatCurrency(changeAmount)}");
+  //     if (customerContact.isNotEmpty) {
+  //       print("   Customer: $customerContact");
+  //     }
+  //     print("═══════════════════════════════════════════════════════════");
+  //     print("📋 Total bytes for print: ${bytes.length}");
+  //     print("═══════════════════════════════════════════════════════════");
+  //   }
+  // }
+
+
+
   Future _preparePrintTicket() async {
     if (kDebugMode) {
-      print("OrderSummaryScreen _preparePrintTicket call print receipt");
+      print("═══════════════════════════════════════════════════════════");
+      print("🖨️ ORDER SUMMARY SCREEN - PREPARE PRINT TICKET");
+      print("═══════════════════════════════════════════════════════════");
+      print("📋 Order ID: $orderId");
+      print("📋 Offline Order ID: ${widget.offlineOrderId}");
+      print("📋 Items Count: ${orderItems.length}");
+      print("📋 Total Payable: ${computedNetPayable.toStringAsFixed(2)}");
+      print("═══════════════════════════════════════════════════════════");
     }
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 1: LOAD PRINTER DATA
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     var printerData = await loadPrinterData();
+    if (kDebugMode) {
+      print("📦 Printer Data Loaded:");
+      print("   Header: ${printerData?[AppDBConst.receiptHeaderText] ?? 'Not Set'}");
+      print("   Footer: ${printerData?[AppDBConst.receiptFooterText] ?? 'Not Set'}");
+      print("   Logo Path: ${printerData?[AppDBConst.receiptIconPath] ?? 'Not Set'}");
+    }
+
     var header = printerData?[AppDBConst.receiptHeaderText] ?? "";
     var footer = printerData?[AppDBConst.receiptFooterText] ?? "";
     var logo = printerData?[AppDBConst.receiptIconPath] ?? "";
@@ -13489,14 +17239,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     bytes = [];
     final ticket = await _printerSettings.getTicket();
 
-    // -------------------------------
-    // LOGO (unchanged)
-    // -------------------------------
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 2: LOGO PROCESSING
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (kDebugMode) {
+      print("🖼️ Processing Logo...");
+    }
+
     final ByteData data;
     if (logo != "") {
+      if (kDebugMode) {
+        print("   Logo path provided: $logo");
+      }
       data = await GlobalUtility.fileToByteData(File(logo)) ??
           await rootBundle.load('assets/Bubbas_logo.png');
     } else {
+      if (kDebugMode) {
+        print("   Using default logo: assets/Bubbas_logo.png");
+      }
       data = await rootBundle.load('assets/Bubbas_logo.png');
     }
 
@@ -13505,38 +17265,161 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       final decodedImage = img.decodeImage(imageBytes)!;
       img.Image thumbnail = img.copyResize(decodedImage, height: 280);
       img.Image originalImg =
-          img.copyResize(decodedImage, width: 470, height: 280);
+      img.copyResize(decodedImage, width: 470, height: 280);
       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
       var padding = (originalImg.width - thumbnail.width) / 2;
       drawImage(originalImg, thumbnail, dstX: padding.toInt());
       var grayscaleImage = img.grayscale(originalImg);
       // bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
+      if (kDebugMode) {
+        print("✅ Logo processed successfully");
+      }
+    } else {
+      if (kDebugMode) {
+        print("⚠️ Logo image has 0 bytes, skipping");
+      }
     }
 
-    // -------------------------------
-    // HEADER & STORE INFO (unchanged)
-    // -------------------------------
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 3: STORE DETAILS - FIXED
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (kDebugMode) {
+      print("🏪 Loading Store Details...");
+    }
+
     var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
-    var storeId = "${merchantDetails?[AppDBConst.storeId]}";
-    var storePhone = "${merchantDetails?[AppDBConst.storePhone]}";
+    var storeId = "${merchantDetails?[AppDBConst.storeId] ?? 'N/A'}";
 
     var storeDetails = await AssetDBHelper.instance.getStoreDetails();
-    var storeName = "${storeDetails?.name}";
-    var address = "${storeDetails?.address},";
-    var cityStateZip =
-        "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
+
+    String storePhone = "";
+    if (storeDetails?.phoneNumber != null && storeDetails!.phoneNumber!.isNotEmpty) {
+      storePhone = storeDetails.phoneNumber!;
+    } else if (merchantDetails?[AppDBConst.storePhone] != null &&
+        merchantDetails![AppDBConst.storePhone].toString().isNotEmpty) {
+      storePhone = merchantDetails![AppDBConst.storePhone].toString();
+    }
+
+    String storeName = storeDetails?.name?.isNotEmpty == true
+        ? storeDetails!.name!
+        : "Store Name";
+
+    String address = storeDetails?.address != null && storeDetails!.address!.isNotEmpty
+        ? "${storeDetails.address},"
+        : "";
+
+    String city = storeDetails?.city?.isNotEmpty == true ? storeDetails!.city! : "";
+    String state = storeDetails?.state?.isNotEmpty == true ? storeDetails!.state! : "";
+    String zip = storeDetails?.zipCode?.isNotEmpty == true ? storeDetails!.zipCode! : "";
+
+    List<String> locationParts = [];
+    if (city.isNotEmpty) locationParts.add(city);
+    if (state.isNotEmpty) locationParts.add(state);
+    if (zip.isNotEmpty) locationParts.add(zip);
+
+    String cityStateZip = locationParts.isNotEmpty ? locationParts.join(", ") : "";
+
     var orderIdToPrint = '$orderId';
 
+    if (kDebugMode) {
+      print("   Store Name: $storeName");
+      print("   Store ID: $storeId");
+      print("   Store Phone: ${storePhone.isNotEmpty ? storePhone : 'Not Set'}");
+      print("   Address: ${address.isNotEmpty ? address : 'Not Set'}");
+      print("   City/State/Zip: ${cityStateZip.isNotEmpty ? cityStateZip : 'Not Set'}");
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 4: USER/CASHIER DETAILS
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     final userData = await UserDbHelper().getUserData();
-    var cashierName =
-        "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
+    var cashierName = "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
     var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
 
-    if (header != "") {
+    if (kDebugMode) {
+      print("👤 Cashier Details:");
+      print("   Name: $cashierName");
+      print("   Role: $cashierRole");
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 5: CUSTOMER CONTACT
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    String customerContact = "";
+    try {
+      final box = StorageProvider.offlineOrders;
+      final String orderKey = widget.offlineOrderId?.toString() ??
+          widget.orderId?.toString() ??
+          orderId?.toString() ??
+          "";
+      if (orderKey.isNotEmpty) {
+        if (kDebugMode) {
+          print("🔍 Looking for customer contact in Hive key: $orderKey");
+        }
+        final rawOrder = await box.get(orderKey);
+        if (rawOrder != null) {
+          final order = Map<String, dynamic>.from(rawOrder);
+          customerContact = order["loyaltyContact"]?.toString() ?? "";
+          if (kDebugMode) {
+            print("   Hive loyaltyContact: '$customerContact'");
+          }
+        } else {
+          if (kDebugMode) {
+            print("   No order found in Hive for key: $orderKey");
+          }
+        }
+      }
+
+      if (customerContact.isEmpty) {
+        customerContact = mobileController.text.trim();
+        if (kDebugMode) {
+          print("   Fallback to mobileController: '$customerContact'");
+        }
+      }
+
+      if (customerContact.isEmpty && loyaltyData != null) {
+        customerContact = loyaltyData?["contact"]?.toString() ?? "";
+        if (kDebugMode) {
+          print("   Fallback to loyaltyData: '$customerContact'");
+        }
+      }
+
+      if (kDebugMode) {
+        print("📞 FINAL Customer Contact: '${customerContact.isNotEmpty ? customerContact : 'Not Provided'}'");
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("⚠️ Failed to get customer contact: $e");
+      }
+      customerContact = mobileController.text.trim();
+      if (kDebugMode) {
+        print("   Final fallback to mobileController: '$customerContact'");
+      }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 6: DATE AND TIME
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (kDebugMode) {
+      print("📅 Date: $_displayDate");
+      print("🕐 Time: $_displayTime");
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 7: BUILD RECEIPT HEADER
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (kDebugMode) {
+      print("📄 Building Receipt...");
+      print("─────────────────────────────────────────────────────────────");
+    }
+
+    if (header.isNotEmpty) {
       bytes += ticket.row([
-        PosColumn(
-            text: header, width: 12, styles: PosStyles(align: PosAlign.center)),
+        PosColumn(text: header, width: 12, styles: PosStyles(align: PosAlign.center)),
       ]);
+      if (kDebugMode) {
+        print("🏷️ Header: $header");
+      }
     }
 
     bytes += ticket.row([
@@ -13561,30 +17444,43 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         ),
       ),
     ]);
+    if (kDebugMode) {
+      print("🏪 Store: $storeName");
+    }
+
+    bytes += ticket.feed(1);
+
+    if (address.isNotEmpty && address != "N/A") {
+      bytes += ticket.row([
+        PosColumn(text: address, width: 12, styles: PosStyles(align: PosAlign.center))
+      ]);
+      if (kDebugMode) {
+        print("📭 Address: $address");
+      }
+    }
+
+    if (cityStateZip.isNotEmpty && cityStateZip != "N/A") {
+      bytes += ticket.row([
+        PosColumn(text: cityStateZip, width: 12, styles: PosStyles(align: PosAlign.center))
+      ]);
+      if (kDebugMode) {
+        print("📮 City/State/Zip: $cityStateZip");
+      }
+    }
+
+    if (storePhone.isNotEmpty && storePhone != "N/A") {
+      bytes += ticket.row([
+        PosColumn(text: "Phone: $storePhone", width: 12, styles: PosStyles(align: PosAlign.center)),
+      ]);
+      if (kDebugMode) {
+        print("📞 Store Phone: $storePhone");
+      }
+    }
 
     bytes += ticket.feed(1);
 
     bytes += ticket.row([
-      PosColumn(
-          text: address, width: 12, styles: PosStyles(align: PosAlign.center))
-    ]);
-    bytes += ticket.row([
-      PosColumn(
-          text: cityStateZip,
-          width: 12,
-          styles: PosStyles(align: PosAlign.center))
-    ]);
-    bytes += ticket.row([
-      PosColumn(
-          text: "Phone: $storePhone",
-          width: 12,
-          styles: PosStyles(align: PosAlign.center)),
-    ]);
-
-    bytes += ticket.feed(1);
-    bytes += ticket.row([
-      PosColumn(
-          text: "-----------------------------------------------", width: 12),
+      PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
 
     bytes += ticket.feed(1);
@@ -13604,23 +17500,41 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       PosColumn(text: "OrderID: $orderIdToPrint", width: 5),
     ]);
 
+    if (kDebugMode) {
+      print("👤 Cashier: $cashierName");
+      print("🏷️ Order ID: $orderIdToPrint");
+    }
+
+    if (customerContact.isNotEmpty) {
+      bytes += ticket.row([
+        PosColumn(text: "Customer: $customerContact", width: 12),
+      ]);
+      if (kDebugMode) {
+        print("📞 Customer: $customerContact");
+      }
+    } else {
+      if (kDebugMode) {
+        print("📞 Customer: Not Provided");
+      }
+    }
+
     bytes += ticket.feed(1);
+
     bytes += ticket.row([
-      PosColumn(
-          text: "-----------------------------------------------", width: 12),
+      PosColumn(text: "-----------------------------------------------", width: 12),
     ]);
 
     bytes += ticket.feed(1);
 
-    // -------------------------------
-    // ITEM HEADER
-    // -------------------------------
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 8: ITEM HEADER
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     bytes += ticket.row([
       PosColumn(text: "#", width: 1, styles: PosStyles(bold: true)),
       PosColumn(text: "Description", width: 5, styles: PosStyles(bold: true)),
       PosColumn(
           text: "Qty",
-          width: 1,
+          width: 2,  // ← Increased for weight
           styles: PosStyles(align: PosAlign.center, bold: true)),
       PosColumn(
           text: "Rate",
@@ -13628,12 +17542,22 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           styles: PosStyles(align: PosAlign.right, bold: true)),
       PosColumn(
           text: "Amt",
-          width: 3,
+          width: 2,  // ← Adjusted to keep total 12
           styles: PosStyles(align: PosAlign.right, bold: true)),
     ]);
 
     bytes += ticket.feed(1);
 
+    if (kDebugMode) {
+      print("─────────────────────────────────────────────────────────────");
+      print("🛒 ITEMS:");
+      print("   # | Description | Qty | Rate | Amt");
+      print("─────────────────────────────────────────────────────────────");
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 9: FORMATTING HELPERS
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     String formatCurrency(double amount) {
       if (amount < 0) {
         return "-${TextConstants.currencySymbol}${amount.abs().toStringAsFixed(2)}";
@@ -13642,9 +17566,33 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       }
     }
 
-    // -------------------------------
-    // ITEMS LOOP (with Combo Discount added)
-    // -------------------------------
+    List<String> wrapItemName(String name, int maxLength) {
+      List<String> lines = [];
+      String remaining = name;
+
+      while (remaining.isNotEmpty) {
+        if (remaining.length <= maxLength) {
+          lines.add(remaining);
+          break;
+        } else {
+          int breakIndex = remaining.lastIndexOf(' ', maxLength);
+          if (breakIndex == -1) {
+            breakIndex = maxLength;
+          }
+          lines.add(remaining.substring(0, breakIndex));
+          remaining = remaining.substring(breakIndex).trim();
+        }
+      }
+      return lines;
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 10: ITEMS LOOP - FIXED FOR WEIGHTED ITEMS
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    int itemIndex = 0;
+    double printedGrossTotal = 0.0;
+    double printedTotalDiscount = 0.0;
+
     for (int i = 0; i < orderItems.length; i++) {
       var item = orderItems[i];
 
@@ -13654,10 +17602,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       double lineTotal = (item['item_sum_price'] ?? 0).toDouble();
       String type = item['item_type']?.toString().toLowerCase() ?? '';
 
-      // Hide merchant discount/discount line-items from print item list
       final nameLower = itemName.toLowerCase();
-      if (type.contains('discount') ||
-          nameLower.contains('merchant discount')) {
+      if (type.contains('discount') || nameLower.contains('merchant discount')) {
+        if (kDebugMode) {
+          print("   ⏭️ Skipping discount line: $itemName");
+        }
         continue;
       }
 
@@ -13666,84 +17615,143 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       bool isCashback = type.contains("cashback");
       bool isPayoutOrCoupon = isPayout || isCoupon || isCashback;
 
-      String formattedRate = formatCurrency(unitPrice);
-      String formattedTotal = formatCurrency(lineTotal);
+      final bool isWeightedItem = type.contains('weighted');
+
+      double weightQty = 0.0;
+      double weightUnitPrice = 0.0;
+      if (isWeightedItem) {
+        weightQty = (item['weight_qty'] ?? item['weightQty'] ?? item['weight'] ?? 0.0).toDouble();
+        weightUnitPrice = (item['unit_price'] ?? item['regular_price'] ?? item['item_price'] ?? 0.0).toDouble();
+      }
+
+      // FIXED: Weight on same line with proper spacing and wider column
+      String formattedQtyOrWeight;
+      if (isWeightedItem && weightQty > 0) {
+        formattedQtyOrWeight = "${weightQty.toStringAsFixed(2)}lb";
+      } else {
+        formattedQtyOrWeight = "$qty";
+      }
+
+      String formattedRate;
+      if (isWeightedItem && weightUnitPrice > 0) {
+        formattedRate = formatCurrency(weightUnitPrice);
+      } else {
+        formattedRate = formatCurrency(unitPrice);
+      }
+
+      String formattedTotal;
+      double displayTotal;
+      if (isWeightedItem && weightQty > 0 && weightUnitPrice > 0) {
+        displayTotal = weightUnitPrice * weightQty;
+        formattedTotal = formatCurrency(displayTotal);
+      } else {
+        displayTotal = lineTotal;
+        formattedTotal = formatCurrency(lineTotal);
+      }
+
+      printedGrossTotal += displayTotal;
+
+      List<String> nameLines = wrapItemName(itemName, 18);
+
+      itemIndex++;
 
       bytes += ticket.row([
-        PosColumn(text: "${i + 1}", width: 1),
-        PosColumn(text: itemName, width: 5),
+        PosColumn(text: "$itemIndex", width: 1),
+        PosColumn(text: nameLines[0], width: 5),
         PosColumn(
-            text: "$qty", width: 1, styles: PosStyles(align: PosAlign.center)),
+            text: formattedQtyOrWeight,
+            width: 2,  // ← Changed from 1 to 2
+            styles: PosStyles(align: PosAlign.center)),
         PosColumn(
             text: formattedRate,
             width: 2,
             styles: PosStyles(align: PosAlign.right)),
         PosColumn(
             text: formattedTotal,
-            width: 3,
+            width: 2,  // ← Changed from 3 to 2
             styles: PosStyles(align: PosAlign.right)),
       ]);
 
-      // ────────────────────────────────────────────────
-      // DISCOUNT EXTRACTION & PRINTING
-      // ────────────────────────────────────────────────
-      String discountType = item['discount_type']?.toString() ?? '';
+      if (kDebugMode) {
+        print("   $itemIndex | ${nameLines[0]} | $formattedQtyOrWeight | $formattedRate | $formattedTotal");
+      }
 
+      for (int j = 1; j < nameLines.length; j++) {
+        bytes += ticket.row([
+          PosColumn(text: "", width: 1),
+          PosColumn(text: "  ${nameLines[j]}", width: 5),
+          PosColumn(text: "", width: 2),
+          PosColumn(text: "", width: 2),
+          PosColumn(text: "", width: 2),
+        ]);
+        if (kDebugMode) {
+          print("     ${nameLines[j]}");
+        }
+      }
+
+      // Discount printing (unchanged)
+      String discountType = item['discount_type']?.toString() ?? '';
       double autoDiscount = (discountType.isEmpty || discountType == 'auto')
           ? (item['auto_discount'] ?? 0).toDouble()
           : 0.0;
-
       double multipackDiscount = (discountType == 'multipack')
           ? (item['auto_discount'] ?? 0).toDouble()
           : 0.0;
+      double comboDiscount = (discountType == 'combo' || discountType == 'mixmatch')
+          ? (item['auto_discount'] ?? 0).toDouble()
+          : 0.0;
 
-      double comboDiscount =
-          (discountType == 'combo' || discountType == 'mixmatch')
-              ? (item['auto_discount'] ?? 0).toDouble()
-              : 0.0;
-
-      // Auto Discount
       if (autoDiscount > 0 && !isPayoutOrCoupon) {
         bytes += ticket.row([
-          PosColumn(text: "Auto Discount", width: 9),
+          PosColumn(text: "  Auto Discount", width: 9),
           PosColumn(
             text: "-${formatCurrency(autoDiscount).replaceAll('-', '')}",
             width: 3,
             styles: PosStyles(align: PosAlign.right),
           ),
         ]);
+        printedTotalDiscount += autoDiscount;
       }
 
-      // Combo / Mix & Match Discount
       if (comboDiscount > 0 && !isPayoutOrCoupon) {
         bytes += ticket.row([
-          PosColumn(text: "Combo Discount", width: 9),
+          PosColumn(text: "  Combo Discount", width: 9),
           PosColumn(
             text: "-${formatCurrency(comboDiscount).replaceAll('-', '')}",
             width: 3,
             styles: PosStyles(align: PosAlign.right),
           ),
         ]);
+        printedTotalDiscount += comboDiscount;
       }
 
-      // Multipack Discount
       if (multipackDiscount > 0 && !isPayoutOrCoupon) {
         bytes += ticket.row([
-          PosColumn(text: "Multipack Discount", width: 9),
+          PosColumn(text: "  Multipack Discount", width: 9),
           PosColumn(
             text: "-${formatCurrency(multipackDiscount).replaceAll('-', '')}",
             width: 3,
             styles: PosStyles(align: PosAlign.right),
           ),
         ]);
+        printedTotalDiscount += multipackDiscount;
       }
 
       bytes += ticket.emptyLines(1);
     }
 
-    // Prefer discount coming from GetOrderModel/API (json['discount']) for printing.
-    // Falls back to passed-in discountValue (offline) and finally the screen's discount.
-    final double discount = () {
+    if (kDebugMode) {
+      print("─────────────────────────────────────────────────────────────");
+      print("📊 Item Totals:");
+      print("   Gross Total (from items): ${formatCurrency(printedGrossTotal)}");
+      print("   Total Discounts: ${formatCurrency(printedTotalDiscount)}");
+      print("─────────────────────────────────────────────────────────────");
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 11: DISCOUNT VALUE (Coupon / Order Level)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    final double couponDiscountValue = () {
       final raw = _order["discount"] ??
           _order["order_discount"] ??
           _order["discount_amount"];
@@ -13754,15 +17762,24 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       return fromGetOrder != 0 ? -(fromGetOrder.abs()) : 0.0;
     }();
 
-    // -------------------------------
-    // TOTALS (unchanged from your version)
-    // -------------------------------
+    if (kDebugMode) {
+      print("🏷️ Coupon/Order Discount: ${formatCurrency(couponDiscountValue)}");
+      print("📊 Merchant Discount: ${formatCurrency(merchantDiscount)}");
+      print("📊 Tax: ${formatCurrency(tax)}");
+      print("📊 Cashback Fee: ${formatCurrency(cashbackFee)}");
+      print("📊 Redeemed Value: ${formatCurrency(redeemedValue)}");
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 12: TOTALS SECTION
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     bytes += ticket.feed(1);
     bytes += ticket.row([
       PosColumn(
           text: "-----------------------------------------------", width: 12),
     ]);
 
+    // Gross Total (always printed)
     bytes += ticket.row([
       PosColumn(text: TextConstants.grossTotal, width: 8),
       PosColumn(
@@ -13772,42 +17789,48 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     ]);
 
-    // Show Coupon (standardized negative display)
-    bytes += ticket.row([
-      PosColumn(text: TextConstants.discountText, width: 8),
-      PosColumn(
-        text: discount != 0 ? formatCurrency(discount) : formatCurrency(0.0),
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    // Coupon/Order Discount — only if non-zero
+    if (couponDiscountValue != 0) {
+      bytes += ticket.row([
+        PosColumn(text: TextConstants.discountText, width: 8),
+        PosColumn(
+          text: formatCurrency(couponDiscountValue),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
 
-    bytes += ticket.row([
-      PosColumn(text: TextConstants.taxText, width: 8),
-      PosColumn(
-        text: formatCurrency(tax),
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
-//Raghu--**
-    bytes += ticket.row([
-      PosColumn(
-        text: merchantDiscountPercentage > 0
-            ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
-            : TextConstants.merchantDiscount,
-        width: 8,
-      ),
-      PosColumn(
-        text: merchantDiscount != 0
-            ? formatCurrency(merchantDiscount)
-            : formatCurrency(0.0),
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
-//Raghu--*
+    // Tax — only if non-zero
+    if (tax != 0) {
+      bytes += ticket.row([
+        PosColumn(text: TextConstants.taxText, width: 8),
+        PosColumn(
+          text: formatCurrency(tax),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
 
+    // Merchant Discount — only if non-zero
+    if (merchantDiscount != 0) {
+      bytes += ticket.row([
+        PosColumn(
+          text: merchantDiscountPercentage > 0
+              ? '${TextConstants.merchantDiscount} (${merchantDiscountPercentage % 1 == 0 ? merchantDiscountPercentage.toStringAsFixed(0) : merchantDiscountPercentage.toStringAsFixed(1)}%)'
+              : TextConstants.merchantDiscount,
+          width: 8,
+        ),
+        PosColumn(
+          text: formatCurrency(merchantDiscount),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
+
+    // Cashback Fee (unchanged — already conditional)
     if (cashbackFee > 0) {
       bytes += ticket.row([
         PosColumn(text: TextConstants.cashbackFee, width: 8),
@@ -13819,14 +17842,17 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ]);
     }
 
-    bytes += ticket.row([
-      PosColumn(text: TextConstants.servicecharges, width: 8),
-      PosColumn(
-        text: formatCurrency(servicecharges),
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    // Service Charges — only if non-zero
+    if (servicecharges != 0) {
+      bytes += ticket.row([
+        PosColumn(text: TextConstants.servicecharges, width: 8),
+        PosColumn(
+          text: formatCurrency(servicecharges),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
 
     bytes += ticket.row([
       PosColumn(
@@ -13835,24 +17861,35 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     bytes += ticket.feed(1);
 
-    // Final Net Payable logic matching the summary screen precisely
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 13: NET PAYABLE
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 13: NET PAYABLE
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     double printNetPayable = grossTotal +
-        discount +
+        couponDiscountValue +
         merchantDiscount +
         tax +
         servicecharges +
         cashbackFee;
-    if (printNetPayable < 0) printNetPayable = 0.0;
+    // Do NOT clamp to 0 — payout/negative orders must print the actual
+    // negative Net Payable value.
 
     bytes += ticket.row([
       PosColumn(text: TextConstants.netPayable, width: 8),
       PosColumn(
         text: formatCurrency(printNetPayable),
         width: 4,
-        styles: PosStyles(align: PosAlign.right),
+        styles: PosStyles(align: PosAlign.right, bold: true),
       ),
     ]);
 
+    if (kDebugMode) {
+      print("💰 Net Payable: ${formatCurrency(printNetPayable)}");
+    }
+
+    // Redeemed Amount
     if (redeemedValue > 0) {
       bytes += ticket.row([
         PosColumn(text: "Redeemed Amount", width: 8),
@@ -13862,58 +17899,85 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           styles: PosStyles(align: PosAlign.right),
         ),
       ]);
+      if (kDebugMode) {
+        print("🎯 Redeemed: -${formatCurrency(redeemedValue)}");
+      }
     }
 
-    bytes += ticket.row([
-      PosColumn(text: TextConstants.payByCash, width: 8),
-      PosColumn(
-        text: formatCurrency(payByCash),
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 14: PAYMENT BREAKDOWN
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (payByCash != 0) {
+      bytes += ticket.row([
+        PosColumn(text: TextConstants.payByCash, width: 8),
+        PosColumn(
+          text: formatCurrency(payByCash),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
 
-    bytes += ticket.row([
-      PosColumn(text: "Pay by EBT", width: 8),
-      PosColumn(
-        text: formatCurrency(payByEbt),
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    if (payByEbt != 0) {
+      bytes += ticket.row([
+        PosColumn(text: "Pay by EBT", width: 8),
+        PosColumn(
+          text: formatCurrency(payByEbt),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
 
-    bytes += ticket.row([
-      PosColumn(text: TextConstants.payByOther, width: 8),
-      PosColumn(
-        text: formatCurrency(payByOther),
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    if (payByOther != 0) {
+      bytes += ticket.row([
+        PosColumn(text: TextConstants.payByOther, width: 8),
+        PosColumn(
+          text: formatCurrency(payByOther),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
 
-    bytes += ticket.row([
-      PosColumn(text: TextConstants.tenderAmount, width: 8),
-      PosColumn(
-        text: formatCurrency(tenderAmount),
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    if (tenderAmount != 0) {
+      bytes += ticket.row([
+        PosColumn(text: TextConstants.tenderAmount, width: 8),
+        PosColumn(
+          text: formatCurrency(tenderAmount),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
 
-    bytes += ticket.row([
-      PosColumn(text: TextConstants.change, width: 8),
-      PosColumn(
-        text: formatCurrency(changeAmount),
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    if (changeAmount != 0) {
+      bytes += ticket.row([
+        PosColumn(text: TextConstants.change, width: 8),
+        PosColumn(
+          text: formatCurrency(changeAmount),
+          width: 4,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
 
-    // ── NEW: Only print "Order Earned Points" when redeem/loyalty was active for this order ──
-    final bool _shouldPrintEarnedPoints =
+    if (kDebugMode) {
+      print("💵 Payment Breakdown:");
+      print("   Cash: ${formatCurrency(payByCash)}");
+      print("   EBT: ${formatCurrency(payByEbt)}");
+      print("   Other: ${formatCurrency(payByOther)}");
+      print("   Tendered: ${formatCurrency(tenderAmount)}");
+      print("   Change: ${formatCurrency(changeAmount)}");
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 15: LOYALTY/EARNED POINTS (only if redeem was used)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    final bool shouldPrintEarnedPoints =
         isRedeemActive || redeemedValue > 0 || availablePoints > 0;
 
-    if (_shouldPrintEarnedPoints) {
+    if (shouldPrintEarnedPoints) {
       final int earnedPoints =
           (_order['total_loyalty_points'] as num?)?.toInt() ?? 0;
 
@@ -13925,22 +17989,56 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           styles: PosStyles(align: PosAlign.right),
         ),
       ]);
+
+      if (kDebugMode) {
+        print("⭐ Order Earned Points: $earnedPoints pts");
+      }
     }
 
-
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 16: FOOTER
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     bytes += ticket.row([
       PosColumn(
           text: "-----------------------------------------------", width: 12),
     ]);
 
-    if (footer != "") {
+    if (footer.isNotEmpty) {
       bytes += ticket.feed(1);
       bytes += ticket.row([
         PosColumn(
             text: footer, width: 12, styles: PosStyles(align: PosAlign.center)),
       ]);
+      if (kDebugMode) {
+        print("📝 Footer: $footer");
+      }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 17: FINAL SUMMARY
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (kDebugMode) {
+      print("═══════════════════════════════════════════════════════════");
+      print("✅ RECEIPT PREPARED SUCCESSFULLY");
+      print("═══════════════════════════════════════════════════════════");
+      print("📊 Final Summary:");
+      print("   Gross Total: ${formatCurrency(grossTotal)}");
+      print("   Coupon Discount: ${formatCurrency(couponDiscountValue)}");
+      print("   Merchant Discount: ${formatCurrency(merchantDiscount)}");
+      print("   Tax: ${formatCurrency(tax)}");
+      print("   Cashback Fee: ${formatCurrency(cashbackFee)}");
+      print("   Net Payable: ${formatCurrency(printNetPayable)}");
+      print("   Total Tendered: ${formatCurrency(tenderAmount)}");
+      print("   Change: ${formatCurrency(changeAmount)}");
+      if (customerContact.isNotEmpty) {
+        print("   Customer: $customerContact");
+      }
+      print("═══════════════════════════════════════════════════════════");
+      print("📋 Total bytes for print: ${bytes.length}");
+      print("═══════════════════════════════════════════════════════════");
     }
   }
+
 
 //////
 
@@ -14029,7 +18127,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     }
     switch (result) {
       case Ok<BluetoothPrinter>():
-        // BluetoothPrinter printer = result.value;
+      // BluetoothPrinter printer = result.value;
         break;
       case Error<BluetoothPrinter>():
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -14111,7 +18209,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   .getPaymentsByOrderId(orderId!);
               final pendingPayments = payments
                   .where((p) =>
-                      p.amount > 0 && p.status == PaymentDbStatus.pending)
+              p.amount > 0 && p.status == PaymentDbStatus.pending)
                   .toList();
               if (pendingPayments.isNotEmpty) {
                 for (final p in pendingPayments) {
@@ -14148,7 +18246,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                   .getPaymentsByOrderId(orderId!);
               final pendingPayments = payments
                   .where((p) =>
-                      p.amount > 0 && p.status == PaymentDbStatus.pending)
+              p.amount > 0 && p.status == PaymentDbStatus.pending)
                   .toList();
               if (pendingPayments.isNotEmpty) {
                 for (final p in pendingPayments) {
@@ -14204,37 +18302,37 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
             StreamSubscription? subscription;
             subscription =
                 paymentBloc.sendOrderDetailsStream.listen((response) {
-              if (response.status == Status.COMPLETED) {
-                if (kDebugMode) {
-                  print("Email sent successfully: ${response.data!.message}");
-                }
-                if (Misc.showDebugSnackBar) {
-                  // Build #1.0.254
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(response.data!.message),
-                      backgroundColor: Colors.green,
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
-                }
-              } else if (response.status == Status.ERROR) {
-                if (kDebugMode) {
-                  print("Failed to send email: ${response.message}");
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(TextConstants.failedSendEmail),
-                    backgroundColor: Colors.red,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
-              }
-              subscription?.cancel();
-              // Proceed to complete the order after email API response
-              changeStatusToCompletedAndExit(true,
-                  selectedOption: selectedOption);
-            });
+                  if (response.status == Status.COMPLETED) {
+                    if (kDebugMode) {
+                      print("Email sent successfully: ${response.data!.message}");
+                    }
+                    if (Misc.showDebugSnackBar) {
+                      // Build #1.0.254
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(response.data!.message),
+                          backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  } else if (response.status == Status.ERROR) {
+                    if (kDebugMode) {
+                      print("Failed to send email: ${response.message}");
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(TextConstants.failedSendEmail),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                  subscription?.cancel();
+                  // Proceed to complete the order after email API response
+                  changeStatusToCompletedAndExit(true,
+                      selectedOption: selectedOption);
+                });
           } else {
             // For non-email options, proceed directly to complete the order
             changeStatusToCompletedAndExit(true,
@@ -14247,6 +18345,158 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
   ///Use this function to change status to complete the order after payment
   ///it is used called by no receipt and print receipt on order payment completed - print button tap
+  // void changeStatusToCompletedAndExit(bool isReceipt,
+  //     {String selectedOption = TextConstants.print}) {
+  //   if (kDebugMode) {
+  //     print(
+  //         "OrderSummaryScreen _showReceiptDialog Done call print receipt = $isReceipt");
+  //   }
+  //
+  //   if (kDebugMode) {
+  //     print(
+  //         "changeStatusToCompletedAndExit called with isReceipt=$isReceipt, selectedOption=$selectedOption");
+  //   } else if (selectedOption == TextConstants.sms) {
+  //     // SMS receipt
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text(TextConstants.smsConfiguration),
+  //         backgroundColor: Colors.red,
+  //         duration: const Duration(seconds: 1),
+  //       ),
+  //     );
+  //   }
+  //
+  //   // If user navigates back to this screen later, make sure we don't keep
+  //   // the keypad/EBT highlight from the previous payment flow.
+  //   selectedPaymentMethod = TextConstants.cash;
+  //   _rawAmount = 0;
+  //   amountController.text = '${TextConstants.currencySymbol}0.00';
+  //   _isAmountEntered = false;
+  //   _amountErrorText = null;
+  //
+  //   // ✅ Update Hive with latest merchant discount before final sync
+  //   _updateHiveWithLatestMerchantDiscount().then((_) {
+  //     // Background sync after updating Hive
+  //     Future(() async {
+  //       try {
+  //         await _syncCurrentOfflineOrder();
+  //         print("✅ Background: Final sync completed");
+  //       } catch (e) {
+  //         print("❌ Background: Final sync failed: $e");
+  //       }
+  //     });
+  //   });
+  //
+  //   Navigator.of(context).pop(); // Dismiss the receipt dialog
+  //
+  //   if (kDebugMode) {
+  //     print("changeStatusToCompletedAndExit -> 3:");
+  //   }
+  //
+  //   ///Completed order
+  //   OrderHelper.isOrderPanelLoaded = false;
+  //   OrderHelper.notifyOrderPanelToRefresh();
+  //   Navigator.pushReplacement(
+  //     result: TextConstants.refresh,
+  //     context,
+  //     MaterialPageRoute(builder: (_) => POSHomeScreen()),
+  //   );
+  //
+  //   ScaffoldMessenger.of(context).showSnackBar(
+  //     SnackBar(
+  //       content: Text(
+  //         TextConstants.orderCompleted,
+  //         style: const TextStyle(color: Colors.white),
+  //       ),
+  //       backgroundColor: Colors.green,
+  //       duration: const Duration(seconds: 1),
+  //     ),
+  //   );
+  // }
+
+  void doBackgroundWork() {
+    // Capture before the async gap / navigation so context is still valid.
+    final messaging = Provider.of<StoreMessagingService>(context, listen: false);
+
+    Future(() async {
+      if (orderId != null && orderId! > 0) {
+        final allPayments = await LocalPaymentDBHelper.instance
+            .getPaymentsByOrderId(orderId!);
+        final bool isNegativeOrder = computedNetPayable <= 0;
+        for (final p in allPayments) {
+          if (p.status == PaymentDbStatus.pending) {
+            if (p.amount > 0 || isNegativeOrder) {
+              await LocalPaymentDBHelper.instance
+                  .updateStatus(p.id, PaymentDbStatus.completed);
+            }
+          }
+        }
+      }
+
+      await _updateHiveWithLatestMerchantDiscount();
+
+      try {
+        await _syncCurrentOfflineOrder();
+      } catch (e) {
+        if (kDebugMode) print("❌ doBackgroundWork: sync failed: $e");
+      }
+
+      // FIX: tell the MQTT-driven CFD to go idle. Previously only the
+      // native secondary display was refreshed here — the Customer
+      // Display flutter app (StoreMessagingService/MQTT) was never
+      // notified, so it kept showing the last paid order forever
+      // whenever this full-payment path was used instead of
+      // changeStatusToCompletedAndExit().
+      try {
+        final store = await CfdStorePayload.load();
+        final idleState = CartState(
+          sessionId: 'ORDER-0',
+          sequence: CfdSequence.next(),
+          screen: 'IDLE',
+          items: const [],
+          tax: 0,
+          message: null,
+          orderId: null,
+          subtotalOverride: 0,
+          orderDiscount: 0,
+          merchantDiscount: 0,
+          cashbackFee: 0,
+          netPayable: 0,
+          totalItems: 0,
+          orderDate: '',
+          orderTime: '',
+          summaryEnabled: false,
+          storeId: store.storeId,
+          storeName: store.storeName,
+          storeLogoUrl: store.storeLogoUrl,
+          storeBaseUrl: store.storeBaseUrl,
+          slideshowUrls: store.slideshowUrls,
+          loyaltyContact: '',
+          availablePoints: 0,
+        );
+        await messaging.publishState(idleState);
+      } catch (e) {
+        if (kDebugMode) print('⚠️ CFD idle publish failed: $e');
+      }
+
+      try {
+        final storeInfo = PinakaPreferences.getLoggedInStore();
+        if (storeInfo.isNotEmpty) {
+          await CustomerDisplayHelper.updateWelcomeWithStore(
+            storeInfo['storeId'] ?? '0',
+            storeInfo['storeName'] ?? 'Store',
+            storeLogoUrl: storeInfo['storeLogoUrl'] ?? '',
+            storeBaseUrl: storeInfo['storeBaseUrl'] ?? '',
+          );
+        } else {
+          await CustomerDisplayService.showWelcome();
+        }
+      } catch (e) {
+        if (kDebugMode) print(">>> customer display error: $e");
+      }
+    });
+  }
+
   void changeStatusToCompletedAndExit(bool isReceipt,
       {String selectedOption = TextConstants.print}) {
     if (kDebugMode) {
@@ -14268,36 +18518,61 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       );
     }
 
-    // If user navigates back to this screen later, make sure we don't keep
-    // the keypad/EBT highlight from the previous payment flow.
-    selectedPaymentMethod = TextConstants.cash;
-    _rawAmount = 0;
-    amountController.text = '${TextConstants.currencySymbol}0.00';
-    _isAmountEntered = false;
-    _amountErrorText = null;
+    // ── Clear CFD immediately (last order must not stick) ──
+    unawaited(() async {
+      try {
+        final messaging =
+        Provider.of<StoreMessagingService>(context, listen: false);
+        final store = await CfdStorePayload.load();
+        final idleState = CartState(
+          sessionId: 'ORDER-0',
+          sequence: CfdSequence.next(),
+          screen: 'IDLE',
+          items: const [],
+          tax: 0,
+          message: null,
+          orderId: null,
+          subtotalOverride: 0,
+          orderDiscount: 0,
+          merchantDiscount: 0,
+          cashbackFee: 0,
+          netPayable: 0,
+          totalItems: 0,
+          orderDate: '',
+          orderTime: '',
+          summaryEnabled: false,
+          storeId: store.storeId,
+          storeName: store.storeName,
+          storeLogoUrl: store.storeLogoUrl,
+          storeBaseUrl: store.storeBaseUrl,
+          slideshowUrls: store.slideshowUrls,
+          loyaltyContact: '',
+          availablePoints: 0,
+        );
+        await messaging.publishState(idleState);
+        await CustomerDisplayService.showWelcome();
+      } catch (_) {}
+    }());
 
-    // ✅ Update Hive with latest merchant discount before final sync
+    // Clear active order so RightOrderPanel does not reload finished cart
+    unawaited(OrderHelper().setActiveOrder(null));
+    unawaited(OrderHelper().clearPersistedCartSelection());
+
     _updateHiveWithLatestMerchantDiscount().then((_) {
-      // Background sync after updating Hive
       Future(() async {
         try {
           await _syncCurrentOfflineOrder();
-          print("✅ Background: Final sync completed");
         } catch (e) {
           print("❌ Background: Final sync failed: $e");
         }
       });
     });
 
-    Navigator.of(context).pop(); // Dismiss the receipt dialog
+    Navigator.of(context).pop(); // receipt dialog if open
 
-    if (kDebugMode) {
-      print("changeStatusToCompletedAndExit -> 3:");
-    }
-
-    ///Completed order
     OrderHelper.isOrderPanelLoaded = false;
     OrderHelper.notifyOrderPanelToRefresh();
+
     Navigator.pushReplacement(
       result: TextConstants.refresh,
       context,
@@ -14315,6 +18590,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       ),
     );
   }
+
 
   // void showVoidExitConfirmation(BuildContext context, bool isPartial) {
   //   if (kDebugMode) {
@@ -14436,12 +18712,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
   // }
 
   Widget _buildPaymentAmountDisplay(
-    String label,
-    String amount, {
-    required Color leftBarColor,
-    Color? amountColor = Colors.black,
-    bool isPaymentBalance = false, // NEW: Add this flag
-  }) {
+      String label,
+      String amount, {
+        required Color leftBarColor,
+        Color? amountColor = Colors.black,
+        bool isPaymentBalance = false,
+        double labelFontSize = 11,
+        double amountFontSize = 12,
+        FontWeight amountFontWeight = FontWeight.w700,   // ← This was missing
+      }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
 
     return Container(
@@ -14451,7 +18730,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // 🔴 LEFT INDICATOR BAR
+          // LEFT INDICATOR BAR
           Container(
             width: 4,
             height: ResponsiveLayout.getHeight(45),
@@ -14473,7 +18752,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
           const SizedBox(width: 10),
 
-          // 📄 TEXT CONTENT
+          // TEXT CONTENT
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -14481,7 +18760,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(11),
+                  fontSize: ResponsiveLayout.getFontSize(labelFontSize),
                   fontWeight: FontWeight.w500,
                   color: themeHelper.themeMode == ThemeMode.dark
                       ? Colors.white
@@ -14492,12 +18771,11 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
               Text(
                 amount,
                 style: TextStyle(
-                  fontSize: ResponsiveLayout.getFontSize(12),
-                  fontWeight: FontWeight.w700,
-                  color: amountColor ??
-                      (themeHelper.themeMode == ThemeMode.dark
-                          ? Colors.white
-                          : const Color(0xFF222222)),
+                  fontSize: ResponsiveLayout.getFontSize(amountFontSize),
+                  fontWeight: amountFontWeight,           // ← Now working
+                  color: amountColor ?? (themeHelper.themeMode == ThemeMode.dark
+                      ? Colors.white
+                      : const Color(0xFF222222)),
                 ),
               ),
             ],
@@ -14507,3 +18785,4 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
     );
   }
 }
+
