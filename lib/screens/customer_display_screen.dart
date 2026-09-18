@@ -2793,22 +2793,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
 // ============================================================================
 
 bool _isDiscountLineItem(DisplayItem item) {
-  final name = item.name.toLowerCase().trim();
-  final type = item.itemType.toLowerCase();
-
-  if (type.contains('discount') || type.contains('merchant')) {
-    return true;
-  }
-  if (name.contains('merchant discount') ||
-      name == 'discount' ||
-      name.contains('order discount')) {
-    return true;
-  }
-  // Coupon as a cart line belongs only in summary
-  if (name == 'coupon' || type.contains('coupon')) {
-    return true;
-  }
-  return false;
+  return item.isDiscountLine;
 }
 
 List<DisplayItem> _visibleCartItems(List<DisplayItem> items) {
@@ -2828,8 +2813,28 @@ String _cleanBaseUrl(String value) {
 }
 
 String _resolveUrl(String url, String? baseUrl) {
-  final value = url.trim();
+  var value = url.trim();
   if (value.isEmpty) return '';
+
+  final base = baseUrl != null ? _cleanBaseUrl(baseUrl) : '';
+
+  if (base.isNotEmpty) {
+    try {
+      final baseUri = Uri.parse(base);
+      if (baseUri.host.isNotEmpty) {
+        if (value.startsWith('http://localhost') ||
+            value.startsWith('https://localhost') ||
+            value.startsWith('http://127.0.0.1') ||
+            value.startsWith('https://127.0.0.1')) {
+          final uri = Uri.parse(value);
+          value = uri.replace(
+            host: baseUri.host,
+            port: baseUri.hasPort ? baseUri.port : (uri.hasPort ? uri.port : null),
+          ).toString();
+        }
+      }
+    } catch (_) {}
+  }
 
   if (value.startsWith('http://') ||
       value.startsWith('https://') ||
@@ -2838,11 +2843,10 @@ String _resolveUrl(String url, String? baseUrl) {
     return value;
   }
 
-  if (baseUrl == null || baseUrl.trim().isEmpty) {
+  if (base.isEmpty) {
     return value;
   }
 
-  final base = _cleanBaseUrl(baseUrl);
   if (value.startsWith('/')) {
     return '$base$value';
   }
@@ -3236,12 +3240,20 @@ class _PromotionSlideshowState extends State<_PromotionSlideshow> {
 
   @override
   Widget build(BuildContext context) {
-    // Only show spinner the first time with zero images
     if (_loading && _images.isEmpty) {
       return Container(
         color: _C.slate,
         alignment: Alignment.center,
-        child: const CircularProgressIndicator(color: Colors.white54),
+        padding: const EdgeInsets.all(24),
+        child: const Text(
+          'Scan QR code to pair with POS',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: 18,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
       );
     }
 
@@ -3323,16 +3335,15 @@ class _SlideshowState extends State<_Slideshow> {
       return Container(
         color: _C.slate,
         alignment: Alignment.center,
-        child: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.image_outlined, color: Colors.white54, size: 64),
-            SizedBox(height: 12),
-            Text(
-              'No banners',
-              style: TextStyle(color: Colors.white70, fontSize: 16),
-            ),
-          ],
+        padding: const EdgeInsets.all(24),
+        child: const Text(
+          'Scan QR code to pair with POS',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: 18,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       );
     }
@@ -3556,7 +3567,11 @@ class _WelcomeLayoutState extends State<_WelcomeLayout> {
                 border: Border.all(color: Colors.amber.shade700, width: 2),
               ),
               clipBehavior: Clip.antiAlias,
-              child: _StoreLogo(url: _storeLogoUrl, width: 90),
+              child: _StoreLogo(
+                url: _storeLogoUrl,
+                baseUrl: widget.state.storeBaseUrl,
+                width: 90,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
@@ -3657,6 +3672,7 @@ class _WelcomeLayoutState extends State<_WelcomeLayout> {
                     children: [
                       _StoreLogo(
                         url: _storeLogoUrl,
+                        baseUrl: widget.state.storeBaseUrl,
                         width: 150,
                       ),
                       const SizedBox(height: 24),
@@ -3729,16 +3745,29 @@ class _WelcomeLayoutState extends State<_WelcomeLayout> {
 
 class _StoreLogo extends StatelessWidget {
   final String? url;
+  final String? baseUrl;
   final double width;
 
   const _StoreLogo({
+    super.key,
     required this.url,
+    this.baseUrl,
     required this.width,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (url == null || url!.trim().isEmpty) {
+    final rawUrl = url?.trim();
+    if (rawUrl == null || rawUrl.isEmpty) {
+      return Icon(
+        Icons.storefront_rounded,
+        color: Colors.white,
+        size: width * 0.6,
+      );
+    }
+
+    final cleanUrl = _resolveUrl(rawUrl, baseUrl);
+    if (cleanUrl.isEmpty) {
       return Icon(
         Icons.storefront_rounded,
         color: Colors.white,
@@ -3747,10 +3776,22 @@ class _StoreLogo extends StatelessWidget {
     }
 
     return Image.network(
-      url!,
+      cleanUrl,
+      key: ValueKey(cleanUrl),
       width: width,
       fit: BoxFit.contain,
+      gaplessPlayback: true,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) {
+          return child;
+        }
+        return SizedBox(
+          width: width,
+          height: width * 0.6,
+        );
+      },
       errorBuilder: (context, error, stackTrace) {
+        debugPrint('STORE LOGO -> Failed loading store logo ($cleanUrl): $error');
         return Icon(
           Icons.storefront_rounded,
           color: Colors.white,
@@ -4232,7 +4273,11 @@ class _HeaderBar extends StatelessWidget {
               border: Border.all(color: Colors.amber.shade700, width: 1.5),
             ),
             clipBehavior: Clip.antiAlias,
-            child: _StoreLogo(url: state.storeLogoUrl, width: 36),
+            child: _StoreLogo(
+              url: state.storeLogoUrl,
+              baseUrl: state.storeBaseUrl,
+              width: 36,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -4585,31 +4630,44 @@ class _ItemRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final nameLower = item.name.toLowerCase();
-    final isSpecial =
-        nameLower == 'payout' || nameLower == 'cashback' || nameLower == 'coupon';
+
+    final isSpecial = nameLower == 'payout' ||
+        nameLower == 'cashback' ||
+        nameLower == 'coupon';
+
     final isWeighted =
-        item.itemType.toLowerCase().contains('weighted') && item.weightQty > 0;
+        item.itemType.toLowerCase().contains('weighted') &&
+            item.weightQty > 0;
 
     final String qtyPriceText;
+
     if (isSpecial) {
       qtyPriceText = '';
     } else if (isWeighted) {
       qtyPriceText =
-          '${item.weightQty.toStringAsFixed(3)} lb × ${_currency(item.unitPrice)}';
+      '${item.weightQty.toStringAsFixed(3)} lb × ${_currency(item.unitPrice)}';
     } else {
-      qtyPriceText = '${item.qty} × ${_currency(item.unitPrice)}';
+      qtyPriceText =
+      '${item.qty} × ${_currency(item.unitPrice)}';
     }
 
     final isPayout = nameLower == 'payout';
     final isCashback = nameLower == 'cashback';
 
+    final discountInfo = _getDiscountDisplay(item);
+
     return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 10,
+      ),
       decoration: BoxDecoration(
+        color: Colors.white,
         border: Border(
           bottom: BorderSide(
-            color: isLast ? Colors.transparent : const Color(0xFFE5E7EB),
+            color: isLast
+                ? Colors.transparent
+                : const Color(0xFFE5E7EB),
             width: 1,
           ),
         ),
@@ -4619,17 +4677,35 @@ class _ItemRow extends StatelessWidget {
         children: [
           Expanded(
             flex: 16,
-            child: Text(
-              item.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF111827),
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  item.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (discountInfo != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '${discountInfo.label}: -${_currency(discountInfo.amount)}',
+                    style: TextStyle(
+                      color: discountInfo.color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
+
           Expanded(
             flex: 10,
             child: Text(
@@ -4642,24 +4718,119 @@ class _ItemRow extends StatelessWidget {
               ),
             ),
           ),
+
           Expanded(
             flex: 8,
             child: Text(
-              _currency(item.total),
+              isPayout
+                  ? '-${_currency(item.total.abs())}'
+                  : _currency(item.total),
               textAlign: TextAlign.right,
               style: TextStyle(
-                color: (isPayout || isCashback) ? const Color(0xFFD92525) : const Color(0xFF111827),
+                color: isPayout
+                    ? const Color(0xFFD92525) // Payout = Red
+                    : const Color(0xFF111827), // Cashback/others = Black
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
               ),
             ),
           ),
+
+
         ],
       ),
     );
   }
 
-  String _currency(double value) => '\$${value.toStringAsFixed(2)}';
+  ({String label, double amount, Color color})? _getDiscountDisplay(
+      DisplayItem item,
+      ) {
+    final dTypeLower =
+    (item.discountType ?? '').toLowerCase();
+
+    // 1. Multi Pack / Multipack -> BLUE
+    if (item.multipackDiscount > 0 ||
+        dTypeLower.contains('multi') ||
+        dTypeLower.contains('pack')) {
+      final amount = item.multipackDiscount > 0
+          ? item.multipackDiscount
+          : item.activeDiscountAmount;
+
+      if (amount > 0) {
+        return (
+        label: item.discountType ?? 'Multi Pack Discount',
+        amount: amount,
+        color: const Color(0xFF007BFF),
+        );
+      }
+    }
+
+    // 2. Mix & Match / Combo -> YELLOW-ORANGE
+    if (item.comboDiscount > 0 ||
+        item.mixAndMatchDiscount > 0 ||
+        dTypeLower.contains('combo') ||
+        dTypeLower.contains('mix')) {
+      final amount = item.comboDiscount > 0
+          ? item.comboDiscount
+          : (item.mixAndMatchDiscount > 0
+          ? item.mixAndMatchDiscount
+          : item.activeDiscountAmount);
+
+      if (amount > 0) {
+        return (
+        label: 'Combo Discount',
+        amount: amount,
+        color: const Color(0xFFFF9800),
+        );
+      }
+    }
+
+    // 3. Auto / Auto Discount -> RED
+    if (item.autoDiscount > 0 ||
+        dTypeLower.contains('auto')) {
+      final amount = item.autoDiscount > 0
+          ? item.autoDiscount
+          : item.activeDiscountAmount;
+
+      if (amount > 0) {
+        return (
+        label: item.discountType ?? 'Auto Discount',
+        amount: amount,
+        color: const Color(0xFFD92525),
+        );
+      }
+    }
+
+    // 4. Merchant Discount -> BLUE
+    if (item.merchantDiscount > 0 ||
+        dTypeLower.contains('merchant')) {
+      final amount = item.merchantDiscount > 0
+          ? item.merchantDiscount
+          : item.activeDiscountAmount;
+
+      if (amount > 0) {
+        return (
+        label: item.discountType ?? 'Merchant Discount',
+        amount: amount,
+        color: const Color(0xFF007BFF),
+        );
+      }
+    }
+
+    // 5. General item discount -> GREEN
+    if (item.itemDiscount > 0) {
+      return (
+      label: item.discountType ?? 'Discount',
+      amount: item.itemDiscount,
+      color: const Color(0xFF28A745),
+      );
+    }
+
+    return null;
+  }
+
+  String _currency(double value) =>
+      '\$${value.toStringAsFixed(2)}';
 }
 
 // ============================================================================
@@ -4789,10 +4960,21 @@ class _SummaryPanelState extends State<_SummaryPanel> {
   Widget build(BuildContext context) {
     final state = widget.state;
 
-    final double coupon = state.discount > 0 ? state.discount : 0.0;
+    final double coupon = state.couponDiscount > 0 ? state.couponDiscount : 0.0;
+    final double generalDiscount =
+        (state.discount > 0 && state.discount != coupon) ? state.discount : 0.0;
+
+    final double totalDiscounts = state.autoDiscount +
+        state.comboDiscount +
+        state.multipackDiscount +
+        state.mixAndMatchDiscount +
+        state.merchantDiscount +
+        coupon +
+        generalDiscount;
+
     final double net = state.netTotal > 0
         ? state.netTotal
-        : (state.subtotal - coupon - state.merchantDiscount);
+        : (state.subtotal - totalDiscounts);
     final double netPayable = state.total;
 
     final int totalItems = state.items.fold<int>(0, (sum, item) {

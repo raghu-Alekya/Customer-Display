@@ -889,7 +889,6 @@ import 'dart:typed_data';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:nsd/nsd.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/display_state.dart';
 
