@@ -17,12 +17,31 @@ class ShiftSyncService {
 
   void startListening() {
     _subscription?.cancel();
+
     _subscription = _connectivity.onConnectivityChanged.listen((results) {
       final hasNet = _hasInternet(results);
+
       if (hasNet) {
         triggerSync();
       }
     });
+
+    // Also try once immediately.
+    _checkAndSync();
+  }
+
+  Future<void> _checkAndSync() async {
+    try {
+      final results = await _connectivity.checkConnectivity();
+
+      if (_hasInternet(results)) {
+        await triggerSync();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ [ShiftSyncService] Initial connectivity check failed: $e');
+      }
+    }
   }
 
   bool _hasInternet(dynamic results) {

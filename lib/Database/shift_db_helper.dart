@@ -1305,23 +1305,33 @@ class ShiftDbHelper {
     required Map<String, dynamic> closePayload,
   }) async {
     final db = await _getDb();
+
     final rows = await db.query(
       AppDBConst.shiftTable,
-      where: '${AppDBConst.userId} = ? AND (${AppDBConst.shiftLocalId} = ? OR ${AppDBConst.shiftServerId} = ?)',
+      where: '''
+      ${AppDBConst.userId} = ?
+      AND (
+        ${AppDBConst.shiftLocalId} = ?
+        OR ${AppDBConst.shiftServerId} = ?
+      )
+    ''',
       whereArgs: [userId, shiftId, shiftId],
       limit: 1,
     );
+
     if (rows.isEmpty) {
       throw Exception('Shift not found locally: $shiftId');
     }
-    final localId = (rows.first[AppDBConst.shiftLocalId] as num).toInt();
+
+    final localShiftId =
+    (rows.first[AppDBConst.shiftLocalId] as num).toInt();
+
     return closeShiftOffline(
-      localShiftId: localId,
+      localShiftId: localShiftId,
       closingBalance: closingBalance,
       closePayload: closePayload,
     );
   }
-
   Future<void> markShiftClosureSynced(int localShiftId) async {
     final db = await _getDb();
 

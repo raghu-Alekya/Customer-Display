@@ -41,11 +41,27 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkValidationAndNavigate() async {
-    await Future.delayed(const Duration(seconds: 1)); // Keep splash delay
+    // Keep the branded splash visible briefly, but never allow startup
+    // recovery/network work to hold the app on the splash indefinitely.
+    await Future.delayed(const Duration(seconds: 1));
 
-    // Best-effort crash recovery; normal splash navigation is unchanged.
-    await StartupRecoveryService.recover();
-    bool isValid = await StoreDbHelper.instance.isStoreValidationValid(); //Build #1.0.126: updated to StoreDbHelper
+    try {
+      await StartupRecoveryService.recover().timeout(
+        const Duration(seconds: 3),
+      );
+    } catch (e) {
+      debugPrint('[Splash] Startup recovery skipped: $e');
+    }
+
+    bool isValid = false;
+    try {
+      isValid = await StoreDbHelper.instance
+          .isStoreValidationValid()
+          .timeout(const Duration(seconds: 2));
+    } catch (e) {
+      debugPrint('[Splash] Store validation check failed: $e');
+    }
+
     if (isValid && mounted) {
       Navigator.pushReplacement(
         context,

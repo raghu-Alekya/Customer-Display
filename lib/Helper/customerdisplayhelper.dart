@@ -986,8 +986,8 @@ class CustomerDisplayHelper {
           return {
             "name": pName.isNotEmpty ? pName : "Payout",
             "qty": 1.0,
-            "price": pAmt.abs(),
-            "original_price": pAmt.abs(),
+            "price": -pAmt.abs(),
+            "original_price": -pAmt.abs(),
             "auto_discount": 0.0,
             "image": pImg,
             "product_id": (p["payout_product_id"] ?? p["product_id"] ?? p["id"] ?? "payout").toString(),
@@ -1083,10 +1083,10 @@ class CustomerDisplayHelper {
 
       // ------------------ LOYALTY CONTACT ------------------
       final loyaltyContact = data["loyaltyContact"]?.toString() ?? "";
-      print("☎ Loyalty Contact = $loyaltyContact");
+      print(" Loyalty Contact = $loyaltyContact");
       final int availablePoints =
           int.tryParse(data["available_points"]?.toString() ?? "0") ?? 0;
-      print("🎯 Available Points = $availablePoints");
+      print(" Available Points = $availablePoints");
 
       // ------------------ STORE DETAILS & BANNERS ------------------
       final storePayload = await CfdStorePayload.load();
@@ -1106,48 +1106,49 @@ class CustomerDisplayHelper {
         orElse: () => "NONE",
       );
 
-      await CustomerDisplayService.showCustomerData(
-        orderId: safeOrderId,
-        items: parsedItems,
-        grossTotal: grossTotal,
-        discount: orderDiscount,
-        merchantDiscount: merchantDiscount,
-        netTotal: netTotal,
-        tax: orderTax,
-        netPayable: netPayable,
-        orderDate: orderDate,
-        orderTime: orderTime,
-        cashbackFee: cashbackFee,
-        loyaltyContact: loyaltyContact,
-        summaryEnabled: summaryEnabled,
-        discountType: appliedDiscountType,
-        discountValue: totalItemDiscount,
-        redeemedAmount: 0.0,
-        availablePoints: availablePoints,
-        storeId: storePayload.storeId,
-        storeName: storePayload.storeName,
-        storeLogoUrl: storePayload.storeLogoUrl,
-        storeBaseUrl: storePayload.storeBaseUrl,
-        slideshowUrls: storePayload.slideshowUrls,
-      );
-
-      // ========== NEW: Publish full cart to MQTT CFD ==========
-      await _publishMqttCart(
-        orderId: safeOrderId,
-        items: parsedItems,
-        tax: orderTax,
-        orderDiscount: orderDiscount,
-        merchantDiscount: merchantDiscount,
-        netPayable: netPayable,
-        grossTotal: grossTotal,
-        screen: summaryEnabled ? 'PAYMENT' : 'CART',
-        message: summaryEnabled ? 'Please complete payment' : null,
-        storeId: storePayload.storeId,
-        storeName: storePayload.storeName,
-        storeLogoUrl: storePayload.storeLogoUrl,
-        storeBaseUrl: storePayload.storeBaseUrl,
-        slideshowUrls: storePayload.slideshowUrls,
-      );
+      // Run Native display update and MQTT CFD publish concurrently so MQTT doesn't wait for native platform calls
+      await Future.wait([
+        CustomerDisplayService.showCustomerData(
+          orderId: safeOrderId,
+          items: parsedItems,
+          grossTotal: grossTotal,
+          discount: orderDiscount,
+          merchantDiscount: merchantDiscount,
+          netTotal: netTotal,
+          tax: orderTax,
+          netPayable: netPayable,
+          orderDate: orderDate,
+          orderTime: orderTime,
+          cashbackFee: cashbackFee,
+          loyaltyContact: loyaltyContact,
+          summaryEnabled: summaryEnabled,
+          discountType: appliedDiscountType,
+          discountValue: totalItemDiscount,
+          redeemedAmount: 0.0,
+          availablePoints: availablePoints,
+          storeId: storePayload.storeId,
+          storeName: storePayload.storeName,
+          storeLogoUrl: storePayload.storeLogoUrl,
+          storeBaseUrl: storePayload.storeBaseUrl,
+          slideshowUrls: storePayload.slideshowUrls,
+        ),
+        _publishMqttCart(
+          orderId: safeOrderId,
+          items: parsedItems,
+          tax: orderTax,
+          orderDiscount: orderDiscount,
+          merchantDiscount: merchantDiscount,
+          netPayable: netPayable,
+          grossTotal: grossTotal,
+          screen: summaryEnabled ? 'PAYMENT' : 'CART',
+          message: summaryEnabled ? 'Please complete payment' : null,
+          storeId: storePayload.storeId,
+          storeName: storePayload.storeName,
+          storeLogoUrl: storePayload.storeLogoUrl,
+          storeBaseUrl: storePayload.storeBaseUrl,
+          slideshowUrls: storePayload.slideshowUrls,
+        ),
+      ]);
       // ========================================================
 
       print("✅ [CD] Completed updateCustomerDisplay → $serverOrderId");

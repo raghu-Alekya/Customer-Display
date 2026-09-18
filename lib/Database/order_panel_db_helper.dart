@@ -77,6 +77,11 @@ class OrderHelper {
   /// Notifier for full reload (new order tab, ensureOrderExists, tab bar sync).
   static final ValueNotifier<int> orderPanelFullRefreshNotifier = ValueNotifier(0);
   static final Map<int, double> _manualRefundAmounts = {};
+  static final Map<int, Map<String, dynamic>> _productTaxMetaCache = {};
+
+  static void clearProductTaxCache() {
+    _productTaxMetaCache.clear();
+  }
 
   static void notifyOrderPanelToRefresh({bool full = false}) {
     if (full) {
@@ -160,118 +165,100 @@ class OrderHelper {
       int productId, double discountedUnitPrice, int qty) {
     try {
       final double taxableBase = discountedUnitPrice * qty;
-      final isar = IsarService.sync;
-      if (isar == null) return 0.0;
 
-      final cachedEntries = isar.isarCacheEntrys
-          .where()
-          .filter()
-          .keyStartsWith("products_")
-          .findAllSync();
+      Map<String, dynamic>? meta = _productTaxMetaCache[productId];
+      if (meta == null) {
+        final isar = IsarService.sync;
+        if (isar != null) {
+          final cachedEntries = isar.isarCacheEntrys
+              .where()
+              .filter()
+              .keyStartsWith("products_")
+              .findAllSync();
 
-      for (final entry in cachedEntries) {
-        final List products = json.decode(entry.json);
+          for (final entry in cachedEntries) {
+            final List products = json.decode(entry.json);
+            for (final p in products) {
+              if (p is Map) {
+                final pid = int.tryParse(
+                        (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                    -1;
+                if (pid > 0) {
+                  final pStatus = (p["tax_status"] ?? "taxable").toString();
+                  final pClass = (p["tax_class"] ?? "").toString();
+                  final pRates = p["tax_rates"] ?? p["tax"]?["tax_rates"];
+                  final pRate = _combinedTaxRate(
+                    pRates,
+                    p["tax_rate"] ?? p["tax"]?["rate"],
+                  );
+                  _productTaxMetaCache[pid] = {
+                    "tax_status": pStatus,
+                    "tax_class": pClass,
+                    "tax_rate": pRate,
+                    "tax_rates": pRates,
+                  };
+                }
+              }
+            }
+          }
+        }
 
-        final product = products.firstWhere(
-              (p) {
-            final pid = int.tryParse(
-                (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
-                -1;
-            return pid == productId;
-          },
-          orElse: () => null,
-        );
+        if (!_productTaxMetaCache.containsKey(productId)) {
+          final isar = IsarService.sync;
+          final allProductsEntry = isar?.isarCacheEntrys
+              .where()
+              .keyEqualTo("productCache::all_products_list")
+              .findFirstSync();
+          if (allProductsEntry != null) {
+            final dynamic decoded = json.decode(allProductsEntry.json);
+            final List allProducts = decoded is List ? decoded : <dynamic>[];
+            for (final p in allProducts) {
+              if (p is Map) {
+                final pid = int.tryParse(
+                        (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                    -1;
+                if (pid > 0) {
+                  final pStatus = (p["tax_status"] ?? "taxable").toString();
+                  final pClass = (p["tax_class"] ?? "").toString();
+                  final pRates = p["tax_rates"] ?? p["tax"]?["tax_rates"];
+                  final pRate = _combinedTaxRate(
+                    pRates,
+                    p["tax_rate"] ?? p["tax"]?["rate"],
+                  );
+                  _productTaxMetaCache[pid] = {
+                    "tax_status": pStatus,
+                    "tax_class": pClass,
+                    "tax_rate": pRate,
+                    "tax_rates": pRates,
+                  };
+                }
+              }
+            }
+          }
+        }
+        meta = _productTaxMetaCache[productId];
+      }
 
-        if (product == null) continue;
-
-        final taxStatus =
-        (product["tax_status"] ?? "taxable").toString().toLowerCase();
-
+      if (meta != null) {
+        final taxStatus = (meta["tax_status"] ?? "taxable").toString().toLowerCase();
         if (taxStatus == "none") return 0.0;
 
-        // Support both cached shapes:
-        // 1) product["tax_rates"] (flat)
-        // 2) product["tax"]["tax_rates"] (nested)
-        final taxRates = product["tax_rates"] ?? product["tax"]?["tax_rates"];
-
+        final taxRates = meta["tax_rates"];
         if (taxRates is List && taxRates.isNotEmpty) {
           double taxTotal = 0.0;
-
           for (final tax in taxRates) {
             final double rate =
                 double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
-
             final double rawTax = (taxableBase * rate) / 100;
             final double roundedTax = roundTaxHalfUp(rawTax);
-
             taxTotal += roundedTax;
-
-            print("🧾 TAX LINE → rate:$rate base:$taxableBase tax:$roundedTax");
           }
-
-          print("✅ TOTAL TAX → $taxTotal");
           return roundTaxHalfUp(taxTotal);
         }
 
-        // Fallback: some cached products store a single tax rate instead of tax_rates array.
-        final fallbackRate = double.tryParse(
-          (product["tax_rate"] ?? product["tax"]?["rate"] ?? "0")
-              .toString(),
-        ) ??
-            0.0;
+        final fallbackRate = (meta["tax_rate"] as num?)?.toDouble() ?? 0.0;
         if (fallbackRate > 0) {
-          final tax = roundTaxHalfUp((taxableBase * fallbackRate) / 100);
-          print(
-              "🧾 TAX FALLBACK → rate:$fallbackRate base:$taxableBase tax:$tax");
-          return tax;
-        }
-      }
-
-      // Fallback: check all_products_list cache when product is not in current products_* buckets.
-      final allProductsEntry = isar.isarCacheEntrys
-          .where()
-          .keyEqualTo("productCache::all_products_list")
-          .findFirstSync();
-      if (allProductsEntry != null) {
-        final dynamic decoded = json.decode(allProductsEntry.json);
-        final List allProducts = decoded is List ? decoded : <dynamic>[];
-        final product = allProducts.cast<dynamic>().firstWhere(
-              (p) {
-            final pid = int.tryParse(
-                (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
-                -1;
-            return pid == productId;
-          },
-          orElse: () => null,
-        );
-
-        if (product != null) {
-          final taxStatus =
-          (product["tax_status"] ?? "taxable").toString().toLowerCase();
-          if (taxStatus == "none") return 0.0;
-
-          final taxRates = product["tax_rates"] ?? product["tax"]?["tax_rates"];
-          if (taxRates is List && taxRates.isNotEmpty) {
-            double taxTotal = 0.0;
-            for (final tax in taxRates) {
-              final double rate =
-                  double.tryParse(tax["rate"]?.toString() ?? "0") ?? 0.0;
-              final double rawTax = (taxableBase * rate) / 100;
-              final double roundedTax = roundTaxHalfUp(rawTax);
-              taxTotal += roundedTax;
-            }
-            return roundTaxHalfUp(taxTotal);
-          }
-
-          final fallbackRate = double.tryParse(
-            (product["tax_rate"] ?? product["tax"]?["rate"] ?? "0")
-                .toString(),
-          ) ??
-              0.0;
-          if (fallbackRate > 0) {
-            final tax = roundTaxHalfUp((taxableBase * fallbackRate) / 100);
-            return tax;
-          }
+          return roundTaxHalfUp((taxableBase * fallbackRate) / 100);
         }
       }
     } catch (e) {
@@ -1988,14 +1975,8 @@ class OrderHelper {
       await setActiveOrder(newOrderId);
       await saveLastActiveOrderId(newOrderId);
 
-      // 5b. Persist new order to SQLite so order panel and addItemToOrder see it
+      // 5b. Persist new order to SQLite so order panel and addItemToOrder see it (this internally syncs data & active order)
       await createOrder(serverOrderId: newOrderId);
-
-      // 6️⃣ Reload orders from offline storage so panel has full order data
-      await loadData();
-
-      // Restore active order
-      await restoreActiveOrderId();
 
       // Force order panel to refresh tabs for the new order
       OrderHelper.isOrderPanelLoaded = false;
@@ -2720,6 +2701,14 @@ class OrderHelper {
   }
 
   Future<Map<String, dynamic>> _resolveProductTaxMeta(int productId) async {
+    if (_productTaxMetaCache.containsKey(productId)) {
+      final cached = _productTaxMetaCache[productId]!;
+      return {
+        "tax_status": cached["tax_status"] ?? "taxable",
+        "tax_class": cached["tax_class"] ?? "",
+        "tax_rate": cached["tax_rate"] ?? 0.0,
+      };
+    }
     String status = "taxable";
     String taxClass = "";
     double rate = 0.0;
@@ -2735,54 +2724,72 @@ class OrderHelper {
 
         for (final entry in cachedEntries) {
           final List products = json.decode(entry.json);
-          final product = products.firstWhere(
-                (p) {
+          for (final p in products) {
+            if (p is Map) {
               final pid = int.tryParse(
-                  (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                      (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
                   -1;
-              return pid == productId;
-            },
-            orElse: () => null,
-          );
-
-          if (product == null) continue;
-          status = (product["tax_status"] ?? "taxable").toString();
-          taxClass = (product["tax_class"] ?? "").toString();
-          final taxRates = product["tax_rates"] ?? product["tax"]?["tax_rates"];
-          rate = _combinedTaxRate(
-            taxRates,
-            product["tax_rate"] ?? product["tax"]?["rate"],
-          );
-          return {
-            "tax_status": status,
-            "tax_class": taxClass,
-            "tax_rate": rate,
-          };
+              if (pid > 0) {
+                final pStatus = (p["tax_status"] ?? "taxable").toString();
+                final pClass = (p["tax_class"] ?? "").toString();
+                final pRates = p["tax_rates"] ?? p["tax"]?["tax_rates"];
+                final pRate = _combinedTaxRate(
+                  pRates,
+                  p["tax_rate"] ?? p["tax"]?["rate"],
+                );
+                _productTaxMetaCache[pid] = {
+                  "tax_status": pStatus,
+                  "tax_class": pClass,
+                  "tax_rate": pRate,
+                  "tax_rates": pRates,
+                };
+              }
+            }
+          }
+          if (_productTaxMetaCache.containsKey(productId)) {
+            final cached = _productTaxMetaCache[productId]!;
+            return {
+              "tax_status": cached["tax_status"] ?? "taxable",
+              "tax_class": cached["tax_class"] ?? "",
+              "tax_rate": cached["tax_rate"] ?? 0.0,
+            };
+          }
         }
       }
 
       // Fallback to flattened product list cache.
       final allProducts =
-      await StorageProvider.productCache.get("all_products_list");
+          await StorageProvider.productCache.get("all_products_list");
       if (allProducts is List) {
-        final product = allProducts.cast<dynamic>().firstWhere(
-              (p) {
+        for (final p in allProducts) {
+          if (p is Map) {
             final pid = int.tryParse(
-                (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                    (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
                 -1;
-            return pid == productId;
-          },
-          orElse: () => null,
-        );
-
-        if (product != null) {
-          status = (product["tax_status"] ?? "taxable").toString();
-          taxClass = (product["tax_class"] ?? "").toString();
-          final taxRates = product["tax_rates"] ?? product["tax"]?["tax_rates"];
-          rate = _combinedTaxRate(
-            taxRates,
-            product["tax_rate"] ?? product["tax"]?["rate"],
-          );
+            if (pid > 0) {
+              final pStatus = (p["tax_status"] ?? "taxable").toString();
+              final pClass = (p["tax_class"] ?? "").toString();
+              final pRates = p["tax_rates"] ?? p["tax"]?["tax_rates"];
+              final pRate = _combinedTaxRate(
+                pRates,
+                p["tax_rate"] ?? p["tax"]?["rate"],
+              );
+              _productTaxMetaCache[pid] = {
+                "tax_status": pStatus,
+                "tax_class": pClass,
+                "tax_rate": pRate,
+                "tax_rates": pRates,
+              };
+            }
+          }
+        }
+        if (_productTaxMetaCache.containsKey(productId)) {
+          final cached = _productTaxMetaCache[productId]!;
+          return {
+            "tax_status": cached["tax_status"] ?? "taxable",
+            "tax_class": cached["tax_class"] ?? "",
+            "tax_rate": cached["tax_rate"] ?? 0.0,
+          };
         }
       }
     } catch (_) {}
@@ -3460,7 +3467,9 @@ class OrderHelper {
 
       try {
         CustomerDisplayHelper.skipNextPendingOrderRefresh = false;
-        await CustomerDisplayHelper.updateCustomerDisplay(orderId);
+        unawaited(CustomerDisplayHelper.updateCustomerDisplay(orderId).catchError((e) {
+          print("❌ Customer display update failed in addItemToOrder: $e");
+        }));
       } catch (e) {
         print("❌ Customer display update failed in addItemToOrder: $e");
       }

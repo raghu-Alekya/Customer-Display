@@ -70,7 +70,7 @@ class StartupRecoveryService {
     Map<String, dynamic> user,
   ) async {
     try {
-      final connectivity = await Connectivity().checkConnectivity();
+      final connectivity = await Connectivity().checkConnectivity().timeout(const Duration(seconds: 1));
       if (connectivity == ConnectivityResult.none) return;
 
       final validateUri = Uri.parse(
@@ -84,7 +84,7 @@ class StartupRecoveryService {
           'Authorization': 'Bearer $token',
         },
         body: jsonEncode({'emp_login_pin': ''}),
-      );
+      ).timeout(const Duration(seconds: 2));
 
       if (response.statusCode >= 200 && response.statusCode < 300) return;
 
@@ -101,7 +101,7 @@ class StartupRecoveryService {
           'Authorization': 'Bearer $token',
         },
         body: jsonEncode({'token': token}),
-      );
+      ).timeout(const Duration(seconds: 2));
 
       if (refreshResponse.statusCode < 200 ||
           refreshResponse.statusCode >= 300) {

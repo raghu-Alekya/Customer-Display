@@ -329,12 +329,13 @@ class _RightOrderPanelState extends State<RightOrderPanel>
     String? orderDate,
     String? orderTime,
     bool forceIdle = false, // true ONLY from delete confirm
+    int? orderId,
   }) async {
     try {
       final messaging =
       Provider.of<StoreMessagingService>(context, listen: false);
 
-      final int? activeId = orderHelper.activeOrderId;
+      final int? activeId = orderId ?? orderHelper.activeOrderId;
 
       // ============================================================
       // DELETE CONFIRM ONLY → publishIdleClear (state + /cmd)
@@ -9481,6 +9482,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                 await _publishMqttCart(
                                   isPayment: true,
                                   summaryEnabled: true,
+                                  orderId: frozenCheckoutOrderId,
                                   grossTotal: mqttGross,
                                   orderTax: mqttTax,
                                   orderDiscount: mqttDisc,

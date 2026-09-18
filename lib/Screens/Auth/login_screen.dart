@@ -1504,26 +1504,27 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
 
-                      // Test → Merchant
-                      const SizedBox(height: 16),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => DeviceAuthorizationScreen()
-                              //StoreIdScreen(),
-                            ),
-                          );
-                        },
-                        child: const Text(
-                          'Test → Merchant (Store ID)',
-                          style: TextStyle(
-                            color: Color(0xFF1E2745),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
+                      // // Test → Merchant
+                      // const SizedBox(height: 16),
+                      // TextButton(
+                      //   onPressed: () {
+                      //     Navigator.push(
+                      //       context,
+                      //       MaterialPageRoute(
+                      //           builder: (context) => DeviceAuthorizationScreen()
+                      //         //StoreIdScreen(),
+                      //       ),
+                      //     );
+                      //   },
+                      //   child: const Text(
+                      //     'Test → Merchant (Store ID)',
+                      //     style: TextStyle(
+                      //       color: Color(0xFF1E2745),
+                      //       fontWeight: FontWeight.w600,
+                      //     ),
+                      //   ),
+                      // ),
+
                     ],
                   ),
                 ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -66,98 +68,144 @@ import 'mqtt_server/cfd_store_payload.dart';
 import 'mqtt_server/store_messaging_service.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized(); // Ensure Flutter services are ready
+  WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Isar first
-  await IsarService.init();
-  ShiftSyncService().startListening();
-
-  AppDB.isar = await Isar.open(
-    [DiscountRuleIsarSchema],
-    directory: (await getApplicationDocumentsDirectory()).path,
-  );
-
-  // 1️⃣ First → initialize base URL
-  await UrlHelper.initializeBaseUrl();
-
-  // 2️⃣ Then prepare shared preferences
-  await PinakaPreferences.prepareSharedPref();
-
-  // 3️⃣ Then load cashback config
-  final userData = await UserDbHelper().getUserData();
-  final token = userData?[AppDBConst.userToken];
-
-  if (token != null && token.toString().isNotEmpty) {
-    await CashbackHelper.loadCashbackOnStartup();
-  } else {
-    print("⚠ No user token found — skipping cashback API");
+  // IMPORTANT FOR PLAY / PRE-LAUNCH:
+  // Only local, deterministic initialization is allowed before runApp().
+  // Network, MQTT, mDNS, customer-display and cashback services must never
+  // prevent Flutter from rendering the first screen.
+  try {
+    await IsarService.init().timeout(const Duration(seconds: 5));
+  } catch (e) {
+    debugPrint('[Startup] Isar init skipped: $e');
   }
 
-  /// Build #1.0.187: Required -> Disable device back button completely
-  if (!Misc.enableHardwareBackButton) {
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
+  try {
+    AppDB.isar = await Isar.open(
+      [DiscountRuleIsarSchema],
+      directory: (await getApplicationDocumentsDirectory()).path,
+    ).timeout(const Duration(seconds: 5));
+  } catch (e) {
+    debugPrint('[Startup] Discount-rule Isar init skipped: $e');
   }
 
-  ThemeNotifier themeNotifier = ThemeNotifier();
-  await themeNotifier.initializeThemeMode();
+  try {
+    await UrlHelper.initializeBaseUrl().timeout(const Duration(seconds: 3));
+  } catch (e) {
+    debugPrint('[Startup] Base URL initialization failed: $e');
+  }
 
-  // Build #1.0.9 : By default dark theme getting selected on launch even after changing from settings
-  await UrlHelper.initializeBaseUrl();
-  await DBHelper.instance.database;
-  // Restore the last store currency from SQLite before the first UI frame.
-  await OfflineHelper.restoreStoredCurrency();
-  // Start reconnect-aware synchronization for orders created offline.
-  OfflineOrderSyncService.start();
-
-  final deviceDetails = await GlobalUtility.getDeviceDetails();
-  // CustomerService.setPosIdFromDevice(deviceDetails['device_id']);
-  // await CustomerService.connect();
-
-  final storeInfo = PinakaPreferences.getLoggedInStore();
-  if (storeInfo.isNotEmpty) {
-    await CustomerDisplayHelper.updateWelcomeWithStore(
-      storeInfo['storeId']!,
-      storeInfo['storeName']!,
-      storeLogoUrl: storeInfo['storeLogoUrl'],
-      storeBaseUrl: storeInfo['storeBaseUrl'],
+  try {
+    await PinakaPreferences.prepareSharedPref().timeout(
+      const Duration(seconds: 3),
     );
-  } else {
-    await CustomerDisplayService.showWelcome();
+  } catch (e) {
+    debugPrint('[Startup] SharedPreferences initialization failed: $e');
+    // The app cannot safely construct ThemeNotifier/other preference users
+    // without SharedPreferences, so retry once locally before giving up.
+    try {
+      await PinakaPreferences.prepareSharedPref().timeout(
+        const Duration(seconds: 3),
+      );
+    } catch (retryError) {
+      debugPrint('[Startup] SharedPreferences retry failed: $retryError');
+    }
   }
 
-  /////Inventory_Tag_Get
+  final themeNotifier = ThemeNotifier();
+  try {
+    await themeNotifier.initializeThemeMode().timeout(
+      const Duration(seconds: 2),
+    );
+  } catch (e) {
+    debugPrint('[Startup] Theme initialization skipped: $e');
+  }
+
+  if (!Misc.enableHardwareBackButton) {
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: [],
+    );
+  }
+
+  // Local database initialization only. Never contact the merchant server here.
+  try {
+    await DBHelper.instance.database.timeout(const Duration(seconds: 5));
+  } catch (e) {
+    debugPrint('[Startup] Local SQLite initialization failed: $e');
+  }
+
+  try {
+    await OfflineHelper.restoreStoredCurrency().timeout(
+      const Duration(seconds: 2),
+    );
+  } catch (e) {
+    debugPrint('[Startup] Currency restore skipped: $e');
+  }
+
   final httpClient = http.Client();
 
-  final inventoryTagRemoteDataSource = Inventory_Tag_Remote_Data_Source_Impl(httpClient);
-  final inventoryTagRepository = Inventory_Tag_Repository_Impl(inventoryTagRemoteDataSource);
-  final inventoryTagUseCase = Inventory_Tag_Get_Tags_UseCase(inventoryTagRepository);
+  final inventoryTagRemoteDataSource =
+      Inventory_Tag_Remote_Data_Source_Impl(httpClient);
+  final inventoryTagRepository =
+      Inventory_Tag_Repository_Impl(inventoryTagRemoteDataSource);
+  final inventoryTagUseCase =
+      Inventory_Tag_Get_Tags_UseCase(inventoryTagRepository);
 
-  //////Inventory_Tax_Get
-  final inventoryTaxRemoteDataSource = Inventory_Tax_Remote_Data_Source_Impl(httpClient);
-  final inventoryTaxRepository = Inventory_Tax_Repository_Impl(inventoryTaxRemoteDataSource);
-  final inventoryTaxUseCase = Inventory_Tax_Get_UseCase(inventoryTaxRepository);
+  final inventoryTaxRemoteDataSource =
+      Inventory_Tax_Remote_Data_Source_Impl(httpClient);
+  final inventoryTaxRepository =
+      Inventory_Tax_Repository_Impl(inventoryTaxRemoteDataSource);
+  final inventoryTaxUseCase =
+      Inventory_Tax_Get_UseCase(inventoryTaxRepository);
 
-  // Inventory Categories
-  final inventoryCategoriesRemoteDataSource = InventoryCategoriesRemoteDataSourceImpl(client: httpClient);
-  final inventoryCategoriesRepository = InventoryCategoriesRepositoryImpl(remoteDataSource: inventoryCategoriesRemoteDataSource);
-  final inventoryCategoriesUseCase = InventoryCategoriesGetUseCase(repository: inventoryCategoriesRepository);
+  final inventoryCategoriesRemoteDataSource =
+      InventoryCategoriesRemoteDataSourceImpl(client: httpClient);
+  final inventoryCategoriesRepository =
+      InventoryCategoriesRepositoryImpl(
+    remoteDataSource: inventoryCategoriesRemoteDataSource,
+  );
+  final inventoryCategoriesUseCase =
+      InventoryCategoriesGetUseCase(
+    repository: inventoryCategoriesRepository,
+  );
 
-  // Inventory Attributes
-  final inventoryAttributesRemoteDataSource = InventoryAttributesRemoteDataSourceImpl(client: httpClient);
-  final inventoryAttributesRepository = InventoryAttributesRepositoryImpl(remoteDataSource: inventoryAttributesRemoteDataSource);
-  final inventoryAttributesUseCase = InventoryAttributesGetUseCase(repository: inventoryAttributesRepository);
+  final inventoryAttributesRemoteDataSource =
+      InventoryAttributesRemoteDataSourceImpl(client: httpClient);
+  final inventoryAttributesRepository =
+      InventoryAttributesRepositoryImpl(
+    remoteDataSource: inventoryAttributesRemoteDataSource,
+  );
+  final inventoryAttributesUseCase =
+      InventoryAttributesGetUseCase(
+    repository: inventoryAttributesRepository,
+  );
 
-  // InventoryGetProductTypes setup
-  final inventoryProductTypesRemoteDataSource = InventoryGetProductTypesRemoteDataSourceImpl(client: httpClient);
-  final inventoryProductTypesRepository = InventoryGetProductTypesRepositoryImpl(remoteDataSource: inventoryProductTypesRemoteDataSource);
-  final inventoryProductTypesUseCase = InventoryGetProductTypesGetUseCase(repository: inventoryProductTypesRepository);
+  final inventoryProductTypesRemoteDataSource =
+      InventoryGetProductTypesRemoteDataSourceImpl(client: httpClient);
+  final inventoryProductTypesRepository =
+      InventoryGetProductTypesRepositoryImpl(
+    remoteDataSource: inventoryProductTypesRemoteDataSource,
+  );
+  final inventoryProductTypesUseCase =
+      InventoryGetProductTypesGetUseCase(
+    repository: inventoryProductTypesRepository,
+  );
 
-  // Add Product WooCommerce setup
-  final addProductRemoteDataSource = AddProductInventoryTaxRemoteDataSource();
-  final addProductRepository = AddProductInventoryTaxRepositoryImpl(remoteDataSource: addProductRemoteDataSource);
-  final addProductUseCase = AddProductInventoryTaxGetUseCase(repository: addProductRepository);
-  final addProductBloc = AddProductInventoryTaxBloc(addProductUseCase: addProductUseCase);
+  final addProductRemoteDataSource =
+      AddProductInventoryTaxRemoteDataSource();
+  final addProductRepository =
+      AddProductInventoryTaxRepositoryImpl(
+    remoteDataSource: addProductRemoteDataSource,
+  );
+  final addProductUseCase =
+      AddProductInventoryTaxGetUseCase(
+    repository: addProductRepository,
+  );
+  final addProductBloc =
+      AddProductInventoryTaxBloc(addProductUseCase: addProductUseCase);
 
+  // Construct the messaging service, but DO NOT start network services yet.
   final messagingService = StoreMessagingService(
     merchantId: 'M1001',
     storeId: 'S001',
@@ -165,66 +213,6 @@ void main() async {
     brokerUsername: 'pinaka_cfd',
     brokerToken: 'generated-device-token',
   );
-
-  try {
-    await messagingService.startBroker();
-    await messagingService.startPublisher();
-    await messagingService.startMdnsAdvertisement();
-    print(
-      'MQTT Broker + Publisher + mDNS started — isReady=${messagingService.isReady}',
-    );
-  } catch (e) {
-    print('Failed to start MQTT (app continues): $e');
-  }
-
-  final posIp = await messagingService.getDeviceLocalIp();
-  if (posIp != null) {
-    print('========================================');
-    print('📱 POS DEVICE IP ADDRESS → $posIp');
-    print('   CFD fallback: $posIp:1883');
-    print('   mDNS: _pinaka-pos._tcp  name=PINAKA-POS01');
-    print('========================================');
-  } else {
-    print('❌ Could not detect POS IP address');
-  }
-
-  // Native secondary display welcome
-  // final storeInfo = PinakaPreferences.getLoggedInStore();
-  if (storeInfo.isNotEmpty) {
-    await CustomerDisplayHelper.updateWelcomeWithStore(
-      storeInfo['storeId']!,
-      storeInfo['storeName']!,
-      storeLogoUrl: storeInfo['storeLogoUrl'],
-      storeBaseUrl: storeInfo['storeBaseUrl'],
-    );
-  } else {
-    await CustomerDisplayService.showWelcome();
-  }
-
-  // MQTT CFD welcome (logo + name + banners)
-  try {
-    final store = await CfdStorePayload.load();
-    await messagingService.publishState(
-      CartState(
-        sessionId: 'WELCOME',
-        sequence: 0,
-        screen: 'WELCOME',
-        items: const [],
-        storeId: store.storeId,
-        storeName: store.storeName,
-        storeLogoUrl: store.storeLogoUrl,
-        storeBaseUrl: store.storeBaseUrl,
-        slideshowUrls: store.slideshowUrls,
-      ),
-    );
-    print(
-      '📤 MQTT WELCOME published → store=${store.storeName} '
-          'logo=${store.storeLogoUrl} banners=${store.slideshowUrls.length}',
-    );
-  } catch (e) {
-    print('⚠️ MQTT welcome publish failed: $e');
-  }
-  // ====================================================================
 
   runApp(
     MultiRepositoryProvider(
@@ -234,11 +222,9 @@ void main() async {
             baseUrl: "https://merchantretail.alektasolutions.com",
           ),
         ),
-        // ========== NEW: Provide the messaging service ==========
         RepositoryProvider<StoreMessagingService>.value(
           value: messagingService,
         ),
-        // ========================================================
       ],
       child: MultiBlocProvider(
         providers: [
@@ -254,28 +240,31 @@ void main() async {
             create: (_) => Inventory_Tax_Bloc(inventoryTaxUseCase),
           ),
           BlocProvider<InventoryCategoriesBloc>(
-            create: (_) => InventoryCategoriesBloc(getCategoriesUseCase: inventoryCategoriesUseCase),
+            create: (_) => InventoryCategoriesBloc(
+              getCategoriesUseCase: inventoryCategoriesUseCase,
+            ),
           ),
           BlocProvider<InventoryAttributesBloc>(
-            create: (_) => InventoryAttributesBloc(getUseCase: inventoryAttributesUseCase),
+            create: (_) => InventoryAttributesBloc(
+              getUseCase: inventoryAttributesUseCase,
+            ),
           ),
           BlocProvider<InventoryGetProductTypesBloc>(
-            create: (_) => InventoryGetProductTypesBloc(useCase: inventoryProductTypesUseCase),
+            create: (_) => InventoryGetProductTypesBloc(
+              useCase: inventoryProductTypesUseCase,
+            ),
           ),
-          BlocProvider<AddProductInventoryTaxBloc>(create: (_) => addProductBloc),
+          BlocProvider<AddProductInventoryTaxBloc>(
+            create: (_) => addProductBloc,
+          ),
           ChangeNotifierProvider(create: (_) => WeightProvider()),
-
-          // ========== NEW: CartProvider for MQTT publishing ==========
           ChangeNotifierProvider(
             create: (_) => CartProvider(
               messagingService: messagingService,
-              sessionId: 'SALE-${DateTime.now().millisecondsSinceEpoch}',
+              sessionId:
+                  'SALE-${DateTime.now().millisecondsSinceEpoch}',
             ),
           ),
-
-          RepositoryProvider<StoreMessagingService>.value(value: messagingService),
-
-          // ==========================================================
         ],
         child: ChangeNotifierProvider(
           create: (_) => themeNotifier,
@@ -284,6 +273,124 @@ void main() async {
       ),
     ),
   );
+
+  // Everything below is intentionally post-first-frame. If the Google
+  // pre-launch device has no Internet, no DNS, no LAN, no secondary display,
+  // or no MQTT broker, the POS UI still reaches SplashScreen/LoginScreen.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_startNonCriticalServices(messagingService, httpClient));
+  });
+}
+
+Future<void> _startNonCriticalServices(
+  StoreMessagingService messagingService,
+  http.Client httpClient,
+) async {
+  // Keep the connectivity/sync listeners alive, but never await network work
+  // before the first UI frame.
+  try {
+    ShiftSyncService().startListening();
+  } catch (e) {
+    debugPrint('[Startup] Shift sync listener failed: $e');
+  }
+
+  try {
+    final userData = await UserDbHelper().getUserData().timeout(
+      const Duration(seconds: 2),
+    );
+    final token = userData?[AppDBConst.userToken];
+    if (token != null && token.toString().isNotEmpty) {
+      await CashbackHelper.loadCashbackOnStartup().timeout(
+        const Duration(seconds: 4),
+      );
+    }
+  } catch (e) {
+    debugPrint('[Startup] Cashback startup skipped: $e');
+  }
+
+  try {
+    OfflineOrderSyncService.start();
+  } catch (e) {
+    debugPrint('[Startup] Offline order sync startup failed: $e');
+  }
+
+  final storeInfo = PinakaPreferences.getLoggedInStore();
+
+  // Secondary display is optional. Never block the POS if it is unavailable.
+  try {
+    if (storeInfo.isNotEmpty) {
+      await CustomerDisplayHelper.updateWelcomeWithStore(
+        storeInfo['storeId'] ?? '',
+        storeInfo['storeName'] ?? '',
+        storeLogoUrl: storeInfo['storeLogoUrl'],
+        storeBaseUrl: storeInfo['storeBaseUrl'],
+      ).timeout(const Duration(seconds: 2));
+    } else {
+      await CustomerDisplayService.showWelcome().timeout(
+        const Duration(seconds: 2),
+      );
+    }
+  } catch (e) {
+    debugPrint('[Startup] Customer display startup skipped: $e');
+  }
+
+  // MQTT / mDNS are optional POS-to-CFD features. None of these calls may
+  // prevent the Flutter application from being rendered.
+  try {
+    await messagingService.startBroker().timeout(
+      const Duration(seconds: 3),
+    );
+  } catch (e) {
+    debugPrint('[Startup] MQTT broker startup skipped: $e');
+  }
+
+  try {
+    await messagingService.startPublisher().timeout(
+      const Duration(seconds: 3),
+    );
+  } catch (e) {
+    debugPrint('[Startup] MQTT publisher startup skipped: $e');
+  }
+
+  try {
+    await messagingService.startMdnsAdvertisement().timeout(
+      const Duration(seconds: 3),
+    );
+  } catch (e) {
+    debugPrint('[Startup] mDNS startup skipped: $e');
+  }
+
+  try {
+    final posIp = await messagingService.getDeviceLocalIp().timeout(
+      const Duration(seconds: 2),
+    );
+    if (posIp != null && posIp.isNotEmpty) {
+      debugPrint('[Startup] POS DEVICE IP: $posIp');
+    }
+  } catch (e) {
+    debugPrint('[Startup] Local IP detection skipped: $e');
+  }
+
+  try {
+    final store = await CfdStorePayload.load().timeout(
+      const Duration(seconds: 3),
+    );
+    await messagingService.publishState(
+      CartState(
+        sessionId: 'WELCOME',
+        sequence: 0,
+        screen: 'WELCOME',
+        items: const [],
+        storeId: store.storeId,
+        storeName: store.storeName,
+        storeLogoUrl: store.storeLogoUrl,
+        storeBaseUrl: store.storeBaseUrl,
+        slideshowUrls: store.slideshowUrls,
+      ),
+    ).timeout(const Duration(seconds: 3));
+  } catch (e) {
+    debugPrint('[Startup] MQTT welcome publish skipped: $e');
+  }
 }
 
 class MyApp extends StatelessWidget {
