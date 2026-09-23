@@ -12,6 +12,7 @@ import 'Constants/misc_features.dart';
 import 'Database/db_helper.dart';
 import 'Database/discount_rule_isar.dart';
 import 'Database/isar_service.dart';
+import 'Database/order_panel_db_helper.dart';
 import 'Database/user_db_helper.dart';
 import 'Helper/Extentions/theme_notifier.dart';
 import 'Helper/cashbackhelper.dart';
@@ -196,29 +197,31 @@ void main() async {
     await CustomerDisplayService.showWelcome();
   }
 
-  // MQTT CFD welcome (logo + name + banners)
-  try {
-    final store = await CfdStorePayload.load();
-    await messagingService.publishState(
-      CartState(
-        sessionId: 'WELCOME',
-        sequence: 0,
-        screen: 'WELCOME',
-        items: const [],
-        storeId: store.storeId,
-        storeName: store.storeName,
-        storeLogoUrl: store.storeLogoUrl,
-        storeBaseUrl: store.storeBaseUrl,
-        slideshowUrls: store.slideshowUrls,
-      ),
-    );
-    print(
-      '📤 MQTT WELCOME published → store=${store.storeName} '
-          'logo=${store.storeLogoUrl} banners=${store.slideshowUrls.length}',
-    );
-  } catch (e) {
-    print('⚠️ MQTT welcome publish failed: $e');
-  }
+  // Listen for CFD connection & status updates → auto-push active cart immediately
+  messagingService.listenToDisplayStatus((status) async {
+    print('📡 [POS] CFD Status Received → $status');
+    final activeId = OrderHelper().activeOrderId;
+    if (activeId != null && activeId > 0) {
+      print('🚀 [POS] CFD connected → Auto-publishing active order #$activeId immediately');
+      await CustomerDisplayHelper.updateCustomerDisplay(activeId);
+    } else {
+      print('🚀 [POS] CFD connected → Auto-publishing Welcome screen immediately');
+      final store = await CfdStorePayload.load();
+      await messagingService.publishState(
+        CartState(
+          sessionId: 'WELCOME',
+          sequence: 0,
+          screen: 'WELCOME',
+          items: const [],
+          storeId: store.storeId,
+          storeName: store.storeName,
+          storeLogoUrl: store.storeLogoUrl,
+          storeBaseUrl: store.storeBaseUrl,
+          slideshowUrls: store.slideshowUrls,
+        ),
+      );
+    }
+  });
   // ====================================================================
 
   runApp(

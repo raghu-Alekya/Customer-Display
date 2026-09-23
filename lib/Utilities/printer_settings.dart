@@ -26,6 +26,7 @@ class PrinterSettings {
   final PrinterDBHelper _printerDBHelper = PrinterDBHelper();
 
   static Future<void> openDrawer({BuildContext? context}) async {
+    print("Cash drawer was open through printer");
     // 1. Try Sunmi internal printer drawer (Broad compatibility for Sunmi devices)
     try {
       await SunmiPrinterPlusPlatform.instance.openDrawer();
@@ -33,7 +34,7 @@ class PrinterSettings {
       if (kDebugMode) print("Sunmi openDrawer failed: $e");
     }
 
-    // 2. Try Generic ESC/POS command for external printers (USB, Bluetooth, etc.)
+    // 2. Try Generic ESC/POS command for external printers (USB, Bluetooth, Wi-Fi/Network, etc.)
     try {
       final printerSettings = PrinterSettings();
       await printerSettings.loadPrinter();
@@ -166,6 +167,8 @@ class PrinterSettings {
     bytes = generator.drawer(pin: PosDrawer.pin2) +
         generator.drawer(pin: PosDrawer.pin5) +
         bytes;
+
+    print("Cash drawer was open through printer");
 
     switch (bluetoothPrinter.typePrinter) {
       case PrinterType.usb:

@@ -168,6 +168,15 @@ class MainActivity : FlutterActivity() {
                     val availablePoints = call.argument<Int>("availablePoints") ?: 0
                     val summaryEnabled = call.argument<Boolean>("summaryEnabled") ?: false
                     val redeemedAmount = call.argument<Double>("redeemedAmount") ?: 0.0
+                    val storeIdArg = call.argument<String>("storeId") ?: ""
+                    val storeNameArg = call.argument<String>("storeName") ?: ""
+                    val storeLogoUrlArg = call.argument<String>("storeLogoUrl")
+                    val storeBaseUrlArg = call.argument<String>("storeBaseUrl") ?: ""
+
+                    if (storeIdArg.isNotEmpty()) currentStoreId = storeIdArg
+                    if (storeNameArg.isNotEmpty()) currentStoreName = storeNameArg
+                    if (!storeLogoUrlArg.isNullOrEmpty()) currentStoreLogoUrl = storeLogoUrlArg
+                    if (storeBaseUrlArg.isNotEmpty()) currentStoreBaseUrl = storeBaseUrlArg
 
                     Log.d("CustomerDisplay", "☎ Loyalty Contact received: $loyaltyContact")
 

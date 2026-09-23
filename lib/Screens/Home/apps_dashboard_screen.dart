@@ -17,14 +17,15 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../Widgets/widget_navigation_bar.dart' as custom_widgets;
 
+import 'package:flutter/services.dart';
+
+
 class AppsDashboardScreen extends StatefulWidget {
   // Build #1.0.6 - Updated Horizontal & Vertical Scrolling
   final int? lastSelectedIndex; // Make it nullable
 
-  const AppsDashboardScreen({
-    super.key,
-    this.lastSelectedIndex,
-  }); // Optional, no default value
+  const AppsDashboardScreen(
+      {super.key, this.lastSelectedIndex}); // Optional, no default value
 
   @override
   State<AppsDashboardScreen> createState() => _AppsDashboardScreenState();
@@ -34,7 +35,7 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen>
     with LayoutSelectionMixin {
   final List<String> items = List.generate(18, (index) => 'Bud Light');
   int _selectedSidebarIndex =
-      4; //Build #1.0.2 : By default fast key should be selected after login
+  4; //Build #1.0.2 : By default fast key should be selected after login
   DateTime now = DateTime.now();
   List<int> quantities = [1, 1, 1, 1];
   bool isLoading = true; // Add a loading state
@@ -43,52 +44,22 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen>
   int? _pressedCardIndex;
   bool _isSafeEnabled = false;
   bool _isSafeDropEnabled = false;
-  bool _ready = false;
 
   @override
   void initState() {
     super.initState();
+    _selectedSidebarIndex = widget.lastSelectedIndex ?? 4;
     _initApps();
   }
 
   Future<void> _initApps() async {
+    final isSafeEnabled = await SafeStorageHelper.getSafeEnable();
+    final isSafeDropEnabled = await SafeStorageHelper.getSafeEnableDrop();
     if (mounted) {
       setState(() {
-        isLoading = true;
-      });
-    }
-
-    _selectedSidebarIndex = widget.lastSelectedIndex ?? 4;
-
-    // Load values from storage with a reload to ensure sync
-    await SafeStorageHelper.reload();
-    final safeEnabled = await SafeStorageHelper.getSafeEnable();
-    final safeDropEnabled = await SafeStorageHelper.getSafeEnableDrop();
-
-    if (mounted) {
-      setState(() {
-        _isSafeEnabled = safeEnabled;
-        _isSafeDropEnabled = safeDropEnabled;
+        _isSafeEnabled = isSafeEnabled;
+        _isSafeDropEnabled = isSafeDropEnabled;
         isLoading = false;
-        _ready = true;
-      });
-    }
-  }
-
-  Future<void> _loadSafeEnable() async {
-    final value = await SafeStorageHelper.getSafeEnable();
-    if (mounted) {
-      setState(() {
-        _isSafeEnabled = value;
-      });
-    }
-  }
-
-  Future<void> _loadSafeDropEnable() async {
-    final value = await SafeStorageHelper.getSafeEnableDrop();
-    if (mounted) {
-      setState(() {
-        _isSafeDropEnabled = value;
       });
     }
   }
@@ -111,10 +82,9 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen>
               } else if (sidebarPosition == SidebarPosition.right) {
                 newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
               } else {
-                newLayout =
-                    orderPanelPosition == OrderPanelPosition.left
-                        ? SharedPreferenceTextConstants.navBottomOrderRight
-                        : SharedPreferenceTextConstants.navLeftOrderRight;
+                newLayout = orderPanelPosition == OrderPanelPosition.left
+                    ? SharedPreferenceTextConstants.navBottomOrderRight
+                    : SharedPreferenceTextConstants.navLeftOrderRight;
               }
 
               //Update the notifier which will trigger _onLayoutChanged
@@ -122,9 +92,9 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen>
               // No need to call saveLayoutSelection here as it's handled in the notifier
               // _preferences.saveLayoutSelection(newLayout);
               //Build #1.0.122: update layout mode change selection to DB
-              await UserDbHelper().saveUserSettings({
-                AppDBConst.layoutSelection: newLayout,
-              }, modeChange: true);
+              await UserDbHelper().saveUserSettings(
+                  {AppDBConst.layoutSelection: newLayout},
+                  modeChange: true);
               // update UI
               setState(() {});
             },
@@ -156,83 +126,136 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen>
                     isVertical: true, // Vertical layout for left sidebar
                   ),
                 Expanded(
-                  child:
-                      isLoading
-                          ? const Center(
-                            child: CircularProgressIndicator(
-                              color: Color(0xFF1E2745),
-                            ),
-                          )
-                          : Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: GridView.count(
-                              crossAxisCount: 4,
-                              childAspectRatio: 1,
-                              children: [
-                                _buildCard(
-                                  icon:
-                                      themeHelper.themeMode == ThemeMode.dark
-                                          ? Image.asset(
-                                            "assets/cashier_dark.png",
-                                          )
-                                          : Image.asset(
-                                            "assets/cashier_lite.png",
-                                          ),
-                                  cardIndex: 0,
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder:
-                                            (context) =>
-                                                ShiftHistoryDashboardScreen(),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                _buildCard(
-                                  icon:
-                                      themeHelper.themeMode == ThemeMode.dark
-                                          ? Image.asset(
-                                            "assets/safedrop_dark.png",
-                                          )
-                                          : Image.asset(
-                                            "assets/safedrop_lite.png",
-                                          ),
-                                  cardIndex: 1,
-                                  onTap:
-                                      _isSafeDropEnabled
-                                          ? () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder:
-                                                    (_) => SafeDropScreen(),
-                                              ),
-                                            );
-                                          }
-                                          : () {},
-                                ).withOpacity(_isSafeDropEnabled ? 1.0 : 0.0),
-                                _buildCard(
-                                  icon:
-                                      themeHelper.themeMode == ThemeMode.dark
-                                          ? Image.asset(
-                                            "assets/stock_inventory_dark.png",
-                                          )
-                                          : Image.asset("assets/img.png"),
-                                  cardIndex: 2, // Updated index to 2
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => InventoryScreen(),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                    // : GridView.count(
+                    //     crossAxisCount: 4,
+                    //     childAspectRatio: 1,
+                    //     children: [
+                    //       _buildCard(
+                    //         //title: TextConstants.cashier,
+                    //         icon: themeHelper.themeMode == ThemeMode.dark
+                    //             ? Image.asset(
+                    //                 "assets/cashier_dark.png",
+                    //               )
+                    //             : Image.asset(
+                    //                 "assets/cashier_lite.png",
+                    //               ),
+                    //         cardIndex: 0,
+                    //         onTap: () {
+                    //           Navigator.push(
+                    //             context,
+                    //             MaterialPageRoute(
+                    //                 builder: (context) =>
+                    //                     ShiftHistoryDashboardScreen() //Build #1.0.74
+                    //                 //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
+                    //                 ),
+                    //           );
+                    //         },
+                    //       ),
+                    //       if (_isSafeDropEnabled)
+                    //         _buildCard(
+                    //           icon: themeHelper.themeMode == ThemeMode.dark
+                    //               ? Image.asset("assets/safedrop_dark.png")
+                    //               : Image.asset("assets/safedrop_lite.png"),
+                    //           cardIndex: 1,
+                    //           onTap: () {
+                    //             Navigator.push(
+                    //               context,
+                    //               MaterialPageRoute(
+                    //                   builder: (_) => SafeDropScreen()),
+                    //             );
+                    //           },
+                    //         ),
+                    //
+                    //       _buildCard(
+                    //         //title: TextConstants.cashier,
+                    //         icon: themeHelper.themeMode == ThemeMode.dark
+                    //             ? Image.asset(
+                    //                 "assets/stock_inventory_dark.png",
+                    //               )
+                    //             : Image.asset("assets/img.png"),
+                    //         cardIndex: 0,
+                    //         onTap: () {
+                    //           Navigator.push(
+                    //             context,
+                    //             MaterialPageRoute(
+                    //                 builder: (context) =>
+                    //                     InventoryScreen() //Build #1.0.386
+                    //                 //  settings: RouteSettings(arguments: TextConstants.navCashier),  // Build #1.0.70
+                    //                 ),
+                    //           );
+                    //         },
+                    //       ),
+                    //
+                    //       ///////
+                    //
+                    //
+                    //     ],
+                    //   ),
+                        : GridView.count(
+                      crossAxisCount: 4,
+                      childAspectRatio: 1,
+                      children: (() {
+                        // Build cards into a list first, skip disabled ones,
+                        // so no empty slot is ever reserved in the grid.
+                        final List<Widget> dashboardCards = [];
+
+                        dashboardCards.add(
+                          _buildCard(
+                            icon: themeHelper.themeMode == ThemeMode.dark
+                                ? Image.asset("assets/cashier_dark.png")
+                                : Image.asset("assets/cashier_lite.png"),
+                            cardIndex: 0,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => ShiftHistoryDashboardScreen()),
+                              );
+                            },
                           ),
+                        );
+
+                        if (_isSafeDropEnabled) {
+                          dashboardCards.add(
+                            _buildCard(
+                              icon: themeHelper.themeMode == ThemeMode.dark
+                                  ? Image.asset("assets/safedrop_dark.png")
+                                  : Image.asset("assets/safedrop_lite.png"),
+                              cardIndex: 1,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => SafeDropScreen()),
+                                );
+                              },
+                            ),
+                          );
+                        }
+
+                        dashboardCards.add(
+                          _buildCard(
+                            icon: themeHelper.themeMode == ThemeMode.dark
+                                ? Image.asset("assets/stock_inventory_dark.png")
+                                : Image.asset("assets/img.png"),
+                            cardIndex: 0,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => InventoryScreen()),
+                              );
+                            },
+                          ),
+                        );
+
+                        return dashboardCards;
+                      })(),
+                    ),
+
+                  ),
                 ),
 
                 // Right Sidebar (Conditional)
@@ -275,16 +298,11 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen>
   }) {
     return GestureDetector(
       onTap: onTap,
-      child: SizedBox(width: 330, height: 330, child: icon),
-    );
-  }
-}
-
-extension WidgetOpacity on Widget {
-  Widget withOpacity(double opacity) {
-    return Opacity(
-      opacity: opacity,
-      child: IgnorePointer(ignoring: opacity == 0, child: this),
+      child: SizedBox(
+        width: 330,
+        height: 330,
+        child: icon,
+      ),
     );
   }
 }

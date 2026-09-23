@@ -549,15 +549,21 @@ import '../Widgets/naviagtion_services.dart'; // for navigatorKey
 class CustomerDisplayHelper {
   static bool skipNextPendingOrderRefresh = false;
 
-  /// 🔹 Show welcome after login success, including optional logo
+  /// 🔹 Show welcome after login success, including optional logo & banner slideshow
   static Future<void> updateWelcomeWithStore(
     String storeId,
     String storeName, {
     String? storeLogoUrl,
     String? storeBaseUrl,
   }) async {
+    final payload = await CfdStorePayload.load();
+    final effectiveStoreId = storeId.isNotEmpty ? storeId : payload.storeId;
+    final effectiveStoreName = storeName.isNotEmpty ? storeName : payload.storeName;
+    final effectiveLogoUrl = (storeLogoUrl != null && storeLogoUrl.isNotEmpty) ? storeLogoUrl : payload.storeLogoUrl;
+    final effectiveBaseUrl = (storeBaseUrl != null && storeBaseUrl.isNotEmpty) ? storeBaseUrl : payload.storeBaseUrl;
+
     print(
-        "🟢 [CustomerDisplayHelper] Updating welcome → storeId: $storeId, storeName: $storeName, logo: $storeLogoUrl, baseUrl: $storeBaseUrl");
+        "🟢 [CustomerDisplayHelper] Updating welcome → storeId: $effectiveStoreId, storeName: $effectiveStoreName, logo: $effectiveLogoUrl, baseUrl: $effectiveBaseUrl");
     final activeId = OrderHelper().activeOrderId;
 
     // ✅ ONLY show welcome if no active order
@@ -567,10 +573,10 @@ class CustomerDisplayHelper {
     }
 
     await CustomerDisplayService.showWelcomeWithStore(
-      storeId: storeId,
-      storeName: storeName,
-      storeLogoUrl: storeLogoUrl,
-      storeBaseUrl: storeBaseUrl,
+      storeId: effectiveStoreId,
+      storeName: effectiveStoreName,
+      storeLogoUrl: effectiveLogoUrl,
+      storeBaseUrl: effectiveBaseUrl,
     );
 
     // ========== NEW: Publish IDLE to MQTT CFD ==========
@@ -580,7 +586,17 @@ class CustomerDisplayHelper {
 
   static Future<void> clearOrder() async {
     try {
-      await CustomerDisplayService.showWelcome();
+      final storePayload = await CfdStorePayload.load();
+      if (storePayload.storeName.isNotEmpty) {
+        await updateWelcomeWithStore(
+          storePayload.storeId,
+          storePayload.storeName,
+          storeLogoUrl: storePayload.storeLogoUrl,
+          storeBaseUrl: storePayload.storeBaseUrl,
+        );
+      } else {
+        await CustomerDisplayService.showWelcome();
+      }
       print("🧹 Customer display cleared (order reset)");
 
       // ========== NEW: Publish IDLE to MQTT CFD ==========
