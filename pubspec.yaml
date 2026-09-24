@@ -34,6 +34,8 @@ dependencies:
 
   isar_community: ^3.3.2
   isar_community_flutter_libs: ^3.3.2
+  flutter_secure_storage: ^9.2.2
+
 
   sqflite_common_ffi: ^2.3.6
   http: ^1.5.0

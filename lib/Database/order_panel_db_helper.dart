@@ -2288,8 +2288,10 @@ class OrderHelper {
         final qty = (map['items_count'] ?? map['quantity'] ?? 1).toInt();
         final itemType =
             (map['item_type'] ?? map['type'] ?? 'product').toString();
-        // Skip discount type - we add from discounts list separately
-        if (itemType.toLowerCase().contains('discount')) continue;
+        // Skip discount, payout & cashback types - we add from their respective lists separately
+        if (itemType.toLowerCase().contains('discount') ||
+            itemType.toLowerCase() == 'payout' ||
+            itemType.toLowerCase() == 'cashback') continue;
         final multipack = _toDouble(
             map['multipack_discount_total'] ?? map['multipackDiscount'] ?? 0);
         final auto = _toDouble(map['auto_discount_total'] ??
@@ -2330,8 +2332,10 @@ class OrderHelper {
         final itemType = (map['item_type'] ?? map['type'] ?? 'product')
             .toString()
             .toLowerCase();
-        // Skip discount type - we add from discounts list separately
-        if (itemType.contains('discount')) continue;
+        // Skip discount, payout & cashback types - we add from their respective lists separately
+        if (itemType.contains('discount') ||
+            itemType == 'payout' ||
+            itemType == 'cashback') continue;
         final name = map['name'] ?? map['product_name'] ?? '';
         final price = (map['price'] as num?)?.toDouble() ?? 0.0;
         final qty = (map['quantity'] as num?)?.toInt() ?? 1;

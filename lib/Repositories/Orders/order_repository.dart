@@ -1,6 +1,5 @@
 // repositories/order_repository.dart
 import 'dart:convert';
-import 'dart:ffi';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
@@ -13,6 +12,7 @@ import '../../Database/order_panel_db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import '../../Helper/api_helper.dart';
 import '../../Helper/customerdisplayhelper.dart';
+import '../../Helper/offline_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Assets/asset_model.dart';
 import '../../Models/Orders/apply_discount_model.dart';
@@ -956,6 +956,16 @@ class OrderRepository {
   }
 
 
+  // Future<Map<String, dynamic>?> _loadActiveShift(int userId) async {
+  //   try {
+  //     // final shift = await ShiftDbHelper().getActiveShift(userId);
+  //     return shift;
+  //   } catch (e) {
+  //     debugPrint('⚠️ Failed to load active shift: $e');
+  //     return null;
+  //   }
+  // }
+
   Future<Map<String, dynamic>?> syncSingleOfflineOrder(
       Map<String, dynamic> offlineOrder) async {
     // Helper to determine if a coupon is redeemed (generate_type == true)
@@ -978,6 +988,19 @@ class OrderRepository {
       final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
       final int? existingWooOrderId =
       wooOrderIdRaw != null ? int.tryParse(wooOrderIdRaw.toString()) : null;
+
+      // ✅ Preserve Pay Later customer attribution during offline -> online sync.
+      Map<String, dynamic>? selectedPayLaterUser;
+      try {
+        final rawPayLaterUser = offlineOrder['selectedPayLaterUser'];
+        if (rawPayLaterUser is Map) {
+          selectedPayLaterUser = Map<String, dynamic>.from(rawPayLaterUser);
+          debugPrint(
+              "✅ Pay Later user extracted: ${selectedPayLaterUser['name']} (ID: ${selectedPayLaterUser['user_id']})");
+        }
+      } catch (e) {
+        debugPrint("⚠️ Failed to read selectedPayLaterUser: $e");
+      }
 
       final Map<String, dynamic> couponResponse =
           (offlineOrder["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
@@ -1027,6 +1050,38 @@ class OrderRepository {
           offlineOrder['order_id']?.toString() ??
           offlineOrder['local_order_id']?.toString() ??
           "";
+
+      // Keep the original offline creation timestamp. Without this, a newly
+      // synced Woo order gets the network/sync time instead of the actual POS
+      // order time. Prefer created_at, then the legacy date/time columns.
+      DateTime? offlineCreatedAt;
+      final List<dynamic> createdAtCandidates = <dynamic>[
+        offlineOrder['created_at'],
+        offlineOrder['createdAt'],
+        offlineOrder['order_date_time'],
+        offlineOrder[AppDBConst.orderDate],
+      ];
+      for (final candidate in createdAtCandidates) {
+        final value = candidate?.toString().trim() ?? '';
+        if (value.isEmpty) continue;
+        try {
+          offlineCreatedAt = DateTime.parse(value);
+          break;
+        } catch (_) {}
+      }
+      if (offlineCreatedAt == null) {
+        final datePart = offlineOrder[AppDBConst.orderDate]?.toString().trim();
+        final timePart = offlineOrder[AppDBConst.orderTime]?.toString().trim();
+        if (datePart != null && datePart.isNotEmpty &&
+            timePart != null && timePart.isNotEmpty) {
+          try {
+            offlineCreatedAt = DateTime.parse("$datePart $timePart");
+          } catch (_) {}
+        }
+      }
+      if (offlineCreatedAt != null) {
+        offlineOrder['created_at'] ??= offlineCreatedAt!.toIso8601String();
+      }
 
       // ---------------------------------------------------------
 // ⭐ HANDLE PRODUCTS
@@ -1284,6 +1339,7 @@ class OrderRepository {
 // ⭐ HANDLE PAYOUTS
 // ---------------------------------------------------------
       final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
+      debugPrint("💸 [SYNC] Payout entries from offline order: ${payouts.length}");
       for (final p in payouts) {
         final double amount =
             double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0;
@@ -1423,20 +1479,152 @@ class OrderRepository {
       debugPrint("📊 Issued coupons (generate_type false): ${issuedCoupons.length}");
       debugPrint("📊 Redeemed coupons (generate_type true): ${redeemedCoupons.length}");
 
-      final shiftId = await UserDbHelper().getUserShiftId();
+      // ---------------------------------------------------------
+      // 🔐 RESOLVE SHIFT ID, OFFLINE FLAG & USER LOGIN PIN
+      // ---------------------------------------------------------
       final userData = await UserDbHelper().getUserData();
       final userId = userData?[AppDBConst.userId] ?? "admin";
 
-      // ---------------------------------------------------------
-// ⭐ DECLARE METADATA HERE BEFORE USING IT
-// ---------------------------------------------------------
+      final int? resolvedLocalShiftId = int.tryParse(
+        offlineOrder['local_shift_id']?.toString() ??
+            offlineOrder['shift_id']?.toString() ??
+            offlineOrder['shiftLocalId']?.toString() ??
+            "",
+      ) ??
+          await UserDbHelper().getUserShiftId();
+
+      final int finalLocalShiftId = resolvedLocalShiftId ?? 0;
+
+      int? serverShiftId;
+      // if (finalLocalShiftId > 0) {
+      //   final shiftRecord =
+      //   await ShiftDbHelper().getShiftById(finalLocalShiftId);
+      //   if (shiftRecord != null &&
+      //       shiftRecord[AppDBConst.shiftServerId] != null) {
+      //     serverShiftId =
+      //         int.tryParse(shiftRecord[AppDBConst.shiftServerId].toString());
+      //   }
+      // }
+
+      final bool isOffline = serverShiftId == null || serverShiftId == 0;
+      final dynamic finalShiftId =
+      isOffline ? finalLocalShiftId : serverShiftId;
+
+      final prefs = await SharedPreferences.getInstance();
+      String userLoginPin = "";
+      try {
+        // final secureStorage = FlutterSecureStorage(
+        //   aOptions: AndroidOptions(encryptedSharedPreferences: true),
+        //   iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+        // );
+        // userLoginPin =
+        //     await secureStorage.read(key: 'encrypted_login_pin') ?? "";
+      } catch (e) {
+        debugPrint("⚠️ Failed to read encrypted_login_pin: $e");
+      }
+
+      if (userLoginPin.isEmpty) {
+        userLoginPin = offlineOrder['user_login_pin']?.toString() ??
+            offlineOrder['user_pin']?.toString() ??
+            offlineOrder['login_pin']?.toString() ??
+            userData?['pin']?.toString() ??
+            userData?['user_pin']?.toString() ??
+            prefs.getString('user_pin') ??
+            prefs.getString('login_pin') ??
+            prefs.getString('encrypted_login_pin') ??
+            "";
+      }
+
+      debugPrint("🔍 [Shift Sync Mapping]: isOffline=$isOffline | "
+          "shift_id=$finalShiftId | local_shift_id=$finalLocalShiftId | "
+          "serverShiftId=$serverShiftId | "
+          "user_login_pin=${userLoginPin.isNotEmpty ? '***' : '(empty)'}");
+
       final List<Map<String, dynamic>> metaData = [
         {"key": "pos_device_id", "value": "b31b723b92047f4b"},
         {"key": "pos_placed_by", "value": "$userId"},
-        {"key": "shift_id", "value": "$shiftId"},
+        {"key": "shift_id", "value": "$finalShiftId"},
+        {"key": "local_shift_id", "value": "$finalLocalShiftId"},
+        {"key": "offline", "value": isOffline},
+        {"key": "is_offline", "value": isOffline},
+        {"key": "user_login_pin", "value": userLoginPin},
         {"key": "pos_cash_paid", "value": "0.00"},
         {"key": "_pos_client_order_id", "value": clientOrderId},
       ];
+
+      // final Map<String, dynamic>? activeShift = await _loadActiveShift(
+      //   int.tryParse(userId.toString()) ?? 0,
+      // );
+
+      // if (activeShift != null) {
+      //   metaData.add({"key": "_offline_shift", "value": activeShift});
+      //
+      //   if (activeShift['request_payload'] != null) {
+      //     try {
+      //       final Map<String, dynamic> requestPayload =
+      //       jsonDecode(activeShift['request_payload'] as String);
+      //       metaData.add({
+      //         "key": "_offline_shift_request_payload",
+      //         "value": requestPayload,
+      //       });
+      //     } catch (_) {
+      //       metaData.add({
+      //         "key": "_offline_shift_request_payload",
+      //         "value": activeShift['request_payload'],
+      //       });
+      //     }
+      //   }
+      //
+      //   if (activeShift['close_payload'] != null) {
+      //     try {
+      //       final Map<String, dynamic> closePayload =
+      //       jsonDecode(activeShift['close_payload'] as String);
+      //       metaData.add({
+      //         "key": "_offline_shift_close_payload",
+      //         "value": closePayload,
+      //       });
+      //     } catch (_) {
+      //       metaData.add({
+      //         "key": "_offline_shift_close_payload",
+      //         "value": activeShift['close_payload'],
+      //       });
+      //     }
+      //   }
+      //
+      //   metaData.addAll([
+      //     // {"key": "_shift_opening_balance", "value": activeShift[AppDBConst.shiftOpeningBalance]},
+      //     // {"key": "_shift_closing_balance", "value": activeShift[AppDBConst.shiftClosingBalance]},
+      //     // {"key": "_shift_over_short", "value": activeShift[AppDBConst.shiftOverShort]},
+      //     // {"key": "_shift_total_sales", "value": activeShift[AppDBConst.shiftTotalSalesAmount]},
+      //     // {"key": "_shift_status", "value": activeShift[AppDBConst.shiftStatus]},
+      //   ]);
+      // }
+
+      if (selectedPayLaterUser != null &&
+          selectedPayLaterUser['user_id'] != null) {
+        final int payLaterUserId =
+            int.tryParse(selectedPayLaterUser['user_id'].toString()) ?? 0;
+        if (payLaterUserId > 0) {
+          metaData.addAll([
+            {"key": "_pay_later", "value": true},
+            {"key": "_pay_later_user_id", "value": payLaterUserId},
+            {"key": "_pay_later_user_name", "value": selectedPayLaterUser['name']?.toString() ?? ''},
+            {"key": "_pay_later_user_email", "value": selectedPayLaterUser['email']?.toString() ?? ''},
+            {"key": "_pay_later_store_name", "value": selectedPayLaterUser['pay_later_user_store_name']?.toString() ?? ''},
+          ]);
+        }
+      }
+
+      if (offlineCreatedAt != null) {
+        metaData.add({
+          "key": "_pos_order_created_at",
+          "value": offlineCreatedAt!.toIso8601String(),
+        });
+        metaData.add({
+          "key": "_pos_order_created_at_gmt",
+          "value": offlineCreatedAt!.toUtc().toIso8601String(),
+        });
+      }
 
       // Add recalculated tax to meta_data so backend receives correct value
       metaData.add({
@@ -1514,13 +1702,42 @@ class OrderRepository {
       }
 
       // ---------------------------------------------------------
-// ⭐ FINAL PAYLOAD
-// ---------------------------------------------------------
+      // ⭐ DETERMINE ORDER STATUS
+      // ---------------------------------------------------------
+      final bool isPayLaterOrder = selectedPayLaterUser != null &&
+          selectedPayLaterUser['user_id'] != null &&
+          int.tryParse(selectedPayLaterUser['user_id'].toString()) != null &&
+          int.tryParse(selectedPayLaterUser['user_id'].toString())! > 0;
+
+      String orderStatus = isPayLaterOrder ? "completed" : "processing";
+      final String? storedStatus = offlineOrder['order_status']?.toString() ??
+          offlineOrder['status']?.toString() ??
+          offlineOrder['post_status']?.toString() ??
+          offlineOrder['orderStatus']?.toString();
+      if (storedStatus != null && storedStatus.isNotEmpty) {
+        final cleanStatus =
+        storedStatus.toLowerCase().replaceAll('wc-', '').trim();
+        if (cleanStatus.isNotEmpty && cleanStatus != 'pending_offline') {
+          orderStatus = cleanStatus;
+        }
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ FINAL PAYLOAD
+      // ---------------------------------------------------------
       final payload = {
         "payment_method": "cash",
         "payment_method_title": "POS-CASH",
         "set_paid": true,
-        "status": "processing",
+        "status": orderStatus,
+        "offline": isOffline,
+        "shift_id": finalShiftId,
+        "local_shift_id": finalLocalShiftId,
+        "user_login_pin": userLoginPin,
+        if (!isUpdate && offlineCreatedAt != null)
+          "date_created": offlineCreatedAt!.toIso8601String(),
+        if (!isUpdate && offlineCreatedAt != null)
+          "date_created_gmt": offlineCreatedAt!.toUtc().toIso8601String(),
         "meta_data": metaData,
         "fee_lines": feeLines,
         "line_items": lineItems,
@@ -1608,6 +1825,19 @@ class OrderRepository {
         offlineOrder['net_payable'] = wooTotal;
         offlineOrder['remainingBalance'] = wooTotal;
         offlineOrder['coupon_lines'] = decoded['coupon_lines'];
+
+        if (selectedPayLaterUser != null) {
+          offlineOrder['selectedPayLaterUser'] = selectedPayLaterUser;
+          offlineOrder['is_pay_later_order'] = true;
+          offlineOrder['pay_later_user_id'] = selectedPayLaterUser['user_id'];
+          offlineOrder['pay_later_user_name'] = selectedPayLaterUser['name'];
+        }
+
+        // Never replace the original offline creation timestamp with sync time.
+        if (offlineCreatedAt != null) {
+          offlineOrder['created_at'] ??= offlineCreatedAt!.toIso8601String();
+          offlineOrder['original_created_at'] ??= offlineCreatedAt!.toIso8601String();
+        }
 
         await box.put(localOrderId, offlineOrder);
         await box.put(serverOrderId.toString(), {"map_to_local": localOrderId});

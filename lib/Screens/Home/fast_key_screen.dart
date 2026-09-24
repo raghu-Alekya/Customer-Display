@@ -583,6 +583,10 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       }
     });
 
+    // Clear any cached products belonging to the deleted FastKey tab.
+    // Without this, the deleted tab can appear again from the in-memory cache.
+    _tabItemsMemoryCache.remove(fastKeyTabServerId);
+
     if (nextActiveTabId != null) {
       fastKeyTabIdNotifier.value = nextActiveTabId;
       await fastKeyDBHelper.saveActiveFastKeyTab(nextActiveTabId);
@@ -2822,11 +2826,46 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           } else if (itemIndex != null) {
             final fastKeyTabItemServerId =
             fastKeyProductItems[itemIndex][AppDBConst.fastKeyProductId];
-            // await _deleteFastKeyTabItem(int.parse(fastKeyTabItemServerId)); //Bala
-            setState(() {
-              enableIcons = false; // Build #1.0.204: Hide icons after deletion
-              selectedItemIndex = null; // Clear selection
-            });
+            final int? productId = int.tryParse(fastKeyTabItemServerId.toString());
+
+            if (productId == null || _fastKeyTabId == null) {
+              if (kDebugMode) {
+                print(
+                    "FastKeyScreen: Invalid FastKey product/tab id. productId=$productId, fastKeyTabId=$_fastKeyTabId");
+              }
+              return;
+            }
+
+            // Use the delete method that already exists in FastKeyProductBloc.
+            // Do not call an undefined _deleteFastKeyTabItem method.
+            _fastKeyProductBloc.deleteProduct(_fastKeyTabId!, productId);
+
+            final response = await _fastKeyProductBloc.deleteProductStream.firstWhere(
+                  (response) =>
+              response.status == Status.COMPLETED ||
+                  response.status == Status.ERROR,
+            );
+
+            if (response.status == Status.COMPLETED && mounted) {
+              setState(() {
+                if (itemIndex >= 0 && itemIndex < fastKeyProductItems.length) {
+                  fastKeyProductItems.removeAt(itemIndex);
+                }
+                enableIcons = false; // Build #1.0.204: Hide icons after deletion
+                selectedItemIndex = null; // Clear selection
+                reorderedIndices =
+                List<int?>.filled(fastKeyProductItems.length, null);
+              });
+
+              // Keep the in-memory tab cache in sync with the visible list.
+              _tabItemsMemoryCache[_fastKeyTabId!] =
+              List<Map<String, dynamic>>.from(fastKeyProductItems);
+            } else if (response.status == Status.ERROR && mounted) {
+              if (kDebugMode) {
+                print(
+                    "FastKeyScreen: Failed to delete FastKey product: ${response.message}");
+              }
+            }
           }
         } finally {
           if (mounted) {
