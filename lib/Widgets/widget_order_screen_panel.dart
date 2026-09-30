@@ -161,9 +161,30 @@ Map<String, dynamic> orderPanelOrderMapFromOrderModel(OrderModel o) {
   final double discTotal = double.tryParse(o.discountTotal) ?? 0.0;
   final double taxTotal = double.tryParse(o.totalTax) ?? 0.0;
   final double orderTotal = double.tryParse(o.total) ?? 0.0;
-  final double merchantMeta = metaDouble('merchant_discount') ??
-      metaDouble('_merchant_discount') ??
-      o.merchantDiscountFromFeeLines;
+
+  // Merchant discount can arrive as a fee line, metadata, or a line item
+  // named "Discount" depending on whether the order was created online or
+  // synced from the offline queue.  Resolve all supported representations so
+  // the panel never falls back to 0 when the real value is present.
+  double merchantLineItem = 0.0;
+  for (final li in o.lineItems) {
+    final name = li.name.toLowerCase().trim();
+    if (name == 'discount' ||
+        name.contains('merchant discount') ||
+        name.contains('merchant_discount')) {
+      final value = double.tryParse(li.total) ?? 0.0;
+      if (value.abs() > merchantLineItem.abs()) {
+        merchantLineItem = value;
+      }
+    }
+  }
+
+  final double merchantMeta =
+      metaDouble('merchant_discount') ??
+          metaDouble('_merchant_discount') ??
+          (o.merchantDiscountFromFeeLines != 0
+              ? o.merchantDiscountFromFeeLines
+              : merchantLineItem.abs());
 
   final bool couponsApplied = couponLines.isNotEmpty || discTotal > 0;
 
@@ -220,8 +241,8 @@ class OrderScreenPanel extends StatefulWidget {
 
 class _OrderScreenPanelState extends State<OrderScreenPanel>
     with TickerProviderStateMixin {
-  static const MethodChannel customerDisplayChannel = 
-      MethodChannel('com.example.flutter_customer_display/sunmi_display');
+  static const MethodChannel customerDisplayChannel =
+  MethodChannel('com.example.flutter_customer_display/sunmi_display');
 
   Future<void> enablePhoneInput() async {
     try {
@@ -1888,7 +1909,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 // Recalculate percentage-based merchant discount w.r.t grossTotal
     final String mdType = order['merchantDiscountType']?.toString() ?? 'fixed';
     final double mdPerc = double.tryParse(order['merchantDiscountPercentage']?.toString() ?? '0') ?? 0.0;
-    
+
     double calculatedPerc = 0.0;
     if (mdType == 'percentage' && mdPerc > 0) {
       calculatedPerc = mdPerc;
@@ -1912,11 +1933,11 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
 
 
 
-///
+    ///
     // ----------- ONLINE TOTAL COMPUTATION -----------
     // NET TOTAL (no tax)
     // Algebraic addition: grossTotal + orderDiscount + merchantDiscount
-      // num netTotal = (grossTotal +
+    // num netTotal = (grossTotal +
     //     //     (orderDiscount != 0 ? orderDiscount : 0.0) +           // already negative usually
     //     //     (merchantDiscount != 0 ? merchantDiscount : 0.0))      // already negative
     //     //     .clamp(double.negativeInfinity, double.infinity);       // ← Removed 0.0 clamp
@@ -2393,11 +2414,23 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
                         double itemTotalPrice = 0.0;
 
                         if (isPayout || isCashback) {
-                          itemTotalPrice =
-                              (orderItem['amount'] as num?)?.toDouble() ??
-                                  (orderItem[AppDBConst.itemUnitPrice] as num?)
-                                      ?.toDouble() ??
-                                  0.0;
+                          // Payout/cashback rows created from SQLite normally
+                          // keep the value in item_sum_price/item_price.  The
+                          // old code only checked `amount` and unit price,
+                          // which can both be null and displayed -$0.00 even
+                          // when the stored payout was -$10.00.
+                          final dynamic rawAdjustmentAmount =
+                              orderItem['amount'] ??
+                                  orderItem[AppDBConst.itemSumPrice] ??
+                                  orderItem[AppDBConst.itemPrice] ??
+                                  orderItem[AppDBConst.itemUnitPrice] ??
+                                  orderItem['price'];
+
+                          itemTotalPrice = rawAdjustmentAmount is num
+                              ? rawAdjustmentAmount.toDouble()
+                              : double.tryParse(
+                              rawAdjustmentAmount?.toString() ?? '0') ??
+                              0.0;
                         } else {
                           itemTotalPrice =
                               (orderItem[AppDBConst.itemSumPrice] as num?)

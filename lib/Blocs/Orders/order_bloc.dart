@@ -520,6 +520,35 @@ class OrderBloc { // Build #1.0.25 - added by naveen
     );
   }
 
+  void _logOrdersListApiResponse(String apiName, List<model.OrderModel> orders) {
+    print("================================================================================");
+    print("📦 [$apiName API RESPONSE] Total Orders Fetched: ${orders.length}");
+    print("================================================================================");
+    for (int i = 0; i < orders.length; i++) {
+      final order = orders[i];
+      print("🔹 Order #${i + 1} | Server ID: ${order.id} | Status: ${order.status} | Total: \$${order.total} | Tax: \$${order.totalTax} | Discount: \$${order.discountTotal}");
+      if (order.lineItems.isNotEmpty) {
+        print("   ├─ Line Items (${order.lineItems.length}):");
+        for (var item in order.lineItems) {
+          print("   │  • [Item ID: ${item.id}] ${item.name} | Qty: ${item.quantity} | Unit Price: \$${item.price} | Total: \$${item.total}");
+        }
+      }
+      if (order.feeLines != null && order.feeLines!.isNotEmpty) {
+        print("   ├─ Fee Lines (${order.feeLines!.length}):");
+        for (var fee in order.feeLines!) {
+          print("   │  • [Fee ID: ${fee.id}] Name: ${fee.name} | Total: \$${fee.total}");
+        }
+      }
+      if (order.couponLines.isNotEmpty) {
+        print("   ├─ Coupon Lines (${order.couponLines.length}):");
+        for (var coupon in order.couponLines) {
+          print("   │  • [Coupon ID: ${coupon.id}] Code: ${coupon.code} | Amount: \$${coupon.discount}");
+        }
+      }
+      print("   -----------------------------------------------------------------------------");
+    }
+  }
+
   //Build #1.0.40: fetchOrders
   Future<void> fetchOrders({bool allStatuses = false, int pageNumber =1}) async { //Build #1.0.54: updated
     if (_fetchOrdersController.isClosed) return;
@@ -530,13 +559,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
 
 
       if (kDebugMode) {
-        print("OrderBloc - Fetched ${response.orders.length} orders");
-        for (var order in response.orders) {
-          print("OrderBloc - Order ID: ${order.id}, Status: ${order.status}, Items: ${order.lineItems.length}");
-          for (var item in order.lineItems) {
-            print("OrderBloc - Item ID: ${item.id}, Name: ${item.name}, Price: ${item.price}, Quantity: ${item.quantity}");
-          }
-        }
+        _logOrdersListApiResponse("GET ALL ORDERS LIST", response.orders);
       }
       ///save order is DB here,
       OrderHelper orderHelper = OrderHelper();
@@ -575,13 +598,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       final response = await _orderRepository.fetchTotalOrdersCount(allStatuses: allStatuses, pageNumber: pageNumber, pageLimit: pageLimit, status: status, orderType: orderType, userId: userId, startDate: startDate, endDate: endDate,  search: search,);
 
       if (kDebugMode) {
-        print("OrderBloc - Fetched ${response.ordersData.length} total orders, Total Count: ${response.orderTotalCount}");
-        for (var order in response.ordersData) {
-          print("OrderBloc - Order ID: ${order.id}, Status: ${order.status}, Items: ${order.lineItems.length}");
-          for (var item in order.lineItems) {
-            print("OrderBloc - Item ID: ${item.id}, Name: ${item.name}, Quantity: ${item.quantity}, Total: ${item.total}");
-          }
-        }
+        _logOrdersListApiResponse("FETCH TOTAL ORDERS COUNT", response.ordersData);
       }
 
       // Convert List<OrderList> to List<get_orders.OrderModel>
@@ -1237,6 +1254,25 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             unitPrice: unitPrice,
           );
         }
+      }
+
+      // Some backend responses return merchant discount as a fee line instead
+      // of a line item. Preserve that amount as well; otherwise the local
+      // order table can incorrectly store merchantDiscount = 0.
+      if (merchantDiscount == 0.0) {
+        for (final feeLine in response.feeLines ?? []) {
+          final feeName = (feeLine.name ?? '').toLowerCase().replaceAll(' ', '_');
+          if (feeName.contains('merchant_discount')) {
+            merchantDiscount +=
+                double.tryParse(feeLine.total ?? '0.0')?.abs() ?? 0.0;
+          }
+        }
+      }
+
+      if (kDebugMode) {
+        print(
+          '#### OrderBloc - Final merchant discount = $merchantDiscount, ids = $merchantDiscountIds',
+        );
       }
 
       for (var couponLine in response.couponLines) {

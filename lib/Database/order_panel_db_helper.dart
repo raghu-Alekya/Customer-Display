@@ -1095,13 +1095,13 @@ class OrderHelper {
 
         // await updateOrderPayoutItems(apiOrder.id, apiOrder.feeLines ?? []); // Build #1.0.64
         await updateOrderPayoutItem(
-            apiOrder.id, apiOrder.lineItems); // Build #1.0.198
+            apiOrder.id, apiOrder.lineItems, apiOrder.feeLines); // Build #1.0.198
         // Build #1.0.207: Fixed Issue - Always Merchant discount showing "0"
         // Ex: updateOrderPayoutItem modified to lineItems but discount we are getting in fee lines only , we are not using this, that's why merchant discount calculation is 0.
         await updateOrderMerchantDiscount(
             apiOrder.id,
-            apiOrder.lineItems ??
-                []); // Build #1.0.274 : updated fee lines to line items change
+            apiOrder.lineItems ?? [],
+            apiOrder.feeLines); // Build #1.0.274 : updated fee lines to line items change
         await updateOrderCouponItems(apiOrder.id, apiOrder.couponLines ?? []);
       }
 
@@ -1174,8 +1174,10 @@ class OrderHelper {
     // final bool isRefunded = apiItem.isRefundItem == true;
 
     for (var apiItem in apiItems) {
-      if (apiItem.name.contains('Payout') ||
-          apiItem.name == TextConstants.discountText) {
+      if (apiItem.name.toLowerCase().contains('payout') ||
+          apiItem.name == TextConstants.discountText ||
+          apiItem.name.toLowerCase().contains('merchant discount') ||
+          apiItem.name.toLowerCase().contains('merchant_discount')) {
         continue;
       }
       final bool isRefunded = apiItem.isRefundItem == true;
@@ -1537,10 +1539,11 @@ class OrderHelper {
   }
 
   //  Build #1.0.198 : Modified updateOrderPayoutItem to align with new payout API changes
+  //  Build #1.0.198 : Modified updateOrderPayoutItem to align with new payout API changes
   Future<void> updateOrderPayoutItem(
-      int orderId, List<model.LineItem> lineItems) async {
+      int orderId, List<model.LineItem> lineItems, [List<model.FeeLine>? feeLines]) async {
     if (kDebugMode) {
-      print("#### DEBUG: updateOrderPayoutItems orderId: $orderId");
+      print("#### DEBUG: updateOrderPayoutItem orderId: $orderId, lineItems: ${lineItems.length}, feeLines: ${feeLines?.length ?? 0}");
     }
     final db = await DBHelper.instance.database;
     final existingItems = await db.query(
@@ -1557,53 +1560,58 @@ class OrderHelper {
 
     if (kDebugMode) {
       print(
-          "#### DEBUG: updateOrderPayoutItems - Processing ${lineItems.length} payout items for order $orderId, existing items: ${existingItems.length}");
+          "#### DEBUG: updateOrderPayoutItems - Processing ${lineItems.length} payout line items & ${feeLines?.length ?? 0} fee lines for order $orderId, existing payouts in DB: ${existingItems.length}");
     }
     double merchantDiscount = 0.0;
     var merchantDiscountIds = "";
+
+    // 1. Check lineItems for payouts and merchant discounts
     for (var lineItem in lineItems) {
       final itemId = lineItem.id.toString();
-      if (kDebugMode) {
-        print("item id $itemId");
-      }
-      if (kDebugMode) {
-        print("item price value === ${lineItem.total}");
-      }
-      final double itemPrice = double.parse(lineItem.total ?? '0.0');
+      final String name = lineItem.name ?? '';
+      final String nameLower = name.toLowerCase().trim();
+      final bool isPayout = nameLower.contains('payout') || name == TextConstants.payout;
+      final bool isDiscount = nameLower.contains('merchant discount') || nameLower.contains('merchant_discount') || name == TextConstants.discountText;
+
+      final double itemPrice = double.tryParse(lineItem.total?.toString() ?? '') ??
+          double.tryParse(lineItem.subtotal?.toString() ?? '') ??
+          double.tryParse(lineItem.price?.toString() ?? '') ??
+          0.0;
       final int itemQuantity = 1;
       final double itemSumPrice = itemPrice;
 
       if (kDebugMode) {
         print(
-            "#### DEBUG: updateOrderPayoutItems - Processing payout item ID: $itemId, name: ${lineItem.name}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
+            "#### DEBUG: updateOrderPayoutItem (LineItem) - ID: $itemId, name: '$name', price: $itemPrice, isPayout: $isPayout, isDiscount: $isDiscount");
       }
 
-      if (lineItem.name == TextConstants.payout) {
+      if (isPayout) {
+        print("💰 [PAYOUT DETECTED] Order #$orderId | Item ID: $itemId | Name: '$name' | Amount: $itemPrice");
         if (existingItemsMap.containsKey(itemId)) {
           final existingItem = existingItemsMap[itemId]!;
           await db.update(
             AppDBConst.purchasedItemsTable,
             {
-              AppDBConst.itemName: lineItem.name ?? 'Payout',
+              AppDBConst.itemName: name.isEmpty ? 'Payout' : name,
               AppDBConst.itemPrice: itemPrice,
               AppDBConst.itemCount: itemQuantity,
               AppDBConst.itemSumPrice: itemSumPrice,
               AppDBConst.itemImage: 'assets/svg/payout.svg',
               AppDBConst.itemSKU: '',
+              AppDBConst.itemType: ItemType.payout.value,
             },
             where: '${AppDBConst.itemServerId} = ?',
             whereArgs: [existingItem[AppDBConst.itemServerId]],
           );
           if (kDebugMode) {
             print(
-                "#### DEBUG: Updated payout item ID: $itemId for order $orderId");
+                "#### DEBUG: Updated payout item ID: $itemId for order $orderId with price: $itemPrice");
           }
           existingItemsMap.remove(itemId);
         } else {
           await db.insert(AppDBConst.purchasedItemsTable, {
-            //   AppDBConst.itemId: orderId,
-            AppDBConst.itemServerId: lineItem.id, //Build #1.0.67: updated
-            AppDBConst.itemName: lineItem.name ?? 'Payout',
+            AppDBConst.itemServerId: lineItem.id,
+            AppDBConst.itemName: name.isEmpty ? 'Payout' : name,
             AppDBConst.itemSKU: '',
             AppDBConst.itemPrice: itemPrice,
             AppDBConst.itemImage: 'assets/svg/payout.svg',
@@ -1614,15 +1622,88 @@ class OrderHelper {
           });
           if (kDebugMode) {
             print(
-                "#### DEBUG: Inserted new payout item ID: $itemId for order $orderId");
+                "#### DEBUG: Inserted new payout item ID: $itemId for order $orderId with price: $itemPrice");
           }
         }
       }
-      if (lineItem.name == TextConstants.discountText) {
+
+      if (isDiscount) {
         merchantDiscount += itemPrice.abs();
-        merchantDiscountIds = "$merchantDiscountIds,${lineItem.id}";
+        merchantDiscountIds = merchantDiscountIds.isEmpty
+            ? "${lineItem.id}"
+            : "$merchantDiscountIds,${lineItem.id}";
       }
     }
+
+    // 2. Check feeLines for payouts and merchant discounts
+    if (feeLines != null) {
+      for (var feeLine in feeLines) {
+        final itemId = feeLine.id.toString();
+        final String name = feeLine.name ?? '';
+        final String nameLower = name.toLowerCase().trim();
+        final bool isPayout = nameLower.contains('payout') || name == TextConstants.payout;
+        final bool isDiscount = nameLower.contains('merchant discount') || nameLower.contains('merchant_discount') || name == TextConstants.discountText;
+
+        final double itemPrice = double.tryParse(feeLine.total?.toString() ?? '0.0') ?? 0.0;
+        final int itemQuantity = 1;
+        final double itemSumPrice = itemPrice;
+
+        if (kDebugMode) {
+          print(
+              "#### DEBUG: updateOrderPayoutItem (FeeLine) - ID: $itemId, name: '$name', price: $itemPrice, isPayout: $isPayout, isDiscount: $isDiscount");
+        }
+
+        if (isPayout) {
+          print("💰 [PAYOUT DETECTED IN FEE_LINE] Order #$orderId | ID: $itemId | Name: '$name' | Amount: $itemPrice");
+          if (existingItemsMap.containsKey(itemId)) {
+            final existingItem = existingItemsMap[itemId]!;
+            await db.update(
+              AppDBConst.purchasedItemsTable,
+              {
+                AppDBConst.itemName: name.isEmpty ? 'Payout' : name,
+                AppDBConst.itemPrice: itemPrice,
+                AppDBConst.itemCount: itemQuantity,
+                AppDBConst.itemSumPrice: itemSumPrice,
+                AppDBConst.itemImage: 'assets/svg/payout.svg',
+                AppDBConst.itemSKU: '',
+                AppDBConst.itemType: ItemType.payout.value,
+              },
+              where: '${AppDBConst.itemServerId} = ?',
+              whereArgs: [existingItem[AppDBConst.itemServerId]],
+            );
+            if (kDebugMode) {
+              print(
+                  "#### DEBUG: Updated payout feeLine ID: $itemId for order $orderId with price: $itemPrice");
+            }
+            existingItemsMap.remove(itemId);
+          } else {
+            await db.insert(AppDBConst.purchasedItemsTable, {
+              AppDBConst.itemServerId: feeLine.id,
+              AppDBConst.itemName: name.isEmpty ? 'Payout' : name,
+              AppDBConst.itemSKU: '',
+              AppDBConst.itemPrice: itemPrice,
+              AppDBConst.itemImage: 'assets/svg/payout.svg',
+              AppDBConst.itemCount: itemQuantity,
+              AppDBConst.itemSumPrice: itemSumPrice,
+              AppDBConst.orderIdForeignKey: orderId,
+              AppDBConst.itemType: ItemType.payout.value,
+            });
+            if (kDebugMode) {
+              print(
+                  "#### DEBUG: Inserted new payout feeLine ID: $itemId for order $orderId with price: $itemPrice");
+            }
+          }
+        }
+
+        if (isDiscount) {
+          merchantDiscount += itemPrice.abs();
+          merchantDiscountIds = merchantDiscountIds.isEmpty
+              ? "${feeLine.id}"
+              : "$merchantDiscountIds,${feeLine.id}";
+        }
+      }
+    }
+
     await db.update(
       AppDBConst.orderTable,
       {
@@ -1634,7 +1715,7 @@ class OrderHelper {
     );
     if (kDebugMode) {
       print(
-          "#### DEBUG: updateOrderPayoutItems - Processing merchantDiscount item IDs: $merchantDiscountIds, discountTotal: $merchantDiscount");
+          "#### DEBUG: updateOrderPayoutItem - MerchantDiscount item IDs: $merchantDiscountIds, discountTotal: $merchantDiscount");
     }
 
     for (var item in existingItemsMap.values) {
@@ -1735,23 +1816,32 @@ class OrderHelper {
   // Ex: updateOrderPayoutItem modified to lineItems but discount we are getting in fee lines only , we are not using this, that's why merchant discount calculation is 0.
   // Added this function to handle merchant discounts from feeLines
   Future<void> updateOrderMerchantDiscount(
-      int orderId, List<model.LineItem> lineItems) async {
-    // Build #1.0.274 : updated fee lines to line items
+      int orderId, List<model.LineItem> lineItems, [List<model.FeeLine>? feeLines]) async {
     final db = await DBHelper.instance.database;
     double merchantDiscount = 0.0;
-    // Use a list instead of string concatenation
-    List<String> merchantDiscountIdsList =
-        []; // Build #1.0.216: FIXED Issue - Merchant discount not deleting, showing error "Payout ID not found"
+    List<String> merchantDiscountIdsList = [];
 
     for (var lineItem in lineItems) {
       final name = (lineItem.name ?? '').toLowerCase();
-
-      if (name.contains('discount')) {
-        merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
+      if (name.contains('discount') || name.contains('merchant')) {
+        final double itemPrice = double.tryParse(lineItem.total?.toString() ?? '') ??
+            double.tryParse(lineItem.price?.toString() ?? '') ?? 0.0;
+        merchantDiscount += itemPrice.abs();
         merchantDiscountIdsList.add(lineItem.id.toString());
       }
     }
-    // Build #1.0.216: Join with commas and ensure no leading comma
+
+    if (feeLines != null) {
+      for (var feeLine in feeLines) {
+        final name = (feeLine.name ?? '').toLowerCase();
+        if (name.contains('discount') || name.contains('merchant')) {
+          final double itemPrice = double.tryParse(feeLine.total?.toString() ?? '') ?? 0.0;
+          merchantDiscount += itemPrice.abs();
+          merchantDiscountIdsList.add(feeLine.id.toString());
+        }
+      }
+    }
+
     String merchantDiscountIds = merchantDiscountIdsList.join(',');
 
     await db.update(
@@ -2288,10 +2378,8 @@ class OrderHelper {
         final qty = (map['items_count'] ?? map['quantity'] ?? 1).toInt();
         final itemType =
             (map['item_type'] ?? map['type'] ?? 'product').toString();
-        // Skip discount, payout & cashback types - we add from their respective lists separately
-        if (itemType.toLowerCase().contains('discount') ||
-            itemType.toLowerCase() == 'payout' ||
-            itemType.toLowerCase() == 'cashback') continue;
+        // Skip discount type - we add from discounts list separately
+        if (itemType.toLowerCase().contains('discount')) continue;
         final multipack = _toDouble(
             map['multipack_discount_total'] ?? map['multipackDiscount'] ?? 0);
         final auto = _toDouble(map['auto_discount_total'] ??
@@ -2332,10 +2420,8 @@ class OrderHelper {
         final itemType = (map['item_type'] ?? map['type'] ?? 'product')
             .toString()
             .toLowerCase();
-        // Skip discount, payout & cashback types - we add from their respective lists separately
-        if (itemType.contains('discount') ||
-            itemType == 'payout' ||
-            itemType == 'cashback') continue;
+        // Skip discount type - we add from discounts list separately
+        if (itemType.contains('discount')) continue;
         final name = map['name'] ?? map['product_name'] ?? '';
         final price = (map['price'] as num?)?.toDouble() ?? 0.0;
         final qty = (map['quantity'] as num?)?.toInt() ?? 1;

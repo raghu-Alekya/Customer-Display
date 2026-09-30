@@ -696,7 +696,9 @@ class OrderRepository {
         final int? productId =
         int.tryParse(p['payout_product_id']?.toString() ?? "");
 
-        if (productId != null && productId > 0) {
+        final bool isRealProductId = productId != null && productId > 0 && productId < 10000000;
+
+        if (isRealProductId) {
           lineItems.add({
             "product_id": productId,
             "name": p["product_name"] ?? "Payout",
@@ -754,119 +756,37 @@ class OrderRepository {
       }
 
       // ---------------------------------------------------------
-// ⭐ HANDLE MERCHANT DISCOUNT (AS LINE ITEM USING PRODUCT ID)
-// ---------------------------------------------------------
-//       final dynamic discountRaw = offlineOrder['merchantDiscount'];
-//       double merchantDiscount =
-//           double.tryParse(discountRaw?.toString() ?? "0") ?? 0.0;
-
-//       double merchantDiscount = 0.0;
-//
-//       final String discountType =
-//           offlineOrder['merchantDiscountType']?.toString() ?? '';
-//
-//       final double percentage =
-//           double.tryParse(
-//             offlineOrder['merchantDiscountPercentage']?.toString() ?? '0',
-//           ) ??
-//               0.0;
-//
-//       final double fixedDiscount =
-//           double.tryParse(
-//             offlineOrder['merchantDiscountFixed']?.toString() ?? '0',
-//           ) ??
-//               0.0;
-//
-// // Calculate latest gross from current line items
-//       double latestGross = 0.0;
-//
-//       for (final li in lineItems) {
-//         final total =
-//             double.tryParse(li['total']?.toString() ?? '0') ?? 0.0;
-//
-//         // Skip negative discount rows
-//         if (total > 0) {
-//           latestGross += total;
-//         }
-//       }
-//
-//       if (discountType == 'percentage') {
-//         merchantDiscount = (percentage / 100) * latestGross;
-//       } else {
-//         merchantDiscount = fixedDiscount;
-//       }
-//
-//       merchantDiscount = double.parse(
-//         merchantDiscount.toStringAsFixed(2),
-//       );
-//
-//       debugPrint("🟢 Recalculated Merchant Discount → $merchantDiscount");
-
+// ⭐ HANDLE MERCHANT DISCOUNT (AS FEE LINE)
       // ---------------------------------------------------------
-// ⭐ MERCHANT DISCOUNT (FIXED - use correct gross)
-// ---------------------------------------------------------
-      double merchantDiscount = 0.0;
-
-      final String discountType =
-          offlineOrder['merchantDiscountType']?.toString() ?? '';
-
-      final double percentage =
-          double.tryParse(
-            offlineOrder['merchantDiscountPercentage']?.toString() ?? '0',
-          ) ?? 0.0;
-
-      final double fixedDiscount =
-          double.tryParse(
-            offlineOrder['merchantDiscountFixed']?.toString() ?? '0',
-          ) ?? 0.0;
-
-      // ✅ FIXED: Use actual gross from offlineOrder first (most reliable)
-      // Fallback to lineItems sum only if gross_total is missing/zero
-      double latestGross = (offlineOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
-
-      if (latestGross <= 0.0001) {
-        latestGross = 0.0;
-        for (final li in lineItems) {
-          final total = double.tryParse(li['total']?.toString() ?? '0') ?? 0.0;
-          if (total > 0) {
-            latestGross += total;
-          }
-        }
-      }
-
-      if (discountType == 'percentage' && percentage > 0) {
-        merchantDiscount = (percentage / 100) * latestGross;
-      } else {
-        merchantDiscount = fixedDiscount;
-      }
-
-      merchantDiscount = double.parse(
-        merchantDiscount.toStringAsFixed(2),
+      // ---------------------------------------------------------
+      // ⭐ HANDLE MERCHANT DISCOUNT (AS FEE LINE)
+      // ---------------------------------------------------------
+      final double lineItemsSubtotal = lineItems.fold<double>(
+        0.0,
+            (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
       );
 
-      debugPrint("🟢 Recalculated Merchant Discount → $merchantDiscount (from gross: $latestGross)");
+      // ✅ NEW: Use UI-saved merchant discount amount if available (set by summary screen)
+      // This ensures what the cashier sees ($6.00) matches what gets sent to Woo.
+      final double _savedUiMerchantDiscount = (double.tryParse(
+        offlineOrder['uiMerchantDiscountAmount']?.toString() ?? '0',
+      ) ?? 0.0).abs();
 
-      final discountProductIds =
-      (offlineOrder['merchantDiscountIds'] as List? ?? [])
-          .map((e) => int.tryParse(e.toString()) ?? 0)
-          .where((id) => id > 0)
-          .toList();
-
-      if (merchantDiscount > 0 && discountProductIds.isNotEmpty) {
-        final int discountPid =
-            discountProductIds.first; // ⭐ Woo Product ID (11827)
-
-        lineItems.add({
-          "product_id": discountPid,
-          "name": "Discount",
-          "quantity": 1,
-          "subtotal": (-merchantDiscount).toStringAsFixed(2),
+      final double merchantDiscount = _savedUiMerchantDiscount > 0.001
+          ? _savedUiMerchantDiscount
+          : resolveOfflineMerchantDiscountAmount(
+        offlineOrder,
+        lineItemsTotal: lineItemsSubtotal,
+      );
+      if (merchantDiscount > 0) {
+        feeLines.add({
+          "name": "merchant_discount",
           "total": (-merchantDiscount).toStringAsFixed(2),
           "tax_status": "none",
-          "type": "discount"
         });
-
-        print("🟢 Added Merchant Discount Product → $discountPid");
+        print(
+          "🟢 Added Merchant Discount as FEE LINE → -${merchantDiscount.toStringAsFixed(2)}",
+        );
       }
 
       // ---------------------------------------------------------
@@ -2718,9 +2638,10 @@ class OrderRepository {
         "$getOrdersParameter$encodedStatus";
     //"${UrlParameterConstants.getOrdersEndParameter}"; # Build 1.0.172 removed them so that when applied date filter, data is fetching properly.
 
-    if (kDebugMode) {
-      print("OrderRepository - GET URL: $url");
-    }
+    print("🌐 ================================================================================");
+    print("🌐 [GET ALL ORDERS LIST API URL]");
+    print("🌐 FULL URL: $url");
+    print("🌐 ================================================================================");
 
     try {
       final response = await _helper.get(url, true);
@@ -2782,9 +2703,10 @@ class OrderRepository {
         "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/${UrlMethodConstants.totalOrders}$getOrdersParameter$encodedStatus";
     //"${UrlParameterConstants.getOrdersEndParameter}"; # Build 1.0.172 removed them so that when applied date filter, data is fetching properly.
 
-    if (kDebugMode) {
-      print("OrderRepository - GET URL: $url");
-    }
+    print("🌐 ================================================================================");
+    print("🌐 [FETCH TOTAL ORDERS COUNT API URL]");
+    print("🌐 FULL URL: $url");
+    print("🌐 ================================================================================");
 
     try {
       final response = await _helper.get(url, true);

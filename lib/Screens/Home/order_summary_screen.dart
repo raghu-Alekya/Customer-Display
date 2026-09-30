@@ -3704,14 +3704,15 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     for (final item in orderItems) {
       final String itemType =
-      (item['item_type'] ?? '').toString().toLowerCase();
+      (item['item_type'] ?? item['type'] ?? '').toString().toLowerCase();
       final String itemName =
-      (item['item_name'] ?? '').toString().toLowerCase();
+      (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
 
       if (itemType.contains('discount') ||
           itemType.contains('coupon') ||
           itemType.contains('loyalty') ||
-          itemName.contains('merchant discount')) {
+          itemName.contains('merchant discount') ||
+          itemName.contains('merchant_discount')) {
         continue;
       }
 
@@ -3721,7 +3722,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           itemType.contains('cashback') || itemName.contains('cashback');
       final bool isPayoutOrCashback = isPayout || isCashback;
 
-      final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+      final double unitPrice = toDouble(
+          item['item_price'] ?? item['price'] ?? item['amount'] ?? item['item_sum_price'] ?? item['total']).abs();
       final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
       final double lineTotal = unitPrice * qty;
 
@@ -4022,9 +4024,9 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     for (final item in orderItems) {
       final String itemType =
-      (item['item_type'] ?? '').toString().toLowerCase();
+      (item['item_type'] ?? item['type'] ?? '').toString().toLowerCase();
       final String itemName =
-      (item['item_name'] ?? '').toString().toLowerCase();
+      (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
 
       final bool isPayout = itemType.contains('payout') ||
           itemType.contains('cashback') ||
@@ -4034,7 +4036,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
           itemName.contains('cashback');
 
       if (isPayout) {
-        final double unitPrice = toDouble(item['item_price'] ?? item['price']);
+        final double unitPrice = toDouble(
+            item['item_price'] ?? item['price'] ?? item['amount'] ?? item['item_sum_price'] ?? item['total']).abs();
         final int qty = (item['items_count'] ?? item['quantity'] ?? 1).toInt();
         payoutCashbackTotal += unitPrice * qty;
         continue;

@@ -4397,8 +4397,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
   void _handleAddPayout() async {
     print("🟦 [PAYOUT] START ---- _handleAddPayout() ----");
 
-    if (_isPayoutLoading) return;
-
     if (_payoutAmount.isEmpty ||
         _payoutAmount == "0.00" ||
         double.tryParse(_payoutAmount) == null) {
@@ -4450,18 +4448,6 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
       final payouts = (existingOrder["payouts"] as List? ?? [])
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
-
-      if (payouts.isNotEmpty) {
-        setState(() => _isPayoutLoading = false);
-        ScaffoldMessenger.of(widget.scaffoldMessengerContext).showSnackBar(
-          const SnackBar(
-            content: Text("Payout already applied to this order."),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        return;
-      }
 
       final payoutProduct = await _getPayoutProductFromIsar();
 
