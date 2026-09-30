@@ -1,4 +1,4 @@
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:pinaka_pos/Database/discount_rule_isar.dart';
 
 import '../Repositories/Orders/order_repository.dart';

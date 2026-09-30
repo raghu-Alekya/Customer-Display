@@ -1115,48 +1115,51 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
 
                       // PIN boxes
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(6, (index) {
-                          double paddingValue = isPortrait ? 8.5 : 12.5;
-                          return Padding(
-                            padding:
-                            EdgeInsets.symmetric(horizontal: paddingValue),
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 300),
-                              child: Container(
-                                key: ValueKey<int>(index),
-                                width: isPortrait ? 50.0 : 70.0,
-                                height: isPortrait ? 50.0 : 70.0,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFFFFFF),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: Colors.grey.shade300,
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Center(
-                                  child: _password[index].isEmpty
-                                      ? SvgPicture.asset(
-                                    'assets/svg/password_placeholder.svg',
-                                    width: 15,
-                                    height: 15,
-                                  )
-                                      : SvgPicture.asset(
-                                    'assets/svg/password_placeholder.svg',
-                                    colorFilter: const ColorFilter.mode(
-                                      Colors.black,
-                                      BlendMode.srcIn,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(6, (index) {
+                            double paddingValue = isPortrait ? 8.5 : 12.5;
+                            return Padding(
+                              padding:
+                              EdgeInsets.symmetric(horizontal: paddingValue),
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 300),
+                                child: Container(
+                                  key: ValueKey<int>(index),
+                                  width: isPortrait ? 50.0 : 70.0,
+                                  height: isPortrait ? 50.0 : 70.0,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFFFFF),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.grey.shade300,
+                                      width: 1,
                                     ),
-                                    width: 15,
-                                    height: 15,
+                                  ),
+                                  child: Center(
+                                    child: _password[index].isEmpty
+                                        ? SvgPicture.asset(
+                                      'assets/svg/password_placeholder.svg',
+                                      width: 15,
+                                      height: 15,
+                                    )
+                                        : SvgPicture.asset(
+                                      'assets/svg/password_placeholder.svg',
+                                      colorFilter: const ColorFilter.mode(
+                                        Colors.black,
+                                        BlendMode.srcIn,
+                                      ),
+                                      width: 15,
+                                      height: 15,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          );
-                        }),
+                            );
+                          }),
+                        ),
                       ),
 
                       const SizedBox(height: 32),

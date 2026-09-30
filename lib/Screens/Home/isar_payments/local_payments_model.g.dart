@@ -135,7 +135,7 @@ const LocalPaymentSchema = CollectionSchema(
   getId: _localPaymentGetId,
   getLinks: _localPaymentGetLinks,
   attach: _localPaymentAttach,
-  version: '3.1.0+1',
+  version: '3.3.2',
 );
 
 int _localPaymentEstimateSize(
@@ -296,8 +296,8 @@ P _localPaymentDeserializeProp<P>(
 }
 
 const _LocalPaymentstatusEnumValueMap = {
-  'successful': 0,
-  'partial': 1,
+  'completed': 0,
+  'pending': 1,
   'receipt': 2,
   'voided': 3,
 };

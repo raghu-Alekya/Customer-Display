@@ -79,7 +79,7 @@ const DiscountRuleIsarSchema = CollectionSchema(
   getId: _discountRuleIsarGetId,
   getLinks: _discountRuleIsarGetLinks,
   attach: _discountRuleIsarAttach,
-  version: '3.1.0+1',
+  version: '3.3.2',
 );
 
 int _discountRuleIsarEstimateSize(

@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 
 import '../../Database/isar_cache_entry.dart';
 import '../../Database/isar_service.dart';

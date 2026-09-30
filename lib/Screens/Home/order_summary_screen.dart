@@ -7852,7 +7852,22 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
               print("LATEST ORDER -> $latestOrder");
 
-              final bool couponExists = latestOrder["coupon_applied"] == true;
+              bool hasRedeemCouponInDb = false;
+              if (latestOrder["coupon_applied"] == true) {
+                final cr = latestOrder["coupon_response"];
+                if (cr is Map && cr["coupons"] is List) {
+                  for (final c in cr["coupons"] as List) {
+                    if (c is Map &&
+                        _couponHiveEntryIsRedeem(
+                            Map<String, dynamic>.from(c))) {
+                      hasRedeemCouponInDb = true;
+                      break;
+                    }
+                  }
+                }
+              }
+              final bool couponExists =
+                  hasRedeemCouponInDb || isCouponAppliedFromApi;
 
               print("coupon_applied: ${latestOrder["coupon_applied"]}");
               print("couponExists: $couponExists");
@@ -7928,22 +7943,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                 return;
               }
 
-              // ✅ CASE 2: Coupon applied but no payment yet
-              // CASE 2: Coupon applied
+              // ✅ CASE 2: Redeem Coupon applied on order but no payment yet
               if (couponExists) {
-                // ⭐ ISSUE COUPON → show exit confirmation popup
-                if (isCouponActive) {
-                  print("🎟 Issue coupon → showing exit confirmation");
-                  _showExitPaymentConfirmation(context);
-                  return;
-                }
-
-                // ⭐ GENERATED COUPON → show snackbar
-                print("🚨 Generated coupon exists → showing snackbar");
-                _showCouponAppliedSnackBar(context);
-                return;
-              }
-              if (couponExists || isCouponAppliedFromApi) {
                 print("🚨 Coupon already applied → showing snackbar");
                 _showCouponAppliedSnackBar(context);
                 return;
@@ -12176,7 +12177,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       mergedResponse["coupons"] = [...issueCoupons, ...keptRedeems];
 
       existing["coupon_response"] = mergedResponse;
-      existing["coupon_applied"] = true;
+      existing["coupon_applied"] = keptRedeems.isNotEmpty;
       existing["coupon_applied_at"] = DateTime.now().toIso8601String();
       existing["coupon_amount"] = discountAmount;
 

@@ -34,7 +34,7 @@ class PrinterSettings {
   final PrinterDBHelper _printerDBHelper = PrinterDBHelper();
 
   static Future<void> openDrawer({BuildContext? context}) async {
-    print("cash drawer throught the printer");
+    print("cash drawer was open through printer");
 
     try {
       var sunmi = SunmiPrinterPlus();
@@ -252,18 +252,30 @@ class PrinterSettings {
     }
     var bluetoothPrinter = selectedPrinter!;
 
+    // Build drawer kick commands to open cash drawer through the connected printer (Wi-Fi/Network/USB/Bluetooth)
+    List<int> drawerBytes = [];
+    try {
+      drawerBytes += generator.drawer(pin: PosDrawer.pin2);
+      drawerBytes += generator.drawer(pin: PosDrawer.pin5);
+    } catch (_) {}
+    drawerBytes += const [27, 112, 0, 25, 250];
+    drawerBytes += const [27, 112, 1, 25, 250];
+
+    final finalBytes = <int>[
+      ...drawerBytes,
+      ...bytes,
+      ...generator.feed(2),
+      ...generator.cut(),
+    ];
+
     switch (bluetoothPrinter.typePrinter) {
       case PrinterType.usb:
-        bytes += generator.feed(2);
-        bytes += generator.cut();
         await printerManager.connect(
             type: bluetoothPrinter.typePrinter,
             model: UsbPrinterInput(name: bluetoothPrinter.deviceName, productId: bluetoothPrinter.productId, vendorId: bluetoothPrinter.vendorId));
         pendingTask = null;
         break;
       case PrinterType.bluetooth:
-        bytes += generator.feed(2);
-        bytes += generator.cut();
         await printerManager.connect(
             type: bluetoothPrinter.typePrinter,
             model: BluetoothPrinterInput(
@@ -272,14 +284,12 @@ class PrinterSettings {
                 isBle: bluetoothPrinter.isBle ?? false,
                 autoConnect: _reconnect));
         pendingTask = null;
-        if (Platform.isAndroid) pendingTask = bytes;
+        if (Platform.isAndroid) pendingTask = finalBytes;
         if (kDebugMode) {
           print(' --- bluetooth connection is ok ---');
         }
         break;
       case PrinterType.network:
-        bytes += generator.feed(2);
-        bytes += generator.cut();
         connectedTCP = await printerManager.connect(type: bluetoothPrinter.typePrinter, model: TcpPrinterInput(ipAddress: bluetoothPrinter.address!));
         if (!connectedTCP) print(' --- please review your connection ---');
         break;
@@ -293,15 +303,16 @@ class PrinterSettings {
         if (kDebugMode) {
           print(' --- PrinterSettings printing in if condition ---');
         }
-        printerManager.send(type: bluetoothPrinter.typePrinter, bytes: bytes);
+        printerManager.send(type: bluetoothPrinter.typePrinter, bytes: finalBytes);
         pendingTask = null;
       }
     } else {
       if (kDebugMode) {
         print(' --- PrinterSettings  printing in else condition ---');
       }
-      printerManager.send(type: bluetoothPrinter.typePrinter, bytes: bytes);
+      printerManager.send(type: bluetoothPrinter.typePrinter, bytes: finalBytes);
     }
+    print("cash drawer was open through printer");
     openDrawer();
     return Result.ok(bluetoothPrinter);
   }

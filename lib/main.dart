@@ -1,10 +1,11 @@
 import 'dart:async';
-
+import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pinaka_pos/services/CustomerDisplayService.dart';
 import 'package:pinaka_pos/services/customer_services.dart';
@@ -69,6 +70,16 @@ import 'mqtt_server/store_messaging_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('[Startup FlutterError] ${details.exceptionAsString()}');
+  };
+
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    debugPrint('[Startup PlatformError] $error\n$stack');
+    return true;
+  };
 
   // IMPORTANT FOR PLAY / PRE-LAUNCH:
   // Only local, deterministic initialization is allowed before runApp().
@@ -275,7 +286,7 @@ void main() async {
   );
 
   // Everything below is intentionally post-first-frame. If the Google
-  // pre-launch device has no Internet, no DNS, no LAN, no secondary display,
+  // pre-launch device has no Internet, no DNS, no LAN, ndo secondary display,
   // or no MQTT broker, the POS UI still reaches SplashScreen/LoginScreen.
   WidgetsBinding.instance.addPostFrameCallback((_) {
     unawaited(_startNonCriticalServices(messagingService, httpClient));

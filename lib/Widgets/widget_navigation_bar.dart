@@ -1597,7 +1597,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:pinaka_pos/Screens/Auth/login_screen.dart';
 import 'package:pinaka_pos/Screens/Home/apps_dashboard_screen.dart';
 import 'package:pinaka_pos/Screens/Home/categories_screen.dart';

@@ -14,10 +14,26 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+configurations.all {
+    resolutionStrategy {
+        force("com.google.mlkit:barcode-scanning:17.3.0")
+        force("androidx.camera:camera-core:1.4.1")
+        force("androidx.camera:camera-camera2:1.4.1")
+        force("androidx.camera:camera-lifecycle:1.4.1")
+        force("androidx.camera:camera-view:1.4.1")
+    }
+}
+
 android {
     namespace = "com.alekta.pinakapos"
     compileSdk = 36
     ndkVersion = "27.0.12077973"
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

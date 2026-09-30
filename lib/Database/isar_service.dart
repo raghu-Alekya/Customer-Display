@@ -1,4 +1,6 @@
-import 'package:isar/isar.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:isar_community/isar.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'isar_cache_entry.dart';
@@ -16,6 +18,10 @@ class IsarService {
 
   static Future<Isar> init() async {
     if (_isar != null) return _isar!;
+
+    if (!kIsWeb && Platform.isWindows) {
+      await Isar.initializeIsarCore(download: true);
+    }
 
     final dir = await getApplicationDocumentsDirectory();
     _isar = await Isar.open(
