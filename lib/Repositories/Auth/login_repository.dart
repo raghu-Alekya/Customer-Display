@@ -7,48 +7,20 @@ import '../../Helper/api_helper.dart';
 import '../../Helper/offline_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Auth/login_model.dart';
-import 'AuthIdsStore.dart';
 
 class LoginRepository {
   final APIHelper _helper = APIHelper();
-
-  // The PIN may come from the old key (emp_login_pin) or the new one (pin),
-  // so LoginRequest does not need to change.
-  String _pinFrom(LoginRequest request) {
-    final json = request.toJson();
-    return (json['pin'] ?? json['emp_login_pin'])?.toString() ?? '';
-  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Main login: online path + offline fallback
   // ─────────────────────────────────────────────────────────────────────────
   Future<String> fetchLoginToken(LoginRequest request) async {
-    // -> https://pch.alektasolutions.com/connector/api/v1/pos/auth/login
     final String url =
         "${UrlHelper.componentVersionUrl}${UrlMethodConstants.token}";
 
-    final String pin = _pinFrom(request);
-
-    // merchantId + storeId were saved after merchant-store-login
-    final String merchantId = await AuthIdsStore.getMerchantId();
-    final String storeId = await AuthIdsStore.getStoreId();
-
-    if (merchantId.isEmpty || storeId.isEmpty) {
-      throw Exception(
-        "Store not set up. Please complete merchant login first.",
-      );
-    }
-
-    // Body sent to the server: {"pin": "...", "merchantId": "...", "storeId": "..."}
-    final Map<String, dynamic> body = {
-      'pin': pin,
-      'merchantId': merchantId,
-      'storeId': storeId,
-    };
-
     if (kDebugMode) {
       print("LoginRepository - URL: $url");
-      print("LoginRepository - Request: $body");
+      print("LoginRepository - Request: ${request.toJson()}");
     }
 
     // Always try the server first. Wi-Fi availability does not guarantee that
@@ -71,9 +43,9 @@ class LoginRepository {
     if (isOnline) {
       // ── ONLINE PATH ────────────────────────────────────────────────────
       try {
-        final response = await _helper.post(url, body, false);
+        final response = await _helper.post(url, request.toJson(), false);
         // On successful online login, save the PIN hash for future offline use
-        await _cacheEmployeePinIfPresent(pin, response);
+        await _cacheEmployeePinIfPresent(request, response);
         return response;
       } catch (e) {
         if (kDebugMode) print("LoginRepository - Online login exception: $e");
@@ -99,6 +71,7 @@ class LoginRepository {
     // ── OFFLINE PATH ────────────────────────────────────────────────────────
     if (kDebugMode) print("LoginRepository - Attempting offline PIN validation");
 
+    final pin = request.toJson()['emp_login_pin']?.toString() ?? '';
     final employee = await UserDbHelper().validateOfflinePin(pin);
 
     if (employee == null) {
@@ -133,9 +106,12 @@ class LoginRepository {
     return '{"success":true,"data":{"id":$userId,"displayName":"$displayName","email":"$email","token":"$offlineToken","role":"cashier"}}';
   }
 
-  // Takes the PIN directly (the request body is no longer the old LoginRequest map)
-  Future<void> _cacheEmployeePinIfPresent(String pin, String rawResponse) async {
+  // ─────────────────────────────────────────────────────────────────────────
+  // After a successful ONLINE login, save the PIN hash for offline reuse.
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<void> _cacheEmployeePinIfPresent(LoginRequest request, String rawResponse) async {
     try {
+      final pin = request.toJson()['emp_login_pin']?.toString() ?? '';
       if (pin.isEmpty) return;
 
       Map<String, dynamic>? dataMap;
@@ -150,26 +126,12 @@ class LoginRepository {
         }
       } catch (_) {}
 
-      // User details may be under data.user, data.employee, or directly in data
       final nestedUser = dataMap?['user'] is Map
           ? Map<String, dynamic>.from(dataMap!['user'] as Map)
-          : dataMap?['employee'] is Map
-          ? Map<String, dynamic>.from(dataMap!['employee'] as Map)
           : <String, dynamic>{};
-      final source = <String, dynamic>{...?dataMap, ...nestedUser};
-
-      final employeeId = source['id']?.toString() ??
-          source['employeeId']?.toString() ??
-          source['user_id']?.toString() ??
-          '';
-
-      final firstName = source['firstName']?.toString() ?? '';
-      final lastName = source['lastName']?.toString() ?? '';
-      final fullName = '$firstName $lastName'.trim();
-      final displayName = source['displayName']?.toString() ??
-          source['display_name']?.toString() ??
-          (fullName.isNotEmpty ? fullName : (source['name']?.toString() ?? 'Cashier'));
-
+      final source = <String, dynamic>{...nestedUser, ...?dataMap};
+      final employeeId = source['id']?.toString() ?? source['user_id']?.toString() ?? '';
+      final displayName = source['displayName']?.toString() ?? source['display_name']?.toString() ?? 'Cashier';
       final email = source['email']?.toString() ?? '';
 
       if (employeeId.isNotEmpty && employeeId != '0') {
