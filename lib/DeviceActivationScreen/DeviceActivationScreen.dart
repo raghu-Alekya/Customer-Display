@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:pinaka_pos/Screens/Auth/login_screen.dart';
+import 'package:pinaka_pos/Screens/Auth/login_screen.dart' hide Text;
 import 'package:pinaka_pos/Screens/Auth/store_id_screen.dart';
 
 import '../../Widgets/widget_custom_num_pad.dart';

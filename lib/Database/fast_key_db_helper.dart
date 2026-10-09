@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
@@ -7,7 +6,6 @@ import 'package:http/http.dart' as http;
 import '../Widgets/widget_topbar.dart';
 import 'db_helper.dart';
 import '../Helper/url_helper.dart';
-import 'isar_service.dart';
 
 class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key related methods
   static final FastKeyDBHelper _instance = FastKeyDBHelper._internal();
@@ -395,15 +393,14 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
       if (kDebugMode) print("🔄 Syncing FastKey items from API...");
 
       final tabsUrl = Uri.parse(
-        '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}'
-            'fast-keys?user_id=$userId',
+        '${UrlHelper.baseUrl}fastkeys/get-by-user',
       );
 
       final tabsResponse = await http.get(
         tabsUrl,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
+          if (token.isNotEmpty) 'Authorization': 'Bearer $token',
         },
       );
 
@@ -414,21 +411,77 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
 
       final tabsData = jsonDecode(tabsResponse.body);
 
-      // ✅ FIX: root key is "fastkeys", not "fast_keys"
-      final List<dynamic> fastKeys = tabsData['fastkeys'] ?? [];
+      List<dynamic> fastKeys = [];
+      if (tabsData is Map<String, dynamic>) {
+        if (tabsData['fastkeys'] is List) {
+          fastKeys = tabsData['fastkeys'] as List<dynamic>;
+        } else if (tabsData['data'] is List) {
+          fastKeys = tabsData['data'] as List<dynamic>;
+        } else if (tabsData['data'] is Map && tabsData['data']['fastkeys'] is List) {
+          fastKeys = tabsData['data']['fastkeys'] as List<dynamic>;
+        }
+      }
 
       if (fastKeys.isEmpty) {
         if (kDebugMode) print('ℹ️ No FastKey tabs found');
         return;
       }
 
-      for (final fastKey in fastKeys) {
-        // ✅ FIX: id field is "fastkey_id", not "id"
-        final int fastKeyServerId = fastKey['fastkey_id'];
+      final db = await DBHelper.instance.database;
 
-        // ✅ FIX: products (with tags/meta_data) are already embedded —
-        // no separate /items endpoint call needed/exists for this shape
-        final List<dynamic> products = fastKey['products'] ?? [];
+      for (final fastKey in fastKeys) {
+        if (fastKey is! Map<String, dynamic>) continue;
+        final rawServerId = fastKey['fastkey_id'] ?? fastKey['fastkeyId'] ?? fastKey['id'];
+        final int fastKeyServerId = rawServerId is int
+            ? rawServerId
+            : (int.tryParse(rawServerId?.toString() ?? '') ??
+                (rawServerId != null && rawServerId.toString().isNotEmpty
+                    ? rawServerId.toString().hashCode.abs()
+                    : 0));
+
+        if (fastKeyServerId == 0) continue;
+
+        final title = fastKey['fastkey_title']?.toString() ??
+            fastKey['title']?.toString() ??
+            'FastKey';
+        final index = fastKey['fastkey_index']?.toString() ?? '0';
+        final image = fastKey['fastkey_image']?.toString() ?? '';
+
+        final List<dynamic> products = fastKey['products'] is List
+            ? fastKey['products'] as List<dynamic>
+            : [];
+
+        final tabResult = await db.query(
+          AppDBConst.fastKeyTable,
+          where: '${AppDBConst.fastKeyServerId} = ?',
+          whereArgs: [fastKeyServerId],
+        );
+
+        int localTabId;
+        if (tabResult.isEmpty) {
+          localTabId = await db.insert(AppDBConst.fastKeyTable, {
+            AppDBConst.fastKeyServerId: fastKeyServerId,
+            AppDBConst.fastKeyTabTitle: title,
+            AppDBConst.fastKeyTabIndex: index,
+            AppDBConst.fastKeyTabImage: image,
+            AppDBConst.fastKeyTabItemCount: products.length,
+            AppDBConst.userIdForeignKey: userId,
+          });
+        } else {
+          localTabId = tabResult.first[AppDBConst.fastKeyId] as int;
+          await db.update(
+            AppDBConst.fastKeyTable,
+            {
+              AppDBConst.fastKeyTabTitle: title,
+              AppDBConst.fastKeyTabIndex: index,
+              AppDBConst.fastKeyTabImage: image,
+              AppDBConst.fastKeyTabItemCount: products.length,
+            },
+            where: '${AppDBConst.fastKeyId} = ?',
+            whereArgs: [localTabId],
+          );
+        }
+
         await _syncFastKeyItemsFromProducts(fastKeyServerId, products);
       }
 

@@ -39,6 +39,36 @@ class FastKeyProductRepository {  // Build #1.0.15
     }
   }
 
+  // POST: Update products in FastKey
+  Future<FastKeyProductResponse> updateFastKeyProducts(FastKeyProductRequest request) async {
+    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.fastKeys}${EndUrlConstants.updateFastKeyProductsEndUrl}";
+
+    if (kDebugMode) {
+      print("FastKeyProductRepository - UPDATE PRODUCTS URL: $url");
+      print("Request body: ${request.toJson()}");
+    }
+
+    final response = await _helper.post(url, request.toJson(), true);
+
+    if (kDebugMode) {
+      print("FastKeyProductRepository - UPDATE PRODUCTS Raw Response: $response");
+    }
+
+    if (response is String) {
+      try {
+        final responseData = json.decode(response);
+        return FastKeyProductResponse.fromJson(responseData);
+      } catch (e) {
+        if (kDebugMode) print("Error parsing UPDATE PRODUCTS response: $e");
+        throw Exception("Failed to parse FastKey products update response");
+      }
+    } else if (response is Map<String, dynamic>) {
+      return FastKeyProductResponse.fromJson(response);
+    } else {
+      throw Exception("Unexpected response type");
+    }
+  }
+
   // GET: Fetch products by FastKey ID
   Future<FastKeyProductsResponse> getProductsByFastKeyId(int fastKeyId) async {
     final cacheKey = "fastkey_products_$fastKeyId";

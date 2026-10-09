@@ -64,6 +64,19 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     final db = await DBHelper.instance.database;
     await _ensureUserTableColumns(db);
 
+    // Resolve numeric user_id for SQLite INTEGER PRIMARY KEY column
+    final rawId = loginResponse.id;
+    int numericUserId;
+    if (rawId is int) {
+      numericUserId = rawId;
+    } else if (rawId != null && int.tryParse(rawId.toString()) != null) {
+      numericUserId = int.parse(rawId.toString());
+    } else if (rawId != null && rawId.toString().isNotEmpty) {
+      numericUserId = rawId.toString().hashCode.abs();
+    } else {
+      numericUserId = 1;
+    }
+
     // 1. FIRST clear ALL existing tokens to ensure single active user
     await db.update(
       AppDBConst.userTable,
@@ -74,7 +87,7 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     final existingUser = await db.query(
       AppDBConst.userTable,
       where: '${AppDBConst.userId} = ?',
-      whereArgs: [loginResponse.id],
+      whereArgs: [numericUserId],
     );
 
     final String userEmail = (loginResponse.email != null && loginResponse.email!.trim().isNotEmpty)
@@ -89,7 +102,7 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
 
     // 3. Prepare user data map
     Map<String, dynamic> userMap = {
-      AppDBConst.userId: loginResponse.id,
+      AppDBConst.userId: numericUserId,
       AppDBConst.userRole: loginResponse.role ?? 'CASHIER',
       AppDBConst.userDisplayName: loginResponse.displayName ?? 'Cashier',
       AppDBConst.userEmail: userEmail,
@@ -114,11 +127,11 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
         AppDBConst.userTable,
         userMap,
         where: '${AppDBConst.userId} = ?',
-        whereArgs: [loginResponse.id],
+        whereArgs: [numericUserId],
       );
 
       if (kDebugMode) {
-        print("#### Updated existing user: ${loginResponse.id}");
+        print("#### Updated existing user: $numericUserId");
       }
     } else {
       // Set defaults for new user
@@ -132,7 +145,7 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       );
 
       if (kDebugMode) {
-        print("#### Inserted new user: ${loginResponse.id}");
+        print("#### Inserted new user: $numericUserId");
       }
     }
 

@@ -18,7 +18,7 @@ class StoreValidationRepository {  //Build #1.0.42: Added by Naveen
   }) async {
     final url = UrlHelper.validateMerchant;
     final body = {
-      'username': username,
+      'merchantIdentifier': username,
       'password': password,
       'store_id': storeId,
       'device_id': deviceId,

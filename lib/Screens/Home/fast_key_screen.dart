@@ -952,7 +952,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     // ── 3. DB miss → API (only on very first load or after cache clear) ────
     if (kDebugMode) {
-      print("🌐 Cache miss → Fetching FastKey items from API");
+      print("Cache miss → Fetching FastKey items from API ");
     }
 
     final tabs =

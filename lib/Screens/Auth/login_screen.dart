@@ -368,7 +368,8 @@
 //
 //                                             Row(
 //                                               children: [
-//                                                 Text(
+//                                                 Expanded(
+//                                                   child: Text(
 //                                                   snapshot.data?.message ?? TextConstants.failedToLogin, // Build #1.0.166
 //                                                   style: const TextStyle(color: Colors.red),
 //                                                 ),
@@ -1378,15 +1379,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                           SnackBar(
                                             content: Row(
                                               children: [
-                                                Text(
-                                                  snapshot.data?.message ??
-                                                      TextConstants
-                                                          .failedToLogin,
-                                                  style: const TextStyle(
-                                                    color: Colors.red,
+                                                Expanded(
+                                                  child: Text(
+                                                    snapshot.data?.message ??
+                                                        TextConstants
+                                                            .failedToLogin,
+                                                    style: const TextStyle(
+                                                      color: Colors.red,
+                                                    ),
                                                   ),
                                                 ),
-                                                const Spacer(),
                                                 TextButton(
                                                   onPressed: () {
                                                     showDialog(

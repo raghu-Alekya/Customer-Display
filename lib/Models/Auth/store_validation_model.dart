@@ -1,4 +1,6 @@
 // models/store_validation_model.dart
+import '../../Repositories/Auth/AuthIdsStore.dart';
+
 class StoreValidationResponse {
   //Build #1.0.42: Added by Naveen
   final bool success;
@@ -47,28 +49,82 @@ class StoreValidationResponse {
   });
 
   factory StoreValidationResponse.fromJson(Map<String, dynamic> json) {
+    Map<String, dynamic> dataMap = {};
+    if (json['data'] is Map<String, dynamic>) {
+      dataMap = json['data'] as Map<String, dynamic>;
+    } else {
+      dataMap = json;
+    }
+
+    Map<String, dynamic> merchantMap = {};
+    if (dataMap['merchant'] is Map<String, dynamic>) {
+      merchantMap = dataMap['merchant'] as Map<String, dynamic>;
+    }
+
+    Map<String, dynamic> storeMap = {};
+    if (dataMap['store'] is Map<String, dynamic>) {
+      storeMap = dataMap['store'] as Map<String, dynamic>;
+    }
+
+    final String extractedMerchantId = merchantMap['id']?.toString() ??
+        merchantMap['merchantId']?.toString() ??
+        dataMap['merchantId']?.toString() ??
+        '';
+
+    final String extractedStoreId = storeMap['id']?.toString() ??
+        dataMap['store_id']?.toString() ??
+        dataMap['storeId']?.toString() ??
+        storeMap['storeCode']?.toString() ??
+        '';
+
+    // Save to AuthIdsStore for use by employee PIN login API
+    if (extractedMerchantId.isNotEmpty && extractedStoreId.isNotEmpty) {
+      AuthIdsStore.save(
+        merchantId: extractedMerchantId,
+        storeId: extractedStoreId,
+      );
+    }
+
+    final storeName = storeMap['storeName']?.toString() ??
+        storeMap['name']?.toString() ??
+        dataMap['store_name']?.toString() ??
+        dataMap['storeName']?.toString() ??
+        '';
+
+    final storeBaseUrl = dataMap['storeUrl']?.toString() ??
+        storeMap['storeWebsiteUrl']?.toString() ??
+        dataMap['store_base_url']?.toString() ??
+        '';
+
+    final email = merchantMap['email']?.toString() ??
+        dataMap['email']?.toString() ??
+        '';
+
+    final username = merchantMap['businessDisplayName']?.toString() ??
+        dataMap['username']?.toString() ??
+        '';
+
     return StoreValidationResponse(
       success: json['success'] ?? false,
-      message: json['message'] ?? '',
-      userId: json['user_id'] ?? 0,
-      username: json['username'] ?? '',
-      email: json['email'] ?? '',
-      storeId: json['store_id'] ?? '',
-      subscriptionType: json['subscription_type'] ?? '',
-      storeInfo: json['store_info'] ?? '',
-      storeName: json['store_name'] ?? '',
-      storeLogo: json['store_logo'] ?? '',
-      expirationDate: json['expiration_date'] ?? '',
-      deviceImeis: json['device_imeis'] ?? [],
-      storeBaseUrl: json['store_base_url'] ?? '',
-      storeAddress: json['store_address'] ?? '',
-      storePhone: json['store_phone'] ?? '',
-      licenseKey: json['license_key'] ?? '',
-      licenseStatus: json['license_status'] ?? '',
-      // Build #offline
-      deviceDisplayName: json['device_display_name'] as String? ?? '',
-      deviceTableId: json['device_table_id']?.toString() ?? '',
-      storeGstin: json['store_gstin'] as String? ?? '',
+      message: json['message']?.toString() ?? '',
+      userId: int.tryParse(dataMap['user_id']?.toString() ?? '') ?? 0,
+      username: username,
+      email: email,
+      storeId: extractedStoreId,
+      subscriptionType: dataMap['subscription_type']?.toString() ?? '',
+      storeInfo: dataMap['store_info']?.toString() ?? '',
+      storeName: storeName,
+      storeLogo: storeMap['storeLogo']?.toString() ?? dataMap['store_logo']?.toString() ?? '',
+      expirationDate: dataMap['expiration_date']?.toString() ?? '',
+      deviceImeis: dataMap['device_imeis'] is List ? dataMap['device_imeis'] as List : [],
+      storeBaseUrl: storeBaseUrl,
+      storeAddress: storeMap['addressLine1']?.toString() ?? dataMap['store_address']?.toString() ?? '',
+      storePhone: merchantMap['phone']?.toString() ?? dataMap['store_phone']?.toString() ?? '',
+      licenseKey: dataMap['license_key']?.toString() ?? '',
+      licenseStatus: dataMap['license_status']?.toString() ?? '',
+      deviceDisplayName: dataMap['device_display_name'] as String? ?? '',
+      deviceTableId: dataMap['device_table_id']?.toString() ?? '',
+      storeGstin: dataMap['store_gstin'] as String? ?? '',
     );
   }
 
