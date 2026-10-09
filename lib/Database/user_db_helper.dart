@@ -77,16 +77,26 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       whereArgs: [loginResponse.id],
     );
 
+    final String userEmail = (loginResponse.email != null && loginResponse.email!.trim().isNotEmpty)
+        ? loginResponse.email!.trim()
+        : ((loginResponse.nicename != null && loginResponse.nicename!.trim().isNotEmpty)
+            ? '${loginResponse.nicename!.trim()}@pos.local'
+            : (loginResponse.id != null ? '${loginResponse.id}@pos.local' : 'cashier@pos.local'));
+
+    final String userToken = (loginResponse.token != null && loginResponse.token!.trim().isNotEmpty)
+        ? loginResponse.token!.trim()
+        : '';
+
     // 3. Prepare user data map
     Map<String, dynamic> userMap = {
       AppDBConst.userId: loginResponse.id,
-      AppDBConst.userRole: loginResponse.role,
-      AppDBConst.userDisplayName: loginResponse.displayName,
-      AppDBConst.userEmail: loginResponse.email,
-      AppDBConst.userFirstName: loginResponse.firstName,
-      AppDBConst.userLastName: loginResponse.lastName,
-      AppDBConst.userNickname: loginResponse.nicename,
-      AppDBConst.userToken: loginResponse.token, // Set NEW token
+      AppDBConst.userRole: loginResponse.role ?? 'CASHIER',
+      AppDBConst.userDisplayName: loginResponse.displayName ?? 'Cashier',
+      AppDBConst.userEmail: userEmail,
+      AppDBConst.userFirstName: loginResponse.firstName ?? '',
+      AppDBConst.userLastName: loginResponse.lastName ?? '',
+      AppDBConst.userNickname: loginResponse.nicename ?? '',
+      AppDBConst.userToken: userToken, // Set NEW token
       AppDBConst.profilePhoto: loginResponse.avatar,
       AppDBConst.userShiftId: loginResponse.shiftId,
       // Build #offline: cache terminal identity on every login
