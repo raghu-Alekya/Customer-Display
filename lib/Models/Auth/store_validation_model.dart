@@ -1,5 +1,4 @@
 // models/store_validation_model.dart
-import '../../Repositories/Auth/AuthIdsStore.dart';
 
 class StoreValidationResponse {
   //Build #1.0.42: Added by Naveen
@@ -8,6 +7,7 @@ class StoreValidationResponse {
   final int userId;
   final String username;
   final String email;
+  final String merchantId;
   final String storeId;
   final String subscriptionType;
   final String storeInfo;
@@ -31,6 +31,7 @@ class StoreValidationResponse {
     required this.userId,
     required this.username,
     required this.email,
+    this.merchantId = '',
     required this.storeId,
     required this.subscriptionType,
     required this.storeInfo,
@@ -77,14 +78,6 @@ class StoreValidationResponse {
         storeMap['storeCode']?.toString() ??
         '';
 
-    // Save to AuthIdsStore for use by employee PIN login API
-    if (extractedMerchantId.isNotEmpty && extractedStoreId.isNotEmpty) {
-      AuthIdsStore.save(
-        merchantId: extractedMerchantId,
-        storeId: extractedStoreId,
-      );
-    }
-
     final storeName = storeMap['storeName']?.toString() ??
         storeMap['name']?.toString() ??
         dataMap['store_name']?.toString() ??
@@ -110,6 +103,7 @@ class StoreValidationResponse {
       userId: int.tryParse(dataMap['user_id']?.toString() ?? '') ?? 0,
       username: username,
       email: email,
+      merchantId: extractedMerchantId,
       storeId: extractedStoreId,
       subscriptionType: dataMap['subscription_type']?.toString() ?? '',
       storeInfo: dataMap['store_info']?.toString() ?? '',
@@ -135,6 +129,7 @@ class StoreValidationResponse {
       'user_id': userId,
       'username': username,
       'email': email,
+      'merchant_id': merchantId,
       'store_id': storeId,
       'subscription_type': subscriptionType,
       'store_info': storeInfo,

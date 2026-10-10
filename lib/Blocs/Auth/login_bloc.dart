@@ -10,6 +10,7 @@ import '../../Helper/api_response.dart';
 import '../../Helper/cashbackhelper.dart';
 import '../../Helper/file_helper.dart';
 import '../../Models/Auth/login_model.dart';
+import '../../core/api/token_storage.dart';
 import '../../Repositories/Auth/login_repository.dart';
 import 'package:pinaka_pos/Helper/Extentions/exceptions.dart'; // Import custom exceptions
 
@@ -46,6 +47,10 @@ class LoginBloc { // Build #1.0.8
         // ✅ 2) Save fresh token (used by Cashback + APIs)
         final userBox = StorageProvider.user;
         await userBox.put('token', loginResponse.token);
+
+        // Keep the latest employee access token in secure storage as well as the
+        // existing Hive/SQLite stores so API clients can read it globally.
+        await TokenStorage().saveAccessToken(loginResponse.token!);
 
         // (Optional) Save extra user info if you want
         // if (loginResponse.user != null) {

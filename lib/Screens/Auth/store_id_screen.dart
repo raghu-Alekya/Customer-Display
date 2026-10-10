@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../Repositories/Auth/AuthIdsStore.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:pinaka_pos/Screens/Auth/login_screen.dart';
 import 'package:provider/provider.dart';
@@ -339,6 +340,15 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
                             await StoreDbHelper.instance
                                 .saveStoreValidationData(
                                 store);
+
+                            // Persist merchant/store identifiers before opening employee PIN login.
+                            if (store.merchantId.trim().isNotEmpty &&
+                                store.storeId.trim().isNotEmpty) {
+                              await AuthIdsStore.save(
+                                merchantId: store.merchantId.trim(),
+                                storeId: store.storeId.trim(),
+                              );
+                            }
 
                             if (!mounted) return;
 

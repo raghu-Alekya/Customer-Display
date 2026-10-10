@@ -26,6 +26,9 @@ class TokenStorage {
     await _secureStorage.write(key: _kRefreshToken, value: refreshToken);
   }
 
+  Future<void> saveAccessToken(String accessToken) =>
+      _secureStorage.write(key: _kAccessToken, value: accessToken);
+
   Future<String?> getAccessToken() => _secureStorage.read(key: _kAccessToken);
 
   Future<String?> getRefreshToken() => _secureStorage.read(key: _kRefreshToken);
@@ -37,9 +40,9 @@ class TokenStorage {
       _secureStorage.read(key: _kOfflinePinHash);
 
   Future<void> saveLastAuthenticatedAt(DateTime time) => _secureStorage.write(
-        key: _kLastAuthenticatedAt,
-        value: time.toIso8601String(),
-      );
+    key: _kLastAuthenticatedAt,
+    value: time.toIso8601String(),
+  );
 
   Future<DateTime?> getLastAuthenticatedAt() async {
     final value = await _secureStorage.read(key: _kLastAuthenticatedAt);
@@ -48,9 +51,9 @@ class TokenStorage {
   }
 
   Future<void> setDeviceActivated(bool activated) => _secureStorage.write(
-        key: _kDeviceActivated,
-        value: activated.toString(),
-      );
+    key: _kDeviceActivated,
+    value: activated.toString(),
+  );
 
   Future<bool> isDeviceActivated() async {
     final value = await _secureStorage.read(key: _kDeviceActivated);
