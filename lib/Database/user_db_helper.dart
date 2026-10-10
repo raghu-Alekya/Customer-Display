@@ -90,11 +90,12 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       whereArgs: [numericUserId],
     );
 
+
     final String userEmail = (loginResponse.email != null && loginResponse.email!.trim().isNotEmpty)
         ? loginResponse.email!.trim()
         : ((loginResponse.nicename != null && loginResponse.nicename!.trim().isNotEmpty)
-            ? '${loginResponse.nicename!.trim()}@pos.local'
-            : (loginResponse.id != null ? '${loginResponse.id}@pos.local' : 'cashier@pos.local'));
+        ? '${loginResponse.nicename!.trim()}@pos.local'
+        : (loginResponse.id != null ? '${loginResponse.id}@pos.local' : 'cashier@pos.local'));
 
     final String userToken = (loginResponse.token != null && loginResponse.token!.trim().isNotEmpty)
         ? loginResponse.token!.trim()
@@ -154,7 +155,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       AppDBConst.userTable,
       where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
     );
-
     if (kDebugMode) {
       print("#### Active users after save: ${activeUsers.length}");
       if (activeUsers.isNotEmpty) {
@@ -222,13 +222,13 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     final db = await DBHelper.instance.database;
 
     // Get the user with a valid token (most recent first)
+    // FIXED SQL SYNTAX: used single quotes for string literal
     List<Map<String, dynamic>> result = await db.query(
       AppDBConst.userTable,
-      where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+      where: "${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ''",
       orderBy: '${AppDBConst.userId} DESC', // Get most recently logged in
       limit: 1,
     );
-
     if (result.isNotEmpty) {
       if (kDebugMode) {
         print("#### Retrieved ACTIVE user data: ${result.first}");

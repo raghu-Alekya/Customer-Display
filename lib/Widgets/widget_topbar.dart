@@ -25,6 +25,9 @@ import '../Database/isar_cache_entry.dart';
 import '../Database/isar_service.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Database/user_db_helper.dart';
+import '../Employee/Attendance/employee_attendance_model.dart';
+import '../Employee/Attendance/employee_attendance_popup.dart';
+import '../Employee/Attendance/employee_attendance_repository.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/url_helper.dart';
 import '../Helper/native_usb_scan_bridge.dart';
@@ -3187,6 +3190,64 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               ),
             ),
           ],
+
+          const SizedBox(width: 16),
+
+// Employee Attendance
+          GestureDetector(
+            onTap: () async {
+              final userData = _cachedUserData ?? await UserDbHelper().getUserData();
+              final employeeCode =
+                  userData?[AppDBConst.userNickname]?.toString().trim() ?? '';
+              final employeeName =
+                  userData?[AppDBConst.userDisplayName]?.toString().trim() ??
+                      userDisplayName ??
+                      'Employee';
+
+              if (employeeCode.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Employee code is missing. Please sign in again.')),
+                );
+                return;
+              }
+
+              await showDialog<bool>(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => EmployeeAttendanceApiPopup(
+                  employees: [
+                    AttendanceEmployee(
+                      employeeCode: employeeCode,
+                      name: employeeName,
+                    ),
+                  ],
+                  currentEmployeeCode: employeeCode,
+                  repository: EmployeeAttendanceRepository.forCurrentApp(),
+                ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.secondaryBackground
+                    : Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? const Color(0xFF3B3939)
+                      : const Color(0xFFF1F1F3),
+                ),
+              ),
+              child: Icon(
+                Icons.fact_check_outlined,
+                size: 26,
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? Colors.white70
+                    : Colors.grey,
+              ),
+            ),
+          ),
 
           const SizedBox(width: 16),
 
