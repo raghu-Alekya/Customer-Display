@@ -16,12 +16,12 @@ class FastKeyBloc {
 
   // Stream Controllers
   final StreamController<APIResponse<FastKeyResponse>>
-      _createFastKeyController =
-      StreamController<APIResponse<FastKeyResponse>>.broadcast();
+  _createFastKeyController =
+  StreamController<APIResponse<FastKeyResponse>>.broadcast();
 
   final StreamController<APIResponse<FastKeyListResponse>>
-      _getFastKeysController =
-      StreamController<APIResponse<FastKeyListResponse>>.broadcast();
+  _getFastKeysController =
+  StreamController<APIResponse<FastKeyListResponse>>.broadcast();
 
   // Getters for Streams
   StreamSink<APIResponse<FastKeyResponse>> get createFastKeySink =>
@@ -36,8 +36,8 @@ class FastKeyBloc {
 
   // Build #1.0.19: Fast Key Delete API Code
   final StreamController<APIResponse<FastKeyResponse>>
-      _deleteFastKeyController =
-      StreamController<APIResponse<FastKeyResponse>>.broadcast();
+  _deleteFastKeyController =
+  StreamController<APIResponse<FastKeyResponse>>.broadcast();
 
   StreamSink<APIResponse<FastKeyResponse>> get deleteFastKeySink =>
       _deleteFastKeyController.sink;
@@ -46,8 +46,8 @@ class FastKeyBloc {
 
   // Build #1.0.89: Added StreamController for updateFastKey
   final StreamController<APIResponse<FastKeyResponse>>
-      _updateFastKeyController =
-      StreamController<APIResponse<FastKeyResponse>>.broadcast();
+  _updateFastKeyController =
+  StreamController<APIResponse<FastKeyResponse>>.broadcast();
 
   StreamSink<APIResponse<FastKeyResponse>> get updateFastKeySink =>
       _updateFastKeyController.sink;
@@ -63,9 +63,9 @@ class FastKeyBloc {
   // POST: Create FastKey
   Future<void> createFastKey(
       {required String title,
-      required int index,
-      required String imageUrl,
-      required int userId}) async {
+        required int index,
+        required String imageUrl,
+        required int userId}) async {
     if (_createFastKeyController.isClosed) return;
 
     createFastKeySink.add(APIResponse.loading(TextConstants.loading));
@@ -130,7 +130,7 @@ class FastKeyBloc {
 
       final FastKeyDBHelper fastKeyDBHelper = FastKeyDBHelper();
       final fastKeyTabs =
-          await fastKeyDBHelper.getFastKeyTabsByUserId(userId ?? 0);
+      await fastKeyDBHelper.getFastKeyTabsByUserId(userId ?? 0);
       if (kDebugMode) {
         print("#### fastKeyTabs : $fastKeyTabs");
       }
@@ -155,7 +155,7 @@ class FastKeyBloc {
             fastkey.fastkeyTitle,
             fastkey.fastkeyImage,
             fastkey.itemCount,
-            int.parse(fastkey.fastkeyIndex),
+            int.tryParse(fastkey.fastkeyIndex) ?? 0,
             fastkey.fastkeyServerId);
 
         // Build #1.0.197: Fixed [SCRUM - 328] -> At first logon Empty items shows in fast keys for the selected folder
@@ -180,7 +180,7 @@ class FastKeyBloc {
             product.image,
             product.price,
             product.productId,
-            minAge: int.parse(tagg?.slug ?? "0"),
+            minAge: int.tryParse(tagg?.slug ?? "0") ?? 0,
             slNumber: product.slNumber,
             hasVariant: product.hasVariant ?? false,
             // 🔥 FIX: these were missing here — same pattern already used correctly
@@ -238,7 +238,7 @@ class FastKeyBloc {
   }
 
   // Build #1.0.19: Add this method to your FastKeyBloc class
-  Future<void> deleteFastKey(int fastkeyServerId, int userId) async {
+  Future<void> deleteFastKey(dynamic fastkeyServerId, int userId) async {
     if (_deleteFastKeyController.isClosed) return;
 
     deleteFastKeySink.add(APIResponse.loading(TextConstants.loading));
@@ -251,7 +251,7 @@ class FastKeyBloc {
       }
       // Update active tab if the deleted tab was active
       final activeTabId = await FastKeyDBHelper().getActiveFastKeyTab();
-      if (activeTabId == fastkeyServerId) {
+      if (activeTabId?.toString() == fastkeyServerId?.toString()) {
         final tabs = await FastKeyDBHelper().getFastKeyTabsByUserId(userId);
         if (tabs.isNotEmpty) {
           await FastKeyDBHelper()
@@ -286,10 +286,10 @@ class FastKeyBloc {
   // Build #1.0.89: Added updateFastKey API method
   Future<void> updateFastKey(
       {required String title,
-      required int index,
-      required String imageUrl,
-      required int fastKeyServerId,
-      required int userId}) async {
+        required int index,
+        required String imageUrl,
+        required dynamic fastKeyServerId,
+        required int userId}) async {
     if (_updateFastKeyController.isClosed) return;
 
     updateFastKeySink.add(APIResponse.loading(TextConstants.loading));

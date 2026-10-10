@@ -5,7 +5,7 @@ class FastKeyRequest {  // Build #1.0.15
   final int fastkeyIndex;
   final String fastkeyImage;
   final int? userId;
-  final int? fastkeyServerId;
+  final dynamic fastkeyServerId;
 
   FastKeyRequest({
     required this.fastkeyTitle,
@@ -55,7 +55,7 @@ class FastKeyResponse {
     return FastKeyResponse(
       status: json['status']?.toString() ?? '',
       message: json['message']?.toString() ?? '',
-      fastkeyId: rawId ?? 0,
+      fastkeyId: rawId?.toString() ?? '',
       fastkeyTitle: json['fastkey_title']?.toString() ?? '',
       fastkeyIndex: json['fastkey_index']?.toString() ?? '0',
       fastkeyImage: json['fastkey_image']?.toString() ?? '',
@@ -93,8 +93,8 @@ class FastKeyListResponse {
       message: json['message']?.toString() ?? '',
       userId: int.tryParse(json['user_id']?.toString() ?? '') ?? 0,
       fastkeys: rawList
-              ?.map((item) => FastKey.fromJson(item as Map<String, dynamic>))
-              .toList() ??
+          ?.map((item) => FastKey.fromJson(item as Map<String, dynamic>))
+          .toList() ??
           [],
     );
   }
@@ -103,7 +103,7 @@ class FastKeyListResponse {
 /// Shared model for FastKey representation
 /// Used in both creation and listing responses
 class FastKey {
-  final int fastkeyServerId; // Build #1.0.19: Updated fastkeyId to fastkeyServerId for better understanding
+  final dynamic fastkeyServerId; // Build #1.0.19: Updated fastkeyId to fastkeyServerId for better understanding
   final int userId;
   final String fastkeyTitle;
   final dynamic fastkeyImage; // Can be bool or String
@@ -126,7 +126,7 @@ class FastKey {
     var rawUserId = json['user_id'] ?? json['userId'];
 
     return FastKey(
-      fastkeyServerId: rawServerId is int ? rawServerId : (int.tryParse(rawServerId?.toString() ?? '') ?? 0),
+      fastkeyServerId: rawServerId?.toString() ?? '',
       userId: rawUserId is int ? rawUserId : (int.tryParse(rawUserId?.toString() ?? '') ?? 0),
       fastkeyTitle: json['fastkey_title']?.toString() ?? json['title']?.toString() ?? json['name']?.toString() ?? '',
       fastkeyImage: json['fastkey_image'] ?? json['image'],
@@ -139,7 +139,7 @@ class FastKey {
   }
 
   FastKey copyWith({
-    int? fastkeyServerId,
+    dynamic fastkeyServerId,
     int? userId,
     String? fastkeyTitle,
     dynamic fastkeyImage,

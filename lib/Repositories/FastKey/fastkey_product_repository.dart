@@ -70,22 +70,13 @@ class FastKeyProductRepository {  // Build #1.0.15
   }
 
   // GET: Fetch products by FastKey ID
-  Future<FastKeyProductsResponse> getProductsByFastKeyId(int fastKeyId) async {
+  Future<FastKeyProductsResponse> getProductsByFastKeyId(dynamic fastKeyId) async {
     final cacheKey = "fastkey_products_$fastKeyId";
 
-    final cachedData = await CacheHelper.getData(cacheKey);
-
-    if (cachedData != null) {
-      if (kDebugMode) {
-        print("✅ Loaded FastKey $fastKeyId from CACHE");
-        print("fast keyssssss------------------");
-
-      }
-      return FastKeyProductsResponse.fromJson(cachedData);
-    }
-
+    // Always refresh from the server when a Fast Key is opened.
+    // Returning cached data here caused deleted/empty Fast Keys to show old products.
     if (kDebugMode) {
-      print("🌐 Cache miss → Calling API for FastKey $fastKeyId");
+      print("🌐 Fetching FastKey $fastKeyId from API (cache will be replaced)");
     }
 
     final url =
@@ -115,7 +106,7 @@ class FastKeyProductRepository {  // Build #1.0.15
     return FastKeyProductsResponse.fromJson(responseData);
   }
   // Build #1.0.89: Added this method for deleteProductFromFastKey API
-  Future<FastKeyProductResponse> deleteProductFromFastKey(int fastkeyId, int productId) async {
+  Future<FastKeyProductResponse> deleteProductFromFastKey(dynamic fastkeyId, dynamic productId) async {
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.fastKeys}${EndUrlConstants.deleteProductFromFastKeyEndUrl}";
 
     if (kDebugMode) {

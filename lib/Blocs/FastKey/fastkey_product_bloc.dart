@@ -14,12 +14,12 @@ class FastKeyProductBloc {
 
   // Stream Controllers
   final StreamController<APIResponse<FastKeyProductResponse>>
-      _addProductsController =
-      StreamController<APIResponse<FastKeyProductResponse>>.broadcast();
+  _addProductsController =
+  StreamController<APIResponse<FastKeyProductResponse>>.broadcast();
 
   final StreamController<APIResponse<FastKeyProductsResponse>>
-      _getProductsController =
-      StreamController<APIResponse<FastKeyProductsResponse>>.broadcast();
+  _getProductsController =
+  StreamController<APIResponse<FastKeyProductsResponse>>.broadcast();
 
   // Getters for Streams
   StreamSink<APIResponse<FastKeyProductResponse>> get addProductsSink =>
@@ -34,8 +34,8 @@ class FastKeyProductBloc {
 
   // Build #1.0.89: Added StreamController for deleteProduct
   final StreamController<APIResponse<FastKeyProductResponse>>
-      _deleteProductController =
-      StreamController<APIResponse<FastKeyProductResponse>>.broadcast();
+  _deleteProductController =
+  StreamController<APIResponse<FastKeyProductResponse>>.broadcast();
 
   StreamSink<APIResponse<FastKeyProductResponse>> get deleteProductSink =>
       _deleteProductController.sink;
@@ -50,8 +50,8 @@ class FastKeyProductBloc {
 
   // POST: Add products to FastKey
   Future<void> addProducts(
-      {required int fastKeyId,
-      required List<FastKeyProductItem> products}) async {
+      {required dynamic fastKeyId,
+        required List<FastKeyProductItem> products}) async {
     if (_addProductsController.isClosed) return;
 
     addProductsSink.add(APIResponse.loading(TextConstants.loading));
@@ -70,12 +70,12 @@ class FastKeyProductBloc {
       // Build #1.0.87: Insert into DB after successful API response
       final FastKeyDBHelper fastKeyDBHelper = FastKeyDBHelper();
       final fastKeyTabs =
-          await fastKeyDBHelper.getFastKeyByServerTabId(fastKeyId);
+      await fastKeyDBHelper.getFastKeyByServerTabId(fastKeyId);
 
       if (fastKeyTabs.isNotEmpty) {
         final serverTabId = fastKeyTabs.first[AppDBConst.fastKeyServerId];
         final existingItems =
-            await fastKeyDBHelper.getFastKeyItems(serverTabId);
+        await fastKeyDBHelper.getFastKeyItems(serverTabId);
 
         if (kDebugMode) {
           print(
@@ -84,10 +84,10 @@ class FastKeyProductBloc {
 
         for (FastKeyProduct product in response.products ?? []) {
           var tagg = product.tags?.firstWhere(
-              (element) => element.name == TextConstants.age_restricted,
+                  (element) => element.name == TextConstants.age_restricted,
               orElse: () => Tags());
           var hasAgeRestriction =
-              tagg?.name?.contains(TextConstants.age_restricted);
+          tagg?.name?.contains(TextConstants.age_restricted);
           if (kDebugMode) {
             print(
                 "FastkeyBloc: fetchProductsByFastKeyId New Product added, hasAgeRestriction $hasAgeRestriction, minAge: ${tagg?.slug ?? "0"}");
@@ -97,7 +97,7 @@ class FastKeyProductBloc {
           final isDuplicate = await db.query(
             AppDBConst.fastKeyItemsTable,
             where:
-                '${AppDBConst.fastKeyIdForeignKey} = ? AND ${AppDBConst.fastKeyProductId} = ?',
+            '${AppDBConst.fastKeyIdForeignKey} = ? AND ${AppDBConst.fastKeyProductId} = ?',
             whereArgs: [serverTabId, product.productId],
           );
           if (isDuplicate.isEmpty) {
@@ -108,7 +108,7 @@ class FastKeyProductBloc {
               product.price,
               product.productId,
               slNumber: product.slNumber,
-              minAge: int.parse(tagg?.slug ?? "0"), //updated in build #1.0.90
+              minAge: int.tryParse(tagg?.slug ?? "0") ?? 0, //updated in build #1.0.90
               sku: product.sku,
             );
             if (kDebugMode) {
@@ -147,10 +147,35 @@ class FastKeyProductBloc {
     }
   }
 
+  Future<void> updateFastKeyProducts({
+    required dynamic fastKeyId,
+    required List<FastKeyProductItem> products,
+  }) async {
+    if (_addProductsController.isClosed) return;
+
+    addProductsSink.add(APIResponse.loading(TextConstants.loading));
+    try {
+      final response = await _repository.updateFastKeyProducts(
+        FastKeyProductRequest(fastKeyId: fastKeyId, products: products),
+      );
+      addProductsSink.add(APIResponse.completed(response));
+    } catch (e, s) {
+      final message = e.toString().contains('Unauthorised')
+          ? 'Unauthorised. Session is expired.'
+          : e.toString().contains('SocketException')
+              ? 'Network error. Please check your connection.'
+              : 'Failed to update FastKey products: ${e.toString()}';
+      addProductsSink.add(APIResponse.error(message));
+      if (kDebugMode) {
+        print("Exception in updateFastKeyProducts: $e, Stack: $s");
+      }
+    }
+  }
+
   // GET: Fetch products by FastKey ID
   // GET: Fetch products by FastKey ID
   Future<void> fetchProductsByFastKeyId(
-      int fastKeyId, int fastKeyServerId) async {
+      dynamic fastKeyId, dynamic fastKeyServerId) async {
     if (_getProductsController.isClosed) return;
 
     getProductsSink.add(APIResponse.loading(TextConstants.loading));
@@ -171,81 +196,31 @@ class FastKeyProductBloc {
         print(
             "#### fastKeyDBHelper.getFastKeyItems($fastKeyId) : $fastKeyItems ");
       }
-      if (fastKeyItems.length != response.products.length) {
-        if (kDebugMode) {
-          print(
-              "#### fastKeyDBHelper deleteAllFastKeyProductItems called... ${fastKeyItems.length != response.products.length}");
-        }
-
-        ///if all the data mismatches then delete all db contents and replace with API response
-        fastKeyDBHelper.deleteAllFastKeyProductItems(fastKeyId);
-        for (var product in response.products) {
-          ///Naveen: add few paramter as product_id, sl_number, and make price as string only
-          var tagg = product.tags?.firstWhere(
-                  (element) => element.name == TextConstants.age_restricted,
-              orElse: () => Tags());
-          var hasAgeRestriction =
-          tagg?.name?.contains(TextConstants.age_restricted);
-          if (kDebugMode) {
-            print(
-                "FastkeyBloc: fetchProductsByFastKeyId New Product added, hasAgeRestriction $hasAgeRestriction for product ${product.name} ${product.productId}, minAge: ${tagg?.slug ?? "0"}");
-          }
-          fastKeyDBHelper.addFastKeyItem(
-            // Build #1.0.19: Updated parameters
-            fastKeyId,
-            product.name,
-            product.image,
-            product.price, // Now stored as string
-            product.productId,
-            minAge: int.parse(tagg?.slug ?? "0"),
-            slNumber: product.slNumber,
-            hasVariant: product.hasVariant, // Build #1.0.157: save hasVariant into DB
-            // 🔥 FIX: Add these missing parameters
-            tagsJson: jsonEncode(product.tags?.map((tag) => tag.toJson()).toList() ?? []),
-            metaDataJson: jsonEncode(product.metaData ?? []),
-            // loyaltyPoints: product.loyaltyPoints ?? 0,
-          );
-        }
-      } else {
-        ///else just update the data for each fast key
-        ///Build #1.0.112 : Fixed -> Duplicating fast key tab items
-        // Avoid relying on index-based updates (i++).
-        // Using productId & fastKey server id to match API response products with database records, ensuring updates are applied to the correct items.
-        // var i=0;
-        for (var product in response.products) {
-          var tagg = product.tags?.firstWhere(
-                  (element) => element.name == TextConstants.age_restricted,
-              orElse: () => Tags());
-          var hasAgeRestriction =
-          tagg?.name?.contains(TextConstants.age_restricted);
-          if (kDebugMode) {
-            print(
-                "FastkeyBloc: fetchProductsByFastKeyId product already present and updating, hasAgeRestriction $hasAgeRestriction, minAge: ${tagg?.slug ?? "0"}");
-          }
-          final updatedTab = {
-            ///Naveen : please update the db with product id and category, sl_number
-            AppDBConst.fastKeyItemName: product.name,
-            AppDBConst.fastKeyItemPrice: product.price,
-            AppDBConst.fastKeySlNumber: product.slNumber,
-            AppDBConst.fastKeyItemImage: product.image,
-            AppDBConst.fastKeyProductId:
-            product.productId, // Build #1.0.19: Updated parameters
-            AppDBConst.fastKeyItemMinAge: int.parse(tagg?.slug ?? "0"),
-            AppDBConst.fastKeyItemHasVariant: product.hasVariant ?? false
-                ? 1
-                : 0, // Build #1.0.157: save hasVariant into DB
-            // 🔥 FIX: Add these missing fields to the update map
-            AppDBConst.fastKeyItemTags: jsonEncode(product.tags?.map((tag) => tag.toJson()).toList() ?? []),
-            AppDBConst.fastKeyItemMetaData: jsonEncode(product.metaData ?? []),
-            // AppDBConst.fastKeyItemLoyaltyPoints: product.loyaltyPoints ?? 0,
-          };
-          await fastKeyDBHelper.updateFastKeyProductItemByProductId(
-            fastKeyId,
-            product.productId,
-            updatedTab,
-          );
-        }
+      // Every successful response, including an empty product list, is authoritative.
+      await fastKeyDBHelper.deleteAllFastKeyProductItems(fastKeyId);
+      for (final product in response.products) {
+        final ageTag = product.tags?.firstWhere(
+          (tag) => tag.name == TextConstants.age_restricted,
+          orElse: () => Tags(),
+        );
+        await fastKeyDBHelper.addFastKeyItem(
+          fastKeyId,
+          product.name,
+          product.image,
+          product.price,
+          product.productId,
+          minAge: int.tryParse(ageTag?.slug ?? "0") ?? 0,
+          slNumber: product.slNumber,
+          hasVariant: product.hasVariant,
+          tagsJson:
+              jsonEncode(product.tags?.map((tag) => tag.toJson()).toList() ?? []),
+          metaDataJson: jsonEncode(product.metaData ?? []),
+        );
       }
+      await fastKeyDBHelper.updateFastKeyTabCount(
+        fastKeyServerId,
+        response.products.length,
+      );
 
       getProductsSink.add(APIResponse.completed(response));
     } catch (e, s) {
@@ -256,8 +231,8 @@ class FastKeyProductBloc {
         getProductsSink.add(
             APIResponse.error("Network error. Please check your connection."));
       } else {
-        getProductsSink
-            .add(APIResponse.error("Failed to fetch products in fast key."));
+        getProductsSink.add(
+            APIResponse.error("Failed to fetch products in FastKey: $e"));
       }
       if (kDebugMode)
         print("Exception in fetchProductsByFastKeyId: $e , Stack: $s");
@@ -265,13 +240,13 @@ class FastKeyProductBloc {
   }
 
   // Build #1.0.89: Added deleteProduct API method
-  Future<void> deleteProduct(int fastKeyId, int productId) async {
+  Future<void> deleteProduct(dynamic fastKeyId, dynamic productId) async {
     if (_deleteProductController.isClosed) return;
 
     deleteProductSink.add(APIResponse.loading(TextConstants.loading));
     try {
       final response =
-          await _repository.deleteProductFromFastKey(fastKeyId, productId);
+      await _repository.deleteProductFromFastKey(fastKeyId, productId);
 
       if (kDebugMode) {
         print(

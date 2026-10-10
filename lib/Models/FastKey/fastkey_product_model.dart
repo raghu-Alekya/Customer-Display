@@ -8,14 +8,14 @@ class FastKeyProductRequest {
   });
 
   Map<String, dynamic> toJson() => {
-    'fastkey_id': fastKeyId,
-    'products': products.map((item) => item.toJson()).toList(),
-  };
+        'fastkey_id': fastKeyId,
+        'products': products.map((item) => item.toJson()).toList(),
+      };
 }
 
 /// Individual product item for adding to FastKey
 class FastKeyProductItem {
-  final dynamic productId;
+  final int productId;
   final int slNumber;
 
   FastKeyProductItem({
@@ -24,9 +24,9 @@ class FastKeyProductItem {
   });
 
   Map<String, dynamic> toJson() => {
-    'product_id': productId,
-    'sl_number': slNumber,
-  };
+        'product_id': productId,
+        'sl_number': slNumber,
+      };
 }
 
 /// =============================================
@@ -84,16 +84,25 @@ class FastKeyProductsResponse {
   });
 
   factory FastKeyProductsResponse.fromJson(Map<String, dynamic> json) {
+    final responseData = json['data'] is Map
+        ? Map<String, dynamic>.from(json['data'] as Map)
+        : json;
+    final rawProducts = responseData['products'];
+
     return FastKeyProductsResponse(
-      status: json['status'] ?? '',
-      message: json['message'] ?? '',
-      fastkeyId: json['fastkey_id']?.toString() ?? '0',
-      fastkeyTitle: json['fastkey_title'] ?? '',
-      fastkeyImage: json['fastkey_image'],
-      fastkeyIndex: json['fastkey_index']?.toString() ?? '0',
-      products: (json['products'] as List<dynamic>?)
-          ?.map((item) => FastKeyProduct.fromJson(item))
-          .toList() ??
+      status: responseData['status']?.toString() ?? '',
+      message: responseData['message']?.toString() ?? '',
+      fastkeyId: (responseData['fastkey_id'] ?? responseData['fastkeyId'])
+              ?.toString() ??
+          '0',
+      fastkeyTitle: responseData['fastkey_title']?.toString() ?? '',
+      fastkeyImage: responseData['fastkey_image'],
+      fastkeyIndex: responseData['fastkey_index']?.toString() ?? '0',
+      products: (rawProducts is List ? rawProducts : null)
+              ?.whereType<Map>()
+              .map((item) =>
+                  FastKeyProduct.fromJson(Map<String, dynamic>.from(item)))
+              .toList() ??
           [],
     );
   }
@@ -117,17 +126,17 @@ class ProductMetaData {
 
   factory ProductMetaData.fromJson(Map<String, dynamic> json) {
     return ProductMetaData(
-      id: json['id'] as int?,
+      id: int.tryParse(json['id']?.toString() ?? ''),
       key: json['key'] as String?,
       value: json['value']?.toString(),
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'key': key,
-    'value': value,
-  };
+        'id': id,
+        'key': key,
+        'value': value,
+      };
 }
 
 /// Tags Model
@@ -144,17 +153,17 @@ class Tags {
 
   factory Tags.fromJson(Map<String, dynamic> json) {
     return Tags(
-      id: json['id'] as int?,
+      id: int.tryParse(json['id']?.toString() ?? ''),
       name: json['name'] as String?,
       slug: json['slug'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'slug': slug,
-  };
+        'id': id,
+        'name': name,
+        'slug': slug,
+      };
 }
 
 /// Main Product Model (Updated with meta_data)
@@ -189,22 +198,19 @@ class FastKeyProduct {
 
   factory FastKeyProduct.fromJson(Map<String, dynamic> json) {
     var rawProductId = json['product_id'] ?? json['id'] ?? 0;
-    int parsedProductId;
-    if (rawProductId is int) {
-      parsedProductId = rawProductId;
-    } else if (rawProductId != null && int.tryParse(rawProductId.toString()) != null) {
-      parsedProductId = int.parse(rawProductId.toString());
-    } else if (rawProductId != null && rawProductId.toString().isNotEmpty) {
-      parsedProductId = rawProductId.toString().hashCode.abs();
-    } else {
-      parsedProductId = 0;
+    final parsedProductId = rawProductId is int
+        ? rawProductId
+        : int.tryParse(rawProductId.toString());
+    if (parsedProductId == null || parsedProductId <= 0) {
+      throw FormatException('FastKey product has an invalid product_id');
     }
 
     var rawSlNumber = json['sl_number'] ?? json['slNumber'] ?? 0;
     int parsedSlNumber;
     if (rawSlNumber is int) {
       parsedSlNumber = rawSlNumber;
-    } else if (rawSlNumber != null && int.tryParse(rawSlNumber.toString()) != null) {
+    } else if (rawSlNumber != null &&
+        int.tryParse(rawSlNumber.toString()) != null) {
       parsedSlNumber = int.parse(rawSlNumber.toString());
     } else {
       parsedSlNumber = 0;
@@ -214,14 +220,18 @@ class FastKeyProduct {
       productId: parsedProductId,
       name: json['name']?.toString() ?? json['title']?.toString() ?? '',
       price: json['price']?.toString() ?? '0',
-      image: json['image']?.toString() ?? json['fastkey_image']?.toString() ?? '',
-      category: (json['category'] as List<dynamic>?)
-          ?.map((item) => item.toString())
-          .toList() ??
+      image:
+          json['image']?.toString() ?? json['fastkey_image']?.toString() ?? '',
+      category: (json['category'] is List ? json['category'] as List : null)
+              ?.map((item) => item.toString())
+              .toList() ??
           [],
       slNumber: parsedSlNumber,
-      tags: json['tags'] != null
-          ? List<Tags>.from(json['tags'].map((x) => Tags.fromJson(x)))
+      tags: json['tags'] is List
+          ? (json['tags'] as List)
+              .whereType<Map>()
+              .map((tag) => Tags.fromJson(Map<String, dynamic>.from(tag)))
+              .toList()
           : null,
       sku: json['sku'] ?? '',
       isVariant: json['is_variant'] ?? false,

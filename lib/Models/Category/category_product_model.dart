@@ -46,7 +46,7 @@ class CategoryProduct {
 
   factory CategoryProduct.fromJson(Map<String, dynamic> json) {
     return CategoryProduct(
-      id: json['id'] ?? 0,
+      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
       name: json['name'] ?? '',
       sku: json['sku'] ?? '',
       price: _parsePrice(json['price']),
@@ -181,7 +181,7 @@ class Tags {
 
   factory Tags.fromJson(Map<String, dynamic> json) {
     return Tags(
-      id: json['id'] as int?,
+      id: int.tryParse(json['id']?.toString() ?? ''),
       name: json['name'] as String?,
       slug: json['slug'] as String?,
     );

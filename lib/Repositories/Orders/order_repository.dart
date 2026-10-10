@@ -106,10 +106,10 @@ class FastKeyImageModel {
 
   factory FastKeyImageModel.fromJson(Map<String, dynamic> json) {
     return FastKeyImageModel(
-      id: json["id"],
-      name: json["name"],
-      url: json["url"],
-      imageType: json["image_type"],
+      id: int.tryParse(json["id"]?.toString() ?? '') ?? 0,
+      name: json["name"]?.toString() ?? '',
+      url: json["url"]?.toString() ?? '',
+      imageType: json["image_type"]?.toString() ?? '',
     );
   }
 }

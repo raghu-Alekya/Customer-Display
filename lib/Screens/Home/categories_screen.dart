@@ -1267,6 +1267,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   bool _hasMoreProductsToShow = false;
 
   List<Map<String, dynamic>> categoryProducts = [];
+  String? _categoryContentError;
   int? selectedItemIndex;
   List<int?> reorderedIndices = [];
   List<String> navigationPath = [];
@@ -1298,6 +1299,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   final _IndigoProductRepositoryWithCache _indigoProductRepo =
   _IndigoProductRepositoryWithCache(
       IndigoCategoryBasedProductsRepository());
+  final CategoryRepository _connectorCategoryRepo = CategoryRepository();
 
   List<IndigoCategoryModel> _indigoSubCategories = [];
   List<IndigoCategoryBasedProducts> _indigoProducts = [];
@@ -1942,25 +1944,30 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     if (_inFlightIndigoSubParentId == parentCategoryId) return;
 
     _inFlightIndigoSubParentId = parentCategoryId;
+    setState(() {
+      _isLoadingIndigoSubCategories = true;
+      _isLoadingIndigoProducts = false;
+      _indigoError = null;
+      _indigoProducts = [];
+      _indigoSubCategories = [];
+      _selectedIndigoSubCategoryIndex = null;
+    });
     try {
-      if (_indigoSubCategories.isEmpty) {
-        setState(() {
-          _isLoadingIndigoSubCategories = true;
-          _indigoError = null;
-        });
-      }
-      setState(() {
-        _indigoProducts = [];
-        _selectedIndigoSubCategoryIndex = null;
-      });
-
-      final rawCats =
-      await _indigoCategoryRepo.indigoFetchCategories(parentCategoryId);
+      final response =
+          await _connectorCategoryRepo.getCategories(parent: parentCategoryId);
       if (!mounted) return;
 
-// Filter out hidden categories (e.g. "Uncategorized") using the same
-// rule already used for top-level categories — no other logic touched.
-      final cats = rawCats.where((c) {
+      final cats = response.categories.map((category) {
+        return IndigoCategoryModel(
+          id: category.id,
+          name: category.name,
+          slug: category.slug,
+          parent: category.parent,
+          description: category.description,
+          count: category.count,
+          image: category.image ?? '',
+        );
+      }).where((c) {
         final name = c.name.toLowerCase().trim();
         final slug = c.slug.toLowerCase().trim();
         return !_hiddenCategoryNames.contains(name) && slug != 'custom-product';
@@ -1986,6 +1993,13 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           _loadIndigoProductsBySubCategory(parentCategoryId);
         }
       }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingIndigoSubCategories = false;
+        _isLoadingIndigoProducts = false;
+        _indigoError = 'Failed to load categories: $e';
+      });
     } finally {
       if (_inFlightIndigoSubParentId == parentCategoryId) {
         _inFlightIndigoSubParentId = null;
@@ -2000,13 +2014,52 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     if (_inFlightIndigoProductCategoryId == categoryId) return;
 
     _inFlightIndigoProductCategoryId = categoryId;
+    setState(() {
+      _isLoadingIndigoProducts = true;
+      _indigoError = null;
+      _indigoProducts = [];
+      _visibleIndigoProductCount = _indigoPageSize;
+      _isIndigoPaginating = false;
+    });
     try {
-      setState(() {
-        _isLoadingIndigoProducts = true;
-        _visibleIndigoProductCount = _indigoPageSize;
-        _isIndigoPaginating = false;
-      });
-      final products = await _indigoProductRepo.fetchProducts(categoryId);
+      final response =
+          await _connectorCategoryRepo.getProductsByCategory(categoryId);
+      final products = response.products.map((product) {
+        return IndigoCategoryBasedProducts(
+          id: product.id,
+          name: product.name,
+          sku: product.sku,
+          price: product.price.toString(),
+          regularPrice: product.regularPrice,
+          salePrice: product.salePrice,
+          categories: product.categories
+              .map((category) => IndigoCategory(
+                    id: category.id,
+                    name: category.name,
+                    slug: category.slug,
+                  ))
+              .toList(),
+          tags: product.tags
+              .map((tag) => IndigoTag(
+                    id: tag.id ?? 0,
+                    name: tag.name ?? '',
+                    slug: tag.slug ?? '',
+                  ))
+              .toList(),
+          images: product.images,
+          taxRates: product.tax?.taxRates
+                  .map((rate) => IndigoTaxRate(
+                        label: rate.label,
+                        rate: rate.rate,
+                        compound: false,
+                        shipping: false,
+                      ))
+                  .toList() ??
+              const [],
+          type: product.type,
+          metaData: product.metaData,
+        );
+      }).toList();
       if (!mounted) return;
       setState(() {
         _indigoProducts = products;
@@ -2015,6 +2068,12 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       if (kDebugMode)
         print(
             "[UI] Loaded ${products.length} Indigo products for sub-category $categoryId");
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingIndigoProducts = false;
+        _indigoError = 'Failed to load products: $e';
+      });
     } finally {
       if (_inFlightIndigoProductCategoryId == categoryId) {
         _inFlightIndigoProductCategoryId = null;
@@ -3136,6 +3195,10 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   Future<void> _loadSubCategories(int parentId) async {
     if (_inFlightSubCategoryParentId == parentId) return;
     _inFlightSubCategoryParentId = parentId;
+    setState(() {
+      isLoadingNestedContent = true;
+      _categoryContentError = null;
+    });
     _categoryBloc.fetchCategories(parentId);
     try {
       await for (final response in _categoryBloc.categoriesStream
@@ -3144,6 +3207,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         if (response.status == Status.COMPLETED && response.data != null) {
           setState(() {
             subCategories = response.data!.categories;
+            _categoryContentError = null;
             isShowingSubCategories = true;
             _resetPaginationState();
             _allCategoryProducts.clear();
@@ -3165,13 +3229,20 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           break;
         }
         if (response.status == Status.ERROR) {
-          setState(() => isLoadingNestedContent = false);
+          setState(() {
+            _categoryContentError =
+                response.message ?? 'Failed to load categories.';
+            isLoadingNestedContent = false;
+          });
           break;
         }
       }
     } on TimeoutException {
       if (!mounted) return;
-      setState(() => isLoadingNestedContent = false);
+      setState(() {
+        _categoryContentError = 'Loading categories timed out.';
+        isLoadingNestedContent = false;
+      });
     } finally {
       if (_inFlightSubCategoryParentId == parentId) {
         _inFlightSubCategoryParentId = null;
@@ -3184,6 +3255,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     _inFlightProductCategoryId = categoryId;
     setState(() {
       isLoadingNestedContent = true;
+      _categoryContentError = null;
       _resetPaginationState();
       _allCategoryProducts.clear();
       categoryProducts.clear();
@@ -3253,13 +3325,20 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           break;
         }
         if (response.status == Status.ERROR) {
-          setState(() => isLoadingNestedContent = false);
+          setState(() {
+            _categoryContentError =
+                response.message ?? 'Failed to load products.';
+            isLoadingNestedContent = false;
+          });
           break;
         }
       }
     } on TimeoutException {
       if (!mounted) return;
-      setState(() => isLoadingNestedContent = false);
+      setState(() {
+        _categoryContentError = 'Loading products timed out.';
+        isLoadingNestedContent = false;
+      });
     } finally {
       if (_inFlightProductCategoryId == categoryId) {
         _inFlightProductCategoryId = null;
@@ -3276,6 +3355,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     setState(() {
       _selectedCategoryIndex = index;
       _showCategoryGrid = false;
+      _categoryContentError = null;
       navigationPath = [categories[index].name];
       subCategories.clear();
       _resetPaginationState();
@@ -3311,6 +3391,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     final selectedSubCategory = subCategories[index];
     setState(() {
       _selectedSubCategoryIndex = index;
+      _categoryContentError = null;
       if (currentCategoryLevel < categoryHierarchy.length) {
         navigationPath = navigationPath.sublist(0, currentCategoryLevel);
         categoryHierarchy =
@@ -3423,6 +3504,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     if (index == currentCategoryLevel - 1) return;
     setState(() {
       navigationPath = navigationPath.sublist(0, index + 1);
+      _categoryContentError = null;
       categoryHierarchy = categoryHierarchy.sublist(0, index + 2);
       currentCategoryLevel = index + 1;
       isShowingSubCategories = true;
@@ -3623,6 +3705,14 @@ class _CategoriesScreenState extends State<CategoriesScreen>
             child: Center(
               child: CircularProgressIndicator(
                   strokeWidth: 2.5, color: Color(0xFFE74C3C)),
+            ),
+          )
+        else if (_indigoError != null)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              _indigoError!,
+              style: const TextStyle(color: Colors.red),
             ),
           )
         else if (_selectedIndigoSubCategoryIndex != null &&
@@ -3848,23 +3938,22 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       // );
 
       return Expanded(
-        child: Container(
-          margin: const EdgeInsets.only(
-              left: 10, right: 10, top: 0, bottom: 10),
-          decoration: innerBoxDecoration(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildIndigoSubCategoryBar(isDark),
-              Expanded(
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: _onIndigoProductsScrollNotification,
-                  child: SingleChildScrollView(
-                    child: _buildIndigoProductsGrid(isDark),
-                  ),
+        child: NotificationListener<ScrollNotification>(
+          onNotification: _onIndigoProductsScrollNotification,
+          child: SingleChildScrollView(
+            child: Container(
+              margin: const EdgeInsets.only(
+                  left: 10, right: 10, top: 0, bottom: 12),
+              decoration: innerBoxDecoration(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: _buildInnerColumnChildren(
+                  isDark: isDark,
+                  subCategoryListItems: subCategoryListItems,
+                  buildProductsWidget: buildProductsWidget,
                 ),
               ),
-            ],
+            ),
           ),
         ),
       );

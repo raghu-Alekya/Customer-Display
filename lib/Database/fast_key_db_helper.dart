@@ -18,7 +18,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-  Future<int> addFastKeyTab(int userId, String title, String image, int count, int? index, int? fastKeyServerId) async {
+  Future<int> addFastKeyTab(int userId, String title, String image, int count, int? index, dynamic fastKeyServerId) async {
     final db = await DBHelper.instance.database;
     final tabId = await db.insert(AppDBConst.fastKeyTable, {
       AppDBConst.userIdForeignKey: userId,
@@ -64,7 +64,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   }
 
   // Build #1.0.87
-  Future<List<Map<String, dynamic>>> getFastKeyByServerTabId(int serverTabId) async {///tab id is fastServerId from server
+  Future<List<Map<String, dynamic>>> getFastKeyByServerTabId(dynamic serverTabId) async {///tab id is fastServerId from server
     final db = await DBHelper.instance.database;
     final tabs = await db.query(
       AppDBConst.fastKeyTable,
@@ -78,7 +78,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     return tabs;
   }
 
-  Future<void> updateFastKeyTab(int fastKeyServerId, Map<String, dynamic> updatedData) async { // Build #1.0.89: name changed for understanding
+  Future<void> updateFastKeyTab(dynamic fastKeyServerId, Map<String, dynamic> updatedData) async { // Build #1.0.89: name changed for understanding
     final db = await DBHelper.instance.database;
     await db.update(
       AppDBConst.fastKeyTable,
@@ -109,7 +109,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-  Future<void> updateFastKeyTabCount(int tabId, int newCount) async {
+  Future<void> updateFastKeyTabCount(dynamic tabId, int newCount) async {
     final db = await DBHelper.instance.database;
     await db.update(
       AppDBConst.fastKeyTable,
@@ -123,7 +123,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-  Future<void> deleteFastKeyTab(int tabId) async {
+  Future<void> deleteFastKeyTab(dynamic tabId) async {
     final db = await DBHelper.instance.database;
     //Build #1.0.279: Fixed Issue - Delete all products of the deleted fastKey first then delete fastKey tab!
     await deleteAllFastKeyProductItems(tabId);
@@ -152,7 +152,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-  Future<int> addFastKeyItem(int tabId, String name, String image,  String price, int productId,
+  Future<int> addFastKeyItem(dynamic tabId, String name, String image,  String price, int productId,
       {String? sku, String? variantId, int? slNumber, int? minAge, bool? hasVariant, String? tagsJson, String? metaDataJson, int? loyaltyPoints}) async {
     final db = await DBHelper.instance.database;
     final itemId = await db.insert(AppDBConst.fastKeyItemsTable, {
@@ -180,7 +180,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     return itemId;
   }
 
-  Future<List<Map<String, dynamic>>> getFastKeyItems(int tabId) async {
+  Future<List<Map<String, dynamic>>> getFastKeyItems(dynamic tabId) async {
     final db = await DBHelper.instance.database;
     final items = await db.query(
       AppDBConst.fastKeyItemsTable,
@@ -235,7 +235,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
 
   /// Get FastKey items with tags parsed from JSON
   /// Get FastKey items with tags parsed from JSON
-  Future<List<Map<String, dynamic>>> getFastKeyItemsWithTags(int tabId) async {
+  Future<List<Map<String, dynamic>>> getFastKeyItemsWithTags(dynamic tabId) async {
     final db = await DBHelper.instance.database;
     final items = await db.query(
       AppDBConst.fastKeyItemsTable,
@@ -330,7 +330,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-  Future<void> deleteAllFastKeyProductItems(int tabId) async {
+  Future<void> deleteAllFastKeyProductItems(dynamic tabId) async {
     final db = await DBHelper.instance.database;
 
     await db.delete(
@@ -345,7 +345,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   }
 
   // Build #1.0.89: Added
-  Future<void> deleteFastKeyItemByProductId(int fastKeyId, int productId) async {
+  Future<void> deleteFastKeyItemByProductId(dynamic fastKeyId, int productId) async {
     final db = await DBHelper.instance.database;
     await db.delete(
       AppDBConst.fastKeyItemsTable,
@@ -435,9 +435,9 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
         final int fastKeyServerId = rawServerId is int
             ? rawServerId
             : (int.tryParse(rawServerId?.toString() ?? '') ??
-                (rawServerId != null && rawServerId.toString().isNotEmpty
-                    ? rawServerId.toString().hashCode.abs()
-                    : 0));
+            (rawServerId != null && rawServerId.toString().isNotEmpty
+                ? rawServerId.toString().hashCode.abs()
+                : 0));
 
         if (fastKeyServerId == 0) continue;
 
@@ -854,7 +854,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   }
 
   /// Get the last updated timestamp for a FastKey tab
-  Future<DateTime?> getFastKeyTabLastUpdated(int fastKeyServerId) async {
+  Future<DateTime?> getFastKeyTabLastUpdated(dynamic fastKeyServerId) async {
     final db = await DBHelper.instance.database;
     final result = await db.query(
       AppDBConst.fastKeyItemsTable,
@@ -875,7 +875,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   }
 
   /// Check if FastKey items need refresh (older than threshold)
-  Future<bool> needsFastKeyRefresh(int fastKeyServerId, {Duration threshold = const Duration(minutes: 5)}) async {
+  Future<bool> needsFastKeyRefresh(dynamic fastKeyServerId, {Duration threshold = const Duration(minutes: 5)}) async {
     final lastUpdated = await getFastKeyTabLastUpdated(fastKeyServerId);
     if (lastUpdated == null) return true;
     return DateTime.now().difference(lastUpdated) > threshold;
@@ -886,22 +886,26 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   // ============================================================
 
   ///@Naveen: why do we have these function here in db helper instead of pref file, and they have hard coded values as well
-  Future<void> saveActiveFastKeyTab(int? tabId) async {
+  Future<void> saveActiveFastKeyTab(dynamic tabId) async {
     final prefs = await SharedPreferences.getInstance();
     if (tabId != null) {
-      await prefs.setInt('activeFastKeyTabId', tabId);
+      if (tabId is int) {
+        await prefs.setInt('activeFastKeyTabId', tabId);
+      } else {
+        await prefs.setString('activeFastKeyTabId', tabId.toString());
+      }
     } else {
       await prefs.remove('activeFastKeyTabId');
     }
   }
 
-  Future<int?> getActiveFastKeyTab() async {
+  Future<dynamic> getActiveFastKeyTab() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt('activeFastKeyTabId');
+    return prefs.get('activeFastKeyTabId');
   }
 
-  Future<void> refreshFastKeyItemMetadata(int fastKeyTabId) async {
-    if (fastKeyTabId <= 0) {
+  Future<void> refreshFastKeyItemMetadata(dynamic fastKeyTabId) async {
+    if (fastKeyTabId == null || fastKeyTabId.toString().isEmpty) {
       if (kDebugMode) print("⚠️ Invalid fastKeyTabId: $fastKeyTabId");
       return;
     }

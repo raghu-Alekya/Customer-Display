@@ -85,7 +85,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   bool isBulkAdding = false;
   bool isimageLoading = false;
 
-  final ValueNotifier<int?> fastKeyTabIdNotifier = ValueNotifier<int?>(null);
+  final ValueNotifier<dynamic> fastKeyTabIdNotifier =
+      ValueNotifier<dynamic>(null);
   final FastKeyDBHelper fastKeyDBHelper = FastKeyDBHelper();
   late FastKeyBloc _fastKeyBloc;
   List<FastKey> fastKeyTabs = [];
@@ -99,10 +100,10 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   // ── PRODUCT META CACHE ─────────────────────────────────────────────────────
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
 
+  static final Map<dynamic, List<Map<String, dynamic>>> _fastKeyItemsCache = {};
 
-  static final Map<int, List<Map<String, dynamic>>> _fastKeyItemsCache = {};
-
-  static final Map<String, List<Map<String, dynamic>>> _fastKeyApiSearchCache = {};
+  static final Map<String, List<Map<String, dynamic>>> _fastKeyApiSearchCache =
+      {};
 
   static int? _productMetaIdFromCacheMap(dynamic raw) {
     if (raw is! Map) return null;
@@ -131,11 +132,11 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   late FastKeyProductBloc _fastKeyProductBloc;
   List<Map<String, dynamic>> fastKeyProductItems = [];
-  int? _fastKeyTabId;
+  dynamic _fastKeyTabId;
   List<int?> reorderedIndices = [];
   int? selectedItemIndex;
   bool?
-  enableIcons; // Build #1.0.204: Added this to track grid item delete/cancel icon visibility
+      enableIcons; // Build #1.0.204: Added this to track grid item delete/cancel icon visibility
   File? _pickedImage;
   final ImagePicker _picker = ImagePicker();
   final OrderHelper orderHelper = OrderHelper();
@@ -173,7 +174,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     fastKeyTabIdNotifier.addListener(_onTabChanged);
 
     // Listen to product cache revision changes
-    TopBar.mergedProductCacheRevision.addListener(_onMergedProductCacheRevision);
+    TopBar.mergedProductCacheRevision
+        .addListener(_onMergedProductCacheRevision);
 
     TopBar.onRefreshCompleted = () async {
       if (!mounted) return;
@@ -214,7 +216,6 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         _isRefreshing = false;
       }
     };
-
   }
 
   Future<void> _initializeData() async {
@@ -225,6 +226,15 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       }
     } catch (e) {
       if (kDebugMode) print("Initialization error: $e");
+      if (mounted) {
+        setState(() => isTabsLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load Fast Keys: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -291,14 +301,14 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         setState(() {
           _fastKeyTabId = newTabId;
           fastKeyProductItems =
-          List<Map<String, dynamic>>.from(_fastKeyItemsCache[newTabId]!);
+              List<Map<String, dynamic>>.from(_fastKeyItemsCache[newTabId]!);
           reorderedIndices = List.filled(fastKeyProductItems.length, null);
           isItemsLoading = false; // never show spinner for cached tabs
         });
       }
       await fastKeyDBHelper.saveActiveFastKeyTab(newTabId);
-      // Quietly refresh meta (EBT/variants) without blocking the UI
-      _resolveFastKeyMeta();
+      await _loadFastKeyTabItems();
+      await _resolveFastKeyMeta();
       return;
     }
 
@@ -317,6 +327,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       }
       await _loadFastKeyTabItems();
       await _resolveFastKeyMeta();
+    } else if (mounted) {
+      setState(() => isItemsLoading = false);
     }
   }
 
@@ -362,17 +374,19 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     try {
       final userData = await UserDbHelper().getUserData();
       if (userData != null && userData[AppDBConst.userId] != null) {
-        userId = userData[AppDBConst.userId] as int;
+        final rawUserId = userData[AppDBConst.userId];
+        userId = rawUserId is num
+            ? rawUserId.toInt()
+            : int.tryParse(rawUserId.toString());
+        if (userId == null) {
+          throw FormatException('The logged-in user ID is invalid.');
+        }
 
         if (kDebugMode) {
           print(
               "FastKeyScreen.getUserIdFromDB -> FastKeyDBHelper.isFastkeyLoaded = ${FastKeyDBHelper.isFastkeyLoaded}");
         }
-        if (FastKeyDBHelper.isFastkeyLoaded) {
-          loadTabs();
-          return;
-        }
-        _fastKeyBloc.fetchFastKeysByUser(userId ?? 0);
+        _fastKeyBloc.fetchFastKeysByUser(userId!);
         await _fastKeyBloc.getFastKeysStream.listen((onData) async {
           if (onData.status == Status.ERROR) {
             if (onData.message!.contains('Unauthorised')) {
@@ -399,7 +413,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               });
             } else {
               if (kDebugMode) {
-                print("FastKey offline / error -> Loading cached tabs from local database");
+                print(
+                    "FastKey offline / error -> Loading cached tabs from local database");
               }
               await loadTabs();
               FastKeyDBHelper.isFastkeyLoaded = true;
@@ -560,12 +575,14 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   //   }
   // }
 
-  Future<List<Map<String, dynamic>>> _fetchVariationsFromApi(int productId) async {
+  Future<List<Map<String, dynamic>>> _fetchVariationsFromApi(
+      int productId) async {
     try {
       final db = await DBHelper.instance.database;
       final result = await db.query(
         AppDBConst.userTable,
-        where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+        where:
+            '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
         orderBy: '${AppDBConst.userId} DESC',
         limit: 1,
       );
@@ -574,7 +591,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
       final url = Uri.parse(
           "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations");
-      final response = await http.get(url, headers: {"Authorization": "Bearer $token"});
+      final response =
+          await http.get(url, headers: {"Authorization": "Bearer $token"});
 
       if (kDebugMode) {
         print("🌍 [FastKey Variations API] status: ${response.statusCode}");
@@ -584,51 +602,66 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       final decoded = jsonDecode(response.body);
       if (decoded is! List) return <Map<String, dynamic>>[];
 
-      return decoded.whereType<Map>().map<Map<String, dynamic>>((v) {
-        final map = v.map((key, value) => MapEntry(key.toString(), value));
-        final attrs = map["attributes"];
-        final String fallbackName = attrs is List
-            ? attrs.whereType<Map>().map((a) => (a["option"] ?? "").toString())
-            .where((x) => x.isNotEmpty).join(" - ")
-            : "";
+      return decoded
+          .whereType<Map>()
+          .map<Map<String, dynamic>>((v) {
+            final map = v.map((key, value) => MapEntry(key.toString(), value));
+            final attrs = map["attributes"];
+            final String fallbackName = attrs is List
+                ? attrs
+                    .whereType<Map>()
+                    .map((a) => (a["option"] ?? "").toString())
+                    .where((x) => x.isNotEmpty)
+                    .join(" - ")
+                : "";
 
-        // ✅ CRITICAL: Extract meta_data from the variant
-        final List<Map<String, dynamic>> metaData = (map["meta_data"] is List)
-            ? (map["meta_data"] as List).whereType<Map>()
-            .map((m) => Map<String, dynamic>.from(m)).toList()
-            : <Map<String, dynamic>>[];
+            // ✅ CRITICAL: Extract meta_data from the variant
+            final List<Map<String, dynamic>> metaData =
+                (map["meta_data"] is List)
+                    ? (map["meta_data"] as List)
+                        .whereType<Map>()
+                        .map((m) => Map<String, dynamic>.from(m))
+                        .toList()
+                    : <Map<String, dynamic>>[];
 
-        // ✅ Extract loyalty points from meta_data
-        final loyaltyEntry = metaData.firstWhere(
+            // ✅ Extract loyalty points from meta_data
+            final loyaltyEntry = metaData.firstWhere(
               (m) => m['key'] == '_product_loyalty_points',
-          orElse: () => <String, dynamic>{},
-        );
-        final int loyaltyPoints = loyaltyEntry.isNotEmpty
-            ? int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0
-            : 0;
+              orElse: () => <String, dynamic>{},
+            );
+            final int loyaltyPoints = loyaltyEntry.isNotEmpty
+                ? int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0
+                : 0;
 
-        if (kDebugMode) {
-          print("🔹 [FastKey Variations API] id=${map['id']} loyalty=$loyaltyPoints metaCount=${metaData.length}");
-        }
+            if (kDebugMode) {
+              print(
+                  "🔹 [FastKey Variations API] id=${map['id']} loyalty=$loyaltyPoints metaCount=${metaData.length}");
+            }
 
-        return {
-          "id": map["id"],
-          "name": (map["name"] ?? "").toString().isNotEmpty
-              ? map["name"] : (fallbackName.isNotEmpty ? fallbackName : "Unnamed Variant"),
-          "price": (map["price"] ?? map["regular_price"] ?? "0").toString(),
-          "sku": map["sku"] ?? "",
-          "image": (map["image"] is Map && map["image"]["src"] != null)
-              ? map["image"]["src"] : (map["image"] is String ? map["image"] : ""),
-          "meta_data": metaData,  // ✅ Store meta_data in cached variant
-          "loyalty_points": loyaltyPoints,  // ✅ Store loyalty points directly for quick access
-        };
-      }).where((v) => v["id"] != null).toList();
+            return {
+              "id": map["id"],
+              "name": (map["name"] ?? "").toString().isNotEmpty
+                  ? map["name"]
+                  : (fallbackName.isNotEmpty
+                      ? fallbackName
+                      : "Unnamed Variant"),
+              "price": (map["price"] ?? map["regular_price"] ?? "0").toString(),
+              "sku": map["sku"] ?? "",
+              "image": (map["image"] is Map && map["image"]["src"] != null)
+                  ? map["image"]["src"]
+                  : (map["image"] is String ? map["image"] : ""),
+              "meta_data": metaData, // ✅ Store meta_data in cached variant
+              "loyalty_points":
+                  loyaltyPoints, // ✅ Store loyalty points directly for quick access
+            };
+          })
+          .where((v) => v["id"] != null)
+          .toList();
     } catch (e) {
       if (kDebugMode) print(" [FastKey Variations API] error: $e");
       return <Map<String, dynamic>>[];
     }
   }
-
 
   Future<void> loadTabs() async {
     if (kDebugMode) {
@@ -653,7 +686,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   Future<void> _loadFastKeysTabs() async {
     final fastKeyTabsData =
-    await fastKeyDBHelper.getFastKeyTabsByUserId(userId ?? 1);
+        await fastKeyDBHelper.getFastKeyTabsByUserId(userId ?? 1);
     if (kDebugMode) {
       print("##### _loadFastKeysTabs: $fastKeyTabsData");
     }
@@ -666,10 +699,10 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             fastkeyTitle: product[AppDBConst.fastKeyTabTitle],
             fastkeyImage: product[AppDBConst.fastKeyTabImage],
             fastkeyIndex:
-            product[AppDBConst.fastKeyTabIndex]?.toString() ?? '0',
+                product[AppDBConst.fastKeyTabIndex]?.toString() ?? '0',
             itemCount: int.tryParse(
-                product[AppDBConst.fastKeyTabItemCount]?.toString() ??
-                    '0') ??
+                    product[AppDBConst.fastKeyTabItemCount]?.toString() ??
+                        '0') ??
                 0,
           );
         }).toList();
@@ -696,8 +729,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         userId: userId ?? 1);
 
     final response = await _fastKeyBloc.createFastKeyStream.firstWhere(
-            (response) =>
-        response.status == Status.COMPLETED ||
+        (response) =>
+            response.status == Status.COMPLETED ||
             response.status == Status.ERROR);
     if (response.status == Status.COMPLETED && response.data != null) {
       if (kDebugMode) {
@@ -737,7 +770,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content:
-                Text("Unauthorised. Session is expired on this device."),
+                    Text("Unauthorised. Session is expired on this device."),
                 backgroundColor: Colors.red,
                 duration: Duration(seconds: 2),
               ),
@@ -752,7 +785,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content:
-            Text(response.message ?? TextConstants.failedToCreateFastKey),
+                Text(response.message ?? TextConstants.failedToCreateFastKey),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
           ),
@@ -761,97 +794,79 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
   }
 
-  Future<void> _deleteFastKeyTab({required int fastKeyTabServerId}) async {
+  Future<void> _deleteFastKeyTab({required dynamic fastKeyTabServerId}) async {
     if (kDebugMode) {
       print(
           "### FastKeyScreen: _deleteFastKeyTab started with server ID: $fastKeyTabServerId");
     }
-    _fastKeyBloc.deleteFastKey(fastKeyTabServerId, userId ?? 1);
+    final deletedIndex = fastKeyTabs.indexWhere(
+      (tab) => tab.fastkeyServerId.toString() == fastKeyTabServerId.toString(),
+    );
+    final selectedTabId = _fastKeyTabId;
+    final resultFuture = _fastKeyBloc.deleteFastKeyStream.firstWhere(
+      (response) =>
+          response.status == Status.COMPLETED ||
+          response.status == Status.ERROR,
+    );
+    await _fastKeyBloc.deleteFastKey(fastKeyTabServerId, userId ?? 1);
+    final response = await resultFuture;
 
-    int? nextActiveTabId;
-    setState(() {
-      final int deletedIndex = fastKeyTabs.indexWhere(
-              (tab) => tab.fastkeyServerId == fastKeyTabServerId);
-      final int? prevSelectedIndex = _selectedCategoryIndex;
-
-      if (deletedIndex != -1) {
-        fastKeyTabs.removeAt(deletedIndex);
+    if (response.status == Status.ERROR) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response.message ?? 'Failed to delete Fast Key.'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
-
-      if (fastKeyTabs.isEmpty) {
-        _selectedCategoryIndex = null;
-        _fastKeyTabId = null;
-        fastKeyProductItems.clear();
-      } else if (prevSelectedIndex != null && prevSelectedIndex == deletedIndex) {
-        final int newIndex = deletedIndex.clamp(0, fastKeyTabs.length - 1);
-        _selectedCategoryIndex = newIndex;
-        _fastKeyTabId = fastKeyTabs[newIndex].fastkeyServerId;
-        nextActiveTabId = _fastKeyTabId;
-        fastKeyProductItems.clear();
-        isItemsLoading = true;
-      } else {
-        if (prevSelectedIndex != null && deletedIndex != -1 && deletedIndex < prevSelectedIndex) {
-          _selectedCategoryIndex = prevSelectedIndex - 1;
-        }
-        if (_selectedCategoryIndex != null &&
-            _selectedCategoryIndex! >= 0 &&
-            _selectedCategoryIndex! < fastKeyTabs.length) {
-          _fastKeyTabId = fastKeyTabs[_selectedCategoryIndex!].fastkeyServerId;
+      if (response.message?.contains('Unauthorised') ?? false) {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => LoginScreen()),
+          );
         }
       }
-
-      _editingCategoryIndex = null;
-      if (kDebugMode) {
-        print(
-            "### FastKeyScreen: Updated UI after tab deletion, new tab count: ${fastKeyTabs.length}");
-      }
-    });
-
-    // ✅ CLEAR CACHE for deleted tab
-    _clearFastKeyCache(tabId: fastKeyTabServerId);
-
-    if (nextActiveTabId != null) {
-      fastKeyTabIdNotifier.value = nextActiveTabId;
-      await fastKeyDBHelper.saveActiveFastKeyTab(nextActiveTabId);
+      return;
     }
 
-    await _fastKeyBloc.deleteFastKeyStream
-        .firstWhere((response) =>
-    response.status == Status.COMPLETED ||
-        response.status == Status.ERROR)
-        .then((response) async {
-      if (response.status == Status.ERROR) {
-        if (response.message!.contains('Unauthorised')) {
-          if (kDebugMode) {
-            print("Fast key 3 ---- Unauthorised : ${response.message!}");
-          }
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              Navigator.pushReplacement(context,
-                  MaterialPageRoute(builder: (context) => LoginScreen()));
+    _clearFastKeyCache(tabId: fastKeyTabServerId);
+    await _loadFastKeysTabs();
+    if (!mounted) return;
 
-              if (kDebugMode) {
-                print("message --- ${response.message}");
-              }
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content:
-                  Text("Unauthorised. Session is expired on this device."),
-                  backgroundColor: Colors.red,
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            }
-          });
-        } else {
-          if (kDebugMode) {
-            print(
-                "### FastKeyScreen: API deleteFastKey failed: ${response.message}");
-          }
-        }
-        await _loadFastKeysTabs();
+    if (selectedTabId?.toString() == fastKeyTabServerId.toString()) {
+      if (fastKeyTabs.isEmpty) {
+        setState(() {
+          _selectedCategoryIndex = null;
+          _fastKeyTabId = null;
+          fastKeyProductItems.clear();
+          _editingCategoryIndex = null;
+        });
+        fastKeyTabIdNotifier.value = null;
+        await fastKeyDBHelper.saveActiveFastKeyTab(null);
+      } else {
+        final newIndex = (deletedIndex < 0 ? 0 : deletedIndex)
+            .clamp(0, fastKeyTabs.length - 1);
+        final nextTabId = fastKeyTabs[newIndex].fastkeyServerId;
+        setState(() {
+          _selectedCategoryIndex = newIndex;
+          _fastKeyTabId = nextTabId;
+          fastKeyProductItems.clear();
+          isItemsLoading = true;
+          _editingCategoryIndex = null;
+        });
+        fastKeyTabIdNotifier.value = nextTabId;
+        await fastKeyDBHelper.saveActiveFastKeyTab(nextTabId);
       }
-    });
+    } else {
+      setState(() {
+        _selectedCategoryIndex = fastKeyTabs.indexWhere(
+          (tab) => tab.fastkeyServerId.toString() == selectedTabId.toString(),
+        );
+        _editingCategoryIndex = null;
+      });
+    }
   }
 
   Future<void> _loadActiveFastKeyTabId() async {
@@ -866,9 +881,10 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     setState(() {
       if (lastSelectedTabId != null &&
-          fastKeyTabs.any((tab) => tab.fastkeyServerId == lastSelectedTabId)) {
-        _selectedCategoryIndex = fastKeyTabs
-            .indexWhere((tab) => tab.fastkeyServerId == lastSelectedTabId);
+          fastKeyTabs.any((tab) =>
+              tab.fastkeyServerId.toString() == lastSelectedTabId.toString())) {
+        _selectedCategoryIndex = fastKeyTabs.indexWhere((tab) =>
+            tab.fastkeyServerId.toString() == lastSelectedTabId.toString());
         _fastKeyTabId = lastSelectedTabId;
         if (kDebugMode) {
           print(
@@ -895,6 +911,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     if (_fastKeyTabId != null) {
       await _loadFastKeyTabItems();
       await _resolveFastKeyMeta();
+    } else if (mounted) {
+      setState(() => isItemsLoading = false);
     }
   }
 
@@ -913,14 +931,14 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       }
       if (mounted) {
         setState(() {
-          fastKeyProductItems =
-          List<Map<String, dynamic>>.from(_fastKeyItemsCache[_fastKeyTabId!]!);
+          fastKeyProductItems = List<Map<String, dynamic>>.from(
+              _fastKeyItemsCache[_fastKeyTabId!]!);
           reorderedIndices = List.filled(fastKeyProductItems.length, null);
           isItemsLoading = false; // ✅ never flicker for cached data
         });
       }
       _resolveFastKeyMeta(); // background refresh, non-blocking
-      return;
+      // Continue to the API below so server-side removals are reflected.
     }
 
     // ── 2. Cache miss → show spinner, then try local DB ────────────────────
@@ -938,7 +956,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
       // Store in memory so next switch is instant
       _fastKeyItemsCache[_fastKeyTabId!] =
-      List<Map<String, dynamic>>.from(preparedItems);
+          List<Map<String, dynamic>>.from(preparedItems);
 
       if (mounted) {
         setState(() {
@@ -947,16 +965,15 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           isItemsLoading = false;
         });
       }
-      return;
+      // Continue to the API below; an empty server list must clear this cached list.
     }
 
-    // ── 3. DB miss → API (only on very first load or after cache clear) ────
+    // ── 3. Refresh from API and reconcile local cache ───────────────────────
     if (kDebugMode) {
       print("Cache miss → Fetching FastKey items from API ");
     }
 
-    final tabs =
-    await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId!);
+    final tabs = await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId!);
     if (tabs.isEmpty) {
       if (mounted) {
         setState(() {
@@ -968,15 +985,36 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
 
     final fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
+    final fetchResultFuture = _fastKeyProductBloc.getProductsStream.firstWhere(
+      (response) =>
+          response.status == Status.COMPLETED ||
+          response.status == Status.ERROR,
+    );
     await _fastKeyProductBloc.fetchProductsByFastKeyId(
-        _fastKeyTabId!, fastKeyServerId);
+      _fastKeyTabId,
+      fastKeyServerId,
+    );
+    final fetchResult = await fetchResultFuture;
+    if (fetchResult.status == Status.ERROR) {
+      if (mounted) {
+        setState(() => isItemsLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                fetchResult.message ?? 'Unable to refresh Fast Key products.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
 
     final apiItems = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId!);
     final preparedItems = await _prepareFastKeyItemsForInitialUi(apiItems);
 
     // Store in memory so every subsequent switch is instant
     _fastKeyItemsCache[_fastKeyTabId!] =
-    List<Map<String, dynamic>>.from(preparedItems);
+        List<Map<String, dynamic>>.from(preparedItems);
 
     if (mounted) {
       setState(() {
@@ -987,7 +1025,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
   }
 
-  void _clearFastKeyCache({int? tabId}) {
+  void _clearFastKeyCache({dynamic tabId}) {
     if (tabId != null) {
       _fastKeyItemsCache.remove(tabId);
       if (kDebugMode) print("🧹 Cleared FastKey cache for tab: $tabId");
@@ -1059,7 +1097,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         } catch (_) {}
       }
       final int? productId =
-      int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
+          int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
 
       await _enrichFastKeyItemFromSkuHive(item);
 
@@ -1077,17 +1115,19 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
         // Extract loyalty points from FastKey API meta_data
         final loyaltyEntry = fastKeyMetaData.firstWhere(
-              (m) => m['key'] == '_product_loyalty_points',
+          (m) => m['key'] == '_product_loyalty_points',
           orElse: () => <String, dynamic>{},
         );
         if (loyaltyEntry.isNotEmpty) {
-          fastKeyLoyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+          fastKeyLoyaltyPoints =
+              int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
         }
       }
 
       // Also check if loyalty_points is directly on the item from FastKey API
       if (fastKeyLoyaltyPoints == 0 && item["loyalty_points"] != null) {
-        fastKeyLoyaltyPoints = int.tryParse(item["loyalty_points"].toString()) ?? 0;
+        fastKeyLoyaltyPoints =
+            int.tryParse(item["loyalty_points"].toString()) ?? 0;
       }
 
       // ✅ PRIORITIZE: Use FastKey API data FIRST (it's the source of truth for FastKey)
@@ -1101,33 +1141,42 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         } else {
           // Create meta_data if not present
           item["meta_data"] = [
-            {"key": "_product_loyalty_points", "value": fastKeyLoyaltyPoints.toString()}
+            {
+              "key": "_product_loyalty_points",
+              "value": fastKeyLoyaltyPoints.toString()
+            }
           ];
         }
-        print("✅ [FastKey] Using loyalty points from FastKey API: $fastKeyLoyaltyPoints for ${item["fast_key_item_name"]}");
+        print(
+            "✅ [FastKey] Using loyalty points from FastKey API: $fastKeyLoyaltyPoints for ${item["fast_key_item_name"]}");
       } else {
         // Fallback: Try to get from product cache only if FastKey API doesn't have it
-        final cached = productId != null ? await _getCachedProductFromIsar(productId) : null;
+        final cached = productId != null
+            ? await _getCachedProductFromIsar(productId)
+            : null;
 
         if (cached != null && cached["meta_data"] != null) {
           item["meta_data"] = cached["meta_data"];
           final loyaltyEntry = (cached["meta_data"] as List).firstWhere(
-                (m) => m['key'] == '_product_loyalty_points',
+            (m) => m['key'] == '_product_loyalty_points',
             orElse: () => <String, dynamic>{},
           );
           if (loyaltyEntry.isNotEmpty) {
-            item["loyalty_points"] = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+            item["loyalty_points"] =
+                int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
           }
         }
       }
 
       // Check variants
-      final cached = productId != null ? await _getCachedProductFromIsar(productId) : null;
+      final cached =
+          productId != null ? await _getCachedProductFromIsar(productId) : null;
       item["has_variants"] = await _fastKeyHasVariants(item);
 
       // Check EBT
       final isEbt = _isProductEbtEligible({
-        "is_ebt_eligible": item["is_ebt_eligible"] ?? cached?["is_ebt_eligible"],
+        "is_ebt_eligible":
+            item["is_ebt_eligible"] ?? cached?["is_ebt_eligible"],
         "meta_data": item["meta_data"] ?? cached?["meta_data"],
         "fast_key_item_tags": item["fast_key_item_tags"] ?? cached?["tags"],
         "tags": cached?["tags"],
@@ -1158,8 +1207,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         item['variations'] = p['variations'];
       }
       if ((item['fast_key_item_tags'] == null ||
-          (item['fast_key_item_tags'] is List &&
-              (item['fast_key_item_tags'] as List).isEmpty)) &&
+              (item['fast_key_item_tags'] is List &&
+                  (item['fast_key_item_tags'] as List).isEmpty)) &&
           p['tags'] != null) {
         item['fast_key_item_tags'] = p['tags'];
       }
@@ -1215,7 +1264,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   Future<bool> _fastKeyHasVariants(Map<String, dynamic> item) async {
     final int? productId =
-    int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
+        int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
 
     if (productId == null) return false;
 
@@ -1369,16 +1418,34 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       }
       setState(() => isItemsLoading = true);
 
-      final tabs = await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
+      final tabs = await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId);
       if (tabs.isNotEmpty) {
         final fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
         if (kDebugMode) {
-          print("FastKey Screen _loadFastKeyTabItems selected tab server id: $fastKeyServerId");
+          print(
+              "FastKey Screen _loadFastKeyTabItems selected tab server id: $fastKeyServerId");
         }
-        final items = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId ?? 1);
+        final fetchResultFuture =
+            _fastKeyProductBloc.getProductsStream.firstWhere(
+          (response) =>
+              response.status == Status.COMPLETED ||
+              response.status == Status.ERROR,
+        );
+        await _fastKeyProductBloc.fetchProductsByFastKeyId(
+          _fastKeyTabId,
+          fastKeyServerId,
+        );
+        final fetchResult = await fetchResultFuture;
+        if (fetchResult.status == Status.ERROR) {
+          throw Exception(
+              fetchResult.message ?? 'Unable to refresh Fast Key products.');
+        }
+
+        final items = await fastKeyDBHelper.getFastKeyItems(_fastKeyTabId);
         final preparedItems = await _prepareFastKeyItemsForInitialUi(items);
         if (kDebugMode) {
-          print("#### Retrieved ${items.length} FastKey Items for Tab ID: $_fastKeyTabId");
+          print(
+              "#### Retrieved ${items.length} FastKey Items for Tab ID: $_fastKeyTabId");
         }
         setState(() {
           fastKeyProductItems = preparedItems;
@@ -1396,6 +1463,14 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       if (kDebugMode) {
         print("Error loading FastKey tab items: $e");
       }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to refresh Fast Key products: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       setState(() => isItemsLoading = false);
     } finally {
       _isRefreshing = false;
@@ -1411,7 +1486,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       return;
     }
     var tabs =
-    await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
+        await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
     if (tabs.isEmpty) {
       if (kDebugMode) {
         print("### FastKeyScreen: _addFastKeyTabItem aborted, tab not found");
@@ -1420,73 +1495,86 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     }
     var fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
     var countProductInFastKey = fastKeyProductItems.length;
-    FastKeyProductItem item = FastKeyProductItem(
-        productId: selectedProduct!['id'], slNumber: countProductInFastKey + 1);
+    final rawProductId = selectedProduct!['fast_key_product_id'] ??
+        selectedProduct!['product_id'] ??
+        selectedProduct!['id'];
+    final productId = rawProductId is num
+        ? rawProductId.toInt()
+        : int.tryParse(rawProductId?.toString() ?? '');
+    if (productId == null || productId <= 0) {
+      throw FormatException('The selected product has an invalid product ID.');
+    }
+    final item = FastKeyProductItem(
+      productId: productId,
+      slNumber: countProductInFastKey + 1,
+    );
 
     StreamSubscription? subscription;
     subscription =
         _fastKeyProductBloc.addProductsStream.listen((response) async {
-          if (!mounted) {
-            subscription?.cancel();
-            return;
+      if (!mounted) {
+        subscription?.cancel();
+        return;
+      }
+      print("response ---- ${response.status}");
+      if (response.status == Status.COMPLETED) {
+        if (kDebugMode) {
+          print("#### FastKeyScreen: addProducts Status COMPLETED");
+        }
+
+        // ✅ CLEAR CACHE so next load gets fresh data
+        _clearFastKeyCache(tabId: _fastKeyTabId);
+
+        setState(() => isAddingItemLoading = false);
+        if (!isBulkAdding) {
+          await _refreshFastKeyTabItems();
+        }
+        subscription?.cancel();
+      } else if (response.status == Status.ERROR) {
+        if (response.message!.contains('Unauthorised')) {
+          if (kDebugMode) {
+            print("Fast key 4 ---- Unauthorised : ${response.message!}");
           }
-          print("response ---- ${response.status}");
-          if (response.status == Status.COMPLETED) {
-            if (kDebugMode) {
-              print("#### FastKeyScreen: addProducts Status COMPLETED");
-            }
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              Navigator.pushReplacement(context,
+                  MaterialPageRoute(builder: (context) => LoginScreen()));
 
-            // ✅ CLEAR CACHE so next load gets fresh data
-            _clearFastKeyCache(tabId: _fastKeyTabId);
-
-            setState(() => isAddingItemLoading = false);
-            if (!isBulkAdding) {
-              _refreshFastKeyTabItems();
-            }
-            subscription?.cancel();
-          } else if (response.status == Status.ERROR) {
-            if (response.message!.contains('Unauthorised')) {
               if (kDebugMode) {
-                print("Fast key 4 ---- Unauthorised : ${response.message!}");
-              }
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) {
-                  Navigator.pushReplacement(context,
-                      MaterialPageRoute(builder: (context) => LoginScreen()));
-
-                  if (kDebugMode) {
-                    print("message --- ${response.message}");
-                  }
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content:
-                      Text("Unauthorised. Session is expired on this device."),
-                      backgroundColor: Colors.red,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                }
-              });
-            } else {
-              if (kDebugMode) {
-                print("Failed to add item to fastkey: ${response.message}");
+                print("message --- ${response.message}");
               }
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(TextConstants.failedToAddItemToFastKey),
+                const SnackBar(
+                  content:
+                      Text("Unauthorised. Session is expired on this device."),
                   backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 2),
+                  duration: Duration(seconds: 2),
                 ),
               );
             }
-            subscription?.cancel();
-          } else if (response.status == Status.LOADING) {
-            if (kDebugMode) {
-              print("### FastKeyScreen: Adding item to FastKey, loading...");
-            }
-            setState(() => isItemsLoading = true);
+          });
+        } else {
+          if (kDebugMode) {
+            print("Failed to add item to fastkey: ${response.message}");
           }
-        });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                response.message ?? TextConstants.failedToAddItemToFastKey,
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+        subscription?.cancel();
+      } else if (response.status == Status.LOADING) {
+        if (kDebugMode) {
+          print("### FastKeyScreen: Adding item to FastKey, loading...");
+        }
+        setState(() => isItemsLoading = true);
+      }
+    });
 
     /// addProducts API CALL
     await _fastKeyProductBloc
@@ -1498,7 +1586,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     if (_fastKeyTabId == null) return;
 
     var tabs =
-    await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
+        await fastKeyDBHelper.getFastKeyByServerTabId(_fastKeyTabId ?? 1);
     if (tabs.isEmpty) return;
 
     var fastKeyServerId = tabs.first[AppDBConst.fastKeyServerId];
@@ -1506,67 +1594,70 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     StreamSubscription? subscription;
     subscription =
         _fastKeyProductBloc.deleteProductStream.listen((response) async {
-          if (!mounted) {
-            subscription?.cancel();
-            return;
+      if (!mounted) {
+        subscription?.cancel();
+        return;
+      }
+      if (response.status == Status.COMPLETED) {
+        if (kDebugMode) {
+          print(
+              "### FastKeyScreen: Product deleted successfully from FastKey: ${response.data!.fastkeyId}");
+        }
+        await _refreshFastKeyTabItems();
+
+        if (Misc.showDebugSnackBar) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  response.data?.message ?? "Product deleted from Fast Key"),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+        subscription?.cancel();
+      } else if (response.status == Status.ERROR) {
+        if (response.message!.contains('Unauthorised')) {
+          if (kDebugMode) {
+            print("Fast key 5---- Unauthorised : ${response.message!}");
           }
-          if (response.status == Status.COMPLETED) {
-            if (kDebugMode) {
-              print(
-                  "### FastKeyScreen: Product deleted successfully from FastKey: ${response.data!.fastkeyId}");
-            }
-            await _refreshFastKeyTabItems();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              Navigator.pushReplacement(context,
+                  MaterialPageRoute(builder: (context) => LoginScreen()));
 
-            if (Misc.showDebugSnackBar) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                      response.data?.message ?? "Product deleted from Fast Key"),
-                  backgroundColor: Colors.green,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            }
-            subscription?.cancel();
-          } else if (response.status == Status.ERROR) {
-            if (response.message!.contains('Unauthorised')) {
               if (kDebugMode) {
-                print("Fast key 5---- Unauthorised : ${response.message!}");
+                print("message --- ${response.message}");
               }
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) {
-                  Navigator.pushReplacement(context,
-                      MaterialPageRoute(builder: (context) => LoginScreen()));
-
-                  if (kDebugMode) {
-                    print("message --- ${response.message}");
-                  }
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content:
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content:
                       Text("Unauthorised. Session is expired on this device."),
-                      backgroundColor: Colors.red,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                }
-              });
-            } else {
-              if (kDebugMode) {
-                print(
-                    "### FastKeyScreen: Failed to delete product: ${response.message}");
-              }
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(TextConstants.failedToDeleteProductFromFastKey),
                   backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 2),
+                  duration: Duration(seconds: 2),
                 ),
               );
             }
-            subscription?.cancel();
+          });
+        } else {
+          if (kDebugMode) {
+            print(
+                "### FastKeyScreen: Failed to delete product: ${response.message}");
           }
-        });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                response.message ??
+                    TextConstants.failedToDeleteProductFromFastKey,
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+        subscription?.cancel();
+      }
+    });
 
     await _fastKeyProductBloc.deleteProduct(
         fastKeyServerId, fastKeyTabItemServerId);
@@ -1574,7 +1665,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   Future<void> _pickImage() async {
     final XFile? imageFile =
-    await _picker.pickImage(source: ImageSource.gallery);
+        await _picker.pickImage(source: ImageSource.gallery);
     if (imageFile != null) {
       setState(() {
         _pickedImage = File(imageFile.path);
@@ -1584,11 +1675,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   Stopwatch? refreshUIStopwatch; // Build #1.0.256
 
-
-
   Future<void> _onItemSelected(
       int index, bool showAddButton, bool variantAdded) async {
-
     try {
       // ✅ FIX: NestedGridWidget already adds the item to the order itself
       // (weighted/produce, variable-price, variant, and simple product paths
@@ -1613,7 +1701,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       if (kDebugMode) print("⚡ Fast Key _onItemSelected");
 
       final adjustedIndex = index - (showAddButton ? 1 : 0);
-      if (adjustedIndex < 0 || adjustedIndex >= fastKeyProductItems.length) return;
+      if (adjustedIndex < 0 || adjustedIndex >= fastKeyProductItems.length)
+        return;
 
       final item = fastKeyProductItems[adjustedIndex];
 
@@ -1646,7 +1735,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       // FIRST: Check if loyalty_points is directly stored on the FastKey item
       if (item["loyalty_points"] != null) {
         loyaltyPoints = int.tryParse(item["loyalty_points"].toString()) ?? 0;
-        print("✅ [FastKey] Using loyalty points from FastKey item: $loyaltyPoints");
+        print(
+            "✅ [FastKey] Using loyalty points from FastKey item: $loyaltyPoints");
       }
 
       // SECOND: Check meta_data from FastKey item
@@ -1660,11 +1750,12 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         // If loyalty not found directly, try from meta_data
         if (loyaltyPoints == 0) {
           final loyaltyEntry = metaDataList.firstWhere(
-                (m) => m['key'] == '_product_loyalty_points',
+            (m) => m['key'] == '_product_loyalty_points',
             orElse: () => <String, dynamic>{},
           );
           if (loyaltyEntry.isNotEmpty) {
-            loyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+            loyaltyPoints =
+                int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
           }
         }
       }
@@ -1674,21 +1765,24 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         final cached = await _getCachedProductFromIsar(productId);
         if (cached != null && cached["meta_data"] is List) {
           final loyaltyEntry = (cached["meta_data"] as List).firstWhere(
-                (m) => m['key'] == '_product_loyalty_points',
+            (m) => m['key'] == '_product_loyalty_points',
             orElse: () => <String, dynamic>{},
           );
           if (loyaltyEntry.isNotEmpty) {
-            loyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
-            print("⚠️ [FastKey] Using product cache loyalty points (fallback): $loyaltyPoints");
+            loyaltyPoints =
+                int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+            print(
+                "⚠️ [FastKey] Using product cache loyalty points (fallback): $loyaltyPoints");
           }
         }
       }
 
-      print("🎯 [FastKey] Final loyalty points for $productName: $loyaltyPoints");
+      print(
+          "🎯 [FastKey] Final loyalty points for $productName: $loyaltyPoints");
 
       final box = StorageProvider.offlineOrders;
       final isOfflineOrder =
-      box.containsKey(orderHelper.activeOrderId.toString());
+          box.containsKey(orderHelper.activeOrderId.toString());
       final activeOrderId =
           orderHelper.activeOrderId ?? (await box.get('lastOrderId')) ?? 1000;
 
@@ -1703,15 +1797,16 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       final tagsRaw = item["fast_key_item_tags"] ?? item["tags"];
       final bool hasProduceTag = (tagsRaw is List)
           ? tagsRaw.any((t) {
-        if (t is! Map) return false;
-        final slug = (t["slug"] ?? "").toString().toLowerCase();
-        final name = (t["name"] ?? "").toString().toLowerCase();
-        return slug.contains("produce") || name.contains("produce");
-      })
+              if (t is! Map) return false;
+              final slug = (t["slug"] ?? "").toString().toLowerCase();
+              final name = (t["name"] ?? "").toString().toLowerCase();
+              return slug.contains("produce") || name.contains("produce");
+            })
           : false;
 
       if (hasProduceTag) {
-        final weightProvider = Provider.of<WeightProvider>(context, listen: false);
+        final weightProvider =
+            Provider.of<WeightProvider>(context, listen: false);
         double liveWeight = 0.0;
 
         try {
@@ -1784,7 +1879,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             } else if (cachedData is String) {
               try {
                 final decoded = jsonDecode(cachedData);
-                rawVariations = decoded is Map ? decoded["variations"] ?? [] : decoded;
+                rawVariations =
+                    decoded is Map ? decoded["variations"] ?? [] : decoded;
               } catch (_) {}
             }
           }
@@ -1799,8 +1895,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               }
               final name = variantData?["name"] ?? "Variant $id";
               final price = (variantData?["price"] ??
-                  variantData?["regular_price"] ??
-                  productPrice)
+                      variantData?["regular_price"] ??
+                      productPrice)
                   .toString();
               final image = (variantData?["image"] is Map)
                   ? variantData["image"]["src"]
@@ -1816,7 +1912,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               }
 
               final loyaltyEntry = metaData.firstWhere(
-                    (m) => m['key'] == '_product_loyalty_points',
+                (m) => m['key'] == '_product_loyalty_points',
                 orElse: () => <String, dynamic>{},
               );
               final int loyaltyPoints = loyaltyEntry.isNotEmpty
@@ -1829,8 +1925,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                 "price": price,
                 "sku": variantData?["sku"] ?? "",
                 "image": image,
-                "meta_data": metaData,  // ✅ Preserve meta_data
-                "loyalty_points": loyaltyPoints,  // ✅ Store loyalty points
+                "meta_data": metaData, // ✅ Preserve meta_data
+                "loyalty_points": loyaltyPoints, // ✅ Store loyalty points
               });
             }
           }
@@ -1850,11 +1946,12 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             if (map["loyalty_points"] == null || map["loyalty_points"] == 0) {
               final metaData = map["meta_data"] as List<Map<String, dynamic>>;
               final loyaltyEntry = metaData.firstWhere(
-                    (m) => m['key'] == '_product_loyalty_points',
+                (m) => m['key'] == '_product_loyalty_points',
                 orElse: () => <String, dynamic>{},
               );
               if (loyaltyEntry.isNotEmpty) {
-                map["loyalty_points"] = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+                map["loyalty_points"] =
+                    int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
               } else {
                 map["loyalty_points"] = 0;
               }
@@ -1871,13 +1968,17 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               });
 
           if (needsFreshFetch && productId > 0) {
-            print("🔄 [FastKey] Fetching fresh variants for product $productId (cache missing meta_data)");
+            print(
+                "🔄 [FastKey] Fetching fresh variants for product $productId (cache missing meta_data)");
             final fetched = await _fetchVariationsFromApi(productId);
             if (fetched.isNotEmpty) {
               offlineVariations = fetched;
               await StorageProvider.productCache.put(
                 "product_${productId}_variations",
-                {"variations": fetched, "timestamp": DateTime.now().toIso8601String()},
+                {
+                  "variations": fetched,
+                  "timestamp": DateTime.now().toIso8601String()
+                },
               );
             }
           }
@@ -1892,9 +1993,12 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             title: productName,
             variations: offlineVariations,
             onAddVariant: (selectedVariant, qty) async {
-              final variantId = int.tryParse(selectedVariant["id"].toString()) ?? -1;
+              final variantId =
+                  int.tryParse(selectedVariant["id"].toString()) ?? -1;
               final variantName = selectedVariant["name"] ?? "Variant";
-              final variantPrice = double.tryParse(selectedVariant["price"].toString()) ?? productPrice;
+              final variantPrice =
+                  double.tryParse(selectedVariant["price"].toString()) ??
+                      productPrice;
               final variantImage = selectedVariant["image"] ?? productImage;
               final variantSku = selectedVariant["sku"] ?? productSku;
 
@@ -1906,33 +2010,42 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               if (selectedVariant["meta_data"] is List) {
                 variantMetaData = (selectedVariant["meta_data"] as List)
                     .whereType<Map>()
-                    .map<Map<String, dynamic>>((m) => Map<String, dynamic>.from(m))
+                    .map<Map<String, dynamic>>(
+                        (m) => Map<String, dynamic>.from(m))
                     .toList();
 
                 // Extract loyalty from meta_data
                 final loyaltyEntry = variantMetaData.firstWhere(
-                      (m) => m['key'] == '_product_loyalty_points',
+                  (m) => m['key'] == '_product_loyalty_points',
                   orElse: () => <String, dynamic>{},
                 );
                 if (loyaltyEntry.isNotEmpty) {
-                  variantLoyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+                  variantLoyaltyPoints =
+                      int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ??
+                          0;
                 }
               }
 
               // If no loyalty from meta_data, try direct field
-              if (variantLoyaltyPoints == 0 && selectedVariant["loyalty_points"] != null) {
-                variantLoyaltyPoints = int.tryParse(selectedVariant["loyalty_points"].toString()) ?? 0;
+              if (variantLoyaltyPoints == 0 &&
+                  selectedVariant["loyalty_points"] != null) {
+                variantLoyaltyPoints = int.tryParse(
+                        selectedVariant["loyalty_points"].toString()) ??
+                    0;
               }
 
               // If still 0, try parent product's loyalty points (fallback)
               if (variantLoyaltyPoints == 0 && metaDataList.isNotEmpty) {
                 final parentLoyalty = metaDataList.firstWhere(
-                      (m) => m['key'] == '_product_loyalty_points',
+                  (m) => m['key'] == '_product_loyalty_points',
                   orElse: () => <String, dynamic>{},
                 );
                 if (parentLoyalty.isNotEmpty) {
-                  variantLoyaltyPoints = int.tryParse(parentLoyalty['value']?.toString() ?? '0') ?? 0;
-                  print('🔄 [FastKey] Using parent loyalty points: $variantLoyaltyPoints');
+                  variantLoyaltyPoints =
+                      int.tryParse(parentLoyalty['value']?.toString() ?? '0') ??
+                          0;
+                  print(
+                      '🔄 [FastKey] Using parent loyalty points: $variantLoyaltyPoints');
                 }
               }
 
@@ -1959,11 +2072,13 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                 regularPrice: variantPrice,
                 unitPrice: variantPrice,
                 isEbtEligible: isEbtEligible,
-                metaData: variantMetaData,  // ✅ Pass variant's meta_data
-                loyaltyPoints: variantLoyaltyPoints,  // ✅ Pass variant's loyalty points
+                metaData: variantMetaData, // ✅ Pass variant's meta_data
+                loyaltyPoints:
+                    variantLoyaltyPoints, // ✅ Pass variant's loyalty points
                 onItemAdded: () async {
                   print("✅ Variant added locally");
-                  await CustomerDisplayHelper.updateCustomerDisplay(activeOrderId);
+                  await CustomerDisplayHelper.updateCustomerDisplay(
+                      activeOrderId);
                   await _refreshOrderList();
                 },
               );
@@ -2078,6 +2193,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     List<dynamic> _allCached = [];
     List<dynamic> _filteredList = [];
     bool _isApiSearching = false;
+    bool isSubmittingBulk = false;
 
     // ── Load initial merged cache (same source as TopBar) ──────────────────
     try {
@@ -2138,7 +2254,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       if (nq.isEmpty) return true;
       final name = _normalize(_resolveName(p));
       final sku =
-      _normalize((p["sku"] ?? p["fast_key_item_sku"] ?? "").toString());
+          _normalize((p["sku"] ?? p["fast_key_item_sku"] ?? "").toString());
       if (name.contains(nq) || sku.contains(nq)) return true;
       final parts = q
           .toLowerCase()
@@ -2181,9 +2297,9 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     // then re-applies the local filter — exactly like TopBar._mergeApiResults.
 
     Future<void> _searchFromApi(
-        String query,
-        StateSetter setStateDialog,
-        ) async {
+      String query,
+      StateSetter setStateDialog,
+    ) async {
       final normQuery = query.toLowerCase().trim();
       if (normQuery.length < 3) return;
 
@@ -2219,7 +2335,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         final result = await db.query(
           AppDBConst.userTable,
           where:
-          '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+              '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
           orderBy: '${AppDBConst.userId} DESC',
           limit: 1,
         );
@@ -2229,7 +2345,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         final encodedQuery = Uri.encodeQueryComponent(normQuery);
         final url = Uri.parse(
           '${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}'
-              'products?search=$encodedQuery&page=1&per_page=20',
+          'products?search=$encodedQuery&page=1&per_page=20',
         );
 
         if (kDebugMode) print('🔍 FastKey API Search → $url');
@@ -2250,25 +2366,23 @@ class _FastKeyScreenState extends State<FastKeyScreen>
         }
 
         final List<dynamic> decoded =
-        jsonDecode(response.body) as List<dynamic>;
+            jsonDecode(response.body) as List<dynamic>;
 
         // Normalise into the same map shape used everywhere in the app
-        final List<Map<String, dynamic>> apiProducts = decoded
-            .whereType<Map>()
-            .map<Map<String, dynamic>>((p) {
+        final List<Map<String, dynamic>> apiProducts =
+            decoded.whereType<Map>().map<Map<String, dynamic>>((p) {
           final List<dynamic> images = (p['images'] as List?) ?? [];
-          final String imageUrl =
-          images.isNotEmpty && images.first is Map
+          final String imageUrl = images.isNotEmpty && images.first is Map
               ? (images.first['src'] ?? '').toString()
               : '';
           final List<dynamic> rawTags = (p['tags'] as List?) ?? [];
           final List<Map<String, dynamic>> tags = rawTags
               .whereType<Map>()
               .map((t) => {
-            'id': t['id'],
-            'name': (t['name'] ?? '').toString(),
-            'slug': (t['slug'] ?? '').toString(),
-          })
+                    'id': t['id'],
+                    'name': (t['name'] ?? '').toString(),
+                    'slug': (t['slug'] ?? '').toString(),
+                  })
               .toList();
           return {
             'fast_key_product_id': p['id'],
@@ -2288,10 +2402,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             'type': p['type'] ?? 'simple',
             'categories': (p['categories'] as List?) ?? [],
             'is_ebt_eligible': tags.any((t) {
-              final name =
-              (t['name'] ?? '').toString().toLowerCase();
-              final slug =
-              (t['slug'] ?? '').toString().toLowerCase();
+              final name = (t['name'] ?? '').toString().toLowerCase();
+              final slug = (t['slug'] ?? '').toString().toLowerCase();
               return name == 'ebt' ||
                   name == 'ebt eligible' ||
                   slug == 'ebt' ||
@@ -2370,7 +2482,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                             if (value.trim().length >= 3) {
                               _debounce = Timer(
                                 const Duration(milliseconds: 500),
-                                    () {
+                                () {
                                   if (searchController.text.trim() ==
                                       value.trim()) {
                                     _searchFromApi(
@@ -2389,103 +2501,99 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                         child: Container(
                           height: 420,
                           decoration: BoxDecoration(
-                            border:
-                            Border.all(color: Colors.grey.shade300),
+                            border: Border.all(color: Colors.grey.shade300),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Stack(
                             children: [
                               _filteredList.isEmpty
                                   ? Center(
-                                child: Text(
-                                  _isApiSearching
-                                      ? "Searching..."
-                                      : "Type at least 3 characters to search...",
-                                  textAlign: TextAlign.center,
-                                ),
-                              )
+                                      child: Text(
+                                        _isApiSearching
+                                            ? "Searching..."
+                                            : "Type at least 3 characters to search...",
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    )
                                   : Scrollbar(
-                                child: ListView.builder(
-                                  shrinkWrap: true,
-                                  itemCount: _filteredList.length,
-                                  itemBuilder: (context, i) {
-                                    final p = _filteredList[i];
-                                    final name = _resolveName(p);
-                                    final price = _resolvePrice(p);
-                                    final imageUrl = _resolveImage(p);
-                                    final isSelected =
-                                    selectedProducts.any(
-                                          (s) =>
-                                      _resolveProductId(s) ==
-                                          _resolveProductId(p),
-                                    );
-
-                                    return ListTile(
-                                      leading: SizedBox(
-                                        width: 50,
-                                        height: 50,
-                                        child: ClipRRect(
-                                          borderRadius:
-                                          BorderRadius.circular(8),
-                                          child: imageUrl.isNotEmpty
-                                              ? Image.network(
-                                            imageUrl,
-                                            fit: BoxFit.cover,
-                                            loadingBuilder: (ctx,
-                                                child,
-                                                progress) =>
-                                            progress == null
-                                                ? child
-                                                : const Center(
-                                              child:
-                                              CircularProgressIndicator(
-                                                  strokeWidth:
-                                                  2),
-                                            ),
-                                            errorBuilder: (_,
-                                                __,
-                                                ___) =>
-                                            const Icon(Icons
-                                                .broken_image),
-                                          )
-                                              : const Icon(
-                                              Icons.image,
-                                              size: 40),
-                                        ),
-                                      ),
-                                      title: Text(
-                                        name,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      subtitle: Text("\$$price"),
-                                      selected: isSelected,
-                                      selectedTileColor:
-                                      Colors.red.withOpacity(0.15),
-                                      onTap: () {
-                                        setStateDialog(() {
-                                          final pid =
-                                          _resolveProductId(p);
-                                          if (pid == null) return;
-                                          if (isSelected) {
-                                            selectedProducts.removeWhere(
-                                                    (s) =>
+                                      child: ListView.builder(
+                                        shrinkWrap: true,
+                                        itemCount: _filteredList.length,
+                                        itemBuilder: (context, i) {
+                                          final p = _filteredList[i];
+                                          final name = _resolveName(p);
+                                          final price = _resolvePrice(p);
+                                          final imageUrl = _resolveImage(p);
+                                          final isSelected =
+                                              selectedProducts.any(
+                                            (s) =>
                                                 _resolveProductId(s) ==
-                                                    pid);
-                                          } else {
-                                            selectedProducts.add(
-                                              Map<String,
-                                                  dynamic>.from(
-                                                p as Map,
+                                                _resolveProductId(p),
+                                          );
+
+                                          return ListTile(
+                                            leading: SizedBox(
+                                              width: 50,
+                                              height: 50,
+                                              child: ClipRRect(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                                child: imageUrl.isNotEmpty
+                                                    ? Image.network(
+                                                        imageUrl,
+                                                        fit: BoxFit.cover,
+                                                        loadingBuilder: (ctx,
+                                                                child,
+                                                                progress) =>
+                                                            progress == null
+                                                                ? child
+                                                                : const Center(
+                                                                    child: CircularProgressIndicator(
+                                                                        strokeWidth:
+                                                                            2),
+                                                                  ),
+                                                        errorBuilder: (_, __,
+                                                                ___) =>
+                                                            const Icon(Icons
+                                                                .broken_image),
+                                                      )
+                                                    : const Icon(Icons.image,
+                                                        size: 40),
                                               ),
-                                            );
-                                          }
-                                        });
-                                      },
-                                    );
-                                  },
-                                ),
-                              ),
+                                            ),
+                                            title: Text(
+                                              name,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            subtitle: Text("\$$price"),
+                                            selected: isSelected,
+                                            selectedTileColor:
+                                                Colors.red.withOpacity(0.15),
+                                            onTap: () {
+                                              setStateDialog(() {
+                                                final pid =
+                                                    _resolveProductId(p);
+                                                if (pid == null) return;
+                                                if (isSelected) {
+                                                  selectedProducts.removeWhere(
+                                                      (s) =>
+                                                          _resolveProductId(
+                                                              s) ==
+                                                          pid);
+                                                } else {
+                                                  selectedProducts.add(
+                                                    Map<String, dynamic>.from(
+                                                      p as Map,
+                                                    ),
+                                                  );
+                                                }
+                                              });
+                                            },
+                                          );
+                                        },
+                                      ),
+                                    ),
 
                               // Thin progress bar while API loads
                               if (_isApiSearching)
@@ -2493,8 +2601,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                   top: 0,
                                   left: 0,
                                   right: 0,
-                                  child: LinearProgressIndicator(
-                                      minHeight: 3),
+                                  child: LinearProgressIndicator(minHeight: 3),
                                 ),
                             ],
                           ),
@@ -2513,26 +2620,116 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                   child: const Text("Cancel"),
                 ),
                 ElevatedButton(
-                  onPressed: selectedProducts.isEmpty
+                  onPressed: selectedProducts.isEmpty || isSubmittingBulk
                       ? null
                       : () async {
-                    _debounce?.cancel();
-                    Navigator.pop(dialogContext);
-                    for (var p in selectedProducts) {
-                      selectedProduct = p;
-                      await _addFastKeyTabItem(
-                        _resolveName(p),
-                        _resolveImage(p),
-                        _resolvePrice(p),
-                      );
-                    }
-                    isBulkAdding = false;
-                    await _refreshFastKeyTabItems();
-                    await _resolveFastKeyMeta();
-                    if (mounted) setState(() {});
-                  },
-                  child:
-                  Text('Add Selected (${selectedProducts.length})'),
+                          _debounce?.cancel();
+                          setStateDialog(() => isSubmittingBulk = true);
+                          try {
+                            if (_fastKeyTabId == null) {
+                              throw StateError(
+                                  'Select a Fast Key before adding products.');
+                            }
+                            final tabs = await fastKeyDBHelper
+                                .getFastKeyByServerTabId(_fastKeyTabId);
+                            if (tabs.isEmpty) {
+                              throw StateError(
+                                  'The selected Fast Key could not be found.');
+                            }
+                            final fastKeyServerId =
+                                tabs.first[AppDBConst.fastKeyServerId];
+
+                            final fetchResultFuture = _fastKeyProductBloc
+                                .getProductsStream
+                                .firstWhere((result) =>
+                                    result.status == Status.COMPLETED ||
+                                    result.status == Status.ERROR);
+                            await _fastKeyProductBloc.fetchProductsByFastKeyId(
+                              _fastKeyTabId,
+                              fastKeyServerId,
+                            );
+                            final fetchResult = await fetchResultFuture;
+                            if (fetchResult.status == Status.ERROR) {
+                              throw Exception(fetchResult.message ??
+                                  'Could not load the current Fast Key products.');
+                            }
+
+                            final productsById = <int, int>{};
+                            final currentItems = await fastKeyDBHelper
+                                .getFastKeyItems(_fastKeyTabId);
+                            for (final item in currentItems) {
+                              final productId = int.tryParse(
+                                item[AppDBConst.fastKeyProductId]?.toString() ??
+                                    '',
+                              );
+                              if (productId == null) {
+                                throw FormatException(
+                                  'Fast Key contains an invalid product ID.',
+                                );
+                              }
+                              productsById.putIfAbsent(
+                                  productId, () => productsById.length + 1);
+                            }
+                            for (final product in selectedProducts) {
+                              final productId = _resolveProductId(product);
+                              if (productId != null) {
+                                productsById.putIfAbsent(
+                                    productId, () => productsById.length + 1);
+                              }
+                            }
+
+                            final requestProducts = productsById.entries
+                                .map((entry) => FastKeyProductItem(
+                                      productId: entry.key,
+                                      slNumber: entry.value,
+                                    ))
+                                .toList();
+                            final updateResultFuture = _fastKeyProductBloc
+                                .addProductsStream
+                                .firstWhere((result) =>
+                                    result.status == Status.COMPLETED ||
+                                    result.status == Status.ERROR);
+                            await _fastKeyProductBloc.updateFastKeyProducts(
+                              fastKeyId: fastKeyServerId,
+                              products: requestProducts,
+                            );
+                            final updateResult = await updateResultFuture;
+                            if (updateResult.status == Status.ERROR) {
+                              throw Exception(updateResult.message ??
+                                  'Failed to update Fast Key products.');
+                            }
+
+                            if (dialogContext.mounted) {
+                              Navigator.pop(dialogContext);
+                            }
+                            _clearFastKeyCache(tabId: _fastKeyTabId);
+                            await _loadFastKeyTabItems();
+                            await _resolveFastKeyMeta();
+                            if (mounted) setState(() {});
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                      'Failed to update Fast Key products: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          } finally {
+                            isBulkAdding = false;
+                            if (dialogContext.mounted) {
+                              setStateDialog(() => isSubmittingBulk = false);
+                            }
+                          }
+                        },
+                  child: isSubmittingBulk
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text('Add Selected (${selectedProducts.length})'),
                 ),
               ],
             );
@@ -2553,7 +2750,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
     if (isEditing) {
       final existingImage = fastKeyTabs[index!].fastkeyImage;
-      imagePath = (existingImage != null && existingImage.isNotEmpty)
+      imagePath = (existingImage is String && existingImage.isNotEmpty)
           ? existingImage
           : 'assets/default.png';
     } else {
@@ -2577,7 +2774,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                 borderRadius: BorderRadius.circular(12.0),
               ),
               contentPadding:
-              EdgeInsets.only(left: 24, right: 24, top: 20, bottom: 0),
+                  EdgeInsets.only(left: 24, right: 24, top: 20, bottom: 0),
               actionsPadding: EdgeInsets.only(right: 24, top: 10),
               title: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2634,9 +2831,9 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                       boxShadow: [
                                         BoxShadow(
                                           color: themeHelper.themeMode ==
-                                              ThemeMode.dark
+                                                  ThemeMode.dark
                                               ? ThemeNotifier
-                                              .orderPanelTabBackground
+                                                  .orderPanelTabBackground
                                               : Color(0xFFFFF7F7),
                                           blurRadius: 3,
                                           spreadRadius: 3,
@@ -2644,7 +2841,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                         ),
                                       ],
                                     ),
-                                    child: _buildImageWidget(context, imagePath)),
+                                    child:
+                                        _buildImageWidget(context, imagePath)),
                                 Positioned(
                                   right: 0,
                                   top: 0,
@@ -2667,8 +2865,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                       onTap: () async {
                                         setStateDialog(() => isLoading = true);
                                         var image =
-                                        await _showSelectImageDialog(
-                                            context: context);
+                                            await _showSelectImageDialog(
+                                                context: context);
                                         if (kDebugMode) {
                                           print(
                                               "2 image path selected is : $image");
@@ -2683,18 +2881,18 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                       },
                                       child: isLoading
                                           ? SizedBox(
-                                        height: 25,
-                                        width: 25,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.5,
-                                          color: Colors.red,
-                                        ),
-                                      )
+                                              height: 25,
+                                              width: 25,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.5,
+                                                color: Colors.red,
+                                              ),
+                                            )
                                           : Icon(
-                                        Icons.edit,
-                                        size: 25,
-                                        color: Colors.red[400],
-                                      ),
+                                              Icons.edit,
+                                              size: 25,
+                                              color: Colors.red[400],
+                                            ),
                                     ),
                                   ),
                                 ),
@@ -2751,7 +2949,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                     : Colors.grey[400],
                                 fontWeight: FontWeight.bold),
                             errorText: (showError &&
-                                nameController.text.trim().isEmpty)
+                                    nameController.text.trim().isEmpty)
                                 ? TextConstants.categoryNameReqText
                                 : null,
                             errorStyle: const TextStyle(
@@ -2837,14 +3035,14 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                   index: index + 1,
                                   imageUrl: imagePath,
                                   fastKeyServerId:
-                                  fastKeyTabs[index].fastkeyServerId,
+                                      fastKeyTabs[index].fastkeyServerId,
                                   userId: userId ?? 0);
 
                               final response = await _fastKeyBloc
                                   .updateFastKeyStream
                                   .firstWhere(
-                                    (response) =>
-                                response.status == Status.COMPLETED ||
+                                (response) =>
+                                    response.status == Status.COMPLETED ||
                                     response.status == Status.ERROR,
                               );
 
@@ -2908,7 +3106,9 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
-                                          TextConstants.failedToUpdateFastKey),
+                                        response.message ??
+                                            TextConstants.failedToUpdateFastKey,
+                                      ),
                                       backgroundColor: Colors.red,
                                       duration: const Duration(seconds: 2),
                                     ),
@@ -2931,18 +3131,18 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                           ),
                           child: isLoading
                               ? const Center(
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                              ))
+                                  child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                ))
                               : Text(
-                            isEditing
-                                ? TextConstants.saveText
-                                : TextConstants.addText,
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 16),
-                          ),
+                                  isEditing
+                                      ? TextConstants.saveText
+                                      : TextConstants.addText,
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 16),
+                                ),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -2998,6 +3198,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     int selectedTab = 0;
 
     List<FastKeyImageModel> getCurrentList() {
+      if (types.isEmpty) return [];
       return fastKeyImages[types[selectedTab]] ?? [];
     }
 
@@ -3009,7 +3210,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           builder: (context, setStateDialog) {
             return AlertDialog(
               backgroundColor:
-              isDark ? ThemeNotifier.secondaryBackground : Colors.white,
+                  isDark ? ThemeNotifier.secondaryBackground : Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -3044,53 +3245,65 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                 height: size.height * 0.65,
                 child: Column(
                   children: [
-                    /// DYNAMIC TABS
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        for (int i = 0; i < types.length; i++) ...[
-                          _buildTabButton(
-                            label: types[i],
-                            index: i,
-                            selectedIndex: selectedTab,
-                            isDark: isDark,
-                            onTap: () => setStateDialog(() => selectedTab = i),
-                          ),
-                          SizedBox(width: 10),
+                    if (types.isNotEmpty) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          for (int i = 0; i < types.length; i++) ...[
+                            _buildTabButton(
+                              label: types[i],
+                              index: i,
+                              selectedIndex: selectedTab,
+                              isDark: isDark,
+                              onTap: () =>
+                                  setStateDialog(() => selectedTab = i),
+                            ),
+                            SizedBox(width: 10),
+                          ],
                         ],
-                      ],
-                    ),
-                    SizedBox(height: 20),
+                      ),
+                      SizedBox(height: 20),
+                    ],
 
                     /// IMAGE GRID
                     Expanded(
                       child: Container(
                         padding: EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: isDark
-                              ? Color(0xFF34384A)
-                              : Colors.grey[100],
+                          color: isDark ? Color(0xFF34384A) : Colors.grey[100],
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: GridView.builder(
-                          itemCount: getCurrentList().length,
-                          gridDelegate:
-                          SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 6,
-                            crossAxisSpacing: 8,
-                            mainAxisSpacing: 8,
-                          ),
-                          itemBuilder: (_, i) {
-                            final img = getCurrentList()[i];
-                            return GestureDetector(
-                              onTap: () => Navigator.pop(context, img.url),
-                              child: Container(
-                                padding: EdgeInsets.all(8),
-                                child: _buildImageWidget(context, img.url),
+                        child: getCurrentList().isEmpty
+                            ? Center(
+                                child: Text(
+                                  'No Fast Key images are available.',
+                                  style: TextStyle(
+                                    color:
+                                        isDark ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                              )
+                            : GridView.builder(
+                                itemCount: getCurrentList().length,
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 6,
+                                  crossAxisSpacing: 8,
+                                  mainAxisSpacing: 8,
+                                ),
+                                itemBuilder: (_, i) {
+                                  final img = getCurrentList()[i];
+                                  return GestureDetector(
+                                    onTap: () =>
+                                        Navigator.pop(context, img.url),
+                                    child: Container(
+                                      padding: EdgeInsets.all(8),
+                                      child:
+                                          _buildImageWidget(context, img.url),
+                                    ),
+                                  );
+                                },
                               ),
-                            );
-                          },
-                        ),
                       ),
                     ),
                   ],
@@ -3124,14 +3337,14 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             decoration: BoxDecoration(
               gradient: isSelected
                   ? const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xFFFF8A80),
-                  Color(0xFFFF6E6E),
-                  Color(0xFFFE6464),
-                ],
-              )
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFFFF8A80),
+                        Color(0xFFFF6E6E),
+                        Color(0xFFFE6464),
+                      ],
+                    )
                   : null,
               color: isSelected
                   ? null
@@ -3139,12 +3352,12 @@ class _FastKeyScreenState extends State<FastKeyScreen>
               borderRadius: BorderRadius.circular(10),
               boxShadow: isSelected
                   ? [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
-                  offset: Offset(0, 4),
-                  blurRadius: 8,
-                ),
-              ]
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        offset: Offset(0, 4),
+                        blurRadius: 8,
+                      ),
+                    ]
                   : [],
             ),
             child: Text(
@@ -3171,10 +3384,9 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     print("isDark: $isDark");
 
     final String defaultImage =
-    isDark ? 'assets/default_dark.png' : 'assets/default.png';
+        isDark ? 'assets/default_dark.png' : 'assets/default.png';
 
-    final String defaultSvg =
-    isDark
+    final String defaultSvg = isDark
         ? 'assets/svg/password_placeholder.svg'
         : 'assets/svg/password_placeholder.svg';
 
@@ -3186,7 +3398,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       return _safeSvgPicture(imagePath, defaultImage);
     } else if (imagePath.startsWith('assets/')) {
       final String finalPath =
-      imagePath == 'assets/default.png' ? defaultImage : imagePath;
+          imagePath == 'assets/default.png' ? defaultImage : imagePath;
 
       return ClipRRect(
         borderRadius: BorderRadius.circular(16.0),
@@ -3230,18 +3442,18 @@ class _FastKeyScreenState extends State<FastKeyScreen>
     } else {
       return Platform.isWindows
           ? Image.asset(
-        defaultImage,
-        height: 75,
-        width: 75,
-      )
+              defaultImage,
+              height: 75,
+              width: 75,
+            )
           : Image.file(
-        File(imagePath),
-        height: 80,
-        width: 80,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) =>
-            _safeSvgPicture(defaultSvg, defaultImage),
-      );
+              File(imagePath),
+              height: 80,
+              width: 80,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) =>
+                  _safeSvgPicture(defaultSvg, defaultImage),
+            );
     }
   }
 
@@ -3253,8 +3465,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           assetPath,
           height: 80,
           width: 80,
-          placeholderBuilder: (context) =>
-          const Icon(Icons.image, size: 40),
+          placeholderBuilder: (context) => const Icon(Icons.image, size: 40),
         ),
       );
     } catch (e) {
@@ -3285,9 +3496,21 @@ class _FastKeyScreenState extends State<FastKeyScreen>
             final tab = fastKeyTabs[tabIndex];
             await _deleteFastKeyTab(fastKeyTabServerId: tab.fastkeyServerId);
           } else if (itemIndex != null) {
-            final fastKeyTabItemServerId =
-            fastKeyProductItems[itemIndex][AppDBConst.fastKeyProductId];
-            await _deleteFastKeyTabItem(int.parse(fastKeyTabItemServerId));
+            final rawProductId =
+                fastKeyProductItems[itemIndex][AppDBConst.fastKeyProductId];
+            final productId = rawProductId is num
+                ? rawProductId.toInt()
+                : int.tryParse(rawProductId?.toString() ?? '');
+            if (productId == null || productId <= 0) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Cannot delete this item: invalid product ID.'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              return;
+            }
+            await _deleteFastKeyTabItem(productId);
             setState(() {
               enableIcons = false;
               selectedItemIndex = null;
@@ -3316,7 +3539,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
       final item = Map<String, dynamic>.from(fastKeyProductItems[i]);
       fastKeyProductItems[i] = item;
 
-      final productId = int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
+      final productId =
+          int.tryParse(item["fast_key_product_id"]?.toString() ?? "");
 
       if (productId == null) {
         debugPrint("⛔ Skipping item without productId");
@@ -3332,17 +3556,19 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
       // Check if item already has loyalty_points from FastKey API
       if (item["loyalty_points"] != null) {
-        fastKeyLoyaltyPoints = int.tryParse(item["loyalty_points"].toString()) ?? 0;
+        fastKeyLoyaltyPoints =
+            int.tryParse(item["loyalty_points"].toString()) ?? 0;
       }
 
       // Check meta_data from FastKey
       if (fastKeyLoyaltyPoints == 0 && item["meta_data"] is List) {
         final loyaltyEntry = (item["meta_data"] as List).firstWhere(
-              (m) => m['key'] == '_product_loyalty_points',
+          (m) => m['key'] == '_product_loyalty_points',
           orElse: () => <String, dynamic>{},
         );
         if (loyaltyEntry.isNotEmpty) {
-          fastKeyLoyaltyPoints = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+          fastKeyLoyaltyPoints =
+              int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
         }
       }
 
@@ -3356,11 +3582,12 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
           // Extract loyalty from cache as fallback
           final loyaltyEntry = (cached['meta_data'] as List).firstWhere(
-                (m) => m['key'] == '_product_loyalty_points',
+            (m) => m['key'] == '_product_loyalty_points',
             orElse: () => <String, dynamic>{},
           );
           if (loyaltyEntry.isNotEmpty) {
-            item['loyalty_points'] = int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
+            item['loyalty_points'] =
+                int.tryParse(loyaltyEntry['value']?.toString() ?? '0') ?? 0;
           }
         } else if (fastKeyLoyaltyPoints > 0) {
           // ✅ Keep FastKey's own loyalty points
@@ -3369,24 +3596,28 @@ class _FastKeyScreenState extends State<FastKeyScreen>
           // Ensure meta_data has the loyalty points
           if (item['meta_data'] is! List) {
             item['meta_data'] = [
-              {"key": "_product_loyalty_points", "value": fastKeyLoyaltyPoints.toString()}
+              {
+                "key": "_product_loyalty_points",
+                "value": fastKeyLoyaltyPoints.toString()
+              }
             ];
           } else {
             // Check if meta_data already has loyalty entry
-            final hasLoyalty = (item['meta_data'] as List).any(
-                    (m) => m['key'] == '_product_loyalty_points'
-            );
+            final hasLoyalty = (item['meta_data'] as List)
+                .any((m) => m['key'] == '_product_loyalty_points');
             if (!hasLoyalty) {
-              (item['meta_data'] as List).add(
-                  {"key": "_product_loyalty_points", "value": fastKeyLoyaltyPoints.toString()}
-              );
+              (item['meta_data'] as List).add({
+                "key": "_product_loyalty_points",
+                "value": fastKeyLoyaltyPoints.toString()
+              });
             }
           }
         }
 
         // Update EBT status from fresh data (but preserve loyalty)
         final isEbt = _isProductEbtEligible({
-          "is_ebt_eligible": item['is_ebt_eligible'] ?? cached['is_ebt_eligible'],
+          "is_ebt_eligible":
+              item['is_ebt_eligible'] ?? cached['is_ebt_eligible'],
           "meta_data": item['meta_data'] ?? cached['meta_data'],
           "fast_key_item_tags": item['fast_key_item_tags'] ?? cached['tags'],
           "tags": cached['tags'],
@@ -3437,7 +3668,8 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   @override
   void dispose() {
     // ✅ Remove listener
-    TopBar.mergedProductCacheRevision.removeListener(_onMergedProductCacheRevision);
+    TopBar.mergedProductCacheRevision
+        .removeListener(_onMergedProductCacheRevision);
     // ✅ Clear callback to prevent calling disposed state
     TopBar.onRefreshCompleted = null;
 
@@ -3528,56 +3760,56 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                 setState(() => _editingCategoryIndex = null),
           ),
           Expanded(
-            child: ValueListenableBuilder<int?>(
+            child: ValueListenableBuilder<dynamic>(
               valueListenable: fastKeyTabIdNotifier,
               builder: (context, fastKeyTabId, child) {
                 return fastKeyTabId != null
                     ? NestedGridWidget(
-                  productBloc: productBloc,
-                  orderHelper: orderHelper,
-                  isPaginating: _isPaginating,
-                  isHorizontal: true,
-                  isLoading: isTabsLoading || isItemsLoading,
-                  showAddButton: showAddButton,
-                  items: fastKeyProductItems,
-                  selectedItemIndex: selectedItemIndex,
-                  reorderedIndices: reorderedIndices,
-                  onAddButtonPressed: () => _showAddItemDialog(),
-                  onItemTapped: (index, {bool? variantAdded}) =>
-                      _onItemSelected(
-                          index, showAddButton, variantAdded ?? false),
-                  onReorder: (oldIndex, newIndex) {
-                    if (oldIndex == 0 || newIndex == 0) return;
-                    final adjustedOldIndex = oldIndex - 1;
-                    final adjustedNewIndex = newIndex - 1;
-                    if (adjustedOldIndex < 0 ||
-                        adjustedNewIndex < 0 ||
-                        adjustedOldIndex >= fastKeyProductItems.length ||
-                        adjustedNewIndex >= fastKeyProductItems.length)
-                      return;
-                    setState(() {
-                      fastKeyProductItems =
-                      List<Map<String, dynamic>>.from(
-                          fastKeyProductItems);
-                      final item =
-                      fastKeyProductItems.removeAt(adjustedOldIndex);
-                      fastKeyProductItems.insert(adjustedNewIndex, item);
-                      reorderedIndices =
-                          List.filled(fastKeyProductItems.length, null);
-                      reorderedIndices[adjustedNewIndex] =
-                          adjustedNewIndex;
-                      selectedItemIndex = adjustedNewIndex;
-                    });
-                    fastKeyDBHelper.updateFastKeyItemOrder(
-                        _fastKeyTabId!, fastKeyProductItems);
-                  },
-                  onDeleteItem: (index) =>
-                      _showDeleteConfirmationDialog(itemIndex: index),
-                  onCancelReorder: _onCancelReorder,
-                  showBackButton: false,
-                  enableIcons: enableIcons,
-                  onLongPress: _onLongPress,
-                )
+                        productBloc: productBloc,
+                        orderHelper: orderHelper,
+                        isPaginating: _isPaginating,
+                        isHorizontal: true,
+                        isLoading: isTabsLoading || isItemsLoading,
+                        showAddButton: showAddButton,
+                        items: fastKeyProductItems,
+                        selectedItemIndex: selectedItemIndex,
+                        reorderedIndices: reorderedIndices,
+                        onAddButtonPressed: () => _showAddItemDialog(),
+                        onItemTapped: (index, {bool? variantAdded}) =>
+                            _onItemSelected(
+                                index, showAddButton, variantAdded ?? false),
+                        onReorder: (oldIndex, newIndex) {
+                          if (oldIndex == 0 || newIndex == 0) return;
+                          final adjustedOldIndex = oldIndex - 1;
+                          final adjustedNewIndex = newIndex - 1;
+                          if (adjustedOldIndex < 0 ||
+                              adjustedNewIndex < 0 ||
+                              adjustedOldIndex >= fastKeyProductItems.length ||
+                              adjustedNewIndex >= fastKeyProductItems.length)
+                            return;
+                          setState(() {
+                            fastKeyProductItems =
+                                List<Map<String, dynamic>>.from(
+                                    fastKeyProductItems);
+                            final item =
+                                fastKeyProductItems.removeAt(adjustedOldIndex);
+                            fastKeyProductItems.insert(adjustedNewIndex, item);
+                            reorderedIndices =
+                                List.filled(fastKeyProductItems.length, null);
+                            reorderedIndices[adjustedNewIndex] =
+                                adjustedNewIndex;
+                            selectedItemIndex = adjustedNewIndex;
+                          });
+                          fastKeyDBHelper.updateFastKeyItemOrder(
+                              _fastKeyTabId!, fastKeyProductItems);
+                        },
+                        onDeleteItem: (index) =>
+                            _showDeleteConfirmationDialog(itemIndex: index),
+                        onCancelReorder: _onCancelReorder,
+                        showBackButton: false,
+                        enableIcons: enableIcons,
+                        onLongPress: _onLongPress,
+                      )
                     : Container();
               },
             ),
@@ -3774,62 +4006,64 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                           });
                         },
                       ),
-                      ValueListenableBuilder<int?>(
+                      ValueListenableBuilder<dynamic>(
                         valueListenable: fastKeyTabIdNotifier,
                         builder: (context, fastKeyTabId, child) {
                           return fastKeyTabId != null
                               ? NestedGridWidget(
-                            productBloc: productBloc,
-                            orderHelper: orderHelper,
-                            isPaginating: _isPaginating,
-                            isHorizontal: true,
-                            isLoading: isTabsLoading || isItemsLoading,
-                            showAddButton: showAddButton,
-                            items: fastKeyProductItems,
-                            selectedItemIndex: selectedItemIndex,
-                            reorderedIndices: reorderedIndices,
-                            onAddButtonPressed: () => _showAddItemDialog(),
-                            onItemTapped: (index, {bool? variantAdded}) {
-                              _onItemSelected(index, showAddButton,
-                                  variantAdded ?? false);
-                            },
-                            onReorder: (oldIndex, newIndex) {
-                              if (oldIndex == 0 || newIndex == 0) return;
-                              final adjustedOldIndex = oldIndex - 1;
-                              final adjustedNewIndex = newIndex - 1;
-                              if (adjustedOldIndex < 0 ||
-                                  adjustedNewIndex < 0 ||
-                                  adjustedOldIndex >=
-                                      fastKeyProductItems.length ||
-                                  adjustedNewIndex >=
-                                      fastKeyProductItems.length) {
-                                return;
-                              }
-                              setState(() {
-                                fastKeyProductItems =
-                                List<Map<String, dynamic>>.from(
-                                    fastKeyProductItems);
-                                final item = fastKeyProductItems
-                                    .removeAt(adjustedOldIndex);
-                                fastKeyProductItems.insert(
-                                    adjustedNewIndex, item);
-                                reorderedIndices = List.filled(
-                                    fastKeyProductItems.length, null);
-                                reorderedIndices[adjustedNewIndex] =
-                                    adjustedNewIndex;
-                                selectedItemIndex = adjustedNewIndex;
-                              });
-                              fastKeyDBHelper.updateFastKeyItemOrder(
-                                  _fastKeyTabId!, fastKeyProductItems);
-                            },
-                            onDeleteItem: (index) {
-                              _showDeleteConfirmationDialog(itemIndex: index);
-                            },
-                            onCancelReorder: _onCancelReorder,
-                            showBackButton: false,
-                            enableIcons: enableIcons,
-                            onLongPress: _onLongPress,
-                          )
+                                  productBloc: productBloc,
+                                  orderHelper: orderHelper,
+                                  isPaginating: _isPaginating,
+                                  isHorizontal: true,
+                                  isLoading: isTabsLoading || isItemsLoading,
+                                  showAddButton: showAddButton,
+                                  items: fastKeyProductItems,
+                                  selectedItemIndex: selectedItemIndex,
+                                  reorderedIndices: reorderedIndices,
+                                  onAddButtonPressed: () =>
+                                      _showAddItemDialog(),
+                                  onItemTapped: (index, {bool? variantAdded}) {
+                                    _onItemSelected(index, showAddButton,
+                                        variantAdded ?? false);
+                                  },
+                                  onReorder: (oldIndex, newIndex) {
+                                    if (oldIndex == 0 || newIndex == 0) return;
+                                    final adjustedOldIndex = oldIndex - 1;
+                                    final adjustedNewIndex = newIndex - 1;
+                                    if (adjustedOldIndex < 0 ||
+                                        adjustedNewIndex < 0 ||
+                                        adjustedOldIndex >=
+                                            fastKeyProductItems.length ||
+                                        adjustedNewIndex >=
+                                            fastKeyProductItems.length) {
+                                      return;
+                                    }
+                                    setState(() {
+                                      fastKeyProductItems =
+                                          List<Map<String, dynamic>>.from(
+                                              fastKeyProductItems);
+                                      final item = fastKeyProductItems
+                                          .removeAt(adjustedOldIndex);
+                                      fastKeyProductItems.insert(
+                                          adjustedNewIndex, item);
+                                      reorderedIndices = List.filled(
+                                          fastKeyProductItems.length, null);
+                                      reorderedIndices[adjustedNewIndex] =
+                                          adjustedNewIndex;
+                                      selectedItemIndex = adjustedNewIndex;
+                                    });
+                                    fastKeyDBHelper.updateFastKeyItemOrder(
+                                        _fastKeyTabId!, fastKeyProductItems);
+                                  },
+                                  onDeleteItem: (index) {
+                                    _showDeleteConfirmationDialog(
+                                        itemIndex: index);
+                                  },
+                                  onCancelReorder: _onCancelReorder,
+                                  showBackButton: false,
+                                  enableIcons: enableIcons,
+                                  onLongPress: _onLongPress,
+                                )
                               : Container();
                         },
                       )

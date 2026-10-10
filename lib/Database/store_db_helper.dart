@@ -19,6 +19,14 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
   Future<void> saveStoreValidationData(StoreValidationResponse response) async {
     final db = await DBHelper.instance.database;
 
+    // New connector API may omit license fields; default so re-open checks pass.
+    final licenseStatus = response.licenseStatus.trim().isNotEmpty
+        ? response.licenseStatus.trim()
+        : 'active';
+    final expirationDate = response.expirationDate.trim().isNotEmpty
+        ? response.expirationDate.trim()
+        : DateTime.now().add(const Duration(days: 3650)).toIso8601String();
+
     Map<String, dynamic> validationMap = {
       AppDBConst.storeId: response.storeId,
       AppDBConst.storeUserId: response.userId,
@@ -26,13 +34,13 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
       AppDBConst.email: response.email,
       AppDBConst.subscriptionType: response.subscriptionType,
       AppDBConst.storeName: response.storeName,
-      AppDBConst.expirationDate: response.expirationDate,
+      AppDBConst.expirationDate: expirationDate,
       AppDBConst.storeBaseUrl: response.storeBaseUrl,
       AppDBConst.storeAddress: response.storeAddress,
       AppDBConst.storePhone: response.storePhone,
       AppDBConst.storeInfo: response.storeInfo,
       AppDBConst.licenseKey: response.licenseKey,
-      AppDBConst.licenseStatus: response.licenseStatus,
+      AppDBConst.licenseStatus: licenseStatus,
       // Build #offline: terminal identity fields
       AppDBConst.deviceDisplayName: response.deviceDisplayName,
       AppDBConst.deviceTableId: response.deviceTableId,
@@ -77,29 +85,88 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
     return null;
   }
 
-  /// Checks if store validation is valid
+  /// Checks if store validation is valid.
+  ///
+  /// Once merchant/store login succeeds we persist the row in
+  /// storeValidationTable. On subsequent app opens we should skip the
+  /// merchant/store login screen and go straight to the employee PIN screen,
+  /// as long as a storeId is present.
+  ///
+  /// The new connector merchant-store-login API often omits
+  /// expiration_date / license_status. In that case we treat a saved
+  /// storeId as sufficient proof of a prior successful store login. When
+  /// those legacy fields are present we still enforce active license +
+  /// non-expired date.
   Future<bool> isStoreValidationValid() async {
     try {
       final validationData = await getStoreValidationData();
       if (validationData == null) {
-        if (kDebugMode) print("#### No validation data found, store validation invalid");
+        if (kDebugMode) {
+          print("#### No validation data found, store validation invalid");
+        }
         return false;
       }
 
-      final expirationDateStr = validationData[AppDBConst.expirationDate];
-      final licenseStatus = validationData[AppDBConst.licenseStatus];
-
-      if (expirationDateStr == null || licenseStatus != 'Active') {
-        if (kDebugMode) print("#### Invalid expiration date or license status");
+      final storeId =
+          validationData[AppDBConst.storeId]?.toString().trim() ?? '';
+      if (storeId.isEmpty) {
+        if (kDebugMode) {
+          print("#### Store validation row exists but storeId is empty");
+        }
         return false;
       }
 
-      final expirationDate = DateTime.parse(expirationDateStr);
-      final now = DateTime.now();
-      final isValid = expirationDate.isAfter(now);
+      final expirationDateStr =
+      validationData[AppDBConst.expirationDate]?.toString().trim();
+      final licenseStatus = validationData[AppDBConst.licenseStatus]
+          ?.toString()
+          .trim()
+          .toLowerCase();
 
-      if (kDebugMode) print("#### Store validation status: $isValid, expires: $expirationDateStr");
-      return isValid;
+      // New API path: no license/expiration fields → treat saved store as valid.
+      final hasLicenseInfo = (expirationDateStr != null &&
+          expirationDateStr.isNotEmpty) ||
+          (licenseStatus != null && licenseStatus.isNotEmpty);
+
+      if (!hasLicenseInfo) {
+        if (kDebugMode) {
+          print(
+              "#### Store validation valid (storeId=$storeId, no license fields from API)");
+        }
+        return true;
+      }
+
+      // Legacy path: enforce active license + future expiration when present.
+      if (licenseStatus != null &&
+          licenseStatus.isNotEmpty &&
+          licenseStatus != 'active') {
+        if (kDebugMode) {
+          print("#### License status is not active: $licenseStatus");
+        }
+        return false;
+      }
+
+      if (expirationDateStr != null && expirationDateStr.isNotEmpty) {
+        final expirationDate = DateTime.tryParse(expirationDateStr);
+        if (expirationDate == null) {
+          if (kDebugMode) {
+            print("#### Invalid store expiration date: $expirationDateStr");
+          }
+          // Don't fail purely on unparseable date if storeId is present.
+          return true;
+        }
+        final isValid = expirationDate.isAfter(DateTime.now());
+        if (kDebugMode) {
+          print(
+              "#### Store validation status: $isValid, expires: $expirationDateStr");
+        }
+        return isValid;
+      }
+
+      if (kDebugMode) {
+        print("#### Store validation valid (storeId=$storeId)");
+      }
+      return true;
     } catch (e) {
       if (kDebugMode) print("#### Error checking store validation status: $e");
       return false;

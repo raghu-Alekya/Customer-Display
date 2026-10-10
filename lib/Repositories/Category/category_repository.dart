@@ -1,457 +1,650 @@
-// repositories/category_repository.dart
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
-import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:isar_community/isar.dart';
 
 import '../../Database/isar_cache_entry.dart';
 import '../../Database/isar_service.dart';
-import '../../Helper/api_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Category/category_model.dart';
 import '../../Models/Category/category_product_model.dart';
+import '../Auth/AuthIdsStore.dart';
+import '../../core/api/token_storage.dart';
 
 const String categoryBoxName = 'categoryCache';
 const String productBoxName = 'productCache';
 const cacheDuration = Duration(hours: 12);
 
-/// ✅ Offline-first Category Repository
-/// - Loads cached data instantly for fast UI.
-/// - Refreshes from API in background ONLY when cache is stale (> 30 min old).
-/// - Caches products + variations + tax + age restriction info.
+/// Loads categories and products from the authenticated PCH catalog endpoint.
+///
+/// Endpoint:
+/// POST /pos/auth/catalog/get-categories-products
+///
+/// Authentication and tenant headers are read from the values saved during
+/// merchant/store login and employee login. The combined catalog response is
+/// cached locally so the POS can still display previously loaded data offline.
 class CategoryRepository {
-  final APIHelper _helper = APIHelper();
-  // Background prefetching and in-flight tracking were removed to avoid
-  // hammering the API. Repository now only loads on demand.
+  static const String _catalogEndpoint =
+      'pos/auth/catalog/get-categories-products';
+  static const String _catalogCacheKey = 'pch_catalog_categories_products';
 
-  /// Concurrent [getCategories] with the same [parent] share one network request.
   static final Map<int, Future<CategoryListResponse>> _inFlightByParent = {};
+  static Future<Map<String, dynamic>>? _inFlightCatalog;
 
-  /// Load categories from cache first, then update from API only when stale
   Future<CategoryListResponse> getCategories({int parent = 0}) async {
-    final cacheKey = "categories_$parent";
+    final cacheKey = 'categories_$parent';
+    try {
+      final categories = await _fetchStoreCategories();
+      final filtered = categories.where((item) {
+        return _toInt(item['parent'] ?? item['parent_id']) == parent;
+      }).toList();
 
-    // 🧠 Load cached categories instantly
-    final isar = await IsarService.instance;
-    final cached =
-        await isar.isarCacheEntrys.where().keyEqualTo(cacheKey).findFirst();
-    if (cached != null) {
-      final List<dynamic> cachedList = json.decode(cached.json);
-      if (kDebugMode) print("📦 Loaded cached categories (parent: $parent)");
-
-      try {
-        for (final cat in cachedList) {
-          if (cat is Map) {
-            final name = (cat["name"] ?? "").toString();
-            final slug = (cat["slug"] ?? "").toString();
-            if (name == "Default" && slug == "default") {
-              final id = int.tryParse(cat["id"].toString());
-              if (id != null) {
-                if (kDebugMode)
-                  print(
-                      "🎯 Triggering background fetch for Default category products ($id)");
-                unawaited(getProductsByCategory(id));
-              }
-            }
-          }
+      await _cacheList(cacheKey, filtered);
+      return CategoryListResponse.fromJson(filtered);
+    } catch (e) {
+      final cached = await _readCachedList(cacheKey);
+      if (cached != null) {
+        if (kDebugMode) {
+          print('Store categories API unavailable; using cached categories for $parent: $e');
         }
-      } catch (e) {
-        if (kDebugMode)
-          print("⚠️ Error triggering Default category products: $e");
+        return CategoryListResponse.fromJson(cached);
       }
+      rethrow;
+    }
+  }
 
-      //  No background refresh: simply return cached data.
-      // Categories will only be refreshed when you explicitly clear cache
-      // (e.g. via a manual "refresh" action) and call this again.
-      return CategoryListResponse.fromJson(cachedList);
+  /// Fetch categories from the authenticated PCH store-categories endpoint.
+  /// The access token is read from secure TokenStorage, and the store ID
+  /// comes from the saved merchant/store login session.
+  Future<List<Map<String, dynamic>>> _fetchStoreCategories() async {
+    final token = (await TokenStorage().getAccessToken())?.trim() ?? '';
+    final storeId = (await AuthIdsStore.getStoreId()).trim();
+
+    if (token.isEmpty) {
+      throw Exception(
+        'Missing employee access token. Please log in to the employee account again.',
+      );
+    }
+    if (storeId.isEmpty) {
+      throw Exception(
+        'Missing saved store ID. Please complete merchant/store login again.',
+      );
     }
 
-    //  No cache → fetch directly from API once and persist to Isar.
-    return await _dedupedCategoriesApi(parent);
+    final uri = Uri.parse(
+      'https://pch.alektasolutions.com/connector/api/v1/store/'
+          '$storeId/store-categories',
+    );
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    ).timeout(const Duration(seconds: 30));
+
+    if (kDebugMode) {
+      // Never print the bearer token.
+      print('Store categories API: GET $uri');
+      print('Store categories API status: ${response.statusCode}');
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Store categories API failed (${response.statusCode}): '
+            '${_safeBody(response.body)}',
+      );
+    }
+
+    final decoded = json.decode(response.body);
+    final List<dynamic>? rawList = decoded is List
+        ? decoded
+        : decoded is Map
+        ? _findListByKeys(decoded, const {
+      'data',
+      'categories',
+      'store_categories',
+      'storeCategories',
+    })
+        : null;
+
+    if (rawList == null) {
+      throw Exception('Store categories API response is not a category list.');
+    }
+
+    return rawList.whereType<Map>().map((raw) {
+      final item = Map<String, dynamic>.from(raw);
+      final rawImage = item['image'];
+      String? imageUrl;
+      if (rawImage is Map) {
+        imageUrl = (rawImage['src'] ?? rawImage['url'] ?? '').toString();
+        if (imageUrl.isEmpty) imageUrl = null;
+      } else if (rawImage is String && rawImage.isNotEmpty) {
+        imageUrl = rawImage;
+      }
+
+      return <String, dynamic>{
+        ...item,
+        'id': _toInt(item['id'] ?? item['category_id']),
+        'name': _readableName(item['name'] ?? item['category_name']),
+        'slug': (item['slug'] ?? '').toString(),
+        'parent': _toInt(item['parent'] ?? item['parent_id']),
+        'description': (item['description'] ?? '').toString(),
+        'count': _toInt(item['count'] ?? item['product_count']),
+        'image': imageUrl,
+      };
+    }).toList();
   }
 
   Future<CategoryListResponse> _dedupedCategoriesApi(int parent) {
     final existing = _inFlightByParent[parent];
     if (existing != null) return existing;
-
-    final future = _getCategoriesFromApi(parent).whenComplete(() {
+    final future = getCategories(parent: parent).whenComplete(() {
       _inFlightByParent.remove(parent);
     });
     _inFlightByParent[parent] = future;
     return future;
   }
 
-  Future<CategoryListResponse> _getCategoriesFromApi(int parent) async {
-    final url =
-        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.categories}${EndUrlConstants.allCategoriesEndUrl}$parent";
-    if (kDebugMode) print("🌍 Fetching categories: $url");
+  /// Kept for compatibility with any existing callers that used this method.
+  Future<CategoryListResponse> getCategoriesFromApi(int parent) =>
+      _dedupedCategoriesApi(parent);
 
-    final response = await _helper.get(url, true);
-
-    if (kDebugMode) {
-      print(" Category API Response (parent: $parent):");
-      print(response);
-    }
-
-    List<dynamic> categoryList;
-    if (response is String) {
-      categoryList = json.decode(response);
-    } else if (response is List) {
-      categoryList = response;
-    } else {
-      throw Exception("Unexpected category response type");
-    }
-
-    final isar = await IsarService.instance;
-    await isar.writeTxn(() async {
-      await isar.isarCacheEntrys.put(
-        IsarCacheEntry()
-          ..key = "categories_$parent"
-          ..json = json.encode(categoryList)
-          ..timestamp = DateTime.now(),
-      );
-    });
-
-    if (kDebugMode) print("💾 Cached categories (parent: $parent)");
-
-    try {
-      for (final cat in categoryList) {
-        if (cat is Map) {
-          final name = (cat["name"] ?? "").toString();
-          final slug = (cat["slug"] ?? "").toString();
-          if (name == "Default" && slug == "default") {
-            final id = int.tryParse(cat["id"].toString());
-            if (id != null) {
-              if (kDebugMode)
-                print(
-                    "🎯 Triggering fetch for Default category products ($id) from API response");
-              unawaited(getProductsByCategory(id));
-            }
-          }
-        }
-      }
-    } catch (e) {
-      if (kDebugMode)
-        print("⚠️ Error triggering Default category products: $e");
-    }
-
-    return CategoryListResponse.fromJson(categoryList);
-  }
-
-  /// Load products by category (offline-first)
   Future<CategoryProductListResponse> getProductsByCategory(
       int categoryId) async {
-    final cacheKey = "products_$categoryId";
+    try {
+      // Fetch products from the selected store category endpoint.
+      final rawProducts = await _fetchStoreCategoryProducts(categoryId);
+      final normalized = rawProducts.map(_normalizeProduct).toList();
 
-    final isar = await IsarService.instance;
-    final cached =
-        await isar.isarCacheEntrys.where().keyEqualTo(cacheKey).findFirst();
-
-    if (cached != null) {
-      if (kDebugMode) {
-        print(
-            "🔍 RAW DATA FROM ISAR [$cacheKey] → ${cached.json.length} chars");
-
-        //  Print full JSON data
-        print(" FULL DATA:\n${cached.json}");
+      await _cacheList('products_$categoryId', normalized);
+      return CategoryProductListResponse.fromJson(normalized);
+    } catch (e) {
+      final cached = await _readCachedList('products_$categoryId');
+      if (cached != null) {
+        if (kDebugMode) {
+          print('Store category products API unavailable; using cached products '
+              'for $categoryId: $e');
+        }
+        return CategoryProductListResponse.fromJson(cached);
       }
-
-      final List<dynamic> cachedList = json.decode(cached.json);
-
-      print(" Loaded cached products (category: $categoryId)");
-
-      // ❌ No background refresh: simply return cached data.
-      // Products will only be refreshed when cache is cleared or expired
-      // by separate logic you control.
-      return CategoryProductListResponse.fromJson(cachedList);
+      rethrow;
     }
-
-    //  No cache → fetch directly from API once and persist to Isar.
-    return await _getProductsFromApi(categoryId);
   }
 
-  ///  Fetch products + normalize + cache (tax + age + variants)
-  Future<CategoryProductListResponse> _getProductsFromApi(
+  /// Fetch products for one category from the authenticated PCH endpoint:
+  /// GET /connector/api/v1/store/{storeId}/store-categories/{categoryId}/products
+  ///
+  /// The access token and store ID are read from the saved login session.
+  Future<List<Map<String, dynamic>>> _fetchStoreCategoryProducts(
       int categoryId) async {
-    final url =
-        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.productByCategories}/$categoryId";
-    if (kDebugMode) print("🌍 Fetching products: $url");
+    final token = (await TokenStorage().getAccessToken())?.trim() ?? '';
+    final storeId = (await AuthIdsStore.getStoreId()).trim();
 
-    final response = await _helper.get(url, true);
+    if (token.isEmpty) {
+      throw Exception(
+        'Missing employee access token. Please log in to the employee account again.',
+      );
+    }
+    if (storeId.isEmpty) {
+      throw Exception(
+        'Missing saved store ID. Please complete merchant/store login again.',
+      );
+    }
+
+    final uri = Uri.parse(
+      'https://pch.alektasolutions.com/connector/api/v1/store/'
+          '$storeId/store-categories/$categoryId/products',
+    );
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    ).timeout(const Duration(seconds: 30));
 
     if (kDebugMode) {
-      print("🧩 Raw Product API Response (category: $categoryId):");
-      print(const JsonEncoder.withIndent('  ').convert(response));
+      // Never print the bearer token.
+      print('Store category products API: GET $uri');
+      print('Store category products API status: ${response.statusCode}');
     }
 
-    List<dynamic> productList;
-
-    if (response is String) {
-      productList = json.decode(response);
-    } else if (response is List) {
-      productList = response;
-    } else {
-      throw Exception("Unexpected product response type");
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Store category products API failed (${response.statusCode}): '
+            '${_safeBody(response.body)}',
+      );
     }
 
-// 🚀 Normalize for UI immediately
-    final normalizedProducts = productList.map((product) {
-      final image = (product["image"] is Map && product["image"]["src"] != null)
-          ? product["image"]["src"]
-          : (product["image"] is String ? product["image"] : "");
+    final decoded = json.decode(response.body);
+    final List<dynamic>? rawList = decoded is List
+        ? decoded
+        : decoded is Map
+        ? _findListByKeys(decoded, const {
+      'data',
+      'products',
+      'items',
+      'category_products',
+      'categoryProducts',
+      'product_list',
+      'productList',
+    })
+        : null;
 
-      final name = (product["name"] is Map &&
-              product["name"]["rendered"] != null)
-          ? product["name"]["rendered"]
-          : (product["name"] is String ? product["name"] : "Unnamed Product");
-
-      final price = double.tryParse(product["price"]?.toString() ?? "0") ?? 0.0;
-
-      final taxStatus = product["tax_status"] ?? "taxable";
-      final taxClass = product["tax_class"] ?? "";
-
-      final metaDiscountAuto = product["meta_data"]?.firstWhere(
-        (m) => m["key"] == "_pinaka_discount_amount_auto_apply",
-        orElse: () => {"value": "no"},
-      )["value"];
-
-      final metaDiscountAmount = product["meta_data"]?.firstWhere(
-        (m) => m["key"] == "_discount_amount",
-        orElse: () => {"value": 0},
-      )["value"];
-
-      final double discountAmount =
-          double.tryParse(metaDiscountAmount.toString()) ?? 0.0;
-
-      final bool autoApplyDiscount =
-          metaDiscountAuto.toString().toLowerCase() == "yes";
-
-      bool hasAgeRestriction = false;
-      int minAge = 0;
-
-      final metaAge = product["fast_key_item_min_age"] ??
-          product["min_age"] ??
-          product["meta_data"]?.firstWhere(
-            (m) => m["key"] == "min_age",
-            orElse: () => {"value": 0},
-          )["value"];
-
-      if (metaAge != null) {
-        minAge = int.tryParse(metaAge.toString()) ?? 0;
-      }
-      if (minAge > 0) hasAgeRestriction = true;
-
-      // Copy tags
-      final List productTags = product["tags"] ?? [];
-
-      final isEbtEligible = productTags.any((t) =>
-          t["name"].toString().toLowerCase().contains("ebt") ||
-          t["slug"].toString().toLowerCase().contains("ebt"));
-
-      return {
-        ...product,
-        "fast_key_item_name": name,
-        "fast_key_item_image": image,
-        "fast_key_item_price": price,
-        "fast_key_product_id": product["id"],
-        "tags": productTags,
-        "has_variants": product["variations"] != null &&
-            (product["variations"] as List).isNotEmpty,
-        "has_age_restriction": hasAgeRestriction,
-        "min_age": minAge,
-        "tax_status": taxStatus,
-        "tax_class": taxClass,
-
-        /// 🔥 ADD THIS
-        "is_ebt_eligible": isEbtEligible,
-
-        "auto_discount_enabled": autoApplyDiscount,
-        "discount_amount": discountAmount,
-      };
-    }).toList();
-
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    print("🔍 NORMALIZED PRODUCT DATA + EBT FLAG");
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-    for (final p in normalizedProducts) {
-      print("🟦 PRODUCT ID: ${p["fast_key_product_id"]}");
-      print("   NAME: ${p["fast_key_item_name"]}");
-      print("   TAGS: ${p["tags"]}");
-      print("   EBT Eligible: ${p["is_ebt_eligible"]}");
-      print("--------------------------------------------------");
+    if (rawList == null) {
+      throw Exception(
+        'Store category products API response is not a product list.',
+      );
     }
 
-// 🔍 DEBUG: Print tags and EBT eligibility
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    print("🔍 NORMALIZED PRODUCT TAG DUMP (Category: $categoryId)");
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-    for (final p in normalizedProducts) {
-      final pid = p["fast_key_product_id"];
-      final pname = p["fast_key_item_name"];
-      final tags = p["tags"] ?? [];
-
-      final isEbtEligible = tags.any((t) =>
-          t["name"].toString().toLowerCase().contains("ebt") ||
-          t["slug"].toString().toLowerCase().contains("ebt"));
-
-      print("🟦 PRODUCT → ID: $pid | NAME: $pname");
-      print("     ➤ tags: $tags");
-      print("     ➤ EBT Eligible: $isEbtEligible");
-    }
-
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-// Continue existing flow
-
-    final categoryResponse = CategoryProductListResponse.fromJson(productList);
-    unawaited(_cacheProductsAndVariations(
-        categoryId, productList, normalizedProducts));
-    return categoryResponse;
+    return rawList
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
   }
 
-  Future<void> _cacheProductsAndVariations(int categoryId,
-      List<dynamic> productList, List<dynamic> normalizedProducts) async {
+  /// Make one authenticated request to the combined categories/products API.
+  Future<Map<String, dynamic>> _getCatalog() {
+    final current = _inFlightCatalog;
+    if (current != null) return current;
+
+    final request = _fetchCatalog().whenComplete(() {
+      _inFlightCatalog = null;
+    });
+    _inFlightCatalog = request;
+    return request;
+  }
+
+  Future<Map<String, dynamic>> _fetchCatalog() async {
+    await UrlHelper.initializeBaseUrl();
+
+    final token = (await TokenStorage().getAccessToken())?.trim() ?? '';
+    final merchantId = (await AuthIdsStore.getMerchantId()).trim();
+    final storeId = (await AuthIdsStore.getStoreId()).trim();
+
+    if (token.isEmpty) {
+      throw Exception(
+        'Missing employee access token. Please log in to the employee account again.',
+      );
+    }
+    if (merchantId.isEmpty || storeId.isEmpty) {
+      throw Exception(
+        'Missing saved merchant/store IDs. Please complete merchant/store login again.',
+      );
+    }
+
+    final baseUrl = UrlHelper.baseUrl;
+    final normalizedBase = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+    final uri = Uri.parse('$normalizedBase$_catalogEndpoint');
+
+    final response = await http
+        .post(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+        'x-merchant-id': merchantId,
+        'x-store-id': storeId,
+      },
+      body: '',
+    )
+        .timeout(const Duration(seconds: 30));
+
+    if (kDebugMode) {
+      // Do not log the token or any authorization header.
+      print('Catalog API: POST $uri');
+      print('Catalog API status: ${response.statusCode}');
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Catalog API failed (${response.statusCode}): ${_safeBody(response.body)}',
+      );
+    }
+
+    final decoded = json.decode(response.body);
+    if (decoded is Map<String, dynamic>) {
+      await _cacheCatalog(decoded);
+      return decoded;
+    }
+    if (decoded is List) {
+      final wrapped = <String, dynamic>{'data': decoded};
+      await _cacheCatalog(wrapped);
+      return wrapped;
+    }
+    throw Exception('Unexpected catalog response format.');
+  }
+
+  String _safeBody(String body) {
+    // Avoid including any credentials in exception messages.
+    final trimmed = body.trim();
+    return trimmed.length > 500 ? '${trimmed.substring(0, 500)}…' : trimmed;
+  }
+
+  Future<void> _cacheCatalog(Map<String, dynamic> catalog) async {
     final isar = await IsarService.instance;
     await isar.writeTxn(() async {
       await isar.isarCacheEntrys.put(
         IsarCacheEntry()
-          ..key = "products_$categoryId"
-          ..json = json.encode(normalizedProducts)
+          ..key = _catalogCacheKey
+          ..json = json.encode(catalog)
           ..timestamp = DateTime.now(),
       );
     });
+  }
 
-    if (kDebugMode) {
-      print(
-          "💾 Cached ${normalizedProducts.length} products with tax & age info (cat: $categoryId)");
+  Future<Map<String, dynamic>?> _readCachedCatalog() async {
+    final isar = await IsarService.instance;
+    final entry = await isar.isarCacheEntrys
+        .where()
+        .keyEqualTo(_catalogCacheKey)
+        .findFirst();
+    if (entry == null) return null;
+    final decoded = json.decode(entry.json);
+    return decoded is Map<String, dynamic> ? decoded : null;
+  }
+
+  Future<Map<String, dynamic>> _getCatalogFromCache() async {
+    final cached = await _readCachedCatalog();
+    if (cached == null) throw Exception('No cached catalog is available.');
+    return cached;
+  }
+
+  List<dynamic> _extractCategories(Map<String, dynamic> catalog) {
+    final found = _findListByKeys(catalog, const {
+      'categories',
+      'category_list',
+      'categoryList',
+      'product_categories',
+      'productCategories',
+    });
+    if (found != null) return found;
+
+    // Some connector responses return data as a list of category records
+    // instead of wrapping that list in a "categories" property.
+    final data = catalog['data'] ?? catalog['result'] ?? catalog['payload'];
+    if (data is List &&
+        data.any((item) =>
+        item is Map &&
+            (item.containsKey('category_id') ||
+                item.containsKey('category_name') ||
+                item.containsKey('parent_id')))) {
+      return data;
+    }
+    if (_isCategoryObject(catalog)) return [catalog];
+    throw Exception('The catalog response does not contain a categories list.');
+  }
+
+  List<dynamic> _extractProducts(
+      Map<String, dynamic> catalog, int categoryId) {
+    // First check category-grouped responses so products from another
+    // category are never accidentally displayed.
+    final categories = _flattenCategories(_extractCategories(catalog));
+    for (final category in categories) {
+      if (_toInt(category['id']) == categoryId) {
+        final products = category['products'] ??
+            category['items'] ??
+            category['category_products'];
+        if (products is List) return products;
+      }
     }
 
-    // NOTE: keeping variations cache in Hive for now; only category/product
-    // list caching moved to Isar.
-    final productCacheBox = StorageProvider.productCache;
+    final topProducts = _findListByKeys(catalog, const {
+      'products',
+      'product_list',
+      'productList',
+      'category_products',
+      'categoryProducts',
+      'items',
+    });
 
-    for (final product in productList) {
-      final productId = product['id'];
-      final hasEmbeddedVariants =
-          product['variations'] != null && product['variations'].isNotEmpty;
+    if (topProducts != null) {
+      final matched = topProducts.where((item) {
+        if (item is! Map) return false;
+        final categoryIds = _productCategoryIds(item);
+        // If response products don't carry category IDs, keep them: the API
+        // may already have filtered them to the requested category.
+        return categoryIds.isEmpty || categoryIds.contains(categoryId);
+      }).toList();
+      return matched;
+    }
 
-      final parentMinAge = product["fast_key_item_min_age"] ??
-          product["min_age"] ??
-          product["meta_data"]?.firstWhere(
-            (m) => m["key"] == "min_age",
-            orElse: () => {"value": 0},
-          )["value"] ??
-          0;
+    return const [];
+  }
 
-      if (hasEmbeddedVariants) {
-        final variations = product['variations'] as List;
+  List<dynamic>? _findListByKeys(
+      dynamic node, Set<String> keys, {int depth = 0}) {
+    if (depth > 8) return null;
+    if (node is Map) {
+      for (final entry in node.entries) {
+        final key = entry.key.toString();
+        if (keys.contains(key) && entry.value is List) {
+          return List<dynamic>.from(entry.value as List);
+        }
+      }
+      // Prefer drilling into common response envelopes first.
+      for (final key in const ['data', 'result', 'response', 'payload']) {
+        final value = node[key];
+        if (value != null) {
+          final result = _findListByKeys(value, keys, depth: depth + 1);
+          if (result != null) return result;
+        }
+      }
+      for (final value in node.values) {
+        if (value is Map || value is List) {
+          final result = _findListByKeys(value, keys, depth: depth + 1);
+          if (result != null) return result;
+        }
+      }
+    } else if (node is List) {
+      for (final value in node) {
+        final result = _findListByKeys(value, keys, depth: depth + 1);
+        if (result != null) return result;
+      }
+    }
+    return null;
+  }
 
-        final normalized =
-            variations.whereType<Map>().map<Map<String, dynamic>>((v) {
-          final image = (v["image"] is Map && v["image"]["src"] != null)
-              ? v["image"]["src"]
-              : (v["image"] is String ? v["image"] : "");
-          final name = (v["name"] is Map && v["name"]["rendered"] != null)
-              ? v["name"]["rendered"]
-              : (v["name"] is String ? v["name"] : "Unnamed Variant");
-          final price = v["price"]?.toString() ?? "0";
-          final varMinAge =
-              v["min_age"] ?? v["fast_key_item_min_age"] ?? parentMinAge ?? 0;
-          final varHasAgeRestriction =
-              varMinAge != null && int.tryParse(varMinAge.toString())! > 0;
+  List<Map<String, dynamic>> _flattenCategories(List<dynamic> categories) {
+    final result = <Map<String, dynamic>>[];
+    final seen = <String>{};
 
-          return {
-            "id": v["id"],
-            "name": name,
-            "price": price,
-            "sku": v["sku"] ?? "",
-            "image": image,
-            "has_age_restriction": varHasAgeRestriction,
-            "min_age": int.tryParse(varMinAge.toString()) ?? 0,
-          };
-        }).toList();
+    void visit(dynamic item, int inheritedParent) {
+      if (item is! Map) return;
+      final map = Map<String, dynamic>.from(item);
+      final nestedCategory = map['category'];
+      final categoryMap = nestedCategory is Map
+          ? (Map<String, dynamic>.from(nestedCategory)..addAll({
+        if (map['products'] is List) 'products': map['products'],
+        if (map['items'] is List) 'items': map['items'],
+      }))
+          : map;
+      final id = categoryMap['id'] ??
+          categoryMap['category_id'] ??
+          categoryMap['categoryId'];
+      final parent = _toInt(
+        categoryMap['parent'] ??
+            categoryMap['parent_id'] ??
+            categoryMap['parentId'] ??
+            inheritedParent,
+      );
 
-        if (normalized.isNotEmpty) {
-          await productCacheBox.put("product_${productId}_variations", {
-            'variations': normalized,
-            'timestamp': DateTime.now().toIso8601String(),
+      if (id != null && _isCategoryObject(categoryMap)) {
+        final idString = id.toString();
+        if (seen.add(idString)) {
+          result.add({
+            ...categoryMap,
+            'id': _toInt(id),
+            'parent': parent,
+            'name': _readableName(categoryMap['name'] ??
+                categoryMap['category_name'] ??
+                categoryMap['title']),
+            'slug': (map['slug'] ?? '').toString(),
+            'description': (map['description'] ?? '').toString(),
+            'count': _toInt(map['count'] ?? map['product_count']),
           });
         }
-      } else {
-        try {
-          // await productRepo.fetchProductVariations(productId);
-        } catch (e) {
-          if (kDebugMode)
-            print("⚠️ Failed to fetch variations for product $productId: $e");
+      }
+
+      final children = map['children'] ??
+          map['subcategories'] ??
+          map['sub_categories'] ??
+          map['child_categories'];
+      if (children is List) {
+        for (final child in children) {
+          visit(child, _toInt(id ?? inheritedParent));
         }
       }
     }
+
+    for (final item in categories) {
+      visit(item, 0);
+    }
+    return result;
   }
 
-  /////
+  bool _isCategoryObject(Map value) {
+    return value.containsKey('id') ||
+        value.containsKey('category_id') ||
+        value.containsKey('categoryId');
+  }
 
-  // Future<List<dynamic>> getAllCachedProducts() async {
-  //   final isar = await IsarService.instance;
-  //
-  //   final cachedEntries = await isar.isarCacheEntrys
-  //       .where()
-  //       .filter()
-  //       .keyStartsWith("products_")
-  //       .findAll();
-  //
-  //   final Map<int, dynamic> uniqueProducts = {};
-  //
-  //   for (final entry in cachedEntries) {
-  //     final List<dynamic> products = json.decode(entry.json);
-  //
-  //     for (final product in products) {
-  //       final int productId = product["fast_key_product_id"];
-  //       uniqueProducts[productId] = product; // de-duplicate
-  //     }
-  //   }
-  //
-  //   if (kDebugMode) {
-  //     print("🔍 Loaded ${uniqueProducts.length} unique products from cache");
-  //   }
-  //
-  //   return uniqueProducts.values.toList();
-  // }
+  String _readableName(dynamic value) {
+    if (value is Map) {
+      return (value['rendered'] ?? value['name'] ?? '').toString();
+    }
+    return value?.toString() ?? '';
+  }
 
-  Future<List<dynamic>> getAllCachedProducts() async {
-    final isar = await IsarService.instance;
+  int _toInt(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
 
-    final cachedEntries = await isar.isarCacheEntrys
-        .where()
-        .filter()
-        .keyStartsWith("products_")
-        .findAll();
-
-    final Map<int, dynamic> uniqueProducts = {};
-
-    for (final entry in cachedEntries) {
-      final List<dynamic> products = json.decode(entry.json);
-
-      for (final product in products) {
-        final int? productId = product["fast_key_product_id"];
-
-        if (productId == null) continue;
-
-        // 🔒 Deduplicate here
-        uniqueProducts.putIfAbsent(productId, () => product);
+  List<int> _productCategoryIds(Map product) {
+    final raw = product['categories'] ?? product['category_ids'] ?? [];
+    if (raw is! List) return const [];
+    return raw.map((item) {
+      if (item is Map) {
+        return _toInt(item['id'] ?? item['category_id']);
       }
-    }
-
-    if (kDebugMode) {
-      print("✅ Global cache loaded: ${uniqueProducts.length} unique products");
-    }
-
-    return uniqueProducts.values.toList();
+      return _toInt(item);
+    }).where((id) => id != 0).toList();
   }
 
-  /// Pre-fetch all category products was previously used to warm the cache
-  /// aggressively at startup. It has been removed to avoid heavy API load.
+  Map<String, dynamic> _normalizeProduct(dynamic item) {
+    if (item is! Map) {
+      throw Exception('Unexpected product item in catalog response.');
+    }
+    final product = Map<String, dynamic>.from(item);
+    final rawName = product['name'] ?? product['product_name'] ?? product['title'];
+    final name = _readableName(rawName);
+    final rawImage = product['image'] ?? product['images'];
+    String image = '';
+    if (rawImage is Map) {
+      image = (rawImage['src'] ?? rawImage['url'] ?? '').toString();
+    } else if (rawImage is List && rawImage.isNotEmpty) {
+      final first = rawImage.first;
+      if (first is Map) image = (first['src'] ?? first['url'] ?? '').toString();
+      if (first is String) image = first;
+    } else if (rawImage is String) {
+      image = rawImage;
+    }
+
+    final categories = product['categories'];
+    final normalizedCategories = categories is List
+        ? categories.map((value) {
+      if (value is Map) {
+        return {
+          ...Map<String, dynamic>.from(value),
+          'id': _toInt(value['id'] ?? value['category_id']),
+          'name': _readableName(value['name'] ?? value['category_name']),
+          'slug': (value['slug'] ?? '').toString(),
+          'parent': _toInt(value['parent'] ?? value['parent_id']),
+          'description': (value['description'] ?? '').toString(),
+          'count': _toInt(value['count']),
+        };
+      }
+      return {
+        'id': _toInt(value),
+        'name': '',
+        'slug': '',
+        'parent': 0,
+        'description': '',
+        'count': 0,
+      };
+    }).toList()
+        : <Map<String, dynamic>>[];
+
+    return {
+      ...product,
+      'id': _toInt(product['id'] ?? product['product_id']),
+      'name': name,
+      'sku': (product['sku'] ?? '').toString(),
+      'price': product['price'] ?? product['regular_price'] ?? 0,
+      'regular_price': (product['regular_price'] ?? '').toString(),
+      'sale_price': (product['sale_price'] ?? '').toString(),
+      'categories': normalizedCategories,
+      'tags': product['tags'] is List ? product['tags'] : <dynamic>[],
+      'images': rawImage is List
+          ? rawImage
+          : (image.isNotEmpty ? <dynamic>[{'src': image}] : <dynamic>[]),
+      'attributes': product['attributes'] is List
+          ? product['attributes']
+          : <dynamic>[],
+      'meta_data': product['meta_data'] is List
+          ? product['meta_data']
+          : <dynamic>[],
+      'variations': product['variations'] is List
+          ? product['variations']
+          : <dynamic>[],
+      'type': (product['type'] ?? 'simple').toString(),
+    };
+  }
+
+  Future<void> _cacheList(String key, List<dynamic> list) async {
+    final isar = await IsarService.instance;
+    await isar.writeTxn(() async {
+      await isar.isarCacheEntrys.put(
+        IsarCacheEntry()
+          ..key = key
+          ..json = json.encode(list)
+          ..timestamp = DateTime.now(),
+      );
+    });
+  }
+
+  Future<List<dynamic>?> _readCachedList(String key) async {
+    final isar = await IsarService.instance;
+    final entry =
+    await isar.isarCacheEntrys.where().keyEqualTo(key).findFirst();
+    if (entry == null) {
+      // For category/product caches from older versions, attempt to derive
+      // the requested list from the combined catalog cache.
+      try {
+        final catalog = await _getCatalogFromCache();
+        if (key.startsWith('categories_')) {
+          final parent = int.tryParse(key.substring('categories_'.length)) ?? 0;
+          return _flattenCategories(_extractCategories(catalog))
+              .where((item) => _toInt(item['parent']) == parent)
+              .toList();
+        }
+        if (key.startsWith('products_')) {
+          final id = int.tryParse(key.substring('products_'.length)) ?? 0;
+          return _extractProducts(catalog, id).map(_normalizeProduct).toList();
+        }
+      } catch (_) {
+        return null;
+      }
+      return null;
+    }
+    final decoded = json.decode(entry.json);
+    return decoded is List ? decoded : null;
+  }
 }

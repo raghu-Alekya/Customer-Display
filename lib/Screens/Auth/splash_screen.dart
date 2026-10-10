@@ -4,6 +4,7 @@ import 'package:pinaka_pos/Screens/Auth/store_id_screen.dart';
 import '../../Database/store_db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import 'login_screen.dart';
+import '../../Repositories/Auth/AuthIdsStore.dart';
 import '../../Repositories/Auth/startup_recovery_service.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -62,6 +63,23 @@ class _SplashScreenState extends State<SplashScreen> {
       debugPrint('[Splash] Store validation check failed: $e');
     }
 
+    // Fallback: if SQLite validation row is missing/incomplete but merchant+store
+    // IDs were persisted after a successful merchant-store login, still treat as
+    // logged-in so we open the employee PIN screen instead of store login again.
+    if (!isValid) {
+      try {
+        final merchantId = await AuthIdsStore.getMerchantId();
+        final storeId = await AuthIdsStore.getStoreId();
+        if (merchantId.trim().isNotEmpty && storeId.trim().isNotEmpty) {
+          isValid = true;
+          debugPrint(
+              '[Splash] Store login restored via AuthIdsStore (storeId=$storeId)');
+        }
+      } catch (e) {
+        debugPrint('[Splash] AuthIdsStore fallback failed: $e');
+      }
+    }
+
     if (isValid && mounted) {
       Navigator.pushReplacement(
         context,
@@ -101,32 +119,32 @@ class _SplashScreenState extends State<SplashScreen> {
     }
   }
 
-    @override
-    Widget build(BuildContext context) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF1E2745),
-        // Splash screen background color
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Logo with fade-in animation
-              TweenAnimationBuilder(
-                tween: Tween<double>(begin: 0.0, end: 1.0), // Opacity animation
-                duration: const Duration(seconds: 2),
-                builder: (context, opacity, child) {
-                  return Opacity(
-                    opacity: opacity, // Fade in the logo
-                    child: SvgPicture.asset(
-                      'assets/svg/app_logo.svg', // Path to your SVG logo
-                      height: 150, // Adjust the size of the logo
-                    ),
-                  );
-                },
-              )
-            ],
-          ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1E2745),
+      // Splash screen background color
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Logo with fade-in animation
+            TweenAnimationBuilder(
+              tween: Tween<double>(begin: 0.0, end: 1.0), // Opacity animation
+              duration: const Duration(seconds: 2),
+              builder: (context, opacity, child) {
+                return Opacity(
+                  opacity: opacity, // Fade in the logo
+                  child: SvgPicture.asset(
+                    'assets/svg/app_logo.svg', // Path to your SVG logo
+                    height: 150, // Adjust the size of the logo
+                  ),
+                );
+              },
+            )
+          ],
         ),
-      );
-    }
+      ),
+    );
   }
+}

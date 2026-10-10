@@ -20,12 +20,12 @@ class CategoryModel { // Build #1.0.21
 
   factory CategoryModel.fromJson(Map<String, dynamic> json) {
     return CategoryModel(
-      id: json['id'] ?? 0,
+      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
       name: json['name'] ?? '',
       slug: json['slug'] ?? '',
-      parent: json['parent'] ?? 0,
+      parent: int.tryParse(json['parent']?.toString() ?? '') ?? 0,
       description: json['description'] ?? '',
-      count: json['count'] ?? 0,
+      count: int.tryParse(json['count']?.toString() ?? '') ?? 0,
       image: json['image'],
     );
   }  

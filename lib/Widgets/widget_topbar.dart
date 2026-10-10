@@ -32,6 +32,7 @@ import '../Helper/api_response.dart';
 import '../Models/Search/product_search_model.dart';
 import '../Preferences/pinaka_preferences.dart';
 import '../Providers/Age/age_verification_provider.dart';
+import '../Repositories/Auth/AuthIdsStore.dart';
 import '../Repositories/Auth/logout_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
@@ -1580,32 +1581,16 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
     try {
       final token = await _getAuthTokenFromDb();
-
+      await UrlHelper.initializeBaseUrl();
       final encodedQuery = Uri.encodeQueryComponent(searchQuery);
-
-      late final Uri url;
-
-      // If query is only numbers -> SKU search
-      if (RegExp(r'^\d+$').hasMatch(searchQuery)) {
-        url = Uri.parse(
-          '${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}'
-              'products?sku=$encodedQuery&page=1&per_page=20',
-        );
-
-        if (kDebugMode) {
-          print('🔢 SKU Search → $url');
-        }
-      } else {
-        // Normal product name search
-        url = Uri.parse(
-          '${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}'
-              'products?search=$encodedQuery&page=1&per_page=20',
-        );
-
-        if (kDebugMode) {
-          print('🔍 Product Search → $url');
-        }
+      final storeId = (await AuthIdsStore.getStoreId()).trim();
+      if (storeId.isEmpty) {
+        throw Exception('No store is selected for product search.');
       }
+      final url = Uri.parse(
+        '${UrlHelper.baseUrl}store/${Uri.encodeComponent(storeId)}'
+        '/products/search?search=$encodedQuery',
+      );
 
       final response = await http.get(
         url,
@@ -1622,8 +1607,17 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         return;
       }
 
-      final List<dynamic> decoded =
-      jsonDecode(response.body) as List<dynamic>;
+      final dynamic responseData = jsonDecode(response.body);
+      final List<dynamic>? decoded = responseData is List
+          ? responseData
+          : responseData is Map
+              ? _findProductList(responseData)
+              : null;
+      if (decoded == null) {
+        throw const FormatException(
+          'Store product search response is not a product list.',
+        );
+      }
 
       final List<Map<String, dynamic>> apiProducts = decoded
           .whereType<Map>()
@@ -1696,7 +1690,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
 
         return {
-          'fast_key_product_id': p['id'],
+          'fast_key_product_id':
+              int.tryParse(p['id']?.toString() ?? '') ?? 0,
           'fast_key_item_name': p['name'] ?? '',
           'fast_key_item_image': imageUrl,
           'fast_key_item_price':
@@ -1704,7 +1699,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           'fast_key_item_sku': p['sku'] ?? '',
           'fast_key_item_tags': tags,
 
-          'id': p['id'],
+          'id': int.tryParse(p['id']?.toString() ?? '') ?? 0,
           'name': p['name'] ?? '',
           'price':
           p['price'] ?? p['regular_price'] ?? '0',
@@ -1775,6 +1770,18 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         setState(() => _isApiSearchLoading = false);
       }
     }
+  }
+
+  List<dynamic>? _findProductList(Map<dynamic, dynamic> responseData) {
+    for (final key in const ['data', 'products', 'items', 'results']) {
+      final value = responseData[key];
+      if (value is List) return value;
+      if (value is Map) {
+        final nested = _findProductList(value);
+        if (nested != null) return nested;
+      }
+    }
+    return null;
   }
 
   void _mergeApiResults(List<Map<String, dynamic>> apiProducts) {

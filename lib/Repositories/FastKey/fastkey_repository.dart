@@ -69,7 +69,7 @@ class FastKeyRepository {  // Build #1.0.15
   }
 
   // // Build #1.0.19: POST: Delete FastKey
-  Future<FastKeyResponse> deleteFastKey(int fastkeyServerId) async {
+  Future<FastKeyResponse> deleteFastKey(dynamic fastkeyServerId) async {
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.fastKeys}${EndUrlConstants.deleteFastKeyEndUrl}/$fastkeyServerId";
 
     if (kDebugMode) {

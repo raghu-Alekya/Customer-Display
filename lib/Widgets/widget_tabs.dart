@@ -29,6 +29,7 @@ import '../Models/Assets/asset_model.dart';
 import '../Models/Orders/orders_model.dart';
 import '../Models/Search/product_custom_item_model.dart' as model;
 import '../Repositories/Assets/asset_repository.dart';
+import '../Repositories/Category/category_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
 import '../Utilities/printer_settings.dart';
@@ -635,86 +636,67 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 //   }
 
   // ==================== FETCH CATEGORIES WITH TAX ====================
+  // Uses the same working CategoryRepository / store-categories API that the
+  // Categories tab uses, instead of the legacy pinaka-pos endpoint which is
+  // not available on the connector API and caused empty category dropdowns.
 
   Future<void> _fetchCategoriesWithTax() async {
     await _loadCategoriesFromCache();
 
     try {
-      await UrlHelper.initializeBaseUrl();
+      final repo = CategoryRepository();
+      // parent: 0 → top-level store categories (same as Categories screen)
+      final response = await repo.getCategories(parent: 0);
+      final allCategories = response.categories;
 
-      final String token = await _getTokenFromDb();
-      if (token.isEmpty) {
-        print("⚠️ No token available for categories");
-        return;
+      if (!mounted) return;
+
+      final filteredCategories = allCategories.where((cat) {
+        final name = (cat.name).trim().toLowerCase();
+        final slug = (cat.slug).trim().toLowerCase();
+        return name != 'uncategorized' &&
+            slug != 'uncategorized' &&
+            name != 'default' &&
+            slug != 'default' &&
+            name.isNotEmpty;
+      }).map((cat) {
+        // Map Category model → map expected by Custom Item dropdown / add logic.
+        // Tax fields may be absent on the new store-categories API; default safely.
+        final raw = <String, dynamic>{
+          'id': cat.id,
+          'name': cat.name,
+          'slug': cat.slug,
+          'parent': cat.parent,
+          'description': cat.description,
+          'count': cat.count,
+          'image': cat.image,
+          'pos_tax_class': 'standard',
+          'pos_tax_percent': '0',
+          'pos_tax_slug': 'standard',
+        };
+        return raw;
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _categoriesList = filteredCategories;
+          _selectedCategoryName = "Select Category";
+        });
       }
-
-      final headers = {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      };
-
-      final String fullUrl =
-          '${UrlHelper.baseUrl}pinaka-pos/v1/categories/get-categories-with-tax';
-
-      final uri = Uri.parse(fullUrl);
-
-      final request = http.Request('GET', uri);
-      request.headers.addAll(headers);
 
       if (kDebugMode) {
-        print("Fetching Categories with Tax → $uri");
-      }
-
-      final response = await request.send();
-
-      if (response.statusCode == 200) {
-        final String body = await response.stream.bytesToString();
-        final Map<String, dynamic> data = jsonDecode(body);
-
-        if (data['status'] == 'success' && data['categories'] is List && mounted) {
-          List<Map<String, dynamic>> allCategories =
-          List<Map<String, dynamic>>.from(data['categories']);
-
-          final filteredCategories = allCategories.where((cat) {
-            final name = (cat['name']?.toString() ?? '').trim().toLowerCase();
-            final slug = (cat['slug']?.toString() ?? '').trim().toLowerCase();
-
-            return name != 'uncategorized' &&
-                slug != 'uncategorized' &&
-                name != 'default' &&
-                slug != 'default';
-          }).map((cat) {
-            String taxSlug = cat['pos_tax_slug']?.toString() ?? '';
-            if (taxSlug.isEmpty) {
-              final rawTaxClass = cat['pos_tax_class']?.toString() ?? '';
-              taxSlug = rawTaxClass.toLowerCase().replaceAll(' ', '-');
-            }
-            return {
-              ...cat,
-              'pos_tax_slug': taxSlug,
-            };
-          }).toList();
-
-          setState(() {
-            _categoriesList = filteredCategories;
-            _selectedCategoryName = "Select Category";
-          });
-
-          print("✅ Loaded ${_categoriesList.length} Categories (after filtering)");
-
-          // NEW: Print tax info for all categories
-          for (var cat in _categoriesList) {
-            print("Category: ${cat['name']} | "
-                "pos_tax_class: ${cat['pos_tax_class']} | "
-                "pos_tax_percent: ${cat['pos_tax_percent']}");
-          }
-          await _saveCategoriesToCache(filteredCategories);
+        print(
+            "✅ Loaded ${_categoriesList.length} Categories via CategoryRepository (Custom Item tab)");
+        for (var cat in _categoriesList) {
+          print("Category: ${cat['name']} | id: ${cat['id']}");
         }
-      } else {
-        print(" Failed to load categories: ${response.statusCode}");
       }
+      await _saveCategoriesToCache(filteredCategories);
     } catch (e) {
-      print(" Error fetching categories: $e");
+      if (kDebugMode) {
+        print(" Error fetching categories for Custom Item tab: $e");
+      }
+      // Keep any categories already loaded from cache so the dropdown is not empty.
     }
   }
 
@@ -1052,14 +1034,14 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _buildTab(
-              0,
+                  0,
 
-              SvgUtils.addCustomItemIcon,
-              "Custom\nItem",
-              // Color(0xFF55709A),    // icon color
-              // Color(0xFF55709A),
-              const Color(0xFF4C5F7D), // default = white for logo
-              const Color(0xFF4C5F7D)
+                  SvgUtils.addCustomItemIcon,
+                  "Custom\nItem",
+                  // Color(0xFF55709A),    // icon color
+                  // Color(0xFF55709A),
+                  const Color(0xFF4C5F7D), // default = white for logo
+                  const Color(0xFF4C5F7D)
                 // Color(0xFF007BFF),      // icon color
                 // Color(0xFF007BFF),    // text color
                 // color: isSelected
@@ -1220,13 +1202,13 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
     switch (_selectedTabIndex) {
       case 0:
         return _buildCustomItemTab(context);
-        // return _buildDiscountsTab();
+    // return _buildDiscountsTab();
       case 1:
         return _buildDiscountsTab();
 
       case 2:
         return _buildCashbackTab();
-        // return _buildCustomItemTab(context);
+    // return _buildCustomItemTab(context);
       case 3:
         return _buildPayoutsTab();
       default:
