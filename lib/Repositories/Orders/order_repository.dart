@@ -23,6 +23,8 @@ import '../../Models/Orders/orders_model.dart' hide CouponLine;
 import '../../Models/Orders/total_orders_count_model.dart';
 import '../../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import '../../Utilities/global_utility.dart';
+import '../../Screens/Auth/store_id_screen.dart'; // DeviceHelper.getDeviceId (same as login)
+import '../../core/api/pos_context_provider.dart';
 
 double resolveOfflineMerchantDiscountAmount(
     Map<String, dynamic> offlineOrder, {
@@ -141,6 +143,27 @@ class OrderRepository {
   // Build #1.0.25 - added by naveen
   final APIHelper _helper = APIHelper();
 
+  /// Same device id source as employee login (`device-id` body field).
+  /// Prefer DeviceHelper (Windows/Android/iOS), then POS context, then GlobalUtility.
+  Future<String> _currentPosDeviceId() async {
+    try {
+      final id = (await DeviceHelper.getDeviceId()).trim();
+      if (id.isNotEmpty && id.toLowerCase() != 'unknown') return id;
+    } catch (_) {}
+    try {
+      // Concrete impl — abstract PosContextProvider cannot be instantiated
+      final ctx = await PosContextProviderImpl().getContext();
+      final id = ctx?.deviceId.trim() ?? '';
+      if (id.isNotEmpty && id.toLowerCase() != 'unknown') return id;
+    } catch (_) {}
+    try {
+      final details = await GlobalUtility.getDeviceDetails();
+      final id = (details['device_id'] ?? '').toString().trim();
+      if (id.isNotEmpty && id.toLowerCase() != 'unknown') return id;
+    } catch (_) {}
+    return 'unknown';
+  }
+
   // 1. Create Order
   Future<CreateOrderResponseModel> createOrder() async {
     // 🔹 Get local user and device info
@@ -149,8 +172,10 @@ class OrderRepository {
       throw Exception("Please start your shift before creating an order");
     }
 
-    final deviceDetails = await GlobalUtility.getDeviceDetails();
-    final deviceId = deviceDetails['device_id'] ?? 'unknown';
+    final deviceId = await _currentPosDeviceId();
+    if (kDebugMode) {
+      print("📤 [createOrder] pos_device_id: $deviceId");
+    }
     final userData = await UserDbHelper().getUserData();
     if (userData == null || userData[AppDBConst.userId] == null) {
       throw Exception(
@@ -776,8 +801,14 @@ class OrderRepository {
       final userData = await UserDbHelper().getUserData();
       final userId = userData?[AppDBConst.userId] ?? "admin";
 
+      // Same device id as login (DeviceHelper), not GlobalUtility alone
+      final String posDeviceId = await _currentPosDeviceId();
+      if (kDebugMode) {
+        print("📤 [Order meta] pos_device_id: $posDeviceId");
+      }
+
       final List<Map<String, dynamic>> metaData = [
-        {"key": "pos_device_id", "value": "b31b723b92047f4b"},
+        {"key": "pos_device_id", "value": posDeviceId},
         {"key": "pos_placed_by", "value": "$userId"},
         {"key": "shift_id", "value": "$shiftId"},
         {"key": "pos_cash_paid", "value": totalAmount.toStringAsFixed(2)},
@@ -3153,8 +3184,14 @@ class OrderRepository {
       // ---------------------------------------------------------
       // ⭐ DECLARE METADATA
       // ---------------------------------------------------------
+      // Same device id as login (DeviceHelper), not GlobalUtility alone
+      final String posDeviceId = await _currentPosDeviceId();
+      if (kDebugMode) {
+        print("📤 [Order meta] pos_device_id: $posDeviceId");
+      }
+
       final List<Map<String, dynamic>> metaData = [
-        {"key": "pos_device_id", "value": "b31b723b92047f4b"},
+        {"key": "pos_device_id", "value": posDeviceId},
         {"key": "pos_placed_by", "value": "$userId"},
         {"key": "shift_id", "value": "$finalShiftId"},
         {"key": "local_shift_id", "value": "$finalLocalShiftId"},
@@ -5392,9 +5429,12 @@ class OrderRepository {
     }
   }
 
+  // Connector: GET /orders/{id}
+  // List API `id` is client order id (e.g. 262859017). Detail may return UUID in `id`.
   Future<OrderModel> getOrder({required String orderId}) async {
+    final pathId = orderId.trim();
     final url =
-        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}$orderId";
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$pathId";
 
     if (kDebugMode) {
       print("OrderRepository.getOrder - GET URL: $url");
@@ -5407,28 +5447,39 @@ class OrderRepository {
         print("OrderRepository - Raw Response Type: ${response.runtimeType}");
         print("OrderRepository - Raw Response: ${response.toString()}");
       }
+
+      dynamic decoded;
       if (response is String) {
-        return OrderModel.fromJson(jsonDecode(response));
+        decoded = jsonDecode(response);
+      } else {
+        decoded = response;
       }
-      // Handle any other unexpected type
-      else {
-        throw Exception("Unexpected response type: ${response.runtimeType}");
+
+      if (decoded is Map) {
+        return OrderModel.fromJson(Map<String, dynamic>.from(decoded));
       }
+      if (decoded is List && decoded.isNotEmpty) {
+        return OrderModel.fromJson(
+            Map<String, dynamic>.from(decoded.first as Map));
+      }
+      throw Exception("Unexpected response type: ${decoded.runtimeType}");
     } catch (e, s) {
       if (kDebugMode) {
-        print("OrderRepository - Error in getOrders: $e");
+        print("OrderRepository - Error in getOrder: $e");
         print("Stack trace: $s");
       }
-      throw Exception("Failed to fetch orders");
+      throw Exception("Failed to fetch order");
     }
   }
 
+  // Connector: GET /orders/{id} (same path as getOrder — client order id from list)
   Future<OrderModel> getOrderdata({required String orderId}) async {
+    final pathId = orderId.trim();
     final url =
-        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}?order_id=$orderId";
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$pathId";
 
     if (kDebugMode) {
-      print("OrderRepository.getOrder - GET URL: $url");
+      print("OrderRepository.getOrderdata - GET URL: $url");
     }
 
     try {
@@ -5450,7 +5501,7 @@ class OrderRepository {
         decoded = response;
       }
 
-      // Step 2: Handle LIST response (Woo format)
+      // Step 2: Handle LIST response (legacy Woo format)
       if (decoded is List) {
         if (decoded.isEmpty) {
           throw Exception("Order not found");
@@ -5459,15 +5510,15 @@ class OrderRepository {
         return OrderModel.fromJson(Map<String, dynamic>.from(decoded.first));
       }
 
-      // Step 3: Handle direct MAP response (rare)
-      if (decoded is Map<String, dynamic>) {
-        return OrderModel.fromJson(decoded);
+      // Step 3: Handle direct MAP response (connector detail)
+      if (decoded is Map) {
+        return OrderModel.fromJson(Map<String, dynamic>.from(decoded));
       }
 
       throw Exception("Unexpected response format: ${decoded.runtimeType}");
     } catch (e, s) {
       if (kDebugMode) {
-        print("OrderRepository - Error in getOrder: $e");
+        print("OrderRepository - Error in getOrderdata: $e");
         print("Stack trace: $s");
       }
       rethrow;

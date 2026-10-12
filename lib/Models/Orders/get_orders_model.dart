@@ -893,15 +893,18 @@ class OrderModel {
     final refundOrderTotal = double.tryParse(json['refund_order_total']?.toString() ?? '0') ?? 0.0;
     final netPayment = double.tryParse(json['net_payment']?.toString() ?? '0') ?? 0.0;
 
-    // Connector returns UUID string in `id` and numeric Woo id in `woo_order_id`.
-    // Prefer numeric woo_order_id / number for local int id; fall back to hash of UUID.
+    // List API: `id` is numeric client order id (e.g. 262859017) — use for GET /orders/{id}.
+    // Detail API: `id` may be UUID; then use _pos_client_order_id meta, then woo_order_id / number.
     int resolveOrderId() {
+      final direct = int.tryParse(json['id']?.toString() ?? '');
+      if (direct != null && direct > 0) return direct;
+      final clientMeta = int.tryParse(
+          getOrderMetaValue('_pos_client_order_id')?.toString() ?? '');
+      if (clientMeta != null && clientMeta > 0) return clientMeta;
       final woo = int.tryParse(json['woo_order_id']?.toString() ?? '');
       if (woo != null && woo > 0) return woo;
       final numField = int.tryParse(json['number']?.toString() ?? '');
       if (numField != null && numField > 0) return numField;
-      final direct = int.tryParse(json['id']?.toString() ?? '');
-      if (direct != null && direct > 0) return direct;
       final raw = json['id']?.toString() ?? '';
       if (raw.isEmpty) return 0;
       return raw.hashCode.abs() % 2000000000;
@@ -1216,24 +1219,51 @@ class LineItem {
       displayAutoDiscountAmount = double.tryParse(displayAutoStr ?? '0') ?? 0.0;
     }
 
+    // Connector may send line id as string "ITEM-uuid-1" or numeric
+    int parseLineId() {
+      final v = json['id'];
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return int.tryParse(v?.toString() ?? '') ?? 0;
+    }
+
+    // image may be Map {src}, String url, or null
+    Map<String, dynamic> imageJson() {
+      final img = json['image'];
+      if (img is Map) return Map<String, dynamic>.from(img);
+      if (img is String && img.trim().isNotEmpty) {
+        return {'id': '0', 'src': img.trim()};
+      }
+      // fall back to product_data.image string from list API
+      final pd = json['product_data'];
+      if (pd is Map && pd['image'] is String && (pd['image'] as String).isNotEmpty) {
+        return {'id': '0', 'src': pd['image']};
+      }
+      return <String, dynamic>{};
+    }
+
     return LineItem(
-      id: json['id'] ?? 0,
+      id: parseLineId(),
       name: json['name'] ?? '',
-      productId: json['product_id'] ?? 0,
-      variationId: json['variation_id'] ?? 0,
+      productId: int.tryParse(json['product_id']?.toString() ?? '') ?? 0,
+      variationId: int.tryParse(json['variation_id']?.toString() ?? '') ?? 0,
       quantity: (json['quantity'] as num?)?.toInt() ?? 0,
       taxClass: json['tax_class'] ?? '',
-      subtotal: json['subtotal'] ?? '0.00',
-      subtotalTax: json['subtotal_tax'] ?? '0.00',
-      total: json['total'] ?? '0.00',
-      totalTax: json['total_tax'] ?? '0.00',
+      subtotal: json['subtotal']?.toString() ?? '0.00',
+      subtotalTax: json['subtotal_tax']?.toString() ?? '0.00',
+      total: json['total']?.toString() ?? '0.00',
+      totalTax: json['total_tax']?.toString() ?? '0.00',
       metaData: metaList,
-      sku: json['sku'] as String?,
+      sku: json['sku']?.toString(),
       price: (json['price'] is int
           ? (json['price'] as int).toDouble()
           : double.tryParse(json['price']?.toString() ?? '0') ?? 0.0),
-      image: ImageData.fromJson(json['image'] ?? {}),
-      productData: ProductData.fromJson(json['product_data'] ?? {}),
+      image: ImageData.fromJson(imageJson()),
+      productData: ProductData.fromJson(
+        json['product_data'] is Map
+            ? Map<String, dynamic>.from(json['product_data'] as Map)
+            : <String, dynamic>{},
+      ),
       productVariationData: json['product_variation_data'] != null
           ? ProductVariationData.fromJson(json['product_variation_data'])
           : null,

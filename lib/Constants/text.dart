@@ -351,7 +351,8 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   //Build #1.0.54: added
   static const String allStatus             = "pending, processing, on-hold, completed, cancelled, refunded, failed";
   static const String processing            = "processing";
-  static const String orderScreenStatus     = "pending, on-hold, completed, cancelled, refunded, failed";
+  // Match connector total-orders status filter (include processing)
+  static const String orderScreenStatus     = "pending, processing, on-hold, completed, cancelled, refunded, failed";
   // Build #1.0.144: Added TextConstants from static snackBar string error's to here
   static const String failedToCreateFastKey = 'Failed to create fast key';
   static const String failedToAddItemToFastKey = 'Failed to add item to fast key';
