@@ -598,7 +598,6 @@
 //   }
 // }
 
-
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
@@ -662,7 +661,8 @@ class ShiftDbHelper {
       } catch (_) {}
 
       if (kDebugMode) {
-        print('✅ [ShiftDbHelper] Table ${AppDBConst.shiftTable} verified/created successfully');
+        print(
+            '✅ [ShiftDbHelper] Table ${AppDBConst.shiftTable} verified/created successfully');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -670,12 +670,13 @@ class ShiftDbHelper {
       }
     }
   }
+
   /// CACHE AN ONLINE-CREATED SHIFT LOCALLY
   ///
   /// This is required so an online shift can later be closed while offline.
   Future<int> cacheOnlineShift({
     required int userId,
-    required int serverShiftId,
+    required Object serverShiftId,
     required double openingBalance,
     required Map<String, dynamic> requestPayload,
   }) async {
@@ -692,8 +693,7 @@ class ShiftDbHelper {
     );
 
     if (existing.isNotEmpty) {
-      final localId =
-      existing.first[AppDBConst.shiftLocalId] as int;
+      final localId = existing.first[AppDBConst.shiftLocalId] as int;
 
       if (kDebugMode) {
         print(
@@ -742,6 +742,7 @@ class ShiftDbHelper {
 
     return localShiftId;
   }
+
   Future<Map<String, dynamic>?> getShiftByServerId(
       int serverShiftId,
       ) async {
@@ -780,7 +781,7 @@ class ShiftDbHelper {
   /// the local ledger so it can later be closed while offline.
   Future<int> createOnlineShiftMirror({
     required int userId,
-    required int serverShiftId,
+    required Object serverShiftId,
     required double openingBalance,
     required Map<String, dynamic> requestPayload,
   }) {
@@ -791,6 +792,7 @@ class ShiftDbHelper {
       requestPayload: requestPayload,
     );
   }
+
   /// CREATE / OPEN SHIFT LOCALLY (Offline-First)
   Future<int> createShiftOffline({
     required int userId,
@@ -883,6 +885,7 @@ class ShiftDbHelper {
 
     return localShiftId;
   }
+
   Future<void> addRefundToShift({
     required int localShiftId,
     required double refundAmount,
@@ -940,16 +943,12 @@ class ShiftDbHelper {
         break;
     }
 
-    final newTotalRefund =
-        currentTotalRefund + refundAmount;
+    final newTotalRefund = currentTotalRefund + refundAmount;
 
     final grossSales =
-        (shift['shift_gross_sales_amount'] as num?)
-            ?.toDouble() ??
-            0.0;
+        (shift['shift_gross_sales_amount'] as num?)?.toDouble() ?? 0.0;
 
-    final netSales =
-        grossSales - newTotalRefund;
+    final netSales = grossSales - newTotalRefund;
 
     await db.update(
       AppDBConst.shiftTable,
@@ -960,8 +959,7 @@ class ShiftDbHelper {
         'shift_ebt_refund_amount': newEbtRefund,
         'shift_other_refund_amount': newOtherRefund,
         'shift_net_sales_amount': netSales,
-        AppDBConst.updatedAt:
-        DateTime.now().toUtc().toIso8601String(),
+        AppDBConst.updatedAt: DateTime.now().toUtc().toIso8601String(),
       },
       where: '${AppDBConst.shiftLocalId} = ?',
       whereArgs: [localShiftId],
@@ -977,6 +975,7 @@ class ShiftDbHelper {
       print('══════════════ THE END ═════════════════════════');
     }
   }
+
   Future<void> addSaleToShift({
     required int localShiftId,
     required double saleAmount,
@@ -994,20 +993,14 @@ class ShiftDbHelper {
     }
 
     final currentGross =
-        (shift['shift_gross_sales_amount'] as num?)
-            ?.toDouble() ??
-            0.0;
+        (shift['shift_gross_sales_amount'] as num?)?.toDouble() ?? 0.0;
 
     final totalRefund =
-        (shift['shift_total_refund_amount'] as num?)
-            ?.toDouble() ??
-            0.0;
+        (shift['shift_total_refund_amount'] as num?)?.toDouble() ?? 0.0;
 
-    final newGross =
-        currentGross + saleAmount;
+    final newGross = currentGross + saleAmount;
 
-    final newNetSales =
-        newGross - totalRefund;
+    final newNetSales = newGross - totalRefund;
 
     await db.update(
       AppDBConst.shiftTable,
@@ -1016,11 +1009,9 @@ class ShiftDbHelper {
         'shift_net_sales_amount': newNetSales,
 
         // Existing field can represent net sales
-        AppDBConst.shiftTotalSalesAmount:
-        newNetSales,
+        AppDBConst.shiftTotalSalesAmount: newNetSales,
 
-        AppDBConst.updatedAt:
-        DateTime.now().toUtc().toIso8601String(),
+        AppDBConst.updatedAt: DateTime.now().toUtc().toIso8601String(),
       },
       where: '${AppDBConst.shiftLocalId} = ?',
       whereArgs: [localShiftId],
@@ -1036,6 +1027,7 @@ class ShiftDbHelper {
       print('═════════════════════════════════════');
     }
   }
+
   /// CLOSE SHIFT LOCALLY (Offline-First)
   Future<Map<String, dynamic>> closeShiftOffline({
     required int localShiftId,
@@ -1063,31 +1055,22 @@ class ShiftDbHelper {
     }
 
     final openingBalance =
-        (shift.first[AppDBConst.shiftOpeningBalance] as num?)
-            ?.toDouble() ??
+        (shift.first[AppDBConst.shiftOpeningBalance] as num?)?.toDouble() ??
             0.0;
 
     final totalSales =
-        (shift.first[AppDBConst.shiftTotalSalesAmount] as num?)
-            ?.toDouble() ??
+        (shift.first[AppDBConst.shiftTotalSalesAmount] as num?)?.toDouble() ??
             0.0;
 
     final safeDrops =
-        (shift.first[AppDBConst.shiftSafeDropTotal] as num?)
-            ?.toDouble() ??
-            0.0;
+        (shift.first[AppDBConst.shiftSafeDropTotal] as num?)?.toDouble() ?? 0.0;
 
     final payouts =
-        (shift.first[AppDBConst.shiftVendorPayoutTotal] as num?)
-            ?.toDouble() ??
+        (shift.first[AppDBConst.shiftVendorPayoutTotal] as num?)?.toDouble() ??
             0.0;
 
 // Expected Cash = Opening Balance + Sales - Safe Drops - Payouts
-    final expectedCash =
-        openingBalance +
-            totalSales -
-            safeDrops -
-            payouts;
+    final expectedCash = openingBalance + totalSales - safeDrops - payouts;
 
     final overShort = closingBalance - expectedCash;
     final now = DateTime.now().toUtc().toIso8601String();
@@ -1218,7 +1201,8 @@ class ShiftDbHelper {
           [serverShiftId, localShiftId],
         );
         if (kDebugMode) {
-          print('✅ [ID Mapping] Cascaded shiftId $localShiftId ➔ $serverShiftId in order_table');
+          print(
+              '✅ [ID Mapping] Cascaded shiftId $localShiftId ➔ $serverShiftId in order_table');
         }
       } catch (e) {
         if (kDebugMode) {
@@ -1323,8 +1307,7 @@ class ShiftDbHelper {
       throw Exception('Shift not found locally: $shiftId');
     }
 
-    final localShiftId =
-    (rows.first[AppDBConst.shiftLocalId] as num).toInt();
+    final localShiftId = (rows.first[AppDBConst.shiftLocalId] as num).toInt();
 
     return closeShiftOffline(
       localShiftId: localShiftId,
@@ -1332,6 +1315,7 @@ class ShiftDbHelper {
       closePayload: closePayload,
     );
   }
+
   Future<void> markShiftClosureSynced(int localShiftId) async {
     final db = await _getDb();
 

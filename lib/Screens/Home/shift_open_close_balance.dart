@@ -8,7 +8,6 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../Blocs/Auth/logout_bloc.dart';
 import '../../Blocs/Auth/shift_bloc.dart';
 import '../../Constants/text.dart';
 import '../../Database/assets_db_helper.dart';
@@ -23,7 +22,6 @@ import '../../Helper/api_response.dart';
 import '../../Models/Assets/asset_model.dart';
 import '../../Models/Auth/shift_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
-import '../../Repositories/Auth/logout_repository.dart';
 import '../../Repositories/Auth/shift_repository.dart';
 import '../../Widgets/SafeStorageHelper.dart';
 import '../../Widgets/widget_alert_popup_dialogs.dart';
@@ -61,7 +59,6 @@ class _ShiftOpenCloseBalanceScreenState
   final List<Map<String, dynamic>> denominations = [];
   StreamSubscription? _shiftSubscription;
   bool _isSubmitting = false;
-  final logoutBloc = LogoutBloc(LogoutRepository());
   bool _isSafeEnabled = false;
 
   // ========== OFFLINE SHIFT SUPPORT (Pattern from LoginScreen) ==========
@@ -112,7 +109,8 @@ class _ShiftOpenCloseBalanceScreenState
       _isOfflineMode = !hasNet;
     });
     if (kDebugMode) {
-      print('🌐 ShiftScreen open → internet: $hasNet | offlineMode: $_isOfflineMode');
+      print(
+          '🌐 ShiftScreen open → internet: $hasNet | offlineMode: $_isOfflineMode');
     }
   }
 
@@ -162,7 +160,6 @@ class _ShiftOpenCloseBalanceScreenState
   // OFFLINE SHIFT EXECUTION HELPERS
   // ---------------------------------------------------------------------------
 
-
   Future<void> _tryOfflineOpenShift(ShiftRequest request) async {
     try {
       if (kDebugMode) {
@@ -194,8 +191,7 @@ class _ShiftOpenCloseBalanceScreenState
       }
 
       // Verify immediately from database
-      final createdShift =
-      await ShiftDbHelper().getShiftById(localShiftId);
+      final createdShift = await ShiftDbHelper().getShiftById(localShiftId);
 
       if (kDebugMode) {
         print('🔍 VERIFIED SHIFT FROM SQLITE:');
@@ -218,8 +214,7 @@ class _ShiftOpenCloseBalanceScreenState
 
       await userDbHelper.updateUserShiftId(localShiftId);
 
-      final savedUserShiftId =
-      await userDbHelper.getUserShiftId();
+      final savedUserShiftId = await userDbHelper.getUserShiftId();
 
       if (kDebugMode) {
         print('✅ UserDbHelper Shift ID after save: '
@@ -234,8 +229,7 @@ class _ShiftOpenCloseBalanceScreenState
         localShiftId,
       );
 
-      final savedPrefShiftId =
-      prefs.getInt('active_local_shift_id');
+      final savedPrefShiftId = prefs.getInt('active_local_shift_id');
 
       if (kDebugMode) {
         print('💾 SharedPreferences Shift ID saved: '
@@ -266,8 +260,7 @@ class _ShiftOpenCloseBalanceScreenState
       );
 
       // 3. Show Start Shift Dialog
-      bool? result =
-      await CustomDialog.showStartShiftVerification(
+      bool? result = await CustomDialog.showStartShiftVerification(
         context,
         totalAmount: totalAmount,
         overShort: 0.0,
@@ -325,8 +318,7 @@ class _ShiftOpenCloseBalanceScreenState
       // Get shift using LOCAL SQLite ID
       // ---------------------------------------------------------
 
-      final existingShift =
-      await ShiftDbHelper().getShiftById(localShiftId);
+      final existingShift = await ShiftDbHelper().getShiftById(localShiftId);
 
       if (kDebugMode) {
         print('🔍 SHIFT FOUND USING LOCAL ID:');
@@ -339,8 +331,7 @@ class _ShiftOpenCloseBalanceScreenState
         );
       }
 
-      final int? serverShiftId =
-      existingShift[AppDBConst.shiftServerId] == null
+      final int? serverShiftId = existingShift[AppDBConst.shiftServerId] == null
           ? null
           : int.tryParse(
         existingShift[AppDBConst.shiftServerId].toString(),
@@ -371,8 +362,7 @@ class _ShiftOpenCloseBalanceScreenState
       // Verification Dialog
       // ---------------------------------------------------------
 
-      final bool? confirmClose =
-      await CustomDialog.showCloseShiftVerification(
+      final bool? confirmClose = await CustomDialog.showCloseShiftVerification(
         context,
         totalAmount: totalAmount,
         overShort: 0.0,
@@ -420,8 +410,7 @@ class _ShiftOpenCloseBalanceScreenState
       // Close LOCAL SQLite record
       // ---------------------------------------------------------
 
-      final result =
-      await ShiftDbHelper().closeShiftOffline(
+      final result = await ShiftDbHelper().closeShiftOffline(
         localShiftId: localShiftId,
         closingBalance: totalAmount,
         closePayload: finalClosePayload,
@@ -435,8 +424,7 @@ class _ShiftOpenCloseBalanceScreenState
       // Verify after closing
       // ---------------------------------------------------------
 
-      final closedShift =
-      await ShiftDbHelper().getShiftById(localShiftId);
+      final closedShift = await ShiftDbHelper().getShiftById(localShiftId);
 
       if (kDebugMode) {
         print('🔍 SHIFT AFTER CLOSING:');
@@ -467,8 +455,7 @@ class _ShiftOpenCloseBalanceScreenState
       // Clear active LOCAL shift references
       // ---------------------------------------------------------
 
-      final prefs =
-      await SharedPreferences.getInstance();
+      final prefs = await SharedPreferences.getInstance();
 
       await prefs.remove('active_local_shift_id');
 
@@ -530,6 +517,7 @@ class _ShiftOpenCloseBalanceScreenState
     _isSafeEnabled = await SafeStorageHelper.getSafeEnable();
     if (mounted) setState(() {});
   }
+
   Future<int> _getLoggedInUserId() async {
     try {
       final userHelper = UserDbHelper();
@@ -550,7 +538,8 @@ class _ShiftOpenCloseBalanceScreenState
 
       if (userData != null) {
         if (userData is Map) {
-          final id = userData['id'] ?? userData['user_id'] ?? userData['userId'];
+          final id =
+              userData['id'] ?? userData['user_id'] ?? userData['userId'];
           if (id != null) return int.tryParse(id.toString()) ?? 1;
         } else {
           final id = userData.id ?? userData.userId;
@@ -562,6 +551,7 @@ class _ShiftOpenCloseBalanceScreenState
     }
     return 1; // Fallback default user ID
   }
+
   void _resetState() {
     if (kDebugMode) {
       print("Resetting ShiftOpenCloseBalanceScreen state");
@@ -575,6 +565,7 @@ class _ShiftOpenCloseBalanceScreenState
       _grandTotal = 0.0;
     });
   }
+
   // ---------------------------------------------------------------------------
   // SHIFT ID RESOLUTION HELPERS
   // ---------------------------------------------------------------------------
@@ -586,8 +577,7 @@ class _ShiftOpenCloseBalanceScreenState
     }
 
     // 1. Try UserDbHelper
-    final int? userDbShiftId =
-    await UserDbHelper().getUserShiftId();
+    final int? userDbShiftId = await UserDbHelper().getUserShiftId();
 
     if (kDebugMode) {
       print('1️⃣ UserDbHelper Shift ID: $userDbShiftId');
@@ -609,8 +599,7 @@ class _ShiftOpenCloseBalanceScreenState
       print('👤 Current User ID: $userId');
     }
 
-    final localShift =
-    await ShiftDbHelper().getActiveShift(userId);
+    final localShift = await ShiftDbHelper().getActiveShift(userId);
 
     if (kDebugMode) {
       print('2️⃣ Active Shift from SQLite:');
@@ -618,8 +607,7 @@ class _ShiftOpenCloseBalanceScreenState
     }
 
     if (localShift != null) {
-      final localId =
-      localShift[AppDBConst.shiftLocalId] as int?;
+      final localId = localShift[AppDBConst.shiftLocalId] as int?;
 
       if (kDebugMode) {
         print('🆔 SQLite Local Shift ID: $localId');
@@ -639,11 +627,9 @@ class _ShiftOpenCloseBalanceScreenState
     }
 
     // 3. Try SharedPreferences backup
-    final prefs =
-    await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
 
-    final prefShiftId =
-    prefs.getInt('active_local_shift_id');
+    final prefShiftId = prefs.getInt('active_local_shift_id');
 
     if (kDebugMode) {
       print(
@@ -670,13 +656,13 @@ class _ShiftOpenCloseBalanceScreenState
 
     return null;
   }
+
   Future<void> _checkShiftId() async {
     if (kDebugMode) {
       print('\n🔄 Checking Shift ID on Screen Open...');
     }
 
-    final int? shiftId =
-    await _resolveActiveShiftId();
+    final int? shiftId = await _resolveActiveShiftId();
 
     if (shiftId != null) {
       _shiftId = shiftId.toString();
@@ -710,14 +696,39 @@ class _ShiftOpenCloseBalanceScreenState
     }
     _notesDenominations = await AssetDBHelper.instance.getNotesDenomList();
     _coinsDenominations = await AssetDBHelper.instance.getCoinDenomList();
+    final defaultCoinDenominations = _coinDenominations.keys.toList();
 
+    if (_notesDenominations.isEmpty) {
+      _notesDenominations = _noteDenominations.keys
+          .map((denomination) => Denom(
+        denom: denomination,
+        image: 'assets/svg/1.svg',
+      ))
+          .toList();
+      if (kDebugMode) {
+        print('No note denominations cached; using built-in defaults.');
+      }
+    }
+    if (_coinsDenominations.isEmpty) {
+      _coinsDenominations = defaultCoinDenominations
+          .map((denomination) => Denom(
+        denom: denomination,
+        image: 'assets/svg/1.svg',
+      ))
+          .toList();
+      if (kDebugMode) {
+        print('No coin denominations cached; using built-in defaults.');
+      }
+    }
+
+    if (!mounted) return;
     setState(() {
       for (var denom in _notesDenominations) {
         _coinDenominations[denom.denom.toString()] = double.parse(denom.denom);
         _noteTotals[denom.denom.toString()] = 0.0;
         _controllers[denom.denom.toString()] = TextEditingController();
-        _controllers[denom.denom.toString()]!.addListener(() =>
-            _updateTotal(denom.denom.toString(), _controllers[denom.denom.toString()]!));
+        _controllers[denom.denom.toString()]!.addListener(() => _updateTotal(
+            denom.denom.toString(), _controllers[denom.denom.toString()]!));
       }
 
       for (var denom in _coinsDenominations) {
@@ -725,7 +736,8 @@ class _ShiftOpenCloseBalanceScreenState
         _coinTotals[denom.denom.toString()] = 0.0;
         _coinControllers[denom.denom.toString()] = TextEditingController();
         _coinControllers[denom.denom.toString()]!.addListener(() =>
-            _updateCoinTotal(denom.denom.toString(), _coinControllers[denom.denom.toString()]!));
+            _updateCoinTotal(denom.denom.toString(),
+                _coinControllers[denom.denom.toString()]!));
       }
     });
   }
@@ -799,7 +811,8 @@ class _ShiftOpenCloseBalanceScreenState
     }
     for (var denom in _coinsDenominations) {
       int count =
-          int.tryParse(_coinControllers[denom.denom.toString()]?.text ?? '0') ?? 0;
+          int.tryParse(_coinControllers[denom.denom.toString()]?.text ?? '0') ??
+              0;
       drawerDenoms.add(Denomination(
           denomination: num.tryParse(denom.denom.toString()) ?? 0,
           denomCount: count));
@@ -845,7 +858,8 @@ class _ShiftOpenCloseBalanceScreenState
     final bool isCloseShift = previousScreen == TextConstants.navLogout ||
         screenTitle == TextConstants.shiftClose;
     // 2. Resolve Active Shift ID
-    int? shiftId = int.tryParse(_shiftId ?? '') ?? await _resolveActiveShiftId();
+    int? shiftId =
+        int.tryParse(_shiftId ?? '') ?? await _resolveActiveShiftId();
     String status = TextConstants.open;
     String? closeShiftStatus;
     if (isCloseShift) {
@@ -865,9 +879,8 @@ class _ShiftOpenCloseBalanceScreenState
       localShiftData = await ShiftDbHelper().getShiftById(shiftId);
     }
 
-    final bool isOfflineOnlyShift =
-        localShiftData != null &&
-            localShiftData[AppDBConst.shiftServerId] == null;
+    final bool isOfflineOnlyShift = localShiftData != null &&
+        localShiftData[AppDBConst.shiftServerId] == null;
 
 // Local ID is used for SQLite.
 // Server ID is used for API calls.
@@ -877,7 +890,8 @@ class _ShiftOpenCloseBalanceScreenState
       final serverId = localShiftData[AppDBConst.shiftServerId];
 
       if (serverId != null) {
-        apiShiftId = int.tryParse(serverId.toString());
+        apiShiftId = int.tryParse(serverId.toString()) ??
+            (serverId.toString().startsWith('SHIFT-') ? shiftId : null);
       }
     }
 
@@ -929,6 +943,7 @@ class _ShiftOpenCloseBalanceScreenState
         nav.pop();
       }
     }
+
     try {
       await _shiftSubscription?.cancel();
       _shiftBloc.manageShift(request);
@@ -959,8 +974,9 @@ class _ShiftOpenCloseBalanceScreenState
               // IMPORTANT:
               // Online shift was successfully created on server.
               // Now create its LOCAL SQLite representation.
-              final int localShiftId =
-              await ShiftDbHelper().cacheOnlineShift(
+              final int localShiftId = response.data!.externalShiftId != null
+                  ? serverShiftId
+                  : await ShiftDbHelper().cacheOnlineShift(
                 userId: userId,
                 serverShiftId: serverShiftId,
                 openingBalance: totalAmount,
@@ -984,9 +1000,15 @@ class _ShiftOpenCloseBalanceScreenState
               if (kDebugMode) {
                 print('==========================================');
                 print('✅ ONLINE SHIFT CREATED');
-                print('🌐 Server Shift ID: $serverShiftId');
+                print(
+                  '🌐 Server Shift ID: '
+                      '${response.data!.externalShiftId ?? serverShiftId}',
+                );
                 print('💾 Local Shift ID: $localShiftId');
-                print('🔗 Mapping: LOCAL $localShiftId -> SERVER $serverShiftId');
+                print(
+                  '🔗 Mapping: LOCAL $localShiftId -> SERVER '
+                      '${response.data!.externalShiftId ?? serverShiftId}',
+                );
                 print('==========================================');
               }
 
@@ -995,7 +1017,7 @@ class _ShiftOpenCloseBalanceScreenState
                 totalAmount: totalAmount,
                 overShort: response.data!.overShort.toDouble(),
               );
-            }else {
+            } else {
               result = await CustomDialog.showUpdateShiftVerification(
                 context,
                 totalAmount: totalAmount,
@@ -1025,6 +1047,16 @@ class _ShiftOpenCloseBalanceScreenState
             overShort: response.data!.overShort.toDouble(),
             isLoading: true,
           );
+          var closeLoadingDialogOpen = true;
+          void dismissCloseLoadingDialog() {
+            if (!closeLoadingDialogOpen || !mounted) return;
+            closeLoadingDialogOpen = false;
+            final navigator = Navigator.of(context, rootNavigator: true);
+            if (navigator.canPop()) {
+              navigator.pop();
+            }
+          }
+
           await _shiftSubscription?.cancel();
           final closeRequest = _buildShiftRequest(
             shiftId: shiftId,
@@ -1035,20 +1067,44 @@ class _ShiftOpenCloseBalanceScreenState
           _shiftSubscription =
               _shiftBloc.shiftStream.listen((closeResponse) async {
                 if (closeResponse.status == Status.COMPLETED) {
-                  await UserDbHelper().updateUserShiftId(null);
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.remove('active_local_shift_id');
-                  logoutBloc.performLogout();
-                  StreamSubscription? logoutSub;
-                  logoutSub = logoutBloc.logoutStream.listen((logoutResponse) {
-                    if (logoutResponse.status == Status.COMPLETED && mounted) {
-                      logoutSub?.cancel();
+                  try {
+                    await UserDbHelper().updateUserShiftId(null);
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.remove('active_local_shift_id');
+                    await UserDbHelper().logout();
+                    dismissCloseLoadingDialog();
+                    if (mounted) {
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(builder: (_) => const LoginScreen()),
                       );
                     }
-                  });
+                  } catch (e) {
+                    dismissCloseLoadingDialog();
+                    if (mounted) {
+                      setState(() => _isSubmitting = false);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Shift closed, but logout failed: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                } else if (closeResponse.status == Status.ERROR) {
+                  dismissCloseLoadingDialog();
+                  if (mounted) {
+                    setState(() => _isSubmitting = false);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          closeResponse.message ??
+                              TextConstants.failedToUpdateShift,
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
                 }
               });
         }
@@ -1069,7 +1125,8 @@ class _ShiftOpenCloseBalanceScreenState
                   _isOfflineMode = true;
                 });
                 if (kDebugMode) {
-                  print('⚠️ Auth or network error during API call → falling back to offline execution');
+                  print(
+                      '⚠️ Auth or network error during API call → falling back to offline execution');
                 }
                 if (isCloseShift && shiftId != null) {
                   final closeRequest = _buildShiftRequest(
@@ -1087,7 +1144,8 @@ class _ShiftOpenCloseBalanceScreenState
           // Real Business / Validation error from API
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(response.message ?? TextConstants.failedToUpdateShift),
+              content:
+              Text(response.message ?? TextConstants.failedToUpdateShift),
               backgroundColor: Colors.red,
             ),
           );
@@ -1204,7 +1262,6 @@ class _ShiftOpenCloseBalanceScreenState
                       isVertical: true,
                       isShiftScreen: true,
                     ),
-
                   Expanded(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(8, 12, 12, 12),
@@ -1230,8 +1287,7 @@ class _ShiftOpenCloseBalanceScreenState
                                       Column(
                                         crossAxisAlignment:
                                         CrossAxisAlignment.start,
-                                        mainAxisAlignment:
-                                        MainAxisAlignment.center,
+                                        mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
                                           Text(
                                             screenTitle,
@@ -1268,20 +1324,17 @@ class _ShiftOpenCloseBalanceScreenState
                                         mainAxisAlignment: MainAxisAlignment.end,
                                         children: [
                                           SizedBox(
-                                            height: MediaQuery.of(context)
-                                                .size
-                                                .height *
+                                            height:
+                                            MediaQuery.of(context).size.height *
                                                 0.06,
-                                            width: MediaQuery.of(context)
-                                                .size
-                                                .width *
+                                            width:
+                                            MediaQuery.of(context).size.width *
                                                 0.1,
                                             child: OutlinedButton(
                                               onPressed: ((_shiftId == null ||
                                                   _shiftId!.isEmpty) &&
                                                   (previousScreen !=
-                                                      TextConstants
-                                                          .navCashier))
+                                                      TextConstants.navCashier))
                                                   ? null
                                                   : () {
                                                 CustomDialog.showAreYouSure(
@@ -1310,10 +1363,8 @@ class _ShiftOpenCloseBalanceScreenState
                                                 );
                                               },
                                               style: OutlinedButton.styleFrom(
-                                                padding:
-                                                const EdgeInsets.symmetric(
-                                                    horizontal: 16,
-                                                    vertical: 8),
+                                                padding: const EdgeInsets.symmetric(
+                                                    horizontal: 16, vertical: 8),
                                                 side: BorderSide(
                                                   color: ((_shiftId == null ||
                                                       _shiftId!.isEmpty) &&
@@ -1345,13 +1396,11 @@ class _ShiftOpenCloseBalanceScreenState
                                           ),
                                           const SizedBox(width: 20),
                                           SizedBox(
-                                            height: MediaQuery.of(context)
-                                                .size
-                                                .height *
+                                            height:
+                                            MediaQuery.of(context).size.height *
                                                 0.06,
-                                            width: MediaQuery.of(context)
-                                                .size
-                                                .width *
+                                            width:
+                                            MediaQuery.of(context).size.width *
                                                 0.1,
                                             child: ElevatedButton(
                                               onPressed: () async {
@@ -1362,8 +1411,7 @@ class _ShiftOpenCloseBalanceScreenState
                                                     context,
                                                     SlideRightRoute(
                                                       page: SafeOpenScreen(
-                                                        cashNotesCoins:
-                                                        _grandTotal,
+                                                        cashNotesCoins: _grandTotal,
                                                         previousScreen:
                                                         _originScreen ??
                                                             TextConstants
@@ -1382,18 +1430,15 @@ class _ShiftOpenCloseBalanceScreenState
                                                 backgroundColor:
                                                 const Color(0xFFFF6B6B),
                                                 foregroundColor: Colors.white,
-                                                padding:
-                                                const EdgeInsets.symmetric(
-                                                    horizontal: 16,
-                                                    vertical: 8),
+                                                padding: const EdgeInsets.symmetric(
+                                                    horizontal: 16, vertical: 8),
                                                 shape: RoundedRectangleBorder(
                                                   borderRadius:
                                                   BorderRadius.circular(8),
                                                 ),
                                               ),
                                               child: const Text('Submit',
-                                                  style:
-                                                  TextStyle(fontSize: 16)),
+                                                  style: TextStyle(fontSize: 16)),
                                             ),
                                           ),
                                         ],
@@ -1408,21 +1453,21 @@ class _ShiftOpenCloseBalanceScreenState
                                   children: [
                                     // Notes Container
                                     Container(
-                                      margin: const EdgeInsets.only(
-                                          left: 16, right: 8),
+                                      margin:
+                                      const EdgeInsets.only(left: 16, right: 8),
                                       padding: const EdgeInsets.all(8),
-                                      width: MediaQuery.of(context).size.width *
-                                          0.425,
-                                      height: sidebarPosition ==
-                                          SidebarPosition.bottom
+                                      width:
+                                      MediaQuery.of(context).size.width * 0.425,
+                                      height:
+                                      sidebarPosition == SidebarPosition.bottom
                                           ? MediaQuery.of(context).size.height *
                                           0.625
                                           : MediaQuery.of(context).size.height *
                                           0.7,
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(5),
-                                        color: themeHelper.themeMode ==
-                                            ThemeMode.dark
+                                        color:
+                                        themeHelper.themeMode == ThemeMode.dark
                                             ? ThemeNotifier.secondaryBackground
                                             : Colors.grey.shade100,
                                         boxShadow: [
@@ -1493,8 +1538,7 @@ class _ShiftOpenCloseBalanceScreenState
                                           Divider(color: Colors.grey.shade300),
                                           Expanded(
                                             child: ListView.builder(
-                                              itemCount:
-                                              _notesDenominations.length,
+                                              itemCount: _notesDenominations.length,
                                               physics:
                                               const AlwaysScrollableScrollPhysics(),
                                               padding: EdgeInsets.zero,
@@ -1517,8 +1561,7 @@ class _ShiftOpenCloseBalanceScreenState
                                                         24,
                                                       ),
                                                       Padding(
-                                                        padding:
-                                                        const EdgeInsets
+                                                        padding: const EdgeInsets
                                                             .symmetric(
                                                             horizontal: 12.0),
                                                         child: Text(
@@ -1552,8 +1595,8 @@ class _ShiftOpenCloseBalanceScreenState
                                                                 ThemeMode.dark
                                                                 ? ThemeNotifier
                                                                 .borderColor
-                                                                : Colors.grey
-                                                                .shade300,
+                                                                : Colors
+                                                                .grey.shade300,
                                                           ),
                                                           borderRadius:
                                                           BorderRadius.circular(
@@ -1600,8 +1643,7 @@ class _ShiftOpenCloseBalanceScreenState
                                                         ),
                                                       ),
                                                       Padding(
-                                                        padding:
-                                                        const EdgeInsets
+                                                        padding: const EdgeInsets
                                                             .symmetric(
                                                             horizontal: 12.0),
                                                         child: Text(
@@ -1630,10 +1672,9 @@ class _ShiftOpenCloseBalanceScreenState
                                                             .size
                                                             .width *
                                                             0.15,
-                                                        alignment: Alignment
-                                                            .centerRight,
-                                                        padding:
-                                                        const EdgeInsets
+                                                        alignment:
+                                                        Alignment.centerRight,
+                                                        padding: const EdgeInsets
                                                             .symmetric(
                                                             horizontal: 8),
                                                         decoration: BoxDecoration(
@@ -1643,8 +1684,8 @@ class _ShiftOpenCloseBalanceScreenState
                                                                 ThemeMode.dark
                                                                 ? ThemeNotifier
                                                                 .borderColor
-                                                                : Colors.grey
-                                                                .shade400,
+                                                                : Colors
+                                                                .grey.shade400,
                                                           ),
                                                           borderRadius:
                                                           BorderRadius.circular(
@@ -1654,8 +1695,8 @@ class _ShiftOpenCloseBalanceScreenState
                                                               ThemeMode.dark
                                                               ? ThemeNotifier
                                                               .orderPanelTabBackground
-                                                              : Colors.grey
-                                                              .shade300,
+                                                              : Colors
+                                                              .grey.shade300,
                                                         ),
                                                         child: Text(
                                                           '${TextConstants.currencySymbol}${_noteTotals[denomination]!.toStringAsFixed(2)}',
@@ -1691,27 +1732,19 @@ class _ShiftOpenCloseBalanceScreenState
                                           margin: const EdgeInsets.only(
                                               left: 16, right: 8),
                                           padding: const EdgeInsets.all(8),
-                                          width: MediaQuery.of(context)
-                                              .size
-                                              .width *
+                                          width: MediaQuery.of(context).size.width *
                                               0.425,
                                           height: sidebarPosition ==
                                               SidebarPosition.bottom
-                                              ? MediaQuery.of(context)
-                                              .size
-                                              .height *
+                                              ? MediaQuery.of(context).size.height *
                                               0.45
-                                              : MediaQuery.of(context)
-                                              .size
-                                              .height *
+                                              : MediaQuery.of(context).size.height *
                                               0.45,
                                           decoration: BoxDecoration(
-                                            borderRadius:
-                                            BorderRadius.circular(5),
+                                            borderRadius: BorderRadius.circular(5),
                                             color: themeHelper.themeMode ==
                                                 ThemeMode.dark
-                                                ? ThemeNotifier
-                                                .secondaryBackground
+                                                ? ThemeNotifier.secondaryBackground
                                                 : Colors.grey.shade100,
                                             boxShadow: [
                                               BoxShadow(
@@ -1743,13 +1776,11 @@ class _ShiftOpenCloseBalanceScreenState
                                                     child: Text(
                                                       TextConstants.type,
                                                       style: TextStyle(
-                                                        fontWeight:
-                                                        FontWeight.w500,
+                                                        fontWeight: FontWeight.w500,
                                                         color: themeHelper
                                                             .themeMode ==
                                                             ThemeMode.dark
-                                                            ? ThemeNotifier
-                                                            .textDark
+                                                            ? ThemeNotifier.textDark
                                                             : Colors.grey[700],
                                                       ),
                                                     ),
@@ -1759,13 +1790,11 @@ class _ShiftOpenCloseBalanceScreenState
                                                     child: Text(
                                                       TextConstants.noOfCoins,
                                                       style: TextStyle(
-                                                        fontWeight:
-                                                        FontWeight.w500,
+                                                        fontWeight: FontWeight.w500,
                                                         color: themeHelper
                                                             .themeMode ==
                                                             ThemeMode.dark
-                                                            ? ThemeNotifier
-                                                            .textDark
+                                                            ? ThemeNotifier.textDark
                                                             : Colors.grey[700],
                                                       ),
                                                     ),
@@ -1773,16 +1802,13 @@ class _ShiftOpenCloseBalanceScreenState
                                                   Expanded(
                                                     flex: 3,
                                                     child: Text(
-                                                      TextConstants
-                                                          .totalAmountText,
+                                                      TextConstants.totalAmountText,
                                                       style: TextStyle(
-                                                        fontWeight:
-                                                        FontWeight.w500,
+                                                        fontWeight: FontWeight.w500,
                                                         color: themeHelper
                                                             .themeMode ==
                                                             ThemeMode.dark
-                                                            ? ThemeNotifier
-                                                            .textDark
+                                                            ? ThemeNotifier.textDark
                                                             : Colors.grey[700],
                                                       ),
                                                     ),
@@ -1836,13 +1862,13 @@ class _ShiftOpenCloseBalanceScreenState
                                                             ),
                                                           ),
                                                           Container(
-                                                            height:
-                                                            MediaQuery.of(context)
+                                                            height: MediaQuery.of(
+                                                                context)
                                                                 .size
                                                                 .height *
                                                                 0.06,
-                                                            width:
-                                                            MediaQuery.of(context)
+                                                            width: MediaQuery.of(
+                                                                context)
                                                                 .size
                                                                 .width *
                                                                 0.15,
@@ -1860,12 +1886,10 @@ class _ShiftOpenCloseBalanceScreenState
                                                               ),
                                                               borderRadius:
                                                               BorderRadius
-                                                                  .circular(
-                                                                  5),
+                                                                  .circular(5),
                                                               color: themeHelper
                                                                   .themeMode ==
-                                                                  ThemeMode
-                                                                      .dark
+                                                                  ThemeMode.dark
                                                                   ? ThemeNotifier
                                                                   .paymentEntryContainerColor
                                                                   : Colors.white,
@@ -1895,11 +1919,9 @@ class _ShiftOpenCloseBalanceScreenState
                                                                           .dark
                                                                       ? ThemeNotifier
                                                                       .textDark
-                                                                      : Colors
-                                                                      .grey,
+                                                                      : Colors.grey,
                                                                 ),
-                                                                border:
-                                                                InputBorder
+                                                                border: InputBorder
                                                                     .none,
                                                                 contentPadding:
                                                                 const EdgeInsets
@@ -1921,8 +1943,7 @@ class _ShiftOpenCloseBalanceScreenState
                                                               style: TextStyle(
                                                                 fontSize: 16,
                                                                 fontWeight:
-                                                                FontWeight
-                                                                    .bold,
+                                                                FontWeight.bold,
                                                                 color: themeHelper
                                                                     .themeMode ==
                                                                     ThemeMode
@@ -1934,13 +1955,13 @@ class _ShiftOpenCloseBalanceScreenState
                                                             ),
                                                           ),
                                                           Container(
-                                                            height:
-                                                            MediaQuery.of(context)
+                                                            height: MediaQuery.of(
+                                                                context)
                                                                 .size
                                                                 .height *
                                                                 0.06,
-                                                            width:
-                                                            MediaQuery.of(context)
+                                                            width: MediaQuery.of(
+                                                                context)
                                                                 .size
                                                                 .width *
                                                                 0.15,
@@ -1949,8 +1970,7 @@ class _ShiftOpenCloseBalanceScreenState
                                                             padding:
                                                             const EdgeInsets
                                                                 .symmetric(
-                                                                horizontal:
-                                                                8),
+                                                                horizontal: 8),
                                                             decoration:
                                                             BoxDecoration(
                                                               border: Border.all(
@@ -1965,12 +1985,10 @@ class _ShiftOpenCloseBalanceScreenState
                                                               ),
                                                               borderRadius:
                                                               BorderRadius
-                                                                  .circular(
-                                                                  4),
+                                                                  .circular(4),
                                                               color: themeHelper
                                                                   .themeMode ==
-                                                                  ThemeMode
-                                                                      .dark
+                                                                  ThemeMode.dark
                                                                   ? ThemeNotifier
                                                                   .orderPanelTabBackground
                                                                   : Colors.grey
@@ -2006,8 +2024,8 @@ class _ShiftOpenCloseBalanceScreenState
                                           onPressed: _clearCounts,
                                           style: TextButton.styleFrom(
                                             foregroundColor: Colors.red,
-                                            side:
-                                            const BorderSide(color: Colors.grey),
+                                            side: const BorderSide(
+                                                color: Colors.grey),
                                             shape: RoundedRectangleBorder(
                                               borderRadius:
                                               BorderRadius.circular(8),
@@ -2066,8 +2084,6 @@ class _ShiftOpenCloseBalanceScreenState
                           ),
                         ),
                       )),
-
-
                   if (sidebarPosition == SidebarPosition.right)
                     custom_widgets.NavigationBar(
                       selectedSidebarIndex: _selectedSidebarIndex,

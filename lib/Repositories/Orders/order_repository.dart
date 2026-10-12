@@ -3184,7 +3184,6 @@ class OrderRepository {
       // ---------------------------------------------------------
       // ⭐ DECLARE METADATA
       // ---------------------------------------------------------
-      // Same device id as login (DeviceHelper), not GlobalUtility alone
       final String posDeviceId = await _currentPosDeviceId();
       if (kDebugMode) {
         print("📤 [Order meta] pos_device_id: $posDeviceId");

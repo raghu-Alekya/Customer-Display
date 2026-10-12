@@ -2,7 +2,8 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
 // Model for Denomination
-class Denomination extends Equatable {  //Build #1.0.74: Naveen Added
+class Denomination extends Equatable {
+  //Build #1.0.74: Naveen Added
   final String denom;
   final int denomCount;
   final double total;
@@ -119,12 +120,32 @@ class VendorPayout extends Equatable {
   };
 
   @override
-  List<Object?> get props =>
-      [id, amount, note, paymentMethod, time, vendorName, serviceType, vendorId];
+  List<Object?> get props => [
+    id,
+    amount,
+    note,
+    paymentMethod,
+    time,
+    vendorName,
+    serviceType,
+    vendorId
+  ];
 }
 
 // Model for Shift
 class Shift extends Equatable {
+  static double _readAmount(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
+      final value = json[key];
+      if (value is num) return value.toDouble();
+      if (value != null) {
+        final parsed = double.tryParse(value.toString());
+        if (parsed != null) return parsed;
+      }
+    }
+    return 0.0;
+  }
+
   final int shiftId;
   final String title;
   final int userId;
@@ -173,6 +194,32 @@ class Shift extends Equatable {
     if (kDebugMode) {
       print('Parsing Shift JSON: $json');
     }
+    final reportedSalesAmount = _readAmount(
+      json,
+      ['total_sale_amount', 'totalSaleAmount', 'sales_amount', 'salesAmount'],
+    );
+    final cashSales = _readAmount(
+      json,
+      ['total_cash_sales', 'totalCashSales', 'cash_sales', 'cashSales'],
+    );
+    final cardSales = _readAmount(
+      json,
+      ['total_card_sales', 'totalCardSales', 'card_sales', 'cardSales'],
+    );
+    final hasCashOrCardSales = [
+      'total_cash_sales',
+      'totalCashSales',
+      'cash_sales',
+      'cashSales',
+      'total_card_sales',
+      'totalCardSales',
+      'card_sales',
+      'cardSales',
+    ].any(json.containsKey);
+    final salesAmount = reportedSalesAmount != 0 || !hasCashOrCardSales
+        ? reportedSalesAmount
+        : cashSales + cardSales;
+
     return Shift(
       shiftId: (json['shift_id'] as num?)?.toInt() ?? 0,
       title: json['title']?.toString() ?? '',
@@ -182,7 +229,7 @@ class Shift extends Equatable {
       startTime: json['start_time']?.toString() ?? '',
       endTime: json['end_time']?.toString() ?? '',
       totalSales: (json['total_sales'] as num?)?.toInt() ?? 0,
-      totalSaleAmount: (json['total_sale_amount'] as num?)?.toDouble() ?? 0.0,
+      totalSaleAmount: salesAmount,
       safeDropTotal: (json['safe_drop_total'] as num?)?.toDouble() ?? 0.0,
       safeDrops: (json['safe_drops'] as List<dynamic>?)
           ?.map((e) => SafeDrop.fromJson(e as Map<String, dynamic>))
@@ -259,12 +306,28 @@ class ShiftsByUserResponse extends Equatable {
 
   const ShiftsByUserResponse({required this.shifts});
 
-  factory ShiftsByUserResponse.fromJson(List<dynamic> json) {
+  factory ShiftsByUserResponse.fromJson(dynamic json) {
+    dynamic rawShifts;
+    if (json is List) {
+      rawShifts = json;
+    } else if (json is Map) {
+      final data = json['data'];
+      rawShifts = json['shifts'] ??
+          (data is List ? data : null) ??
+          (data is Map ? data['shifts'] : null);
+    }
+    if (rawShifts is! List) {
+      throw const FormatException(
+        'Expected shift history to be a list or contain a shifts list.',
+      );
+    }
     if (kDebugMode) {
-      print('Parsing ShiftsByUserResponse JSON: $json');
+      print('Parsing ShiftsByUserResponse with ${rawShifts.length} shifts');
     }
     return ShiftsByUserResponse(
-      shifts: json.map((e) => Shift.fromJson(e as Map<String, dynamic>)).toList(),
+      shifts: rawShifts
+          .map((e) => Shift.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList(),
     );
   }
 

@@ -10,10 +10,18 @@ import '../../Helper/offline_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Auth/shift_model.dart';
 import '../../Models/Auth/shift_summary_model.dart';
+import 'AuthIdsStore.dart';
+import '../../Screens/Auth/store_id_screen.dart';
 
 class ShiftRepository {
+  static const String _openShiftUrl =
+      'https://pch.alektasolutions.com/api/v1/pos/shifts/open';
+  static const String _closeShiftUrl =
+      'https://pch.alektasolutions.com/api/v1/pos/shifts/close';
+
   final APIHelper _helper = APIHelper();
-  final ShiftDbHelper _shiftDbHelper = ShiftDbHelper(); // ADD THIS — was missing entirely
+  final ShiftDbHelper _shiftDbHelper =
+  ShiftDbHelper(); // ADD THIS — was missing entirely
 
   // ─────────────────────────────────────────────────────────────────────────
   // Fetch shifts by user ID (Online first + Offline fallback)
@@ -40,11 +48,12 @@ class ShiftRepository {
         if (response is String) {
           final responseData = json.decode(response);
           return ShiftsByUserResponse.fromJson(responseData);
-        } else if (response is List<dynamic>) {
+        } else if (response is List || response is Map) {
           return ShiftsByUserResponse.fromJson(response);
         }
       } catch (e) {
-        if (kDebugMode) print("ShiftRepository - getShiftsByUser online failed: $e");
+        if (kDebugMode)
+          print("ShiftRepository - getShiftsByUser online failed: $e");
         if (OfflineHelper.isSessionError(e)) rethrow;
       }
     }
@@ -63,23 +72,33 @@ class ShiftRepository {
             startTime: s[AppDBConst.shiftStartTime]?.toString() ?? '',
             endTime: s[AppDBConst.shiftEndTime]?.toString() ?? '',
             totalSales: 0,
-            totalSaleAmount: (s[AppDBConst.shiftTotalSalesAmount] as num?)?.toDouble() ?? 0.0,
-            safeDropTotal: (s[AppDBConst.shiftSafeDropTotal] as num?)?.toDouble() ?? 0.0,
+            totalSaleAmount:
+            (s[AppDBConst.shiftTotalSalesAmount] as num?)?.toDouble() ??
+                0.0,
+            safeDropTotal:
+            (s[AppDBConst.shiftSafeDropTotal] as num?)?.toDouble() ?? 0.0,
             safeDrops: const [],
             vendorPayouts: const [],
-            totalVendorPayments: (s[AppDBConst.shiftVendorPayoutTotal] as num?)?.toDouble() ?? 0.0,
-            openingBalance: (s[AppDBConst.shiftOpeningBalance] as num?)?.toDouble() ?? 0.0,
-            closingBalance: (s[AppDBConst.shiftClosingBalance] as num?)?.toDouble() ?? 0.0,
+            totalVendorPayments:
+            (s[AppDBConst.shiftVendorPayoutTotal] as num?)?.toDouble() ??
+                0.0,
+            openingBalance:
+            (s[AppDBConst.shiftOpeningBalance] as num?)?.toDouble() ?? 0.0,
+            closingBalance:
+            (s[AppDBConst.shiftClosingBalance] as num?)?.toDouble() ?? 0.0,
             notes: '',
             shiftClosingNotes: '',
             shiftStatus: s[AppDBConst.shiftStatus]?.toString() ?? 'OPEN',
-            overShort: (s[AppDBConst.shiftOverShort] as num?)?.toDouble() ?? 0.0,
-            tillAmount: (s[AppDBConst.shiftOpeningBalance] as num?)?.toDouble() ?? 0.0,
+            overShort:
+            (s[AppDBConst.shiftOverShort] as num?)?.toDouble() ?? 0.0,
+            tillAmount:
+            (s[AppDBConst.shiftOpeningBalance] as num?)?.toDouble() ?? 0.0,
           );
         }).toList(),
       );
     } catch (e) {
-      if (kDebugMode) print("ShiftRepository - offline getShiftsByUser error: $e");
+      if (kDebugMode)
+        print("ShiftRepository - offline getShiftsByUser error: $e");
       return const ShiftsByUserResponse(shifts: []);
     }
   }
@@ -113,7 +132,8 @@ class ShiftRepository {
           return ShiftByIdResponse.fromJson(response);
         }
       } catch (e) {
-        if (kDebugMode) print("ShiftRepository - getShiftById online error: $e");
+        if (kDebugMode)
+          print("ShiftRepository - getShiftById online error: $e");
         if (OfflineHelper.isSessionError(e)) rethrow;
       }
     }
@@ -151,45 +171,197 @@ class ShiftRepository {
   Future<ShiftResponse> manageShift(ShiftRequest request) async {
     final isOnline = await OfflineHelper.isNetworkAvailable();
     final isOfflineSession = await UserDbHelper().isOfflineSession();
+    final isClosing = request.status?.toLowerCase() == 'close' ||
+        request.status?.toLowerCase() == 'closed';
+    final localShift = request.shiftId != null
+        ? await _shiftDbHelper.getShiftById(request.shiftId!)
+        : null;
+    final rawServerShiftId = localShift?[AppDBConst.shiftServerId];
+    final externalServerShiftId =
+    rawServerShiftId?.toString().startsWith('SHIFT-') == true
+        ? rawServerShiftId.toString()
+        : null;
+    final isExternalClosePreview = externalServerShiftId != null &&
+        request.status?.toLowerCase() == 'update';
 
     if (isOnline && !isOfflineSession) {
-      final url =
-          "${UrlHelper.componentVersionUrl}${UrlMethodConstants.shifts}${EndUrlConstants.createShiftEndUrl}";
+      final isOpening = request.status?.toLowerCase() == 'open';
+      final url = isOpening
+          ? _openShiftUrl
+          : isClosing && externalServerShiftId != null
+          ? _closeShiftUrl
+          : "${UrlHelper.componentVersionUrl}${UrlMethodConstants.shifts}${EndUrlConstants.createShiftEndUrl}";
 
       if (kDebugMode) {
         print("ShiftRepository - POST URL: $url");
-        print("ShiftRepository - POST Request Body: ${request.toJson()}");
+        if (!isOpening) {
+          print("ShiftRepository - POST Request Body: ${request.toJson()}");
+        }
       }
 
       try {
-        final response = await _helper.post(url, request.toJson(), true);
+        ShiftResponse shiftResponse;
+        if (isOpening) {
+          final userData = await UserDbHelper().getUserData();
+          final token =
+              userData?[AppDBConst.userToken]?.toString().trim() ?? '';
+          if (token.isEmpty) {
+            throw Exception(
+                'Cannot open shift without an authenticated user token.');
+          }
 
-        if (kDebugMode) {
-          print("ShiftRepository - POST Raw Response: $response");
+          final merchantId = (await AuthIdsStore.getMerchantId()).trim();
+          final storeId = (await AuthIdsStore.getStoreId()).trim();
+          if (merchantId.isEmpty || storeId.isEmpty) {
+            throw Exception(
+                'Cannot open shift without stored merchant and store IDs.');
+          }
+          String deviceId =
+              userData?[AppDBConst.posDeviceId]?.toString().trim() ?? '';
+          // Fallback: same DeviceHelper used at login (Windows/Android/iOS)
+          if (deviceId.isEmpty) {
+            try {
+              deviceId = (await DeviceHelper.getDeviceId()).trim();
+            } catch (_) {}
+          }
+          if (deviceId.isEmpty || deviceId.toLowerCase() == 'unknown') {
+            throw Exception(
+              'Cannot open shift without a device ID. Please log out and log in again.',
+            );
+          }
+          // Persist so next open does not need fallback
+          try {
+            final uid = userData?[AppDBConst.userId];
+            if (uid != null) {
+              final db = await DBHelper.instance.database;
+              await db.update(
+                AppDBConst.userTable,
+                {AppDBConst.posDeviceId: deviceId},
+                where: '${AppDBConst.userId} = ?',
+                whereArgs: [uid],
+              );
+            }
+          } catch (_) {}
+          if (kDebugMode) {
+            print('ShiftRepository - open shift device_id: $deviceId');
+          }
+
+          final cashierName =
+          userData?[AppDBConst.userDisplayName]?.toString().trim();
+          final effectiveCashierName =
+          cashierName == null || cashierName.isEmpty
+              ? 'Cashier'
+              : cashierName;
+          final payload = <String, dynamic>{
+            'merchant_id': merchantId,
+            'store_id': storeId,
+            'device_id': deviceId,
+            'cashier_name': effectiveCashierName,
+            'opening_cash': request.totalAmount,
+          };
+          final response = await _helper.post(
+            url,
+            payload,
+            true,
+            validateMarchentUrl: true,
+          );
+          shiftResponse = _parseOpenedShiftResponse(
+            response,
+            cashierName: effectiveCashierName,
+            openingCash: request.totalAmount,
+          );
+          if (shiftResponse.externalShiftId != null) {
+            final userId = userData?[AppDBConst.userId] as int? ?? 0;
+            final localShiftId = await _shiftDbHelper.cacheOnlineShift(
+              userId: userId,
+              serverShiftId: shiftResponse.externalShiftId!,
+              openingBalance: request.totalAmount.toDouble(),
+              requestPayload: request.toJson(),
+            );
+            shiftResponse = ShiftResponse(
+              shiftId: localShiftId,
+              externalShiftId: shiftResponse.externalShiftId,
+              userName: shiftResponse.userName,
+              totalAmount: shiftResponse.totalAmount,
+              overShort: shiftResponse.overShort,
+              status: shiftResponse.status,
+            );
+            await UserDbHelper().updateUserShiftId(localShiftId);
+          }
+        } else if (isClosing && externalServerShiftId != null) {
+          final userData = await UserDbHelper().getUserData();
+          final cashierName =
+              userData?[AppDBConst.userDisplayName]?.toString() ?? 'Cashier';
+          shiftResponse = await _closeExternalShift(
+            serverShiftId: externalServerShiftId,
+            localShiftId: request.shiftId!,
+            closingCash: request.totalAmount,
+            cashierName: cashierName,
+          );
+          await _shiftDbHelper.closeShiftOffline(
+            localShiftId: request.shiftId!,
+            closingBalance: request.totalAmount.toDouble(),
+            closePayload: request.toJson(),
+          );
+          await _shiftDbHelper.markShiftClosureSynced(request.shiftId!);
+        } else if (isExternalClosePreview) {
+          final openingCash =
+              (localShift?[AppDBConst.shiftOpeningBalance] as num?)
+                  ?.toDouble() ??
+                  0;
+          final totalSales =
+              (localShift?[AppDBConst.shiftTotalSalesAmount] as num?)
+                  ?.toDouble() ??
+                  0;
+          final safeDrops = (localShift?[AppDBConst.shiftSafeDropTotal] as num?)
+              ?.toDouble() ??
+              0;
+          final payouts =
+              (localShift?[AppDBConst.shiftVendorPayoutTotal] as num?)
+                  ?.toDouble() ??
+                  0;
+          final expectedCash = openingCash + totalSales - safeDrops - payouts;
+          final userData = await UserDbHelper().getUserData();
+          shiftResponse = ShiftResponse(
+            shiftId: request.shiftId!,
+            externalShiftId: externalServerShiftId,
+            userName:
+            userData?[AppDBConst.userDisplayName]?.toString() ?? 'Cashier',
+            totalAmount: request.totalAmount,
+            overShort: request.totalAmount - expectedCash,
+            status: 'OPEN',
+          );
+        } else {
+          final response = await _helper.post(url, request.toJson(), true);
+          if (response is String) {
+            final responseData = json.decode(response);
+            shiftResponse = ShiftResponse.fromJson(responseData);
+          } else if (response is Map<String, dynamic>) {
+            shiftResponse = ShiftResponse.fromJson(response);
+          } else {
+            throw Exception("Unexpected response type in shift management");
+          }
         }
 
-        ShiftResponse shiftResponse;
-        if (response is String) {
-          final responseData = json.decode(response);
-          shiftResponse = ShiftResponse.fromJson(responseData);
-        } else if (response is Map<String, dynamic>) {
-          shiftResponse = ShiftResponse.fromJson(response);
-        } else {
-          throw Exception("Unexpected response type in shift management");
+        if (kDebugMode) {
+          print("ShiftRepository - Shift operation completed");
         }
 
         // Update local shift ID in User table
         if (request.status?.toLowerCase() == "open") {
-          final userData = await UserDbHelper().getUserData();
-          final userId = userData?[AppDBConst.userId] as int? ?? 0;
-          await ShiftDbHelper().createOnlineShiftMirror(
-            userId: userId,
-            serverShiftId: shiftResponse.shiftId,
-            openingBalance: request.drawerTotalAmount.toDouble(),
-            requestPayload: request.toJson(),
-          );
-          await UserDbHelper().updateUserShiftId(shiftResponse.shiftId);
-        } else if (request.status?.toLowerCase() == "close" || request.status?.toLowerCase() == "closed") {
+          if (shiftResponse.externalShiftId == null) {
+            final userData = await UserDbHelper().getUserData();
+            final userId = userData?[AppDBConst.userId] as int? ?? 0;
+            await ShiftDbHelper().createOnlineShiftMirror(
+              userId: userId,
+              serverShiftId: shiftResponse.shiftId,
+              openingBalance: request.drawerTotalAmount.toDouble(),
+              requestPayload: request.toJson(),
+            );
+            await UserDbHelper().updateUserShiftId(shiftResponse.shiftId);
+          }
+        } else if (request.status?.toLowerCase() == "close" ||
+            request.status?.toLowerCase() == "closed") {
           await UserDbHelper().updateUserShiftId(null);
         }
 
@@ -202,6 +374,9 @@ class ShiftRepository {
         if (OfflineHelper.isSessionError(e) && !isOfflineSession) {
           rethrow;
         }
+        if (request.status?.toLowerCase() == 'open') {
+          rethrow;
+        }
         // Otherwise fall through to offline local shift creation
       }
     }
@@ -209,7 +384,8 @@ class ShiftRepository {
     // ── OFFLINE SHIFT MANAGEMENT (SQLite) ──────────────────────────────────
     final userData = await UserDbHelper().getUserData();
     final userId = userData?[AppDBConst.userId] as int? ?? 0;
-    final userName = userData?[AppDBConst.userDisplayName]?.toString() ?? 'Cashier';
+    final userName =
+        userData?[AppDBConst.userDisplayName]?.toString() ?? 'Cashier';
 
     if (request.status?.toLowerCase() == "open") {
       final localShiftId = await ShiftDbHelper().createShiftOffline(
@@ -233,7 +409,8 @@ class ShiftRepository {
       );
     } else {
       // Close shift offline
-      final shiftIdToClose = request.shiftId ?? (await UserDbHelper().getUserShiftId()) ?? 0;
+      final shiftIdToClose =
+          request.shiftId ?? (await UserDbHelper().getUserShiftId()) ?? 0;
       try {
         await ShiftDbHelper().closeShiftByLocalOrServerId(
           shiftId: shiftIdToClose,
@@ -261,6 +438,123 @@ class ShiftRepository {
     }
   }
 
+  Future<ShiftResponse> _closeExternalShift({
+    required String serverShiftId,
+    required int localShiftId,
+    required num closingCash,
+    required String cashierName,
+  }) async {
+    final payload = <String, dynamic>{
+      'shift_id': serverShiftId,
+      'closing_cash_actual': closingCash,
+    };
+    final response = await _helper.post(
+      _closeShiftUrl,
+      payload,
+      true,
+      validateMarchentUrl: true,
+    );
+
+    final dynamic decoded =
+    response is String ? json.decode(response) : response;
+    if (decoded is! Map) {
+      throw const FormatException(
+        'Unexpected response format when closing shift.',
+      );
+    }
+    final responseData = Map<String, dynamic>.from(decoded);
+    if (responseData['success'] == false) {
+      throw Exception(
+        responseData['message']?.toString() ?? 'Shift close was rejected.',
+      );
+    }
+
+    final shiftData = responseData['shift'] is Map
+        ? Map<String, dynamic>.from(responseData['shift'] as Map)
+        : responseData;
+    final rawOverShort =
+        shiftData['cashDifference'] ?? shiftData['overShort'] ?? 0;
+    final overShort = rawOverShort is num
+        ? rawOverShort
+        : num.tryParse(rawOverShort.toString()) ?? 0;
+    return ShiftResponse(
+      shiftId: localShiftId,
+      externalShiftId: serverShiftId,
+      userName:
+      (shiftData['cashierName'] ?? shiftData['cashier_name'])?.toString() ??
+          cashierName,
+      totalAmount: closingCash,
+      overShort: overShort,
+      status: (shiftData['status'] ?? responseData['status'])?.toString() ??
+          'CLOSED',
+    );
+  }
+
+  ShiftResponse _parseOpenedShiftResponse(
+      dynamic response, {
+        required String cashierName,
+        required num openingCash,
+      }) {
+    final dynamic decoded;
+    if (response is String) {
+      decoded = json.decode(response);
+    } else {
+      decoded = response;
+    }
+    if (decoded is! Map) {
+      throw const FormatException(
+          'Unexpected response format when opening shift.');
+    }
+    final responseData = Map<String, dynamic>.from(decoded);
+    final data = responseData['data'] ?? responseData['shift'];
+    final nestedShift = data is Map ? data['shift'] : null;
+    final shiftData = nestedShift is Map
+        ? Map<String, dynamic>.from(nestedShift)
+        : data is Map
+        ? Map<String, dynamic>.from(data)
+        : responseData;
+
+    final rawShiftId = responseData['shiftId'] ??
+        shiftData['shift_id'] ??
+        shiftData['shiftId'] ??
+        shiftData['id'] ??
+        responseData['shift_id'] ??
+        responseData['id'];
+    final externalId = rawShiftId?.toString().trim();
+    if (externalId == null || externalId.isEmpty) {
+      throw const FormatException(
+        'Shift-open response did not contain a shift ID.',
+      );
+    }
+    final numericShiftId = int.tryParse(externalId);
+
+    final rawTotal = shiftData['total_amount'] ??
+        shiftData['opening_cash'] ??
+        responseData['total_amount'] ??
+        responseData['opening_cash'];
+    final totalAmount = rawTotal is num
+        ? rawTotal
+        : num.tryParse(rawTotal?.toString() ?? '') ?? openingCash;
+    final rawOverShort = shiftData['over_short'] ?? responseData['over_short'];
+    final overShort = rawOverShort is num
+        ? rawOverShort
+        : num.tryParse(rawOverShort?.toString() ?? '') ?? 0;
+
+    return ShiftResponse(
+      shiftId: numericShiftId ?? 0,
+      externalShiftId: numericShiftId == null ? externalId : null,
+      userName: (shiftData['cashier_name'] ??
+          shiftData['user'] ??
+          responseData['cashier_name'])
+          ?.toString() ??
+          cashierName,
+      totalAmount: totalAmount,
+      overShort: overShort,
+      status:
+      (shiftData['status'] ?? responseData['status'])?.toString() ?? 'open',
+    );
+  }
+
   /// Replays closes made while disconnected before a new authentication is
   /// requested. This releases the server-side open shift/session that would
   /// otherwise produce `session_active_elsewhere` on the next login.
@@ -271,18 +565,37 @@ class ShiftRepository {
     var syncedClosure = false;
     for (final shift in pending) {
       if (shift[AppDBConst.shiftStatus]?.toString() != 'CLOSED') continue;
-      final serverId = shift[AppDBConst.shiftServerId] as int?;
-      if (serverId == null) continue; // Locally opened shifts need a server create first.
+      final serverId = shift[AppDBConst.shiftServerId]?.toString();
+      if (serverId == null || serverId.isEmpty)
+        continue; // Locally opened shifts need a server create first.
 
       final rawPayload = shift['close_payload']?.toString();
       if (rawPayload == null || rawPayload.isEmpty) continue;
       final payload = jsonDecode(rawPayload) as Map<String, dynamic>;
-      payload['shift_id'] = serverId;
-      payload['status'] = 'closed';
-
-      final url =
-          '${UrlHelper.componentVersionUrl}${UrlMethodConstants.shifts}${EndUrlConstants.createShiftEndUrl}';
-      await _helper.post(url, payload, true);
+      if (serverId.startsWith('SHIFT-')) {
+        final closingCash = num.tryParse(
+          (payload['total_amount'] ?? payload['closing_cash_actual'])
+              ?.toString() ??
+              '',
+        ) ??
+            0;
+        final userData = await UserDbHelper().getUserData();
+        await _closeExternalShift(
+          serverShiftId: serverId,
+          localShiftId: shift[AppDBConst.shiftLocalId] as int,
+          closingCash: closingCash,
+          cashierName:
+          userData?[AppDBConst.userDisplayName]?.toString() ?? 'Cashier',
+        );
+      } else {
+        final numericServerId = int.tryParse(serverId);
+        if (numericServerId == null) continue;
+        payload['shift_id'] = numericServerId;
+        payload['status'] = 'closed';
+        final url =
+            '${UrlHelper.componentVersionUrl}${UrlMethodConstants.shifts}${EndUrlConstants.createShiftEndUrl}';
+        await _helper.post(url, payload, true);
+      }
       await ShiftDbHelper().markShiftClosureSynced(
         shift[AppDBConst.shiftLocalId] as int,
       );
@@ -305,7 +618,8 @@ class ShiftRepository {
     }
   }
 
-  Future<ShiftResponse> _manageShiftPayload(Map<String, dynamic> payload) async {
+  Future<ShiftResponse> _manageShiftPayload(
+      Map<String, dynamic> payload) async {
     final url =
         "${UrlHelper.componentVersionUrl}${UrlMethodConstants.shifts}${EndUrlConstants.createShiftEndUrl}";
 
@@ -361,23 +675,15 @@ class ShiftRepository {
       final String shiftStatus =
           shift[AppDBConst.shiftStatus]?.toString() ?? '';
 
-      final String? requestPayloadStr =
-      shift['request_payload'] as String?;
+      final String? requestPayloadStr = shift['request_payload'] as String?;
 
-      final String? closePayloadStr =
-      shift['close_payload'] as String?;
+      final String? closePayloadStr = shift['close_payload'] as String?;
 
-      int? serverShiftId;
-
-      final rawServerShiftId =
-      shift[AppDBConst.shiftServerId];
-
-      if (rawServerShiftId != null &&
-          rawServerShiftId.toString().isNotEmpty &&
-          rawServerShiftId.toString() != 'null') {
-        serverShiftId =
-            int.tryParse(rawServerShiftId.toString());
-      }
+      final rawServerShiftId = shift[AppDBConst.shiftServerId];
+      Object? serverShiftId =
+      rawServerShiftId?.toString().trim().isNotEmpty == true
+          ? rawServerShiftId
+          : null;
 
       try {
         // ============================================================
@@ -388,16 +694,14 @@ class ShiftRepository {
         // ============================================================
 
         if (serverShiftId == null) {
-          if (requestPayloadStr == null ||
-              requestPayloadStr.isEmpty) {
+          if (requestPayloadStr == null || requestPayloadStr.isEmpty) {
             throw Exception(
               'No request payload available for local shift '
                   '$localShiftId',
             );
           }
 
-          final Map<String, dynamic> openPayload =
-          Map<String, dynamic>.from(
+          final Map<String, dynamic> openPayload = Map<String, dynamic>.from(
             jsonDecode(requestPayloadStr),
           );
 
@@ -421,13 +725,6 @@ class ShiftRepository {
 
           serverShiftId = openResponse.shiftId;
 
-          if (serverShiftId == null) {
-            throw Exception(
-              'Server did not return shiftId for '
-                  'local shift $localShiftId',
-            );
-          }
-
           if (kDebugMode) {
             print(
               '🎉 [ShiftSync] Server shift created. '
@@ -438,15 +735,14 @@ class ShiftRepository {
           // Save server ID locally and cascade it to orders
           await _shiftDbHelper.updateShiftServerIdAndCascade(
             localShiftId: localShiftId,
-            serverShiftId: serverShiftId,
+            serverShiftId: int.parse(serverShiftId.toString()),
           );
 
           // Keep LOCAL shift ID in UserDB / SharedPreferences
           if (shiftStatus == TextConstants.open) {
             await UserDbHelper().updateUserShiftId(localShiftId);
 
-            final prefs =
-            await SharedPreferences.getInstance();
+            final prefs = await SharedPreferences.getInstance();
 
             await prefs.setInt(
               'active_local_shift_id',
@@ -476,23 +772,16 @@ class ShiftRepository {
             );
           }
 
-          if (closePayloadStr == null ||
-              closePayloadStr.isEmpty) {
+          if (closePayloadStr == null || closePayloadStr.isEmpty) {
             throw Exception(
               'No close payload available for '
                   'local shift $localShiftId',
             );
           }
 
-          final Map<String, dynamic> closePayload =
-          Map<String, dynamic>.from(
+          final Map<String, dynamic> closePayload = Map<String, dynamic>.from(
             jsonDecode(closePayloadStr),
           );
-
-          // IMPORTANT:
-          // API must receive SERVER shift ID.
-          closePayload['shift_id'] = serverShiftId;
-          closePayload['status'] = TextConstants.closed;
 
           if (kDebugMode) {
             print(
@@ -506,8 +795,29 @@ class ShiftRepository {
             );
           }
 
-          final ShiftResponse closeResponse =
-          await _manageShiftPayload(closePayload);
+          final ShiftResponse closeResponse;
+          final externalServerShiftId = serverShiftId.toString();
+          if (externalServerShiftId.startsWith('SHIFT-')) {
+            final closingCash = num.tryParse(
+              (closePayload['total_amount'] ??
+                  closePayload['closing_cash_actual'])
+                  ?.toString() ??
+                  '',
+            ) ??
+                0;
+            final userData = await UserDbHelper().getUserData();
+            closeResponse = await _closeExternalShift(
+              serverShiftId: externalServerShiftId,
+              localShiftId: localShiftId,
+              closingCash: closingCash,
+              cashierName: userData?[AppDBConst.userDisplayName]?.toString() ??
+                  'Cashier',
+            );
+          } else {
+            closePayload['shift_id'] = serverShiftId;
+            closePayload['status'] = TextConstants.closed;
+            closeResponse = await _manageShiftPayload(closePayload);
+          }
 
           if (kDebugMode) {
             print(
@@ -536,8 +846,7 @@ class ShiftRepository {
         // OFFLINE SHIFT WAS OPEN AND HAS NOW BEEN CREATED SERVER-SIDE
         // ============================================================
 
-        else if (shiftStatus == TextConstants.open &&
-            serverShiftId != null) {
+        else if (shiftStatus == TextConstants.open && serverShiftId != null) {
           await _shiftDbHelper.markShiftFullySynced(
             localShiftId,
           );
@@ -573,5 +882,4 @@ class ShiftRepository {
       }
     }
   }
-
 }

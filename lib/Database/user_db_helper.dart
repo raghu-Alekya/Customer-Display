@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import '../Screens/Auth/store_id_screen.dart'; // DeviceHelper
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import '../Constants/text.dart';
@@ -102,6 +103,20 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
         : '';
 
     // 3. Prepare user data map
+    // Device id used by shift open API (must match login device-id)
+    String posDeviceId = '';
+    try {
+      posDeviceId = (await DeviceHelper.getDeviceId()).trim();
+    } catch (_) {}
+    if (posDeviceId.isEmpty) {
+      posDeviceId = existingUser.isNotEmpty
+          ? (existingUser.first[AppDBConst.posDeviceId]?.toString() ?? '')
+          : '';
+    }
+    if (kDebugMode) {
+      print('#### saveUserData pos_device_id: $posDeviceId');
+    }
+
     Map<String, dynamic> userMap = {
       AppDBConst.userId: numericUserId,
       AppDBConst.userRole: loginResponse.role ?? 'CASHIER',
@@ -116,6 +131,7 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       // Build #offline: cache terminal identity on every login
       AppDBConst.deviceDisplayName: loginResponse.deviceDisplayName ?? '',
       AppDBConst.tableId: loginResponse.tableId ?? '',
+      AppDBConst.posDeviceId: posDeviceId,
     };
 
     if (existingUser.isNotEmpty) {
