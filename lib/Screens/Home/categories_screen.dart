@@ -1954,7 +1954,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     });
     try {
       final response =
-          await _connectorCategoryRepo.getCategories(parent: parentCategoryId);
+      await _connectorCategoryRepo.getCategories(parent: parentCategoryId);
       if (!mounted) return;
 
       final cats = response.categories.map((category) {
@@ -2023,7 +2023,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     });
     try {
       final response =
-          await _connectorCategoryRepo.getProductsByCategory(categoryId);
+      await _connectorCategoryRepo.getProductsByCategory(categoryId);
       final products = response.products.map((product) {
         return IndigoCategoryBasedProducts(
           id: product.id,
@@ -2034,27 +2034,27 @@ class _CategoriesScreenState extends State<CategoriesScreen>
           salePrice: product.salePrice,
           categories: product.categories
               .map((category) => IndigoCategory(
-                    id: category.id,
-                    name: category.name,
-                    slug: category.slug,
-                  ))
+            id: category.id,
+            name: category.name,
+            slug: category.slug,
+          ))
               .toList(),
           tags: product.tags
               .map((tag) => IndigoTag(
-                    id: tag.id ?? 0,
-                    name: tag.name ?? '',
-                    slug: tag.slug ?? '',
-                  ))
+            id: tag.id ?? 0,
+            name: tag.name ?? '',
+            slug: tag.slug ?? '',
+          ))
               .toList(),
           images: product.images,
           taxRates: product.tax?.taxRates
-                  .map((rate) => IndigoTaxRate(
-                        label: rate.label,
-                        rate: rate.rate,
-                        compound: false,
-                        shipping: false,
-                      ))
-                  .toList() ??
+              .map((rate) => IndigoTaxRate(
+            label: rate.label,
+            rate: rate.rate,
+            compound: false,
+            shipping: false,
+          ))
+              .toList() ??
               const [],
           type: product.type,
           metaData: product.metaData,
@@ -2766,8 +2766,10 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       int productId) async {
     try {
       final token = await _getAuthTokenFromDb();
-      final url = Uri.parse(
-          "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations");
+      // Connector: GET /store/{storeId}/products/{productId}/variations
+      final urlString =
+      await ProductRepository.buildVariationsUrl(productId);
+      final url = Uri.parse(urlString);
       final response =
       await http.get(url, headers: {"Authorization": "Bearer $token"});
 
@@ -2983,7 +2985,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   }
 
 
-  
+
   Future<void> _loadLastSelectedCategory() async {
     if (categories.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
@@ -3716,40 +3718,40 @@ class _CategoriesScreenState extends State<CategoriesScreen>
             ),
           )
         else if (_selectedIndigoSubCategoryIndex != null &&
-            _indigoProducts.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text("No products in this category.",
-                style: TextStyle(fontSize: 12, color: Colors.grey)),
-          )
-        else if (_indigoProducts.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 4, 10, 12),
-              child: LayoutBuilder(builder: (context, constraints) {
-                const int cols = 4;
-                const double gap = 8.0;
-                final double cardW =
-                    (constraints.maxWidth - gap * (cols - 1)) / cols;
-                const double cardH = 72.0;
-                return Wrap(
-                  spacing: gap,
-                  runSpacing: gap,
-                  children: _indigoProducts
-                      .take(_visibleIndigoProductCount)
-                      .map((product) {
-                    return SizedBox(
-                      width: cardW,
-                      height: cardH,
-                      child: _IndigoProductCard(
-                        product: product,
-                        isDark: isDark,
-                        onTap: () => _onIndigoProductTapped(product),
-                      ),
-                    );
-                  }).toList(),
-                );
-              }),
-            ),
+              _indigoProducts.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text("No products in this category.",
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+            )
+          else if (_indigoProducts.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 4, 10, 12),
+                child: LayoutBuilder(builder: (context, constraints) {
+                  const int cols = 4;
+                  const double gap = 8.0;
+                  final double cardW =
+                      (constraints.maxWidth - gap * (cols - 1)) / cols;
+                  const double cardH = 72.0;
+                  return Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: _indigoProducts
+                        .take(_visibleIndigoProductCount)
+                        .map((product) {
+                      return SizedBox(
+                        width: cardW,
+                        height: cardH,
+                        child: _IndigoProductCard(
+                          product: product,
+                          isDark: isDark,
+                          onTap: () => _onIndigoProductTapped(product),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                }),
+              ),
         if (_isIndigoPaginating &&
             _visibleIndigoProductCount < _indigoProducts.length)
           const Padding(
@@ -4062,7 +4064,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         ],
 
       ),
-      
+
     );
   }
 

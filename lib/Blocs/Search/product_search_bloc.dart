@@ -81,15 +81,14 @@ class ProductBloc { // Build #1.0.13: Added Product Search Bloc
 
     variationSink.add(APIResponse.loading("Loading variations..."));
     try {
+      List<ProductVariation> variations =
+      await _productRepository.fetchProductVariations(productId);
 
-      // List<ProductVariation> variations = await _productRepository.fetchProductVariations(productId);
-
-      // if (kDebugMode) {
-      //   print("ProductBloc - Fetched ${variations.length} variations for product $productId");
-      //   print("variations: $variations"); // Build #1.0.256
-      // }
-      // variationSink.add(APIResponse.completed(variations));
-
+      if (kDebugMode) {
+        print(
+            "ProductBloc - Fetched ${variations.length} variations for product $productId");
+      }
+      variationSink.add(APIResponse.completed(variations));
     } catch (e) {
       if (e.toString().contains('Unauthorised')) {
         variationSink.add(APIResponse.error("Unauthorised. Session is expired."));

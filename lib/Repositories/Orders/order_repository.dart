@@ -25,15 +25,15 @@ import '../../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import '../../Utilities/global_utility.dart';
 
 double resolveOfflineMerchantDiscountAmount(
-  Map<String, dynamic> offlineOrder, {
-  double? lineItemsTotal,
-}) {
+    Map<String, dynamic> offlineOrder, {
+      double? lineItemsTotal,
+    }) {
   double amount = (double.tryParse(
-            offlineOrder['merchantDiscount']?.toString() ??
-                offlineOrder['merchant_discount']?.toString() ??
-                '0',
-          ) ??
-          0.0)
+    offlineOrder['merchantDiscount']?.toString() ??
+        offlineOrder['merchant_discount']?.toString() ??
+        '0',
+  ) ??
+      0.0)
       .abs();
 
   if (amount > 0.000001) {
@@ -43,13 +43,13 @@ double resolveOfflineMerchantDiscountAmount(
   final String type =
       offlineOrder['merchantDiscountType']?.toString() ?? 'fixed';
   final double perc = double.tryParse(
-        offlineOrder['merchantDiscountPercentage']?.toString() ?? '0',
-      ) ??
+    offlineOrder['merchantDiscountPercentage']?.toString() ?? '0',
+  ) ??
       0.0;
   final double fixed = (double.tryParse(
-            offlineOrder['merchantDiscountFixed']?.toString() ?? '0',
-          ) ??
-          0.0)
+    offlineOrder['merchantDiscountFixed']?.toString() ?? '0',
+  ) ??
+      0.0)
       .abs();
 
   if (type == 'percentage' && perc > 0) {
@@ -59,21 +59,21 @@ double resolveOfflineMerchantDiscountAmount(
     }
     if (gross <= 0) {
       final products =
-          (offlineOrder['products'] ?? offlineOrder['items'] ?? []) as List;
+      (offlineOrder['products'] ?? offlineOrder['items'] ?? []) as List;
       for (final raw in products) {
         if (raw is! Map) continue;
         final item = Map<String, dynamic>.from(raw);
         final price = double.tryParse(
-              item['item_price']?.toString() ??
-                  item['price']?.toString() ??
-                  '0',
-            ) ??
+          item['item_price']?.toString() ??
+              item['price']?.toString() ??
+              '0',
+        ) ??
             0.0;
         final qty = int.tryParse(
-              item['items_count']?.toString() ??
-                  item['quantity']?.toString() ??
-                  '1',
-            ) ??
+          item['items_count']?.toString() ??
+              item['quantity']?.toString() ??
+              '1',
+        ) ??
             1;
         gross += price * qty;
       }
@@ -82,7 +82,7 @@ double resolveOfflineMerchantDiscountAmount(
     final double orderDisc =
         (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
     final double base =
-        (gross - orderDisc.abs()).clamp(0.0, double.infinity);
+    (gross - orderDisc.abs()).clamp(0.0, double.infinity);
     amount = (base * perc) / 100.0;
   } else if (fixed > 0) {
     amount = fixed;
@@ -3431,7 +3431,29 @@ class OrderRepository {
       }
 
       if (decoded is Map<String, dynamic> && decoded['id'] != null) {
-        final int serverOrderId = int.tryParse(decoded['id'].toString()) ?? 0;
+        // Connector create-order returns UUID string `id` plus optional `number` / woo ids.
+        final int serverOrderId = int.tryParse(decoded['number']?.toString() ?? '') ??
+            int.tryParse(decoded['woo_order_id']?.toString() ?? '') ??
+            int.tryParse(decoded['id'].toString()) ??
+            (decoded['id'].toString().hashCode.abs() % 2000000000);
+        // Persist server UUID for future updates if present
+        try {
+          final String serverUuid = decoded['id']?.toString() ?? '';
+          if (serverUuid.isNotEmpty && localOrderIdInt != null) {
+            final box = StorageProvider.offlineOrders;
+            final key = localOrderIdInt.toString();
+            final existing = await box.get(key);
+            if (existing is Map) {
+              final updated = Map<String, dynamic>.from(existing);
+              updated['server_order_uuid'] = serverUuid;
+              updated['server_order_id'] = serverOrderId;
+              if (decoded['store_order_id'] != null) {
+                updated['store_order_id'] = decoded['store_order_id'].toString();
+              }
+              await box.put(key, updated);
+            }
+          }
+        } catch (_) {}
         final double wooTax =
             double.tryParse(decoded['total_tax']?.toString() ?? "0") ?? 0.0;
         final double wooTotal =
@@ -5146,6 +5168,7 @@ class OrderRepository {
   }
 
   //Build #1.0.40: getOrders
+  // Prefer connector total-orders list shape when available; still accept a raw list.
   Future<OrdersListModel> getOrders(
       {bool allStatuses = false,
         int pageNumber = 1,
@@ -5160,21 +5183,26 @@ class OrderRepository {
         ? TextConstants.orderScreenStatus
         : TextConstants.processing);
 
-    orderType = orderType != "" ? orderType : "";
-    //
-    // final userData = await UserDbHelper().getUserData();
-    // userId = "${userData?[AppDBConst.userId]}"; ///Added to filter user based processing orders as per requirement update on 7-Jul-25
-    //"?page=1&per_page=10&search=&status="
-    var getOrdersParameter =
-        "?author=$userId&page=$pageNumber&per_page=$pageLimit&created_via=$orderType&search=&status=";
-    // Encode for URL (spaces become '+', commas become '%2C')
-    final encodedStatus = Uri.encodeQueryComponent(statusString);
-    final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}"
-        "$getOrdersParameter$encodedStatus";
-    //"${UrlParameterConstants.getOrdersEndParameter}"; # Build 1.0.172 removed them so that when applied date filter, data is fetching properly.
+    final createdVia = orderType.trim().isNotEmpty ? orderType.trim() : 'rest-api';
+    final query = <String, String>{
+      'page': '$pageNumber',
+      'per_page': '$pageLimit',
+      'status': statusString,
+      'created_via': createdVia,
+    };
+    if (userId.trim().isNotEmpty) {
+      query['author'] = userId.trim();
+    }
+    final qs = query.entries
+        .map((e) =>
+    '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}')
+        .join('&');
+    // Connector order list endpoint used by Orders screen
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/${UrlMethodConstants.totalOrders}?$qs";
 
     if (kDebugMode) {
-      print("OrderRepository - GET URL: $url");
+      print("OrderRepository - GET orders URL: $url");
     }
 
     try {
@@ -5185,23 +5213,26 @@ class OrderRepository {
         print("OrderRepository - Raw Response: ${response.toString()}");
       }
 
-      // Handle case where response is already a List<dynamic>
-      if (response is List<dynamic>) {
-        return OrdersListModel.fromJson(response);
+      dynamic parsed = response;
+      if (response is String) {
+        parsed = jsonDecode(response);
       }
-      // Handle case where response might be a String that needs parsing
-      else if (response is String) {
-        final parsed = jsonDecode(response);
-        if (parsed is List<dynamic>) {
-          return OrdersListModel.fromJson(parsed);
+
+      // Connector total-orders returns { order_total_count, orders_data: [...] }
+      if (parsed is Map<String, dynamic>) {
+        final list = parsed['orders_data'] ?? parsed['orders'] ?? parsed['data'];
+        if (list is List) {
+          return OrdersListModel.fromJson(list);
         }
         throw Exception(
-            "Unexpected parsed response type: ${parsed.runtimeType}");
+            "Unexpected orders map keys: ${parsed.keys.toList()}");
       }
-      // Handle any other unexpected type
-      else {
-        throw Exception("Unexpected response type: ${response.runtimeType}");
+
+      if (parsed is List<dynamic>) {
+        return OrdersListModel.fromJson(parsed);
       }
+
+      throw Exception("Unexpected response type: ${parsed.runtimeType}");
     } catch (e, s) {
       if (kDebugMode) {
         print("OrderRepository - Error in getOrders: $e");
@@ -5223,6 +5254,9 @@ class OrderRepository {
   }
 
   // Build #1.0.118: Fetch Total Orders Count API Call for Orders Screen
+  // Connector API:
+  // GET /orders/total-orders?page=1&per_page=10&status=pending,%20processing,...&created_via=rest-api
+  // Headers: Authorization Bearer (+ x-merchant-id / x-store-id via APIHelper)
   Future<TotalOrdersResponseModel> fetchTotalOrdersCount(
       {bool allStatuses = false,
         int pageNumber = 1,
@@ -5238,18 +5272,41 @@ class OrderRepository {
         ? TextConstants.orderScreenStatus
         : TextConstants.processing);
 
-    orderType = orderType != "" ? orderType : "";
-    var getOrdersParameter =
-    """
-?author=$userId&page=$pageNumber&per_page=$pageLimit&created_via=$orderType&after=$startDate&before=$endDate&search=$search&status="""; //Build #1.0.134: updated new parameters startDate, endDate
-    // Encode for URL (spaces become '+', commas become '%2C')
+    // New connector total-orders uses created_via=rest-api for POS orders.
+    final createdVia = orderType.trim().isNotEmpty ? orderType.trim() : 'rest-api';
     final encodedStatus = Uri.encodeQueryComponent(statusString);
+
+    final query = <String, String>{
+      'page': '$pageNumber',
+      'per_page': '$pageLimit',
+      'status': statusString,
+      'created_via': createdVia,
+    };
+    if (search.trim().isNotEmpty) {
+      query['search'] = search.trim();
+    }
+    if (startDate.trim().isNotEmpty) {
+      query['after'] = startDate.trim();
+    }
+    if (endDate.trim().isNotEmpty) {
+      query['before'] = endDate.trim();
+    }
+    // Optional author filter when provided by UI
+    if (userId.trim().isNotEmpty) {
+      query['author'] = userId.trim();
+    }
+
+    final qs = query.entries
+        .map((e) =>
+    '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}')
+        .join('&');
+    // Keep status as server expects (spaces encoded as %20 via encodeQueryComponent)
     final url =
-        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/${UrlMethodConstants.totalOrders}$getOrdersParameter$encodedStatus";
-    //"${UrlParameterConstants.getOrdersEndParameter}"; # Build 1.0.172 removed them so that when applied date filter, data is fetching properly.
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/${UrlMethodConstants.totalOrders}?$qs";
 
     if (kDebugMode) {
-      print("OrderRepository - GET URL: $url");
+      print("OrderRepository - GET total-orders URL: $url");
+      print("OrderRepository - status (raw): $statusString encoded: $encodedStatus");
     }
 
     try {
@@ -5313,7 +5370,7 @@ class OrderRepository {
         }
         final countResult = await db.rawQuery(
           'SELECT COUNT(*) as cnt FROM ${AppDBConst.orderTable}'
-          '${whereClauses.isNotEmpty ? ' WHERE ${whereClauses.join(' AND ')}' : ''}',
+              '${whereClauses.isNotEmpty ? ' WHERE ${whereClauses.join(' AND ')}' : ''}',
           whereArgs.isNotEmpty ? whereArgs : null,
         );
         final count = countResult.isNotEmpty

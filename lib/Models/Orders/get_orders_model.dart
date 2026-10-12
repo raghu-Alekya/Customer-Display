@@ -893,9 +893,23 @@ class OrderModel {
     final refundOrderTotal = double.tryParse(json['refund_order_total']?.toString() ?? '0') ?? 0.0;
     final netPayment = double.tryParse(json['net_payment']?.toString() ?? '0') ?? 0.0;
 
+    // Connector returns UUID string in `id` and numeric Woo id in `woo_order_id`.
+    // Prefer numeric woo_order_id / number for local int id; fall back to hash of UUID.
+    int resolveOrderId() {
+      final woo = int.tryParse(json['woo_order_id']?.toString() ?? '');
+      if (woo != null && woo > 0) return woo;
+      final numField = int.tryParse(json['number']?.toString() ?? '');
+      if (numField != null && numField > 0) return numField;
+      final direct = int.tryParse(json['id']?.toString() ?? '');
+      if (direct != null && direct > 0) return direct;
+      final raw = json['id']?.toString() ?? '';
+      if (raw.isEmpty) return 0;
+      return raw.hashCode.abs() % 2000000000;
+    }
+
     return OrderModel(
-      id: json['id'] ?? 0,
-      parentId: json['parent_id'] ?? 0,
+      id: resolveOrderId(),
+      parentId: int.tryParse(json['parent_id']?.toString() ?? '0') ?? 0,
       status: (json['status'] ?? json['state'] ?? '').toString(),
       currency: json['currency'] ?? 'USD',
       version: json['version'] ?? '',

@@ -8,6 +8,8 @@ import '../../Models/Search/product_custom_item_model.dart';
 import '../../Models/Search/product_by_sku_model.dart';
 import '../../Models/Search/product_search_model.dart';
 import '../../Models/Search/product_variation_model.dart';
+import '../Auth/AuthIdsStore.dart';
+import '../../core/api/token_storage.dart';
 
 class ProductRepository { // Build #1.0.13 : added product search repository
   final APIHelper _helper = APIHelper();
@@ -28,6 +30,67 @@ class ProductRepository { // Build #1.0.13 : added product search repository
       }
     });
     return output;
+  }
+
+  /// Maps connector catalog product payload into the shape expected by
+  /// [ProductBySkuResponse.fromJson] (legacy Woo-style fields).
+  Map<String, dynamic> _normalizeCatalogProduct(Map<String, dynamic> raw) {
+    final map = Map<String, dynamic>.from(raw);
+
+    // image: "https://..." → images: [{ src: "..." }]
+    final imageVal = map['image'];
+    final hasImagesList =
+        map['images'] is List && (map['images'] as List).isNotEmpty;
+    if (!hasImagesList) {
+      if (imageVal is String && imageVal.trim().isNotEmpty) {
+        map['images'] = [
+          {
+            'id': 0,
+            'src': imageVal.trim(),
+            'name': '',
+            'alt': '',
+          }
+        ];
+      } else if (imageVal is Map) {
+        map['images'] = [Map<String, dynamic>.from(imageVal)];
+      } else {
+        map['images'] = map['images'] ?? [];
+      }
+    }
+
+    // categoryId / categoryName → categories: [{ id, name }]
+    final hasCategories =
+        map['categories'] is List && (map['categories'] as List).isNotEmpty;
+    if (!hasCategories && map['categoryId'] != null) {
+      map['categories'] = [
+        {
+          'id': map['categoryId'],
+          'name': map['categoryName']?.toString() ?? '',
+          'slug': '',
+        }
+      ];
+    }
+
+    // Price defaults
+    final price = map['price']?.toString() ?? '0';
+    if ((map['regular_price'] == null ||
+        map['regular_price'].toString().trim().isEmpty) &&
+        price.isNotEmpty) {
+      map['regular_price'] = price;
+    }
+
+    map['status'] = map['status'] ?? 'publish';
+    map['stock_status'] = map['stock_status'] ?? 'instock';
+    map['type'] = map['type'] ?? 'simple';
+    map['sku'] = map['sku']?.toString() ?? '';
+    map['name'] = map['name']?.toString() ?? '';
+    map['id'] = map['id'] ?? 0;
+    map['tags'] = map['tags'] ?? [];
+    map['meta_data'] = map['meta_data'] ?? [];
+    map['variations'] = map['variations'] ?? [];
+    map['attributes'] = map['attributes'] ?? [];
+
+    return map;
   }
 
   Future<List<ProductResponse>> fetchProducts(  {String? searchQuery}) async {
@@ -126,70 +189,105 @@ class ProductRepository { // Build #1.0.13 : added product search repository
   }
 
 
-//Build 1.1.36: Fetches product variations from the wc/v3 endpoint
-//   Future<List<ProductVariation>> fetchProductVariations(int productId) async {
-//     String url =
-//         "${UrlHelper.wooCommerceV3}${UrlMethodConstants.variations}/$productId${EndUrlConstants.variationsEndUrl}";
-//
-//     if (kDebugMode) {
-//       print("ProductRepository - FetchProductVariations URL: $url");
-//     }
-//
-//     final response = await _helper.get(url, true);
-//
-//     if (kDebugMode) {
-//       print("ProductRepository - FetchProductVariations Raw Response: $response");
-//     }
-//
-//     List<dynamic> responseData = [];
-//
-//     if (response is String) {
-//       responseData = json.decode(response);
-//     } else if (response is List) {
-//       responseData = response;
-//     } else {
-//       throw Exception("Unexpected response type");
-//     }
-//
-//     // ✅ Convert responseData → ProductVariation objects
-//     final variations = responseData
-//         .map((variationJson) => ProductVariation.fromJson(variationJson))
-//         .toList();
-//
-//     // ✅ Also store a normalized version in Hive for offline use
-//     try {
-//       final productBox = StorageProvider.productCache;
-//       final cacheKey = "product_${productId}_variations";
-//
-//       // Normalize variations for easier offline use
-//       final normalized = responseData.map((v) {
-//         final image = (v["image"] is Map && v["image"]["src"] != null)
-//             ? v["image"]["src"]
-//             : (v["image"] is String ? v["image"] : "");
-//         final name = (v["name"] is Map && v["name"]["rendered"] != null)
-//             ? v["name"]["rendered"]
-//             : (v["name"] is String ? v["name"] : "Unnamed Variant");
-//         final price = v["price"]?.toString() ?? "0";
-//
-//         return {
-//           "id": v["id"],
-//           "name": name,
-//           "price": price,
-//           "sku": v["sku"] ?? "",
-//           "image": image,
-//         };
-//       }).toList();
-//
-//       await productBox.put(cacheKey, {"variations": normalized});
-//       if (kDebugMode) {
-//         print("💾 Cached ${normalized.length} variations for product $productId");
-//       }
-//     } catch (e) {
-//       if (kDebugMode) print("⚠ Failed to cache variations for product $productId: $e");
-//     }
-//
-//     return variations;
-//   }
+  // Connector variations API (same response shape as legacy Woo list):
+  // GET /store/{storeId}/products/{productId}/variations
+  // Header: Authorization: Bearer <accessToken>
+  Future<List<ProductVariation>> fetchProductVariations(int productId) async {
+    final storeId = (await AuthIdsStore.getStoreId()).trim();
+    if (storeId.isEmpty) {
+      throw Exception(
+        'Missing saved store ID. Please complete merchant/store login again.',
+      );
+    }
+
+    // Path uses singular "store" (connector API)
+    final String url =
+        "store/$storeId/products/$productId/variations";
+
+    if (kDebugMode) {
+      print("ProductRepository - FetchProductVariations URL: $url");
+    }
+
+    final response = await _helper.get(url, true);
+
+    if (kDebugMode) {
+      print(
+          "ProductRepository - FetchProductVariations Raw Response type: ${response.runtimeType}");
+    }
+
+    List<dynamic> responseData = [];
+
+    if (response is String) {
+      final decoded = json.decode(response);
+      if (decoded is List) {
+        responseData = decoded;
+      } else if (decoded is Map) {
+        final nested = decoded['data'] ?? decoded['variations'];
+        responseData = nested is List ? nested : [decoded];
+      }
+    } else if (response is List) {
+      responseData = response;
+    } else if (response is Map) {
+      final nested = response['data'] ?? response['variations'];
+      responseData = nested is List ? nested : [response];
+    } else {
+      throw Exception("Unexpected response type: ${response.runtimeType}");
+    }
+
+    final variations = responseData
+        .whereType<Map>()
+        .map((variationJson) => ProductVariation.fromJson(
+      Map<String, dynamic>.from(variationJson),
+    ))
+        .toList();
+
+    // Cache normalized list for offline use (unchanged format)
+    try {
+      final productBox = StorageProvider.productCache;
+      final cacheKey = "product_${productId}_variations";
+
+      final normalized = responseData.whereType<Map>().map((v) {
+        final image = (v["image"] is Map && v["image"]["src"] != null)
+            ? v["image"]["src"]
+            : (v["image"] is String ? v["image"] : "");
+        final name = (v["name"] is Map && v["name"]["rendered"] != null)
+            ? v["name"]["rendered"]
+            : (v["name"] is String ? v["name"] : "Unnamed Variant");
+        final price = v["price"]?.toString() ?? "0";
+
+        return {
+          "id": v["id"],
+          "name": name,
+          "price": price,
+          "sku": v["sku"] ?? "",
+          "image": image,
+        };
+      }).toList();
+
+      await productBox.put(cacheKey, {"variations": normalized});
+      if (kDebugMode) {
+        print(
+            "💾 Cached ${normalized.length} variations for product $productId");
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("⚠ Failed to cache variations for product $productId: $e");
+      }
+    }
+
+    return variations;
+  }
+
+  /// Builds the connector variations URL for screens that call http.get directly.
+  static Future<String> buildVariationsUrl(int productId) async {
+    final storeId = (await AuthIdsStore.getStoreId()).trim();
+    if (storeId.isEmpty) {
+      throw Exception(
+        'Missing saved store ID. Please complete merchant/store login again.',
+      );
+    }
+    return "${UrlHelper.baseUrl}store/$storeId/products/$productId/variations";
+  }
 
 
   Future<List<ProductBySkuResponse>> fetchProductBySku(
@@ -220,16 +318,23 @@ class ProductRepository { // Build #1.0.13 : added product search repository
     }
 
     // ==========================================================
-    // 🌐 2️⃣ FETCH FROM BACKEND
+    // 🌐 2️⃣ FETCH FROM BACKEND (connector catalog by SKU / barcode)
+    // GET /stores/{storeId}/catalog/products/{sku}
+    // Header: Authorization: Bearer <accessToken>
     // ==========================================================
+    final storeId = (await AuthIdsStore.getStoreId()).trim();
+    if (storeId.isEmpty) {
+      throw Exception(
+        'Missing saved store ID. Please complete merchant/store login again.',
+      );
+    }
+
+    final encodedSku = Uri.encodeComponent(sku.trim());
     final String url =
-        "${UrlHelper.wooCommerceV3}"
-        "${UrlMethodConstants.products}"
-        "${UrlParameterConstants.productBySku}$sku"
-        "&status=publish";
+        "stores/$storeId/catalog/products/$encodedSku";
 
     if (kDebugMode) {
-      print("🌐 Fetching SKU from backend → $url");
+      print("🌐 Fetching SKU from connector catalog → $url");
     }
 
     final response = await _helper.get(url, true);
@@ -237,17 +342,33 @@ class ProductRepository { // Build #1.0.13 : added product search repository
     List<dynamic> responseList = [];
 
     if (response is String) {
-      responseList = json.decode(response);
+      final decoded = json.decode(response);
+      if (decoded is List) {
+        responseList = decoded;
+      } else if (decoded is Map) {
+        responseList = [decoded];
+      }
     } else if (response is List) {
       responseList = response;
     } else if (response is Map<String, dynamic>) {
-      responseList = [response];
+      // Some gateways wrap as { data: [...] } or single object
+      final data = response['data'] ?? response['products'];
+      if (data is List) {
+        responseList = data;
+      } else {
+        responseList = [response];
+      }
     } else {
       throw Exception("Unexpected response type: ${response.runtimeType}");
     }
 
-    final products =
-    responseList.map((e) => ProductBySkuResponse.fromJson(e)).toList();
+    // Normalize connector shape (image string, categoryId) → model shape
+    final products = responseList
+        .whereType<Map>()
+        .map((e) => ProductBySkuResponse.fromJson(
+      _normalizeCatalogProduct(Map<String, dynamic>.from(e)),
+    ))
+        .toList();
 
     // ==========================================================
     // 🚫 3️⃣ IF NOT FOUND → DELETE CACHE

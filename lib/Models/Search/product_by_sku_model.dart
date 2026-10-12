@@ -229,12 +229,38 @@ class ProductBySkuResponse { // Build #1.0.43: Added by naveen
           .toList() ??
           [],
       tags: json['tags'] != null
-          ? List<Tags>.from(json['tags'].map((x) => Tags.fromJson(x)))
+          ? List<Tags>.from(json['tags'].map((x) => Tags.fromJson(x is Map
+          ? Map<String, dynamic>.from(x)
+          : <String, dynamic>{})))
           : null,
-      images: (json['images'] as List<dynamic>?)
-          ?.map((e) => Image.fromJson(e))
-          .toList() ??
-          [],
+      // Support connector `image` string as well as Woo `images` array
+      images: () {
+        if (json['images'] is List && (json['images'] as List).isNotEmpty) {
+          return (json['images'] as List)
+              .map((e) => Image.fromJson(
+              e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{}))
+              .toList();
+        }
+        final img = json['image'];
+        if (img is String && img.trim().isNotEmpty) {
+          return [
+            Image(
+              id: 0,
+              dateCreated: '',
+              dateCreatedGmt: '',
+              dateModified: '',
+              dateModifiedGmt: '',
+              src: img.trim(),
+              name: '',
+              alt: '',
+            )
+          ];
+        }
+        if (img is Map) {
+          return [Image.fromJson(Map<String, dynamic>.from(img))];
+        }
+        return <Image>[];
+      }(),
       attributes: List<dynamic>.from(json['attributes'] ?? []),
       defaultAttributes: List<dynamic>.from(json['default_attributes'] ?? []),
       variations: List<dynamic>.from(json['variations'] ?? []),

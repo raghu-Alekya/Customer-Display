@@ -457,8 +457,12 @@ class CreateOrderResponseModel {
 
   factory CreateOrderResponseModel.fromJson(Map<String, dynamic> json) =>
       CreateOrderResponseModel(
-        id: json['id'] ?? 0,
-        parentId: json['parent_id'] ?? 0,
+        // Connector may return UUID `id`; prefer numeric number / woo_order_id.
+        id: int.tryParse(json['number']?.toString() ?? '') ??
+            int.tryParse(json['woo_order_id']?.toString() ?? '') ??
+            int.tryParse(json['id']?.toString() ?? '') ??
+            (json['id']?.toString().hashCode.abs() ?? 0) % 2000000000,
+        parentId: int.tryParse(json['parent_id']?.toString() ?? '0') ?? 0,
         status: json['status'] ?? '',
         currency: json['currency'] ?? '',
         discountTotal: json['discount_total'] ?? '0.00',

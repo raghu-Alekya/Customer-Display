@@ -451,16 +451,16 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         for (final p in payouts) {
           if (p is Map) {
             final double amt =
-                ((p['amount'] ?? p['price'] ?? 0) as num).toDouble().abs();
+            ((p['amount'] ?? p['price'] ?? 0) as num).toDouble().abs();
             if (amt > 0) {
               final int pId = int.tryParse(
-                      (p['payout_product_id'] ?? p['product_id'] ?? 0)
-                          .toString()) ??
+                  (p['payout_product_id'] ?? p['product_id'] ?? 0)
+                      .toString()) ??
                   0;
               final String pName =
-                  (p['product_name'] ?? p['name'] ?? 'Payout').toString();
+              (p['product_name'] ?? p['name'] ?? 'Payout').toString();
               final bool exists = items.any(
-                (i) => i.itemType == 'payout' || i.productId == pId.toString(),
+                    (i) => i.itemType == 'payout' || i.productId == pId.toString(),
               );
               if (!exists) {
                 items.add(CartItem.fromOrderItem({
@@ -482,15 +482,15 @@ class _RightOrderPanelState extends State<RightOrderPanel>
         for (final c in cashbacks) {
           if (c is Map) {
             final double amt =
-                ((c['amount'] ?? c['price'] ?? 0) as num).toDouble().abs();
+            ((c['amount'] ?? c['price'] ?? 0) as num).toDouble().abs();
             if (amt > 0) {
               final int cId = int.tryParse(
-                      (c['cashback_product_id'] ?? c['product_id'] ?? 0)
-                          .toString()) ??
+                  (c['cashback_product_id'] ?? c['product_id'] ?? 0)
+                      .toString()) ??
                   0;
               final bool exists = items.any(
-                (i) =>
-                    i.itemType == 'cashback' || i.productId == cId.toString(),
+                    (i) =>
+                i.itemType == 'cashback' || i.productId == cId.toString(),
               );
               if (!exists) {
                 items.add(CartItem.fromOrderItem({
@@ -3250,8 +3250,10 @@ class _RightOrderPanelState extends State<RightOrderPanel>
           try {
             final userData = await UserDbHelper().getUserData();
             final String token = userData?[AppDBConst.userToken] ?? "";
-            final uri = Uri.parse(
-                '${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/${product.id}/variations');
+            // Connector: GET /store/{storeId}/products/{productId}/variations
+            final urlString =
+            await ProductRepository.buildVariationsUrl(product.id);
+            final uri = Uri.parse(urlString);
             final headers = <String, String>{
               if (token.isNotEmpty) 'Authorization': 'Bearer $token',
             };

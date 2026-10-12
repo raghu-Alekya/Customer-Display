@@ -528,7 +528,7 @@ class NestedGridWidget extends StatelessWidget {
                               tags = _parseNestedTags(item["meta_data"]);
                             }
 
-                            
+
                             if (tags.isNotEmpty) {
                               print("🏷️ Tags: ${tags.map((t) => "${t['name'] ?? ''} (${t['slug'] ?? ''})").toList()}");
                             } else {
@@ -1635,9 +1635,10 @@ Future<List<Map<String, dynamic>>> _fetchVariationsFromApiNestedGrid(
     int productId) async {
   try {
     final token = await _getAuthTokenForNestedGrid();
-    final url = Uri.parse(
-      "${UrlHelper.baseUrl}${UrlHelper.wooCommerceV3}products/$productId/variations",
-    );
+    // Connector: GET /store/{storeId}/products/{productId}/variations
+    final urlString =
+    await ProductRepository.buildVariationsUrl(productId);
+    final url = Uri.parse(urlString);
     final response =
     await http.get(url, headers: {"Authorization": "Bearer $token"});
     if (response.statusCode != 200) return <Map<String, dynamic>>[];
