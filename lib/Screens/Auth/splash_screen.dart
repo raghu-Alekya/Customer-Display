@@ -54,22 +54,19 @@ class _SplashScreenState extends State<SplashScreen> {
       debugPrint('[Splash] Startup recovery skipped: $e');
     }
 
-    // Merchant/store login gate (strict):
-    // - 1st launch / cleared data → StoreIdScreen (merchant name, id, password)
-    // - Only after successful merchant login (AuthIdsStore.save) → LoginScreen (PIN)
-    // SQLite alone must NEVER skip merchant login.
+    // Merchant login gate:
+    // - Merchant login completed in THIS build → employee PIN
+    // - flutter clean removes build marker → merchant login again
+    // - Clear data / logout → merchant login
     bool isValid = false;
     try {
       isValid = await AuthIdsStore.isMerchantLoginDone()
           .timeout(const Duration(seconds: 2));
-      final merchantId = (await AuthIdsStore.getMerchantId()).trim();
       final storeId = (await AuthIdsStore.getStoreId()).trim();
-      debugPrint(
-          '[Splash] merchantLoginDone=$isValid merchantId=${merchantId.isNotEmpty} storeId=${storeId.isNotEmpty}');
       if (isValid) {
-        debugPrint('[Splash] → Employee PIN screen (storeId=$storeId)');
+        debugPrint('[Splash] → Employee PIN (storeId=$storeId)');
       } else {
-        debugPrint('[Splash] → Merchant/Store login screen');
+        debugPrint('[Splash] → Merchant login (no session for this build)');
       }
     } catch (e) {
       debugPrint('[Splash] Store login check failed: $e');
