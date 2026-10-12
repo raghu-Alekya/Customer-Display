@@ -341,13 +341,25 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
                                 .saveStoreValidationData(
                                 store);
 
-                            // Persist merchant/store identifiers before opening employee PIN login.
-                            if (store.merchantId.trim().isNotEmpty &&
-                                store.storeId.trim().isNotEmpty) {
+                            // Always persist merchant/store IDs (SharedPreferences)
+                            // so next app open skips merchant login → employee PIN.
+                            // Fall back to form fields if API omits ids.
+                            final mid = store.merchantId.trim().isNotEmpty
+                                ? store.merchantId.trim()
+                                : _usernameController.text.trim();
+                            final sid = store.storeId.trim().isNotEmpty
+                                ? store.storeId.trim()
+                                : _storeIdController.text.trim();
+                            if (mid.isNotEmpty && sid.isNotEmpty) {
                               await AuthIdsStore.save(
-                                merchantId: store.merchantId.trim(),
-                                storeId: store.storeId.trim(),
+                                merchantId: mid,
+                                storeId: sid,
                               );
+                              debugPrint(
+                                  '[StoreLogin] Saved AuthIdsStore merchant=$mid store=$sid');
+                            } else {
+                              debugPrint(
+                                  '[StoreLogin] WARNING: could not save AuthIds (merchant or store empty)');
                             }
 
                             if (!mounted) return;

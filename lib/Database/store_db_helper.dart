@@ -4,6 +4,7 @@ import '../Constants/text.dart';
 import '../Models/Auth/store_validation_model.dart';
 import '../Preferences/pinaka_preferences.dart';
 import 'db_helper.dart';
+import '../Repositories/Auth/AuthIdsStore.dart';
 
 class StoreDbHelper { //Build #1.0.126: Updated code - store validation data management
   static final StoreDbHelper instance = StoreDbHelper._internal();
@@ -193,12 +194,19 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
     return data?[AppDBConst.deviceTableId] as String?;
   }
 
-  /// Clears store validation data during logout
+  /// Clears store validation data during logout / app reset.
+  /// Also clears AuthIdsStore so splash shows merchant login again.
   Future<void> logout() async {
     final db = await DBHelper.instance.database;
     await db.delete(AppDBConst.storeValidationTable);
+    try {
+      await AuthIdsStore.clear();
+    } catch (_) {}
+    try {
+      await PinakaPreferences.clearLoggedInStore();
+    } catch (_) {}
     if (kDebugMode) {
-      print("#### Store validation data cleared during logout");
+      print("#### Store validation + AuthIdsStore cleared");
     }
   }
 

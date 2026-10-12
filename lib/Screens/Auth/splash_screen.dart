@@ -54,30 +54,26 @@ class _SplashScreenState extends State<SplashScreen> {
       debugPrint('[Splash] Startup recovery skipped: $e');
     }
 
+    // Merchant/store login gate (strict):
+    // - 1st launch / cleared data → StoreIdScreen (merchant name, id, password)
+    // - Only after successful merchant login (AuthIdsStore.save) → LoginScreen (PIN)
+    // SQLite alone must NEVER skip merchant login.
     bool isValid = false;
     try {
-      isValid = await StoreDbHelper.instance
-          .isStoreValidationValid()
+      isValid = await AuthIdsStore.isMerchantLoginDone()
           .timeout(const Duration(seconds: 2));
-    } catch (e) {
-      debugPrint('[Splash] Store validation check failed: $e');
-    }
-
-    // Fallback: if SQLite validation row is missing/incomplete but merchant+store
-    // IDs were persisted after a successful merchant-store login, still treat as
-    // logged-in so we open the employee PIN screen instead of store login again.
-    if (!isValid) {
-      try {
-        final merchantId = await AuthIdsStore.getMerchantId();
-        final storeId = await AuthIdsStore.getStoreId();
-        if (merchantId.trim().isNotEmpty && storeId.trim().isNotEmpty) {
-          isValid = true;
-          debugPrint(
-              '[Splash] Store login restored via AuthIdsStore (storeId=$storeId)');
-        }
-      } catch (e) {
-        debugPrint('[Splash] AuthIdsStore fallback failed: $e');
+      final merchantId = (await AuthIdsStore.getMerchantId()).trim();
+      final storeId = (await AuthIdsStore.getStoreId()).trim();
+      debugPrint(
+          '[Splash] merchantLoginDone=$isValid merchantId=${merchantId.isNotEmpty} storeId=${storeId.isNotEmpty}');
+      if (isValid) {
+        debugPrint('[Splash] → Employee PIN screen (storeId=$storeId)');
+      } else {
+        debugPrint('[Splash] → Merchant/Store login screen');
       }
+    } catch (e) {
+      debugPrint('[Splash] Store login check failed: $e');
+      isValid = false;
     }
 
     if (isValid && mounted) {

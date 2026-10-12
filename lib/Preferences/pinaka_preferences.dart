@@ -11,13 +11,22 @@ class PinakaPreferences {
   // Build #1.0.7 , Naveen - added PinakaPreferences code
   static late SharedPreferences _prefs;
   static late ValueNotifier<String>
-      layoutSelectionNotifier; //Build #1.0.54: added
+  layoutSelectionNotifier; //Build #1.0.54: added
 
   static SharedPreferences get prefs => _prefs;
 
   static Future<void> prepareSharedPref() async {
     _prefs = await SharedPreferences.getInstance();
     layoutSelectionNotifier = ValueNotifier<String>('');
+  }
+
+  static Future<void> clearLoggedInStore() async {
+    try {
+      await _prefs.remove('storeId');
+      await _prefs.remove('storeName');
+      await _prefs.remove('storeLogoUrl');
+      await _prefs.remove('storeBaseUrl');
+    } catch (_) {}
   }
 
   static Future<void> saveLoggedInStore({
@@ -117,7 +126,7 @@ class PinakaPreferences {
     BluetoothPrinter selectedPrinter = BluetoothPrinter();
 
     String? printerPref =
-        _prefs.getString(SharedPreferenceTextConstants.selectedPrinter);
+    _prefs.getString(SharedPreferenceTextConstants.selectedPrinter);
 
     if (kDebugMode) {
       print(" >>>>> Preference getSavedSelectedPrinter $printerPref");
@@ -127,7 +136,7 @@ class PinakaPreferences {
     }
 
     Map<String, dynamic> printer =
-        jsonDecode(printerPref) as Map<String, dynamic>;
+    jsonDecode(printerPref) as Map<String, dynamic>;
 
     selectedPrinter.deviceName = printer['deviceName'];
     selectedPrinter.productId = printer['productId'];
