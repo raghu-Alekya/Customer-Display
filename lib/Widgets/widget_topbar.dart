@@ -3206,23 +3206,47 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
               if (employeeCode.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Employee code is missing. Please sign in again.')),
+                  const SnackBar(
+                      content: Text('Employee code is missing. Please sign in again.')),
                 );
                 return;
               }
 
+              final repo = EmployeeAttendanceRepository.forCurrentApp();
+
+              // 1. Read current merchant & store ID
+              final merchantId = await AuthIdsStore.getMerchantId() ?? '';
+              final storeId = await AuthIdsStore.getStoreId() ?? '';
+
+              // 2. Fetch all employees assigned to this store from the backend API
+              List<AttendanceEmployee> storeEmployees = [];
+              if (merchantId.isNotEmpty && storeId.isNotEmpty) {
+                storeEmployees = await repo.getStoreEmployees(
+                  merchantId: merchantId,
+                  storeId: storeId,
+                );
+              }
+
+              // 3. Fallback: if API returns empty, show at least current user
+              if (storeEmployees.isEmpty) {
+                storeEmployees = [
+                  AttendanceEmployee(
+                    employeeCode: employeeCode,
+                    name: employeeName,
+                  ),
+                ];
+              }
+
+              if (!context.mounted) return;
+
+              // 4. Show dialog with full store roster
               await showDialog<bool>(
                 context: context,
                 barrierDismissible: false,
                 builder: (_) => EmployeeAttendanceApiPopup(
-                  employees: [
-                    AttendanceEmployee(
-                      employeeCode: employeeCode,
-                      name: employeeName,
-                    ),
-                  ],
+                  employees: storeEmployees,
                   currentEmployeeCode: employeeCode,
-                  repository: EmployeeAttendanceRepository.forCurrentApp(),
+                  repository: repo,
                 ),
               );
             },

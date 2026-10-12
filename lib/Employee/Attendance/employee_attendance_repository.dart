@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../core/api/pch_client.dart';
 import '../../core/api/pch_config.dart';
@@ -8,19 +9,32 @@ import '../../Repositories/Auth/AuthIdsStore.dart';
 import 'employee_attendance_model.dart';
 
 class EmployeeAttendanceRepository {
+  // Static cache persists attendance status in memory across dialog opens/closes
+  static final Map<String, EmployeeAttendanceRecord> _todayRecordsCache = {};
+
+  static Map<String, EmployeeAttendanceRecord> get cachedRecords =>
+      Map.unmodifiable(_todayRecordsCache);
+
+  static void cacheRecord(EmployeeAttendanceRecord record) {
+    _todayRecordsCache[record.employeeCode] = record;
+  }
+
   factory EmployeeAttendanceRepository.forCurrentApp() {
     final contextProvider = PchServiceLocator.contextProvider;
-    // Same connector base as the rest of the POS app (UrlHelper / PchConfig.attendanceBaseUrl)
+    final baseUrl = PchConfig.attendanceBaseUrl;
+
     final client = PchClient(
-      baseUrl: PchConfig.attendanceBaseUrl,
+      baseUrl: baseUrl,
       tokenStorage: PchServiceLocator.tokenStorage,
       contextProvider: contextProvider,
     );
+
     return EmployeeAttendanceRepository(
       client: client,
       contextProvider: contextProvider,
     );
   }
+
   EmployeeAttendanceRepository({
     required PchClient client,
     required PosContextProvider contextProvider,
@@ -30,11 +44,55 @@ class EmployeeAttendanceRepository {
   final Dio _dio;
   final PosContextProvider _contextProvider;
 
-  /// Reads attendance history for the authenticated POS employee only.
+  void _log(String message) {
+    if (kDebugMode) {
+      debugPrint('[Attendance] $message');
+    }
+  }
+
+  /// Fetches all active employees assigned to this store from the backend
+  Future<List<AttendanceEmployee>> getStoreEmployees({
+    required String merchantId,
+    required String storeId,
+  }) async {
+    try {
+      final response = await _dio.get(
+        'merchants/$merchantId/stores/$storeId/employees',
+      );
+
+      final body = _asMap(response.data);
+      final rawList = body['employees'];
+      if (rawList is! List) return [];
+
+      return rawList.map((item) {
+        final map = Map<String, dynamic>.from(item as Map);
+        final firstName = (map['firstName'] ?? '').toString().trim();
+        final lastName = (map['lastName'] ?? '').toString().trim();
+        final fullName = '$firstName $lastName'.trim();
+
+        return AttendanceEmployee(
+          employeeCode: map['employeeCode'] ?? '',
+          name: fullName.isNotEmpty ? fullName : (map['username'] ?? 'Employee'),
+          isRegistered: map['pinSet'] == true || (map['loginPin'] != null),
+          loginPin: map['loginPin']?.toString(),
+          roleName: map['roleName']?.toString() ?? 'Staff',
+        );
+      }).toList();
+    } on DioException catch (e) {
+      _logDioError('GET store employees', e);
+      return [];
+    }
+  }
+
+  /// Reads attendance history for an employee and date.
   Future<EmployeeAttendanceRecord?> getMyAttendanceForDate({
     required String employeeCode,
     required String date,
   }) async {
+    _log('========== GET ATTENDANCE HISTORY ==========');
+    _log('Employee code: $employeeCode');
+    _log('Date: $date');
+
     try {
       final response = await _dio.get(
         'attendance',
@@ -45,95 +103,142 @@ class EmployeeAttendanceRepository {
           'limit': 100,
         },
       );
+
       final body = _asMap(response.data);
       final rawRecords = body['records'];
-      if (rawRecords is! List) return null;
+
+      if (rawRecords is! List) return _todayRecordsCache[employeeCode];
 
       final records = rawRecords
           .whereType<Map>()
-          .map((item) => EmployeeAttendanceRecord.fromJson(
-        Map<String, dynamic>.from(item),
-      ))
+          .map(
+            (item) => EmployeeAttendanceRecord.fromJson(
+          Map<String, dynamic>.from(item),
+        ),
+      )
           .toList()
         ..sort((a, b) => b.clockIn.compareTo(a.clockIn));
-      return records.isEmpty ? null : records.first;
+
+      if (records.isNotEmpty) {
+        _todayRecordsCache[employeeCode] = records.first;
+        return records.first;
+      }
+      return _todayRecordsCache[employeeCode];
     } on DioException catch (error) {
-      throw EmployeeAttendanceException(_messageFromDio(error));
+      _logDioError('GET attendance history', error);
+      // Return cached in-memory record if available
+      return _todayRecordsCache[employeeCode];
+    } catch (error) {
+      return _todayRecordsCache[employeeCode];
     }
   }
 
-  /// Gets the active clock-in record for the authenticated POS employee.
+  /// Gets the active clock-in record.
   Future<EmployeeAttendanceRecord?> getMyOpenAttendance() async {
     try {
       final response = await _dio.get('attendance/me');
       final body = _asMap(response.data);
       final raw = body['currentAttendance'];
+
       if (raw is! Map) return null;
-      return EmployeeAttendanceRecord.fromJson(Map<String, dynamic>.from(raw));
+
+      final record = EmployeeAttendanceRecord.fromJson(
+        Map<String, dynamic>.from(raw),
+      );
+      _todayRecordsCache[record.employeeCode] = record;
+      return record;
     } on DioException catch (error) {
-      throw EmployeeAttendanceException(_messageFromDio(error));
+      _logDioError('GET attendance/me', error);
+      return null;
     }
   }
 
   Future<EmployeeAttendanceRecord> clockIn({
     required String employeeCode,
     required String pin,
-  }) =>
-      _clock('clock-in', employeeCode: employeeCode, pin: pin);
+  }) {
+    return _clock('clock-in', employeeCode: employeeCode, pin: pin);
+  }
 
   Future<EmployeeAttendanceRecord> clockOut({
     required String employeeCode,
     required String pin,
-  }) =>
-      _clock('clock-out', employeeCode: employeeCode, pin: pin);
+  }) {
+    return _clock('clock-out', employeeCode: employeeCode, pin: pin);
+  }
 
   Future<EmployeeAttendanceRecord> _clock(
       String action, {
         required String employeeCode,
         required String pin,
       }) async {
-    final context = await _contextProvider.getContext();
-    final merchantId =
-        context?.merchantId ?? await AuthIdsStore.getMerchantId();
-    final storeId = context?.storeId ?? await AuthIdsStore.getStoreId();
-    if (merchantId.trim().isEmpty || storeId.trim().isEmpty) {
-      throw const EmployeeAttendanceException(
-        'Merchant/store context is missing. Select a store and sign in again.',
-      );
-    }
+    _log('========== ATTENDANCE $action ==========');
+    _log('Employee code: $employeeCode');
 
     try {
+      final context = await _contextProvider.getContext();
+      String? merchantId = context?.merchantId;
+      String? storeId = context?.storeId;
+
+      if (merchantId == null || merchantId.trim().isEmpty) {
+        merchantId = await AuthIdsStore.getMerchantId();
+      }
+
+      if (storeId == null || storeId.trim().isEmpty) {
+        storeId = await AuthIdsStore.getStoreId();
+      }
+
+      if (merchantId == null ||
+          merchantId.trim().isEmpty ||
+          storeId == null ||
+          storeId.trim().isEmpty) {
+        throw const EmployeeAttendanceException(
+          'Merchant/store context is missing. Select a store and sign in again.',
+        );
+      }
+
       final response = await _dio.post(
         'attendance/$action',
         data: {
-          'employeeCode': employeeCode,
-          'pin': pin,
-          'merchantId': merchantId,
-          'storeId': storeId,
+          'employeeCode': employeeCode.trim(),
+          'pin': pin.trim(),
+          'merchantId': merchantId.trim(),
+          'storeId': storeId.trim(),
         },
       );
+
       final body = _asMap(response.data);
       final dynamic rawAttendance = body['attendance'];
-      // Clock-out currently returns attendance as a one-element array.
       final dynamic rawRecord = rawAttendance is List
           ? (rawAttendance.isEmpty ? null : rawAttendance.first)
           : rawAttendance;
+
       if (rawRecord is! Map) {
         throw const EmployeeAttendanceException(
           'The attendance API returned no attendance record.',
         );
       }
+
       final recordJson = Map<String, dynamic>.from(rawRecord);
       final employee = body['employee'] is Map
           ? Map<String, dynamic>.from(body['employee'] as Map)
-          : const <String, dynamic>{};
+          : <String, dynamic>{};
+
       recordJson.putIfAbsent('employeeCode', () => employeeCode);
       recordJson.putIfAbsent(
         'employeeName',
             () => employee['employeeName'] ?? '',
       );
-      return EmployeeAttendanceRecord.fromJson(recordJson);
+
+      final record = EmployeeAttendanceRecord.fromJson(recordJson);
+
+      // Save into cache so status is retained across popup open/close
+      _todayRecordsCache[employeeCode] = record;
+
+      _log('$action completed successfully.');
+      return record;
     } on DioException catch (error) {
+      _logDioError('POST attendance/$action', error);
       throw EmployeeAttendanceException(_messageFromDio(error));
     }
   }
@@ -141,9 +246,11 @@ class EmployeeAttendanceRepository {
   Map<String, dynamic> _asMap(dynamic value) {
     if (value is Map<String, dynamic>) return value;
     if (value is Map) return Map<String, dynamic>.from(value);
-    throw const EmployeeAttendanceException(
-      'The attendance API returned an invalid response.',
-    );
+    throw const EmployeeAttendanceException('Invalid API response format.');
+  }
+
+  void _logDioError(String operation, DioException error) {
+    _log('Operation: $operation, Status: ${error.response?.statusCode}, Error: ${error.response?.data}');
   }
 
   String _messageFromDio(DioException error) {
@@ -153,19 +260,13 @@ class EmployeeAttendanceRepository {
       if (message is List) return message.join(', ');
       if (message != null) return message.toString();
     }
-    if (error.type == DioExceptionType.connectionError ||
-        error.type == DioExceptionType.connectionTimeout ||
-        error.type == DioExceptionType.receiveTimeout) {
-      return 'Could not reach the attendance service. Check the connection and try again.';
-    }
-    return 'Attendance request failed (${error.response?.statusCode ?? 'network error'}).';
+    return error.message ?? 'Attendance request failed';
   }
 }
 
 class EmployeeAttendanceException implements Exception {
   const EmployeeAttendanceException(this.message);
   final String message;
-
   @override
   String toString() => message;
 }

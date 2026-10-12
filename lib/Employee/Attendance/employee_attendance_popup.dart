@@ -8,28 +8,59 @@ import 'employee_attendance_bloc.dart';
 import 'employee_attendance_model.dart';
 import 'employee_attendance_repository.dart';
 
-/// API-backed version of the local attendance demo. Supply employees from the
-/// app's existing employee API; this widget does not invent a roster.
+/// API-backed version of the local attendance dialog.
 class EmployeeAttendanceApiPopup extends StatelessWidget {
   const EmployeeAttendanceApiPopup({
     super.key,
     required this.employees,
     required this.currentEmployeeCode,
     required this.repository,
+    this.currentEmployeePin,
   });
 
   final List<AttendanceEmployee> employees;
   final String currentEmployeeCode;
+  final String? currentEmployeePin;
   final EmployeeAttendanceRepository repository;
 
   @override
   Widget build(BuildContext context) {
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
     return BlocProvider(
-      create: (_) => EmployeeAttendanceBloc(repository)
-        ..add(AttendanceLoadRequested(
+      create: (_) {
+        final bloc = EmployeeAttendanceBloc(repository);
+
+        // 1. Restore all cached records into the bloc state
+        final cached = EmployeeAttendanceRepository.cachedRecords;
+        if (cached.isNotEmpty) {
+          bloc.emit(bloc.state.copyWith(
+            records: {...bloc.state.records, ...cached},
+            loadedEmployeeCodes: {
+              ...bloc.state.loadedEmployeeCodes,
+              ...cached.keys,
+            },
+          ));
+        }
+
+        // 2. Fetch fresh attendance for the authenticated POS user
+        bloc.add(AttendanceLoadRequested(
           employeeCode: currentEmployeeCode,
-          date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
-        )),
+          date: today,
+        ));
+
+        // 3. Auto clock-in logged-in user if PIN provided and not yet clocked in
+        if (currentEmployeePin != null &&
+            currentEmployeePin!.isNotEmpty &&
+            !(cached[currentEmployeeCode]?.isOpen ?? false)) {
+          bloc.add(AttendanceClockInRequested(
+            employeeCode: currentEmployeeCode,
+            pin: currentEmployeePin!,
+          ));
+        }
+
+        return bloc;
+      },
       child: _EmployeeAttendanceDialog(
         employees: employees,
         currentEmployeeCode: currentEmployeeCode,
@@ -38,7 +69,7 @@ class EmployeeAttendanceApiPopup extends StatelessWidget {
   }
 }
 
-class _EmployeeAttendanceDialog extends StatelessWidget {
+class _EmployeeAttendanceDialog extends StatefulWidget {
   const _EmployeeAttendanceDialog({
     required this.employees,
     required this.currentEmployeeCode,
@@ -48,25 +79,68 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
   final String currentEmployeeCode;
 
   @override
+  State<_EmployeeAttendanceDialog> createState() =>
+      _EmployeeAttendanceDialogState();
+}
+
+class _EmployeeAttendanceDialogState extends State<_EmployeeAttendanceDialog> {
+  AttendanceEmployee? _selectedEmployee;
+
+  @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final width = math.max(300.0, math.min(1080.0, size.width - 40));
-    final height = math.max(360.0, math.min(900.0, size.height - 40));
+    final width = math.max(340.0, math.min(1080.0, size.width - 40));
+    final height = math.max(400.0, math.min(920.0, size.height - 40));
 
     return BlocListener<EmployeeAttendanceBloc, EmployeeAttendanceState>(
       listenWhen: (previous, current) =>
       previous.errorMessage != current.errorMessage ||
           previous.noticeMessage != current.noticeMessage,
       listener: (context, state) {
-        final message = state.errorMessage ?? state.noticeMessage;
+        String? message = state.errorMessage ?? state.noticeMessage;
+        Color bgColor = state.errorMessage == null
+            ? const Color(0xFF16834B)
+            : const Color(0xFFB42318);
+
+        // Handle 409 Conflict gracefully: Employee is already clocked in
+        if (state.errorMessage != null &&
+            state.errorMessage!.toLowerCase().contains('open attendance session')) {
+          message = 'Employee is already clocked in today.';
+          bgColor = const Color(0xFF16834B);
+
+          final targetEmp = _selectedEmployee ??
+              widget.employees.firstWhere(
+                    (e) => e.employeeCode == widget.currentEmployeeCode,
+              );
+
+          final openRecord = EmployeeAttendanceRecord(
+            id: 'open-${targetEmp.employeeCode}',
+            employeeCode: targetEmp.employeeCode,
+            employeeName: targetEmp.name,
+            clockIn: DateTime.now(),
+            status: 'PRESENT',
+          );
+
+          EmployeeAttendanceRepository.cacheRecord(openRecord);
+
+          context.read<EmployeeAttendanceBloc>().emit(
+            state.copyWith(
+              records: {...state.records, targetEmp.employeeCode: openRecord},
+              loadedEmployeeCodes: {
+                ...state.loadedEmployeeCodes,
+                targetEmp.employeeCode,
+              },
+              errorMessage: null,
+            ),
+          );
+        }
+
         if (message == null) return;
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(
             content: Text(message),
-            backgroundColor: state.errorMessage == null
-                ? const Color(0xFF16834B)
-                : const Color(0xFFB42318),
+            backgroundColor: bgColor,
             behavior: SnackBarBehavior.floating,
           ));
       },
@@ -84,6 +158,10 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _header(context),
+                const SizedBox(height: 12),
+                BlocBuilder<EmployeeAttendanceBloc, EmployeeAttendanceState>(
+                  builder: (context, state) => _topBarAction(context, state),
+                ),
                 const SizedBox(height: 12),
                 Text(
                   'Today · ${DateFormat('EEE, d MMM yyyy').format(DateTime.now())}',
@@ -106,57 +184,35 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
                       EmployeeAttendanceState>(
                     builder: (context, state) {
                       if (state.isLoading && state.records.isEmpty) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      if (state.errorMessage != null && state.records.isEmpty) {
-                        return Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(state.errorMessage!,
-                                  textAlign: TextAlign.center),
-                              const SizedBox(height: 8),
-                              OutlinedButton.icon(
-                                onPressed: () => context
-                                    .read<EmployeeAttendanceBloc>()
-                                    .add(AttendanceLoadRequested(
-                                  employeeCode: currentEmployeeCode,
-                                  date: DateFormat('yyyy-MM-dd')
-                                      .format(DateTime.now()),
-                                )),
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('Retry'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                      if (employees.isEmpty) {
                         return const Center(
-                          child: Text(
-                              'No employees were supplied by the employee API.'),
+                            child: CircularProgressIndicator());
+                      }
+                      if (widget.employees.isEmpty) {
+                        return const Center(
+                          child: Text('No employees found for this store.'),
                         );
                       }
                       return ListView.separated(
-                        itemCount: employees.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemCount: widget.employees.length,
+                        separatorBuilder: (_, __) =>
+                        const SizedBox(height: 10),
                         itemBuilder: (context, index) => _employeeCard(
                           context,
                           state,
-                          employees[index],
+                          widget.employees[index],
                         ),
                       );
                     },
                   ),
                 ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: OutlinedButton.icon(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    icon: const Icon(Icons.close, size: 18),
-                    label: const Text('Close'),
-                  ),
-                ),
+                // Align(
+                //   alignment: Alignment.centerRight,
+                //   child: OutlinedButton.icon(
+                //     onPressed: () => Navigator.of(context).pop(false),
+                //     icon: const Icon(Icons.close, size: 18),
+                //     label: const Text('Close'),
+                //   ),
+                // ),
               ],
             ),
           ),
@@ -174,8 +230,8 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
           color: const Color(0xFF1E2745).withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(14),
         ),
-        child:
-        const Icon(Icons.fact_check_outlined, color: Color(0xFF1E2745)),
+        child: const Icon(Icons.fact_check_outlined,
+            color: Color(0xFF1E2745)),
       ),
       const SizedBox(width: 12),
       const Expanded(
@@ -196,30 +252,128 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
     ],
   );
 
+  Widget _topBarAction(BuildContext context, EmployeeAttendanceState state) {
+    if (widget.employees.isEmpty) return const SizedBox.shrink();
+
+    final selectedRecord = _selectedEmployee != null
+        ? state.records[_selectedEmployee!.employeeCode]
+        : null;
+    final isSelectedOpen = selectedRecord?.isOpen ?? false;
+    final isSubmitting = _selectedEmployee != null &&
+        state.submittingEmployeeCode == _selectedEmployee!.employeeCode;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.person_search_outlined,
+              color: Color(0xFF3B65B3), size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<AttendanceEmployee>(
+                isExpanded: true,
+                value: _selectedEmployee,
+                hint: const Text(
+                  'Select team member to mark attendance...',
+                  style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
+                ),
+                items: widget.employees.map((emp) {
+                  final isCurrent =
+                      emp.employeeCode == widget.currentEmployeeCode;
+                  final record = state.records[emp.employeeCode];
+                  final statusText = record?.isOpen == true
+                      ? ' · [Present]'
+                      : record?.status == 'COMPLETED'
+                      ? ' · [Completed]'
+                      : '';
+
+                  return DropdownMenuItem(
+                    value: emp,
+                    child: Text(
+                      '${emp.name} (${emp.employeeCode}) · ${emp.roleName ?? "Staff"}$statusText${isCurrent ? " (You)" : ""}',
+                      style: TextStyle(
+                        fontWeight:
+                        isCurrent ? FontWeight.bold : FontWeight.normal,
+                        color: const Color(0xFF1E293B),
+                        fontSize: 14,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }).toList(),
+                onChanged: (selected) {
+                  setState(() => _selectedEmployee = selected);
+                },
+              ),
+            ),
+          ),
+          if (_selectedEmployee != null) ...[
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF16834B),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                visualDensity: VisualDensity.compact,
+              ),
+              onPressed: !_selectedEmployee!.isRegistered ||
+                  isSubmitting ||
+                  isSelectedOpen
+                  ? null
+                  : () => _askPinAndClock(context, _selectedEmployee!,
+                  isClockIn: true),
+              icon: const Icon(Icons.login, size: 16),
+              label: const Text('Clock In'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF00BFA5),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                visualDensity: VisualDensity.compact,
+              ),
+              onPressed: !_selectedEmployee!.isRegistered ||
+                  isSubmitting ||
+                  !isSelectedOpen
+                  ? null
+                  : () => _askPinAndClock(context, _selectedEmployee!,
+                  isClockIn: false),
+              icon: const Icon(Icons.logout, size: 16),
+              label: const Text('Clock Out'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _summary() =>
       BlocBuilder<EmployeeAttendanceBloc, EmployeeAttendanceState>(
         builder: (context, state) {
-          final present = state.records.values.where((r) => r.isOpen).length;
+          final present =
+              state.records.values.where((r) => r.isOpen).length;
           final completed =
               state.records.values.where((r) => r.status == 'COMPLETED').length;
-          final notMarked = employees
-              .where((e) =>
-          state.loadedEmployeeCodes.contains(e.employeeCode) &&
-              !state.records.containsKey(e.employeeCode))
+          final notMarked = widget.employees
+              .where((e) => !state.records.containsKey(e.employeeCode))
               .length;
-          final notLoaded = employees
-              .where((e) => !state.loadedEmployeeCodes.contains(e.employeeCode))
-              .length;
+
           return Wrap(
             spacing: 10,
             runSpacing: 10,
             children: [
-              _summaryCard(
-                  'Employees', employees.length, const Color(0xFF3B65B3)),
+              _summaryCard('Employees', widget.employees.length,
+                  const Color(0xFF3B65B3)),
               _summaryCard('Present', present, const Color(0xFF16834B)),
               _summaryCard('Completed', completed, const Color(0xFF3B65B3)),
               _summaryCard('Not marked', notMarked, const Color(0xFFD98212)),
-              _summaryCard('Not loaded', notLoaded, const Color(0xFF727C8B)),
             ],
           );
         },
@@ -237,9 +391,12 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
       children: [
         Text('$value',
             style: TextStyle(
-                color: color, fontSize: 20, fontWeight: FontWeight.bold)),
+                color: color,
+                fontSize: 20,
+                fontWeight: FontWeight.bold)),
         Text(label,
-            style: const TextStyle(color: Color(0xFF727C8B), fontSize: 12)),
+            style: const TextStyle(
+                color: Color(0xFF727C8B), fontSize: 12)),
       ],
     ),
   );
@@ -251,11 +408,12 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
       ) {
     final record = state.records[employee.employeeCode];
     final isOpen = record?.isOpen ?? false;
-    final isSubmitting = state.submittingEmployeeCode == employee.employeeCode;
+    final isSubmitting =
+        state.submittingEmployeeCode == employee.employeeCode;
+    final isCurrent = employee.employeeCode == widget.currentEmployeeCode;
+
     final label = record == null
-        ? (state.loadedEmployeeCodes.contains(employee.employeeCode)
         ? 'Not marked'
-        : 'Not loaded')
         : switch (record.status) {
       'PRESENT' => 'Present',
       'COMPLETED' => 'Completed',
@@ -270,7 +428,14 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFE5E9EF)),
+        color: isCurrent
+            ? const Color(0xFF3B65B3).withValues(alpha: 0.03)
+            : Colors.transparent,
+        border: Border.all(
+          color: isCurrent
+              ? const Color(0xFF3B65B3).withValues(alpha: 0.4)
+              : const Color(0xFFE5E9EF),
+        ),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Wrap(
@@ -291,11 +456,31 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(employee.name,
-                          style: const TextStyle(fontWeight: FontWeight.w700)),
-                      Text(employee.employeeCode,
-                          style: const TextStyle(
-                              color: Color(0xFF727C8B), fontSize: 12)),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              employee.name,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (isCurrent) ...[
+                            const SizedBox(width: 4),
+                            const Text('(You)',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF3B65B3),
+                                    fontWeight: FontWeight.w600)),
+                          ],
+                        ],
+                      ),
+                      Text(
+                        '${employee.employeeCode}${employee.roleName != null ? ' · ${employee.roleName}' : ''}',
+                        style: const TextStyle(
+                            color: Color(0xFF727C8B), fontSize: 12),
+                      ),
                     ],
                   ),
                 ),
@@ -313,7 +498,8 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
               FilledButton.tonalIcon(
                 onPressed: !employee.isRegistered || isSubmitting || isOpen
                     ? null
-                    : () => _askPinAndClock(context, employee, isClockIn: true),
+                    : () => _askPinAndClock(context, employee,
+                    isClockIn: true),
                 icon: isSubmitting
                     ? const SizedBox.square(
                   dimension: 16,
@@ -325,8 +511,8 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
               FilledButton.tonalIcon(
                 onPressed: !employee.isRegistered || isSubmitting || !isOpen
                     ? null
-                    : () =>
-                    _askPinAndClock(context, employee, isClockIn: false),
+                    : () => _askPinAndClock(context, employee,
+                    isClockIn: false),
                 icon: const Icon(Icons.logout, size: 17),
                 label: const Text('Clock Out'),
               ),
@@ -353,12 +539,15 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
         required bool isClockIn,
       }) async {
     if (!employee.isRegistered) return;
+
+    // Always empty fresh controller - never prefill old PIN
     final controller = TextEditingController();
+
     final pin = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title:
-        Text('${isClockIn ? 'Clock in' : 'Clock out'} · ${employee.name}'),
+        title: Text(
+            '${isClockIn ? 'Clock in' : 'Clock out'} · ${employee.name}'),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -369,7 +558,8 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
             labelText: 'Employee PIN',
             counterText: '',
           ),
-          onSubmitted: (value) => Navigator.of(dialogContext).pop(value.trim()),
+          onSubmitted: (value) =>
+              Navigator.of(dialogContext).pop(value.trim()),
         ),
         actions: [
           TextButton(
@@ -388,7 +578,8 @@ class _EmployeeAttendanceDialog extends StatelessWidget {
     if (!context.mounted || pin == null) return;
     if (pin.length < 4 || pin.length > 8) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a PIN between 4 and 8 digits.')),
+        const SnackBar(
+            content: Text('Enter a PIN between 4 and 8 digits.')),
       );
       return;
     }
