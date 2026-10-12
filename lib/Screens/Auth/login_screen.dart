@@ -712,6 +712,8 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final userId = loginResponse.id?.toString() ?? '';
       final displayName = loginResponse.displayName ?? '';
+      final shiftId =
+          loginResponse.shiftId ?? await _userDbHelper.getUserShiftId();
 
       await _secureStorage.write(key: _secureUserIdKey, value: userId);
 
@@ -719,7 +721,7 @@ class _LoginScreenState extends State<LoginScreen> {
         'userId': userId,
         'displayName': displayName,
         'token': loginResponse.token, // optional; not used offline for API
-        'shiftId': loginResponse.shiftId,
+        'shiftId': shiftId,
         'safeEnable': loginResponse.safeEnable,
         'safeEnableDrop': loginResponse.safeEnableDrop,
         // add more if needed later (role, email, etc.)
@@ -1097,7 +1099,7 @@ class _LoginScreenState extends State<LoginScreen> {
               color: const Color(0xFFE0E0E0),
               child: Padding(
                 padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -1142,19 +1144,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                   child: Center(
                                     child: _password[index].isEmpty
                                         ? SvgPicture.asset(
-                                      'assets/svg/password_placeholder.svg',
-                                      width: 15,
-                                      height: 15,
-                                    )
+                                            'assets/svg/password_placeholder.svg',
+                                            width: 15,
+                                            height: 15,
+                                          )
                                         : SvgPicture.asset(
-                                      'assets/svg/password_placeholder.svg',
-                                      colorFilter: const ColorFilter.mode(
-                                        Colors.black,
-                                        BlendMode.srcIn,
-                                      ),
-                                      width: 15,
-                                      height: 15,
-                                    ),
+                                            'assets/svg/password_placeholder.svg',
+                                            colorFilter: const ColorFilter.mode(
+                                              Colors.black,
+                                              BlendMode.srcIn,
+                                            ),
+                                            width: 15,
+                                            height: 15,
+                                          ),
                                   ),
                                 ),
                               ),
@@ -1208,7 +1210,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       WidgetsBinding.instance
                                           .addPostFrameCallback((_) async {
                                         final loginResponse =
-                                        snapshot.data!.data!;
+                                            snapshot.data!.data!;
                                         final pin = _password.join();
                                         final token =
                                             loginResponse.token ?? "";
@@ -1281,14 +1283,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                         int? shiftId = await UserDbHelper()
                                             .getUserShiftId();
 
-                                        if (shiftId != null &&
-                                            snapshot.data?.data?.shiftId !=
-                                                null) {
+                                        if (shiftId != null) {
                                           Navigator.pushReplacement(
                                             context,
                                             MaterialPageRoute(
                                               builder: (context) =>
-                                              const POSHomeScreen(),
+                                                  const POSHomeScreen(),
                                             ),
                                           );
                                         } else {
@@ -1296,10 +1296,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                             context,
                                             MaterialPageRoute(
                                               builder: (context) =>
-                                              const ShiftOpenCloseBalanceScreen(),
+                                                  const ShiftOpenCloseBalanceScreen(),
                                               settings: RouteSettings(
                                                 arguments:
-                                                TextConstants.loginScreen,
+                                                    TextConstants.loginScreen,
                                               ),
                                             ),
                                           );
@@ -1371,7 +1371,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     if (!_hasErrorShown) {
                                       _hasErrorShown = true;
                                       var logoutBloc =
-                                      LogoutBloc(LogoutRepository());
+                                          LogoutBloc(LogoutRepository());
                                       WidgetsBinding.instance
                                           .addPostFrameCallback((_) {
                                         ScaffoldMessenger.of(context)
@@ -1396,79 +1396,79 @@ class _LoginScreenState extends State<LoginScreen> {
                                                       barrierDismissible:
                                                       false,
                                                       builder: (BuildContext
-                                                      context) {
+                                                          context) {
                                                         logoutBloc.logoutStream
                                                             .listen(
                                                                 (response) {
                                                               if (response
                                                                   .status ==
-                                                                  Status
-                                                                      .COMPLETED) {
-                                                                if (kDebugMode) {
-                                                                  print(
-                                                                    "#### COMPLETED performLogoutByEmpPin",
-                                                                  );
-                                                                }
-                                                                ScaffoldMessenger
+                                                              Status
+                                                                  .COMPLETED) {
+                                                            if (kDebugMode) {
+                                                              print(
+                                                                "#### COMPLETED performLogoutByEmpPin",
+                                                              );
+                                                            }
+                                                            ScaffoldMessenger
                                                                     .of(context)
-                                                                    .showSnackBar(
-                                                                  SnackBar(
-                                                                    content: Text(
-                                                                      response.message ??
-                                                                          TextConstants
-                                                                              .successfullyLogout,
-                                                                    ),
-                                                                    backgroundColor:
+                                                                .showSnackBar(
+                                                              SnackBar(
+                                                                content: Text(
+                                                                  response.message ??
+                                                                      TextConstants
+                                                                          .successfullyLogout,
+                                                                ),
+                                                                backgroundColor:
                                                                     Colors
                                                                         .green,
-                                                                    duration:
+                                                                duration:
                                                                     const Duration(
-                                                                      seconds: 1,
-                                                                    ),
-                                                                  ),
-                                                                );
-                                                                Navigator.of(
+                                                                  seconds: 1,
+                                                                ),
+                                                              ),
+                                                            );
+                                                            Navigator.of(
                                                                     context)
-                                                                    .pop();
-                                                              } else if (response
+                                                                .pop();
+                                                          } else if (response
                                                                   .status ==
-                                                                  Status.ERROR) {
-                                                                if (kDebugMode) {
-                                                                  print(
-                                                                    "Logout failed: ${response.message}",
-                                                                  );
-                                                                }
-                                                                ScaffoldMessenger
+                                                              Status.ERROR) {
+                                                            if (kDebugMode) {
+                                                              print(
+                                                                "Logout failed: ${response.message}",
+                                                              );
+                                                            }
+                                                            ScaffoldMessenger
                                                                     .of(context)
-                                                                    .showSnackBar(
-                                                                  SnackBar(
-                                                                    content: Text(
-                                                                      response.message ??
-                                                                          TextConstants
-                                                                              .failedToLogout,
-                                                                    ),
-                                                                    backgroundColor:
+                                                                .showSnackBar(
+                                                              SnackBar(
+                                                                content: Text(
+                                                                  response.message ??
+                                                                      TextConstants
+                                                                          .failedToLogout,
+                                                                ),
+                                                                backgroundColor:
                                                                     Colors.red,
-                                                                    duration:
+                                                                duration:
                                                                     const Duration(
-                                                                      seconds: 1,
-                                                                    ),
-                                                                  ),
-                                                                );
-                                                                Navigator.of(
+                                                                  seconds: 1,
+                                                                ),
+                                                              ),
+                                                            );
+                                                            Navigator.of(
                                                                     context)
-                                                                    .pop();
-                                                              }
-                                                            });
+                                                                .pop();
+                                                          }
+                                                        });
                                                         final pin =
-                                                        _password.join();
+                                                            _password.join();
                                                         logoutBloc
                                                             .performLogoutByEmpPin(
                                                           int.tryParse(pin),
                                                         );
                                                         return const Center(
                                                           child:
-                                                          CircularProgressIndicator(),
+                                                              CircularProgressIndicator(),
                                                         );
                                                       },
                                                     );

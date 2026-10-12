@@ -40,14 +40,14 @@ import 'apps_dashboard_screen.dart';
 
 class SafeDropScreen extends StatefulWidget {
   final int? lastSelectedIndex;
-  const SafeDropScreen(
-      {super.key, this.lastSelectedIndex});
+  const SafeDropScreen({super.key, this.lastSelectedIndex});
 
   @override
   State<SafeDropScreen> createState() => _SafeDropScreenState();
 }
 
-class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMixin {
+class _SafeDropScreenState extends State<SafeDropScreen>
+    with LayoutSelectionMixin {
   bool isLoading = true;
   int _selectedSidebarIndex = 4;
 
@@ -72,27 +72,33 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
   late SafeDropBloc _safeDropBloc;
   final PinakaPreferences _preferences = PinakaPreferences(); // Add this
   ///printer
-  var _printerSettings =  PrinterSettings();
+  var _printerSettings = PrinterSettings();
   List<int> bytes = [];
   StreamSubscription? _safeDropSubscription; // Build #1.0.240
   @override
   void initState() {
     super.initState();
-    _selectedSidebarIndex = widget.lastSelectedIndex ?? 4; // Build #1.0.7: Restore previous selection
+    _selectedSidebarIndex = widget.lastSelectedIndex ??
+        4; // Build #1.0.7: Restore previous selection
 
     // Initialize SafeDropBloc
     _safeDropBloc = SafeDropBloc(SafeDropRepository());
     // Added: Listen to safe drop stream for API responses
     // Build #1.0.240 Store the subscription and manage it properly
-    _safeDropSubscription = _safeDropBloc.safeDropStream.listen((response) {  //Build #1.0.74
+    _safeDropSubscription = _safeDropBloc.safeDropStream.listen((response) {
+      //Build #1.0.74
       if (response.status == Status.COMPLETED) {
         setState(() {
           _isApiLoading = false;
         });
-        if (kDebugMode) print("#### SafeDropScreen: Safe drop created successfully: ${response.data!.message}");
-        if (Misc.showDebugSnackBar) { // Build #1.0.254
+        if (kDebugMode)
+          print(
+              "#### SafeDropScreen: Safe drop created successfully: ${response.data!.message}");
+        if (Misc.showDebugSnackBar) {
+          // Build #1.0.254
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(response.data!.message),
+            SnackBar(
+              content: Text(response.data!.message),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 2),
             ),
@@ -103,8 +109,9 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
           controller.text = "0";
         });
         _calculateTotals();
+
         /// 1. print receipt
-        if(!Misc.disablePrinter) {
+        if (!Misc.disablePrinter) {
           _printTicket();
         }
 
@@ -123,13 +130,14 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
           }
         });
         _safeDropSubscription?.cancel();
-      }
-      else if (response.status == Status.ERROR) {
+      } else if (response.status == Status.ERROR) {
         setState(() {
-          _isApiLoading = false; // Build #1.0.240 : dismiss loader on add button
+          _isApiLoading =
+              false; // Build #1.0.240 : dismiss loader on add button
         });
         if (kDebugMode) {
-          print("safe drop screen --- Unauthorised : ${response.message ?? " "}");
+          print(
+              "safe drop screen --- Unauthorised : ${response.message ?? " "}");
         }
         if (response.message!.contains('Unauthorised')) {
           if (kDebugMode) {
@@ -137,12 +145,13 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
           }
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
-              Navigator.pushReplacement(context, MaterialPageRoute(
-                  builder: (context) => LoginScreen()));
+              Navigator.pushReplacement(context,
+                  MaterialPageRoute(builder: (context) => LoginScreen()));
 
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text("Unauthorised. Session is expired on this device."),
+                  content:
+                      Text("Unauthorised. Session is expired on this device."),
                   backgroundColor: Colors.red,
                   duration: Duration(seconds: 2),
                 ),
@@ -150,23 +159,24 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
             }
           });
         } else {
-          if (kDebugMode) print("#### SafeDropScreen: Error creating safe drop: ${response.message}");
+          if (kDebugMode)
+            print(
+                "#### SafeDropScreen: Error creating safe drop: ${response.message}");
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(
-                response.message ?? 'Failed to create safe drop')),
+            SnackBar(
+                content:
+                    Text(response.message ?? 'Failed to create safe drop')),
           );
 
           // Build #1.0.240
           /// 3. Show failure popup with dismiss button
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
-              CustomDialog.showCustomItemAlert(
-                  context,
+              CustomDialog.showCustomItemAlert(context,
                   title: TextConstants.tranFailed,
                   description: TextConstants.wantRetry,
                   buttonText: TextConstants.dismiss,
-                  showCloseIcon: false
-              );
+                  showCloseIcon: false);
             }
           });
         }
@@ -200,12 +210,16 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
         _safeDenominations = denoms;
         // Initialize controllers for each denomination
         for (var denom in _safeDenominations) {
-          _denomControllers[denom.denom.toString()] = TextEditingController(text: "0");
+          _denomControllers[denom.denom.toString()] =
+              TextEditingController(text: "0");
         }
       });
-      if (kDebugMode) print("#### SafeDropScreen: Loaded ${_safeDenominations.length} denominations");
+      if (kDebugMode)
+        print(
+            "#### SafeDropScreen: Loaded ${_safeDenominations.length} denominations");
     } catch (e) {
-      if (kDebugMode) print("#### SafeDropScreen: Error fetching denominations: $e");
+      if (kDebugMode)
+        print("#### SafeDropScreen: Error fetching denominations: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to load denominations')),
       );
@@ -224,37 +238,41 @@ class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMix
     _safeDropBloc.dispose();
     super.dispose();
   }
-bool _hasEnteredValues() {
-  return _denomControllers.values.any((controller) {
-    final value = double.tryParse(controller.text) ?? 0;
-    return value > 0;
-  });
-}
-Future<bool> _handleBack() async {
-  if (_hasEnteredValues()) {
-    bool shouldProceed = false;
 
-    await CustomDialog.showAreYouSure(
-      context,
-      description: "You have entered cash values. Do you want to discard and go back?",
-      confirmText: "Yes, Confirm",
-      cancelText: "No, Keep it",
-      confirm: () {
-        shouldProceed = true;
-        Navigator.of(context).pop();
-      },
-    );
-
-    if (shouldProceed) {
-      Navigator.of(context).maybePop(); // for back button
-    }
-
-    return shouldProceed;
-  } else {
-    Navigator.of(context).maybePop();
-    return true;
+  bool _hasEnteredValues() {
+    return _denomControllers.values.any((controller) {
+      final value = double.tryParse(controller.text) ?? 0;
+      return value > 0;
+    });
   }
-}
+
+  Future<bool> _handleBack() async {
+    if (_hasEnteredValues()) {
+      bool shouldProceed = false;
+
+      await CustomDialog.showAreYouSure(
+        context,
+        description:
+            "You have entered cash values. Do you want to discard and go back?",
+        confirmText: "Yes, Confirm",
+        cancelText: "No, Keep it",
+        confirm: () {
+          shouldProceed = true;
+          Navigator.of(context).pop();
+        },
+      );
+
+      if (shouldProceed) {
+        Navigator.of(context).maybePop(); // for back button
+      }
+
+      return shouldProceed;
+    } else {
+      Navigator.of(context).maybePop();
+      return true;
+    }
+  }
+
   // Modified: Calculate totals based on dynamic denominations
   void _calculateTotals() {
     int notes = 0;
@@ -272,10 +290,13 @@ Future<bool> _handleBack() async {
       totalNotes = notes;
       totalCash = cash;
       _totalNotesController.text = totalNotes.toString();
-      _totalCashController.text = "${TextConstants.currencySymbol}${totalCash.toStringAsFixed(2)}";
+      _totalCashController.text =
+          "${TextConstants.currencySymbol}${totalCash.toStringAsFixed(2)}";
     });
 
-    if (kDebugMode) print("#### SafeDropScreen: Updated totals - Notes: $totalNotes, Cash: $totalCash");
+    if (kDebugMode)
+      print(
+          "#### SafeDropScreen: Updated totals - Notes: $totalNotes, Cash: $totalCash");
   }
 
   // Handle numeric input
@@ -314,80 +335,96 @@ Future<bool> _handleBack() async {
 
   //Build #1.0.74, Modified: Handle add button press with API call
   Future<void> _handleAdd() async {
-    if(totalCash == 0 || totalNotes == 0) {  // prevent empty values
+    if (totalCash == 0 || totalNotes == 0) {
+      // prevent empty values
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(TextConstants.notesError),
+        SnackBar(
+          content: Text(TextConstants.notesError),
           backgroundColor: Colors.orange,
           duration: const Duration(seconds: 5),
         ),
       );
       return;
     }
-    if(_isApiLoading) return; // Prevent multiple clicks
+    if (_isApiLoading) return; // Prevent multiple clicks
 
     if (kDebugMode) print("#### SafeDropScreen: Add button pressed");
     setState(() {
       _isApiLoading = true;
     });
 
-    int? shiftId = await UserDbHelper().getUserShiftId(); // Build #1.0.149 : using from db
+    final int? shiftId =
+        await UserDbHelper().getUserShiftId(); // Build #1.0.149 : using from db
     if (shiftId == null) {
-      if (kDebugMode) print("####### _handleAdd() : shiftId -> $shiftId");
+      setState(() {
+        _isApiLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'No active shift found. Please open a shift and try again.')),
+      );
+      return;
     }
     // Prepare SafeDropRequest
     final denominations = _denomControllers.entries.map((entry) {
       final denom = num.parse(entry.key);
       final count = int.tryParse(entry.value.text) ?? 0;
       return SafeDropDenomination(
-        denomination: denom,
-        denominationCount: count,
+        denom: denom,
+        tubeCount: count,
+        cellCount: 0,
         total: denom * count,
       );
     }).toList();
 
     final request = SafeDropRequest(
-      safeDropDenominations: denominations,
-      totalCash: totalCash,
-      totalNotes: totalNotes,
-      shiftId: shiftId ?? 0,
+      safeDenominations: denominations,
+      coinsTotal: 0,
+      totalAmount: totalCash,
+      shiftId: shiftId.toString(),
     );
 
-    if (kDebugMode) print("#### SafeDropScreen: Sending safe drop request: ${request.toJson()}");
+    if (kDebugMode)
+      print(
+          "#### SafeDropScreen: Sending safe drop request: ${request.toJson()}");
     _safeDropBloc.createSafeDrop(request);
+
     ///1. prepare printer and receipt
-    if(!Misc.disablePrinter) {
+    if (!Misc.disablePrinter) {
       _preparePrintTicket();
     }
   }
 
   Future<Map<String, dynamic>?> loadPrinterData() async {
     var printerDB = await PrinterDBHelper().getPrinterFromDB();
-    if(printerDB.isEmpty){
+    if (printerDB.isEmpty) {
       if (kDebugMode) {
         print(">>>>> OrderSummaryScreen : printerDB is empty");
       }
       return null;
     }
     return printerDB.first;
-
   }
 
-  Future _preparePrintTicket() async{
+  Future _preparePrintTicket() async {
     if (kDebugMode) {
       print("OrderSummaryScreen _preparePrintTicket call print receipt");
     }
+
     ///load header and footer
-    var printerData  = await loadPrinterData();
+    var printerData = await loadPrinterData();
     var header = printerData?[AppDBConst.receiptHeaderText] ?? "";
     var footer = printerData?[AppDBConst.receiptFooterText] ?? "";
     var logo = printerData?[AppDBConst.receiptIconPath] ?? "";
 
     if (kDebugMode) {
-      print("OrderSummaryScreen _preparePrintTicket logo: $logo, iconPath: ${printerData?[AppDBConst.receiptIconPath] ?? ""}");
+      print(
+          "OrderSummaryScreen _preparePrintTicket logo: $logo, iconPath: ${printerData?[AppDBConst.receiptIconPath] ?? ""}");
     }
 
     bytes = [];
-    final ticket =  await _printerSettings.getTicket();
+    final ticket = await _printerSettings.getTicket();
 
     ///Header
     ///   Pinaka Logo
@@ -398,16 +435,17 @@ Future<bool> _handleBack() async {
     ///Footer
     ///   Thank You, Visit Again
 
-
     //Pinaka Logo
     final ByteData data;
-    if(logo != "") {
-      data = await GlobalUtility.fileToByteData(File(logo)) ?? await rootBundle.load('assets/Bubbas_logo.png');
+    if (logo != "") {
+      data = await GlobalUtility.fileToByteData(File(logo)) ??
+          await rootBundle.load('assets/Bubbas_logo.png');
     } else {
       data = await rootBundle.load('assets/Bubbas_logo.png');
     }
     if (kDebugMode) {
-      print("OrderSummaryScreen _preparePrintTicket data.lengthInBytes : ${data.lengthInBytes}");
+      print(
+          "OrderSummaryScreen _preparePrintTicket data.lengthInBytes : ${data.lengthInBytes}");
     }
     if (data.lengthInBytes > 0) {
       final Uint8List imageBytes = data.buffer.asUint8List();
@@ -417,7 +455,8 @@ Future<bool> _handleBack() async {
       // Resize the image to a 130x? thumbnail (maintaining the aspect ratio).
       img.Image thumbnail = img.copyResize(decodedImage, height: 280);
       // creates a copy of the original image with set dimensions
-      img.Image originalImg = img.copyResize(decodedImage, width: 470, height: 280);
+      img.Image originalImg =
+          img.copyResize(decodedImage, width: 470, height: 280);
       // fills the original image with a white background
       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
       var padding = (originalImg.width - thumbnail.width) / 2;
@@ -444,10 +483,11 @@ Future<bool> _handleBack() async {
     //         "zip_code": "504302",
     //         "phone_number": false => third line will be <phone_number>
 
-
     final DateTime createdDateTime = DateTime.now();
-    var dateToPrint = DateFormat(TextConstants.dateFormat).format(createdDateTime);
-    var timeToPrint = DateFormat(TextConstants.timeFormat).format(createdDateTime);
+    var dateToPrint =
+        DateFormat(TextConstants.dateFormat).format(createdDateTime);
+    var timeToPrint =
+        DateFormat(TextConstants.timeFormat).format(createdDateTime);
 
     var merchantDetails = await StoreDbHelper.instance.getStoreValidationData();
     var storeId = "${merchantDetails?[AppDBConst.storeId]}";
@@ -456,11 +496,13 @@ Future<bool> _handleBack() async {
     var storeDetails = await AssetDBHelper.instance.getStoreDetails();
     var storeName = "${storeDetails?.name}";
     var address = "${storeDetails?.address},";
-    var cityStateZip = "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
-    var orderIdToPrint = "";//'${TextConstants.orderID} $orderId';
+    var cityStateZip =
+        "${storeDetails?.city},${storeDetails?.state}-${storeDetails?.zipCode}";
+    var orderIdToPrint = ""; //'${TextConstants.orderID} $orderId';
 
     final userData = await UserDbHelper().getUserData();
-    var cashierName = "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
+    var cashierName =
+        "${userData?[AppDBConst.userDisplayName] ?? "Unknown Name"}";
     var cashierRole = "${userData?[AppDBConst.userRole] ?? "Unknown Role"}";
 
     if (kDebugMode) {
@@ -476,7 +518,7 @@ Future<bool> _handleBack() async {
       print(" >>>>> PrintOrder  cashierRole $cashierRole ");
     }
 
-    if(header != "") {
+    if (header != "") {
       bytes += ticket.row([
         PosColumn(
             text: "$header",
@@ -495,59 +537,106 @@ Future<bool> _handleBack() async {
 
     //Store Name
     bytes += ticket.row([
-      PosColumn(text: "$storeName", width: 12, styles: PosStyles(align: PosAlign.center,bold: true, height: PosTextSize.size2, width: PosTextSize.size2)), //Build #1.0.257: increase font to 5 and bold
+      PosColumn(
+          text: "$storeName",
+          width: 12,
+          styles: PosStyles(
+              align: PosAlign.center,
+              bold: true,
+              height: PosTextSize.size2,
+              width: PosTextSize
+                  .size2)), //Build #1.0.257: increase font to 5 and bold
     ]);
-    bytes += ticket.feed(1); /// Add space between store name and address
+    bytes += ticket.feed(1);
+
+    /// Add space between store name and address
     //Address
     bytes += ticket.row([
-      PosColumn(text: "$address", width: 12, styles: PosStyles(align: PosAlign.center)),
+      PosColumn(
+          text: "$address",
+          width: 12,
+          styles: PosStyles(align: PosAlign.center)),
     ]);
     //cityStateZip
     bytes += ticket.row([
-      PosColumn(text: "$cityStateZip", width: 12, styles: PosStyles(align: PosAlign.center)),
+      PosColumn(
+          text: "$cityStateZip",
+          width: 12,
+          styles: PosStyles(align: PosAlign.center)),
     ]);
     //Store Phone
     bytes += ticket.row([
-      PosColumn(text: "Phone: $storePhone", width: 12, styles: PosStyles(align: PosAlign.center)),
+      PosColumn(
+          text: "Phone: $storePhone",
+          width: 12,
+          styles: PosStyles(align: PosAlign.center)),
     ]);
 
     bytes += ticket.feed(1);
     bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
+      PosColumn(
+          text: "-----------------------------------------------", width: 12),
     ]);
     bytes += ticket.feed(1);
 
     //Date and Time
     bytes += ticket.row([
-      PosColumn(text: "Date: $dateToPrint", width: 7, styles: PosStyles(align: PosAlign.left)),
-      PosColumn(text: "Time: $timeToPrint", width: 5, styles: PosStyles(align: PosAlign.left)),
+      PosColumn(
+          text: "Date: $dateToPrint",
+          width: 7,
+          styles: PosStyles(align: PosAlign.left)),
+      PosColumn(
+          text: "Time: $timeToPrint",
+          width: 5,
+          styles: PosStyles(align: PosAlign.left)),
     ]);
 
     //cashier and  store id
     bytes += ticket.row([
-      PosColumn(text: "Cashier: $cashierName", width: 7, styles: PosStyles(align: PosAlign.left)),
-      PosColumn(text: "StoreID: $storeId", width: 5, styles: PosStyles(align: PosAlign.left)),
+      PosColumn(
+          text: "Cashier: $cashierName",
+          width: 7,
+          styles: PosStyles(align: PosAlign.left)),
+      PosColumn(
+          text: "StoreID: $storeId",
+          width: 5,
+          styles: PosStyles(align: PosAlign.left)),
     ]);
 
     //role and order Id
     bytes += ticket.row([
-      PosColumn(text: "Role: $cashierRole", width: 7, styles: PosStyles(align: PosAlign.left)),
+      PosColumn(
+          text: "Role: $cashierRole",
+          width: 7,
+          styles: PosStyles(align: PosAlign.left)),
       PosColumn(text: "", width: 5, styles: PosStyles(align: PosAlign.left)),
     ]);
 
     bytes += ticket.feed(1);
     bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
+      PosColumn(
+          text: "-----------------------------------------------", width: 12),
     ]);
     bytes += ticket.feed(1);
 
     //Item header
     bytes += ticket.row([
-      PosColumn(text: "#", width: 2,styles: PosStyles(align: PosAlign.left,bold:true)),
-      PosColumn(text: "Denomination", width:5, styles: PosStyles(align: PosAlign.left,bold:true)),
-
-      PosColumn(text: "Qty", width: 2,styles: PosStyles(align: PosAlign.center,bold:true)),
-      PosColumn(text: "Amt", width: 3, styles: PosStyles(align: PosAlign.right,bold:true)),
+      PosColumn(
+          text: "#",
+          width: 2,
+          styles: PosStyles(align: PosAlign.left, bold: true)),
+      PosColumn(
+          text: "Denomination",
+          width: 5,
+          styles: PosStyles(align: PosAlign.left, bold: true)),
+      PosColumn(
+          text: "Qty",
+          width: 2,
+          styles: PosStyles(align: PosAlign.center, bold: true)),
+      PosColumn(
+          text: "Amt",
+          width: 3,
+          styles: PosStyles(align: PosAlign.right, bold: true)),
     ]);
     bytes += ticket.feed(1);
 
@@ -562,9 +651,19 @@ Future<bool> _handleBack() async {
 
       bytes += ticket.row([
         PosColumn(text: "$denomIndex", width: 2),
-        PosColumn(text: "${TextConstants.currencySymbol}${denomValue.toStringAsFixed(2)}", width:5, styles: PosStyles(align: PosAlign.right)),
-        PosColumn(text: "$notes", width:2, styles: PosStyles(align: PosAlign.center)),
-        PosColumn(text: "${TextConstants.currencySymbol}${cash.toStringAsFixed(2)}", width: 3, styles: PosStyles(align: PosAlign.right)),
+        PosColumn(
+            text:
+                "${TextConstants.currencySymbol}${denomValue.toStringAsFixed(2)}",
+            width: 5,
+            styles: PosStyles(align: PosAlign.right)),
+        PosColumn(
+            text: "$notes",
+            width: 2,
+            styles: PosStyles(align: PosAlign.center)),
+        PosColumn(
+            text: "${TextConstants.currencySymbol}${cash.toStringAsFixed(2)}",
+            width: 3,
+            styles: PosStyles(align: PosAlign.right)),
       ]);
     });
 
@@ -578,14 +677,22 @@ Future<bool> _handleBack() async {
 
     //line
     bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
+      PosColumn(
+          text: "-----------------------------------------------", width: 12),
     ]);
 
     // bytes += ticket.feed(1);
     bytes += ticket.row([
       PosColumn(text: TextConstants.total, width: 7),
-      PosColumn(text: totalNotes.toString(), width:2, styles: PosStyles(align: PosAlign.center)),
-      PosColumn(text: "${TextConstants.currencySymbol}${totalCash.toStringAsFixed(2)}", width:3, styles: PosStyles(align: PosAlign.right)),
+      PosColumn(
+          text: totalNotes.toString(),
+          width: 2,
+          styles: PosStyles(align: PosAlign.center)),
+      PosColumn(
+          text:
+              "${TextConstants.currencySymbol}${totalCash.toStringAsFixed(2)}",
+          width: 3,
+          styles: PosStyles(align: PosAlign.right)),
     ]);
 
     // bytes += ticket.row([
@@ -593,7 +700,8 @@ Future<bool> _handleBack() async {
     //   PosColumn(text: totalCash.toStringAsFixed(2), width:2),
     // ]);
     bytes += ticket.row([
-      PosColumn(text: "-----------------------------------------------", width: 12),
+      PosColumn(
+          text: "-----------------------------------------------", width: 12),
     ]);
     bytes += ticket.feed(1);
     //Footer
@@ -603,8 +711,8 @@ Future<bool> _handleBack() async {
     // bytes += ticket.feed(1);
   }
 
-  Future _printTicket() async{
-    final ticket =  await _printerSettings.getTicket();
+  Future _printTicket() async {
+    final ticket = await _printerSettings.getTicket();
     final result = await _printerSettings.printTicket(bytes, ticket);
 
     if (kDebugMode) {
@@ -612,10 +720,11 @@ Future<bool> _handleBack() async {
     }
     switch (result) {
       case Ok<BluetoothPrinter>():
-      // BluetoothPrinter printer = result.value;
+        // BluetoothPrinter printer = result.value;
         break;
       case Error<BluetoothPrinter>():
-        WidgetsBinding.instance.addPostFrameCallback((_) { // Build #1.0.16
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          // Build #1.0.16
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -626,21 +735,26 @@ Future<bool> _handleBack() async {
               duration: const Duration(seconds: 3),
             ),
           );
+
           /// call printer setup screen
           if (kDebugMode) {
             print("call printer setup screen");
           }
-          Navigator.push(context, MaterialPageRoute(
-            builder: (context) => PrinterSetup(),
-          )).then((result) {
-            if (result == TextConstants.refresh) { // Build #1.0.175: Added refresh constant string into TextConstants
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PrinterSetup(),
+              )).then((result) {
+            if (result == TextConstants.refresh) {
+              // Build #1.0.175: Added refresh constant string into TextConstants
               _printerSettings.loadPrinter();
               setState(() {
                 // Update state to refresh the UI
                 if (kDebugMode) {
-                  print("SettingScreen - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
+                  print(
+                      "SettingScreen - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
                 }
-                if(!Misc.disablePrinter) {
+                if (!Misc.disablePrinter) {
                   _printTicket();
                 }
               });
@@ -650,7 +764,6 @@ Future<bool> _handleBack() async {
         break;
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -673,29 +786,29 @@ Future<bool> _handleBack() async {
         child: _safeDenominations.isEmpty
             ? const Center(child: CircularProgressIndicator())
             : Column(
-          children: [
-            const SizedBox(height: 20),
-            Expanded(
-              child: ListView.builder(
-                itemCount: _safeDenominations.length,
-                itemBuilder: (context, index) {
-                  final denom = _safeDenominations[index];
-                  final controller =
-                  _denomControllers[denom.denom.toString()]!;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: _buildDenominationField(
-                      denom.image ?? 'assets/svg/1.svg',
-                      denom.denom.toString(),
-                      controller,
-                      isLast: index == _safeDenominations.length - 1,
+                children: [
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: _safeDenominations.length,
+                      itemBuilder: (context, index) {
+                        final denom = _safeDenominations[index];
+                        final controller =
+                            _denomControllers[denom.denom.toString()]!;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: _buildDenominationField(
+                            denom.image ?? 'assets/svg/1.svg',
+                            denom.denom.toString(),
+                            controller,
+                            isLast: index == _safeDenominations.length - 1,
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
       );
     }
 
@@ -746,7 +859,7 @@ Future<bool> _handleBack() async {
                   borderRadius: BorderRadius.circular(5),
                 ),
                 padding:
-                const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                    const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                 child: Text(
                   _totalNotesController.text,
                   textAlign: TextAlign.right,
@@ -789,7 +902,7 @@ Future<bool> _handleBack() async {
                   borderRadius: BorderRadius.circular(5),
                 ),
                 padding:
-                const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                 child: Text(
                   _totalCashController.text,
                   textAlign: TextAlign.right,
@@ -809,7 +922,7 @@ Future<bool> _handleBack() async {
               Expanded(
                 child: Container(
                   padding:
-                  const EdgeInsets.symmetric(vertical: 40, horizontal: 12),
+                      const EdgeInsets.symmetric(vertical: 40, horizontal: 12),
                   decoration: BoxDecoration(
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? const Color(0xFF1F1D2B)
@@ -911,7 +1024,7 @@ Future<bool> _handleBack() async {
                                         horizontal: 16, vertical: 8),
                                     decoration: BoxDecoration(
                                       color: themeHelper.themeMode ==
-                                          ThemeMode.dark
+                                              ThemeMode.dark
                                           ? const Color(0xFF252837)
                                           : const Color(0xFF37415E),
                                       borderRadius: BorderRadius.circular(10),
@@ -941,73 +1054,73 @@ Future<bool> _handleBack() async {
                               Expanded(
                                 child: sidebarPosition == SidebarPosition.bottom
                                     ? Row(
-                                  crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                                  children: [
-                                    /// Back button on top-left
-                                    InkWell(
-                                      onTap: () =>
-                                          Navigator.of(context).pop(),
-                                      child: Container(
-                                        padding:
-                                        const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 8),
-                                        decoration: BoxDecoration(
-                                          color: themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                              ? const Color(0xFF252837)
-                                              : const Color(0xFF37415E),
-                                          borderRadius:
-                                          BorderRadius.circular(10),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: const [
-                                            Icon(Icons.arrow_back,
-                                                size: 10,
-                                                color: Colors.white),
-                                            SizedBox(width: 8),
-                                            Text(
-                                              "Back",
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight:
-                                                FontWeight.w600,
-                                                color: Colors.white,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          /// Back button on top-left
+                                          InkWell(
+                                            onTap: () =>
+                                                Navigator.of(context).pop(),
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 16,
+                                                      vertical: 8),
+                                              decoration: BoxDecoration(
+                                                color: themeHelper.themeMode ==
+                                                        ThemeMode.dark
+                                                    ? const Color(0xFF252837)
+                                                    : const Color(0xFF37415E),
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: const [
+                                                  Icon(Icons.arrow_back,
+                                                      size: 10,
+                                                      color: Colors.white),
+                                                  SizedBox(width: 8),
+                                                  Text(
+                                                    "Back",
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 15),
+                                          ),
+                                          const SizedBox(width: 15),
 
-                                    /// LEFT container
-                                    Expanded(
-                                        flex: 5,
-                                        child: _buildLeftContainer()),
-                                    const SizedBox(width: 20),
+                                          /// LEFT container
+                                          Expanded(
+                                              flex: 5,
+                                              child: _buildLeftContainer()),
+                                          const SizedBox(width: 20),
 
-                                    /// RIGHT container
-                                    Expanded(
-                                        flex: 4,
-                                        child: _buildRightContainer()),
-                                  ],
-                                )
+                                          /// RIGHT container
+                                          Expanded(
+                                              flex: 4,
+                                              child: _buildRightContainer()),
+                                        ],
+                                      )
                                     : Row(
-                                  crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                        flex: 5,
-                                        child: _buildLeftContainer()),
-                                    const SizedBox(width: 20),
-                                    Expanded(
-                                        flex: 4,
-                                        child: _buildRightContainer()),
-                                  ],
-                                ),
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                              flex: 5,
+                                              child: _buildLeftContainer()),
+                                          const SizedBox(width: 20),
+                                          Expanded(
+                                              flex: 4,
+                                              child: _buildRightContainer()),
+                                        ],
+                                      ),
                               ),
                             ],
                           ),
@@ -1088,12 +1201,12 @@ Future<bool> _handleBack() async {
   }
 
   Widget _buildDenominationField(
-      String assetPath,
-      String denomination,
-      TextEditingController controller, {
-        bool isResult = false,
-        bool isLast = false,
-      }) {
+    String assetPath,
+    String denomination,
+    TextEditingController controller, {
+    bool isResult = false,
+    bool isLast = false,
+  }) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final isDark = themeHelper.themeMode == ThemeMode.dark;
 
@@ -1137,10 +1250,10 @@ Future<bool> _handleBack() async {
                     onTap: isResult
                         ? null
                         : () {
-                      setState(() {
-                        _activeController = controller;
-                      });
-                    },
+                            setState(() {
+                              _activeController = controller;
+                            });
+                          },
                     decoration: InputDecoration(
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 12),

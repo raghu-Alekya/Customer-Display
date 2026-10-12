@@ -11,7 +11,8 @@ import '../core/api/token_storage.dart';
 import 'file_helper.dart';
 import 'package:pinaka_pos/Helper/Extentions/exceptions.dart';
 
-class APIHelper { // Build #1.0.8, Naveen added
+class APIHelper {
+  // Build #1.0.8, Naveen added
   //Build #1.0.54: added insure UrlHelper base URL is initialized
   Future<void> _initializeBaseUrl() async {
     if (kDebugMode) {
@@ -19,7 +20,8 @@ class APIHelper { // Build #1.0.8, Naveen added
     }
     await UrlHelper.initializeBaseUrl();
     if (kDebugMode) {
-      print("#### APIHelper: UrlHelper base URL initialized: ${UrlHelper.baseUrl}");
+      print(
+          "#### APIHelper: UrlHelper base URL initialized: ${UrlHelper.baseUrl}");
     }
   }
 
@@ -60,20 +62,20 @@ class APIHelper { // Build #1.0.8, Naveen added
 
     return headers;
   }
+
   Future<dynamic> postForm(
-      String url,
-      Map<String, String> params,
-      bool useToken, {
-        bool validateMarchentUrl = false,
-      }) async {
+    String url,
+    Map<String, String> params,
+    bool useToken, {
+    bool validateMarchentUrl = false,
+  }) async {
     String finalUrl = "";
     String token = ""; //  non-nullable
 
     try {
       await _initializeBaseUrl();
 
-      finalUrl =
-      validateMarchentUrl ? url : UrlHelper.baseUrl + url;
+      finalUrl = validateMarchentUrl ? url : UrlHelper.baseUrl + url;
 
       final userData = await UserDbHelper().getUserData();
       token = userData?[AppDBConst.userToken] ?? "";
@@ -84,15 +86,13 @@ class APIHelper { // Build #1.0.8, Naveen added
       );
 
       if (useToken && token.isNotEmpty) {
-        request.headers[HttpHeaders.authorizationHeader] =
-        "Bearer $token";
+        request.headers[HttpHeaders.authorizationHeader] = "Bearer $token";
       }
 
       request.fields.addAll(params);
 
       final streamedResponse = await request.send();
-      final response =
-      await http.Response.fromStream(streamedResponse);
+      final response = await http.Response.fromStream(streamedResponse);
 
       return _returnResponse(response);
     } catch (e, s) {
@@ -111,7 +111,9 @@ class APIHelper { // Build #1.0.8, Naveen added
       await _initializeBaseUrl(); // Ensure base URL is initialized
       finalUrl = UrlHelper.baseUrl + url;
       final headers = await _buildAuthHeaders(useToken: useToken);
-      token = headers[HttpHeaders.authorizationHeader]?.replaceFirst('Bearer ', '') ?? '';
+      token = headers[HttpHeaders.authorizationHeader]
+              ?.replaceFirst('Bearer ', '') ??
+          '';
 
       if (kDebugMode) {
         print("URL: $finalUrl");
@@ -141,7 +143,7 @@ class APIHelper { // Build #1.0.8, Naveen added
       await _initializeBaseUrl(); // Ensure base URL is initialized
       finalUrl = UrlHelper.baseUrl + url;
       final userData = await UserDbHelper().getUserData();
-      token =  userData?[AppDBConst.userToken] ?? "";
+      token = userData?[AppDBConst.userToken] ?? "";
 
       if (kDebugMode) {
         print("URL: $finalUrl");
@@ -164,7 +166,8 @@ class APIHelper { // Build #1.0.8, Naveen added
   }
 
   // Base method for handling POST requests
-  Future<dynamic> post(String url, Map<String, dynamic> params, bool useToken, {bool? validateMarchentUrl}) async {
+  Future<dynamic> post(String url, Map<String, dynamic> params, bool useToken,
+      {bool? validateMarchentUrl}) async {
     var responseJson;
     String finalUrl = "";
     String? token = "";
@@ -172,12 +175,16 @@ class APIHelper { // Build #1.0.8, Naveen added
 
     try {
       await _initializeBaseUrl(); // Ensure base URL is initialized
-      finalUrl = (validateMarchentUrl ?? false) ? url : UrlHelper.baseUrl + url;  //Build #1.0.42: Updated url condition
+      finalUrl = (validateMarchentUrl ?? false)
+          ? url
+          : UrlHelper.baseUrl + url; //Build #1.0.42: Updated url condition
       body = json.encode(params);
 
       // Connector create-order requires Bearer + x-merchant-id + x-store-id
       final headers = await _buildAuthHeaders(useToken: useToken);
-      token = headers[HttpHeaders.authorizationHeader]?.replaceFirst('Bearer ', '') ?? '';
+      token = headers[HttpHeaders.authorizationHeader]
+              ?.replaceFirst('Bearer ', '') ??
+          '';
 
       if (kDebugMode) {
         print("URL: $finalUrl");
@@ -192,27 +199,25 @@ class APIHelper { // Build #1.0.8, Naveen added
         }
       }
 
-      final response = await http.post(Uri.parse(finalUrl), body: body, headers: headers);
+      final response =
+          await http.post(Uri.parse(finalUrl), body: body, headers: headers);
       responseJson = _returnResponse(response);
-    }
-    on SocketException { //Build #1.0.34: if turn off internet need this exception here
+    } on SocketException {
+      //Build #1.0.34: if turn off internet need this exception here
       throw FetchDataException('No Internet connection');
-    }
-    catch (e, s) {
+    } catch (e, s) {
       _logError("POST", finalUrl, token, e, s, body: body);
-      if(e is SocketException){
+      if (e is SocketException) {
         //treat SocketException
         if (kDebugMode) {
           print("Socket exception: ${e.toString()}");
         }
-      }
-      else if(e is TimeoutException){
+      } else if (e is TimeoutException) {
         //treat TimeoutException
         if (kDebugMode) {
           print("Timeout exception: ${e.toString()}");
         }
-      }
-      else if (kDebugMode) {
+      } else if (kDebugMode) {
         print("Unhandled exception: ${e.toString()}");
       }
       throw Exception("Exception: $e; Stack: $s");
@@ -222,7 +227,8 @@ class APIHelper { // Build #1.0.8, Naveen added
   }
 
   // Method for handling POST requests with file uploads
-  Future<dynamic> postWithFile(String url, bool useToken, FileHelper fileHelper) async {
+  Future<dynamic> postWithFile(
+      String url, bool useToken, FileHelper fileHelper) async {
     var responseJson;
     String finalUrl = "";
     String? token = "";
@@ -231,7 +237,7 @@ class APIHelper { // Build #1.0.8, Naveen added
       await _initializeBaseUrl(); // Ensure base URL is initialized
       finalUrl = UrlHelper.baseUrl + url;
       final userData = await UserDbHelper().getUserData();
-      token =  userData?[AppDBConst.userToken] ?? "";
+      token = userData?[AppDBConst.userToken] ?? "";
       File formDataFile = await fileHelper.getFile();
 
       if (kDebugMode) {
@@ -241,13 +247,17 @@ class APIHelper { // Build #1.0.8, Naveen added
         print("Bearer Token: $token");
       }
 
-      if (useToken && token != null && token.isNotEmpty && formDataFile != null) {
+      if (useToken &&
+          token != null &&
+          token.isNotEmpty &&
+          formDataFile != null) {
         var request = http.MultipartRequest('POST', Uri.parse(finalUrl));
         request.headers['Authorization'] = 'Bearer $token';
 
         // Attach file to the request
         String fieldName = 'file'; // Customize field name as needed
-        var file = await http.MultipartFile.fromPath(fieldName, formDataFile.path);
+        var file =
+            await http.MultipartFile.fromPath(fieldName, formDataFile.path);
         request.files.add(file);
 
         var streamedResponse = await request.send();
@@ -272,7 +282,7 @@ class APIHelper { // Build #1.0.8, Naveen added
       await _initializeBaseUrl(); // Ensure base URL is initialized
       finalUrl = UrlHelper.baseUrl + url;
       final userData = await UserDbHelper().getUserData();
-      token =  userData?[AppDBConst.userToken] ?? "";
+      token = userData?[AppDBConst.userToken] ?? "";
 
       final response = await http.delete(Uri.parse(finalUrl), headers: {
         HttpHeaders.authorizationHeader: "Bearer $token",
@@ -289,7 +299,8 @@ class APIHelper { // Build #1.0.8, Naveen added
   }
 
   // Base method for handling PUT requests
-  Future<dynamic> put(String url, Map<String, dynamic> params, bool useToken) async {
+  Future<dynamic> put(
+      String url, Map<String, dynamic> params, bool useToken) async {
     var responseJson;
     String finalUrl = "";
     String? token = "";
@@ -301,7 +312,9 @@ class APIHelper { // Build #1.0.8, Naveen added
       body = json.encode(params);
 
       final headers = await _buildAuthHeaders(useToken: useToken);
-      token = headers[HttpHeaders.authorizationHeader]?.replaceFirst('Bearer ', '') ?? '';
+      token = headers[HttpHeaders.authorizationHeader]
+              ?.replaceFirst('Bearer ', '') ??
+          '';
 
       if (kDebugMode) {
         print("URL: $finalUrl");
@@ -310,7 +323,8 @@ class APIHelper { // Build #1.0.8, Naveen added
         print("Headers keys: ${headers.keys.toList()}");
       }
 
-      final response = await http.put(Uri.parse(finalUrl), body: body, headers: headers);
+      final response =
+          await http.put(Uri.parse(finalUrl), body: body, headers: headers);
       responseJson = _returnResponse(response);
     } on SocketException {
       throw FetchDataException('No Internet connection');
@@ -323,7 +337,9 @@ class APIHelper { // Build #1.0.8, Naveen added
   }
 
   // Helper method to log errors consistently
-  void _logError(String method, String url, String? token, dynamic error, StackTrace stackTrace, {String body = ""}) {
+  void _logError(String method, String url, String? token, dynamic error,
+      StackTrace stackTrace,
+      {String body = ""}) {
     if (kDebugMode) {
       print("Exception in $method REQUEST: $error");
       print("Final URL: $url");

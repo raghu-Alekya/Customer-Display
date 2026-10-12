@@ -70,11 +70,23 @@ class LoginResponse {
       userMap = json['employee'] as Map<String, dynamic>;
     } else if (json['user'] is Map<String, dynamic>) {
       userMap = json['user'] as Map<String, dynamic>;
+    } else if (dataMap['employee'] is Map<String, dynamic>) {
+      userMap = dataMap['employee'] as Map<String, dynamic>;
+    } else if (dataMap['user'] is Map<String, dynamic>) {
+      userMap = dataMap['user'] as Map<String, dynamic>;
     } else {
       userMap = dataMap;
     }
+    final storeMap = json['store'] is Map<String, dynamic>
+        ? json['store'] as Map<String, dynamic>
+        : dataMap['store'] is Map<String, dynamic>
+            ? dataMap['store'] as Map<String, dynamic>
+            : <String, dynamic>{};
 
-    var rawId = userMap['id'] ?? dataMap['id'] ?? userMap['userId'] ?? dataMap['userId'];
+    var rawId = userMap['id'] ??
+        dataMap['id'] ??
+        userMap['userId'] ??
+        dataMap['userId'];
     if (rawId != null) {
       id = int.tryParse(rawId.toString()) ?? rawId;
     } else {
@@ -86,7 +98,8 @@ class LoginResponse {
         userMap['employee_code']?.toString() ??
         dataMap['nicename']?.toString();
 
-    final rawEmail = userMap['email']?.toString() ?? dataMap['email']?.toString();
+    final rawEmail =
+        userMap['email']?.toString() ?? dataMap['email']?.toString();
     if (rawEmail != null && rawEmail.trim().isNotEmpty) {
       email = rawEmail.trim();
     } else if (nicename != null && nicename!.trim().isNotEmpty) {
@@ -129,11 +142,21 @@ class LoginResponse {
 
     avatar = userMap['avatar']?.toString() ?? dataMap['avatar']?.toString();
 
-    var rawShiftId = dataMap['shift_id'] ?? dataMap['shiftId'] ?? userMap['shift_id'];
-    shiftId = rawShiftId is int ? rawShiftId : int.tryParse(rawShiftId?.toString() ?? '');
+    var rawShiftId =
+        dataMap['shift_id'] ?? dataMap['shiftId'] ?? userMap['shift_id'];
+    shiftId = rawShiftId is int
+        ? rawShiftId
+        : int.tryParse(rawShiftId?.toString() ?? '');
 
-    safeEnable = dataMap['safe_enable']?.toString() ?? dataMap['safeEnable']?.toString();
-    safeEnableDrop = dataMap['safe_enable_drop']?.toString() ?? dataMap['safeEnableDrop']?.toString();
+    final featureFlagSources = [dataMap, userMap, storeMap, json];
+    safeEnable = _readFeatureFlag(
+      featureFlagSources,
+      const ['safe_enable', 'safeEnable'],
+    );
+    safeEnableDrop = _readFeatureFlag(
+      featureFlagSources,
+      const ['safe_enable_drop', 'safeEnableDrop'],
+    );
 
     if (json['device'] is Map<String, dynamic>) {
       final devMap = json['device'] as Map<String, dynamic>;
@@ -146,6 +169,32 @@ class LoginResponse {
     }
 
     tableId = dataMap['table_id']?.toString() ?? dataMap['tableId']?.toString();
+  }
+
+  static String? _readFeatureFlag(
+    List<Map<String, dynamic>> sources,
+    List<String> keys,
+  ) {
+    for (final source in sources) {
+      for (final key in keys) {
+        if (source.containsKey(key) && source[key] != null) {
+          final value = source[key];
+          if (value is bool) return value ? '1' : '0';
+          if (value is num) return value == 1 ? '1' : '0';
+
+          final normalized = value.toString().trim().toLowerCase();
+          if (const {'1', 'true', 'yes', 'enabled', 'on'}
+              .contains(normalized)) {
+            return '1';
+          }
+          if (const {'0', 'false', 'no', 'disabled', 'off', ''}
+              .contains(normalized)) {
+            return '0';
+          }
+        }
+      }
+    }
+    return null;
   }
 
   Map<String, dynamic> toJson() {

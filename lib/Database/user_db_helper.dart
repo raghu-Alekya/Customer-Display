@@ -116,6 +116,11 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     if (kDebugMode) {
       print('#### saveUserData pos_device_id: $posDeviceId');
     }
+    final existingShiftId = existingUser.isEmpty
+        ? null
+        : int.tryParse(
+            existingUser.first[AppDBConst.userShiftId]?.toString() ?? '',
+          );
 
     Map<String, dynamic> userMap = {
       AppDBConst.userId: numericUserId,
@@ -127,7 +132,8 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       AppDBConst.userNickname: loginResponse.nicename ?? '',
       AppDBConst.userToken: userToken, // Set NEW token
       AppDBConst.profilePhoto: loginResponse.avatar,
-      AppDBConst.userShiftId: loginResponse.shiftId,
+      // Keep the saved shift when the login response omits shift_id.
+      AppDBConst.userShiftId: loginResponse.shiftId ?? existingShiftId,
       // Build #offline: cache terminal identity on every login
       AppDBConst.deviceDisplayName: loginResponse.deviceDisplayName ?? '',
       AppDBConst.tableId: loginResponse.tableId ?? '',
@@ -375,7 +381,12 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       AppDBConst.userNickname: nicename ?? displayName,
       AppDBConst.userToken: token,
       AppDBConst.profilePhoto: avatar ?? '',
-      AppDBConst.userShiftId: shiftId,
+      AppDBConst.userShiftId: shiftId ??
+          (existingUser.isEmpty
+              ? null
+              : int.tryParse(
+                  existingUser.first[AppDBConst.userShiftId]?.toString() ?? '',
+                )),
     };
 
     // Only replace email when a real email was supplied.

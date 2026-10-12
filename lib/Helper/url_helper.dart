@@ -210,6 +210,7 @@ class UrlHelper {
   // New connector API base (no more /wp-json/ prefix)
   static const  String _uat = "https://pch.alektasolutions.com/connector/api/v1";
   static const  String _prod = "http://api.pinaka.com/";
+  static const String safeApiBaseUrl = "https://pch.alektasolutions.com/api/v1";
 
   ///Update the environment URL in below API
   ///PROD = use for production release
