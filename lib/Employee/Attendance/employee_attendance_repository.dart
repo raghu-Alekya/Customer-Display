@@ -10,6 +10,7 @@ import 'employee_attendance_model.dart';
 class EmployeeAttendanceRepository {
   factory EmployeeAttendanceRepository.forCurrentApp() {
     final contextProvider = PchServiceLocator.contextProvider;
+    // Same connector base as the rest of the POS app (UrlHelper / PchConfig.attendanceBaseUrl)
     final client = PchClient(
       baseUrl: PchConfig.attendanceBaseUrl,
       tokenStorage: PchServiceLocator.tokenStorage,
@@ -51,8 +52,8 @@ class EmployeeAttendanceRepository {
       final records = rawRecords
           .whereType<Map>()
           .map((item) => EmployeeAttendanceRecord.fromJson(
-                Map<String, dynamic>.from(item),
-              ))
+        Map<String, dynamic>.from(item),
+      ))
           .toList()
         ..sort((a, b) => b.clockIn.compareTo(a.clockIn));
       return records.isEmpty ? null : records.first;
@@ -87,10 +88,10 @@ class EmployeeAttendanceRepository {
       _clock('clock-out', employeeCode: employeeCode, pin: pin);
 
   Future<EmployeeAttendanceRecord> _clock(
-    String action, {
-    required String employeeCode,
-    required String pin,
-  }) async {
+      String action, {
+        required String employeeCode,
+        required String pin,
+      }) async {
     final context = await _contextProvider.getContext();
     final merchantId =
         context?.merchantId ?? await AuthIdsStore.getMerchantId();
@@ -129,7 +130,7 @@ class EmployeeAttendanceRepository {
       recordJson.putIfAbsent('employeeCode', () => employeeCode);
       recordJson.putIfAbsent(
         'employeeName',
-        () => employee['employeeName'] ?? '',
+            () => employee['employeeName'] ?? '',
       );
       return EmployeeAttendanceRecord.fromJson(recordJson);
     } on DioException catch (error) {
