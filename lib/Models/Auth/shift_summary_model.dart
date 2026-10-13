@@ -146,8 +146,6 @@ class Shift extends Equatable {
     return 0.0;
   }
 
-<<<<<<< HEAD
-=======
   static String _readString(Map<String, dynamic> json, List<String> keys) {
     for (final key in keys) {
       final value = json[key];
@@ -166,7 +164,6 @@ class Shift extends Equatable {
     return 0;
   }
 
->>>>>>> ab702b514c32bed018e70015da3953d0b8db00ea
   final int shiftId;
   final String title;
   final int userId;
@@ -241,19 +238,6 @@ class Shift extends Equatable {
         ? reportedSalesAmount
         : cashSales + cardSales;
 
-<<<<<<< HEAD
-    return Shift(
-      shiftId: (json['shift_id'] as num?)?.toInt() ?? 0,
-      title: json['title']?.toString() ?? '',
-      userId: (json['user_id'] as num?)?.toInt() ?? 0,
-      userName: json['user_name']?.toString() ?? '',
-      assignedStaff: (json['assigned_staff'] as num?)?.toInt() ?? 0,
-      startTime: json['start_time']?.toString() ?? '',
-      endTime: json['end_time']?.toString() ?? '',
-      totalSales: (json['total_sales'] as num?)?.toInt() ?? 0,
-      totalSaleAmount: salesAmount,
-      safeDropTotal: (json['safe_drop_total'] as num?)?.toDouble() ?? 0.0,
-=======
     // Old shifts API is snake_case with numeric ids; /pos/shifts/employee
     // returns camelCase with string ids like "SHIFT-...".
     return Shift(
@@ -271,7 +255,6 @@ class Shift extends Equatable {
       totalSaleAmount: salesAmount,
       safeDropTotal: _readAmount(json,
           ['safe_drop_total', 'safeDropTotal', 'total_safe_drops', 'totalSafeDrops']),
->>>>>>> ab702b514c32bed018e70015da3953d0b8db00ea
       safeDrops: (json['safe_drops'] as List<dynamic>?)
           ?.map((e) => SafeDrop.fromJson(e as Map<String, dynamic>))
           .toList() ??
@@ -280,19 +263,6 @@ class Shift extends Equatable {
           ?.map((e) => VendorPayout.fromJson(e as Map<String, dynamic>))
           .toList() ??
           [],
-<<<<<<< HEAD
-      totalVendorPayments:
-      (json['total_vendor_payments'] as num?)?.toDouble() ?? 0.0,
-      openingBalance: (json['opening_balance'] as num?)?.toDouble() ?? 0.0,
-      closingBalance: (json['closing_balance'] as num?)?.toDouble() ?? 0.0,
-      notes: json['notes']?.toString() ?? '',
-      shiftClosingNotes: json['shift_closing_notes']?.toString() ?? '',
-      shiftStatus: json['shift_status']?.toString() ?? '',
-      tillAmount: (json['till_amount'] ?? 0).toDouble(),
-      overShort: (json['over_short'] is String)
-          ? double.tryParse(json['over_short']) ?? 0.0
-          : (json['over_short'] as num?)?.toDouble() ?? 0.0,
-=======
       totalVendorPayments: _readAmount(json, [
         'total_vendor_payments',
         'totalVendorPayments',
@@ -314,7 +284,6 @@ class Shift extends Equatable {
       tillAmount: _readAmount(json, ['till_amount', 'tillAmount']),
       overShort: _readAmount(json,
           ['over_short', 'overShort', 'cash_difference', 'cashDifference', 'discrepancy']),
->>>>>>> ab702b514c32bed018e70015da3953d0b8db00ea
     );
   }
 

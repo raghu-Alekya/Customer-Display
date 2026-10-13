@@ -29,10 +29,7 @@ import '../Models/Assets/asset_model.dart';
 import '../Models/Orders/orders_model.dart';
 import '../Models/Search/product_custom_item_model.dart' as model;
 import '../Repositories/Assets/asset_repository.dart';
-<<<<<<< HEAD
-=======
 import '../Repositories/Auth/AuthIdsStore.dart';
->>>>>>> ab702b514c32bed018e70015da3953d0b8db00ea
 import '../Repositories/Category/category_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';

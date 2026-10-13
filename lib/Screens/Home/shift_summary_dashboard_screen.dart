@@ -1777,11 +1777,7 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
             });
             // Navigator.of(context).pop(); // Dismiss confirmation dialog
 
-<<<<<<< HEAD
-            shiftBloc.getShiftById(widget.shiftId!);
-=======
             _refreshShift();
->>>>>>> ab702b514c32bed018e70015da3953d0b8db00ea
             if (Misc.showDebugSnackBar) { // Build #1.0.254
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
