@@ -72,7 +72,8 @@ class EmployeeAttendanceRepository {
 
         return AttendanceEmployee(
           employeeCode: map['employeeCode'] ?? '',
-          name: fullName.isNotEmpty ? fullName : (map['username'] ?? 'Employee'),
+          name:
+              fullName.isNotEmpty ? fullName : (map['username'] ?? 'Employee'),
           isRegistered: map['pinSet'] == true || (map['loginPin'] != null),
           loginPin: map['loginPin']?.toString(),
           roleName: map['roleName']?.toString() ?? 'Staff',
@@ -85,54 +86,70 @@ class EmployeeAttendanceRepository {
   }
 
   /// Reads attendance history for an employee and date.
+  /// Reads attendance history for an employee.
   Future<EmployeeAttendanceRecord?> getMyAttendanceForDate({
     required String employeeCode,
     required String date,
   }) async {
     _log('========== GET ATTENDANCE HISTORY ==========');
-    _log('Employee code: $employeeCode');
-    _log('Date: $date');
+    _log('Fetching for employeeCode: "$employeeCode"');
 
     try {
       final response = await _dio.get(
         'attendance',
         queryParameters: {
-          'employeeCode': employeeCode,
-          'date': date,
+          'employeeCode': employeeCode.trim(),
           'page': 1,
           'limit': 100,
+          // Note: We don't strictly filter by 'date' in query params to avoid
+          // UTC vs Local timezone day-shift drops; we sort by clockIn DESC instead!
         },
       );
 
       final body = _asMap(response.data);
       final rawRecords = body['records'];
 
-      if (rawRecords is! List) return _todayRecordsCache[employeeCode];
-
-      final records = rawRecords
-          .whereType<Map>()
-          .map(
-            (item) => EmployeeAttendanceRecord.fromJson(
-          Map<String, dynamic>.from(item),
-        ),
-      )
-          .toList()
-        ..sort((a, b) => b.clockIn.compareTo(a.clockIn));
-
-      if (records.isNotEmpty) {
-        _todayRecordsCache[employeeCode] = records.first;
-        return records.first;
+      if (rawRecords is! List || rawRecords.isEmpty) {
+        _log('No records returned by server for $employeeCode');
+        return _todayRecordsCache[employeeCode];
       }
-      return _todayRecordsCache[employeeCode];
+
+      _log('Server returned ${rawRecords.length} records for $employeeCode');
+
+      final records = <EmployeeAttendanceRecord>[];
+      for (final item in rawRecords) {
+        if (item is Map) {
+          try {
+            records.add(EmployeeAttendanceRecord.fromJson(
+              Map<String, dynamic>.from(item),
+            ));
+          } catch (e) {
+            _log('Record parse error for $employeeCode: $e | Raw: $item');
+          }
+        }
+      }
+
+      if (records.isEmpty) {
+        return _todayRecordsCache[employeeCode];
+      }
+
+      // Sort by clockIn DESC (latest first)
+      records.sort((a, b) => b.clockIn.compareTo(a.clockIn));
+
+      final latest = records.first;
+      _log('Latest record for $employeeCode: status=${latest.status}, isOpen=${latest.isOpen}, in=${latest.clockIn}, out=${latest.clockOut}');
+
+      // If the latest record has no clockOut, it is an open PRESENT session!
+      _todayRecordsCache[employeeCode] = latest;
+      return latest;
     } on DioException catch (error) {
       _logDioError('GET attendance history', error);
-      // Return cached in-memory record if available
       return _todayRecordsCache[employeeCode];
     } catch (error) {
+      _log('Unexpected error fetching attendance for $employeeCode: $error');
       return _todayRecordsCache[employeeCode];
     }
   }
-
   /// Gets the active clock-in record.
   Future<EmployeeAttendanceRecord?> getMyOpenAttendance() async {
     try {
@@ -168,10 +185,10 @@ class EmployeeAttendanceRepository {
   }
 
   Future<EmployeeAttendanceRecord> _clock(
-      String action, {
-        required String employeeCode,
-        required String pin,
-      }) async {
+    String action, {
+    required String employeeCode,
+    required String pin,
+  }) async {
     _log('========== ATTENDANCE $action ==========');
     _log('Employee code: $employeeCode');
 
@@ -227,7 +244,7 @@ class EmployeeAttendanceRepository {
       recordJson.putIfAbsent('employeeCode', () => employeeCode);
       recordJson.putIfAbsent(
         'employeeName',
-            () => employee['employeeName'] ?? '',
+        () => employee['employeeName'] ?? '',
       );
 
       final record = EmployeeAttendanceRecord.fromJson(recordJson);
@@ -250,7 +267,8 @@ class EmployeeAttendanceRepository {
   }
 
   void _logDioError(String operation, DioException error) {
-    _log('Operation: $operation, Status: ${error.response?.statusCode}, Error: ${error.response?.data}');
+    _log(
+        'Operation: $operation, Status: ${error.response?.statusCode}, Error: ${error.response?.data}');
   }
 
   String _messageFromDio(DioException error) {

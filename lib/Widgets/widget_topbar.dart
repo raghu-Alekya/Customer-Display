@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
@@ -3207,7 +3208,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
               if (employeeCode.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                      content: Text('Employee code is missing. Please sign in again.')),
+                    content: Text('Employee code is missing. Please sign in again.'),
+                  ),
                 );
                 return;
               }
@@ -3237,15 +3239,23 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
                 ];
               }
 
+              // ★★★ 4. READ THE SAVED 6-DIGIT LOGIN PIN ★★★
+              const secureStorage = FlutterSecureStorage(
+                aOptions: AndroidOptions(encryptedSharedPreferences: true),
+                iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+              );
+              final loginPin = await secureStorage.read(key: 'encrypted_login_pin');
+
               if (!context.mounted) return;
 
-              // 4. Show dialog with full store roster
+              // 5. Show dialog with full store roster AND the login PIN
               await showDialog<bool>(
                 context: context,
                 barrierDismissible: false,
                 builder: (_) => EmployeeAttendanceApiPopup(
                   employees: storeEmployees,
                   currentEmployeeCode: employeeCode,
+                  currentEmployeePin: loginPin, // 👈 PASS THE LOGIN PIN HERE!
                   repository: repo,
                 ),
               );

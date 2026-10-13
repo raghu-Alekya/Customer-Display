@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 
@@ -31,7 +32,7 @@ class EmployeeAttendanceApiPopup extends StatelessWidget {
       create: (_) {
         final bloc = EmployeeAttendanceBloc(repository);
 
-        // 1. Restore all cached records into the bloc state
+        // 1. Restore local cache for instant UI rendering
         final cached = EmployeeAttendanceRepository.cachedRecords;
         if (cached.isNotEmpty) {
           bloc.emit(bloc.state.copyWith(
@@ -43,19 +44,23 @@ class EmployeeAttendanceApiPopup extends StatelessWidget {
           ));
         }
 
-        // 2. Fetch fresh attendance for the authenticated POS user
-        bloc.add(AttendanceLoadRequested(
-          employeeCode: currentEmployeeCode,
-          date: today,
-        ));
+        // 2. ALWAYS fetch fresh attendance from the server for ALL employees
+        // This ensures Device 2 immediately sees any attendance Device 1 marked!
+        for (final emp in employees) {
+          bloc.add(AttendanceLoadRequested(
+            employeeCode: emp.employeeCode,
+            date: today,
+          ));
+        }
 
-        // 3. Auto clock-in logged-in user if PIN provided and not yet clocked in
-        if (currentEmployeePin != null &&
-            currentEmployeePin!.isNotEmpty &&
-            !(cached[currentEmployeeCode]?.isOpen ?? false)) {
+        // 3. Auto clock-in logged-in user if PIN is 6 digits and not yet clocked in
+        final pin = currentEmployeePin?.trim() ?? '';
+        final isAlreadyOpen = cached[currentEmployeeCode]?.isOpen ?? false;
+
+        if (pin.length == 6 && !isAlreadyOpen) {
           bloc.add(AttendanceClockInRequested(
             employeeCode: currentEmployeeCode,
-            pin: currentEmployeePin!,
+            pin: pin,
           ));
         }
 
@@ -102,17 +107,26 @@ class _EmployeeAttendanceDialogState extends State<_EmployeeAttendanceDialog> {
             ? const Color(0xFF16834B)
             : const Color(0xFFB42318);
 
-        // Handle 409 Conflict gracefully: Employee is already clocked in
+        // ★★★ Handle 409 / Open Session: SILENTLY mark the targeted employee as Present ★★★
         if (state.errorMessage != null &&
-            state.errorMessage!.toLowerCase().contains('open attendance session')) {
-          message = 'Employee is already clocked in today.';
-          bgColor = const Color(0xFF16834B);
+            (state.errorMessage!.toLowerCase().contains('open attendance session') ||
+                state.errorMessage!.toLowerCase().contains('already clocked in') ||
+                state.errorMessage!.toLowerCase().contains('409'))) {
 
-          final targetEmp = _selectedEmployee ??
-              widget.employees.firstWhere(
-                    (e) => e.employeeCode == widget.currentEmployeeCode,
-              );
-
+          // DO NOT show any error or snackbar! Keep it completely silent
+          message = null;
+          // Find the EXACT employee that was being submitted
+          final targetCode = state.submittingEmployeeCode ??
+              _selectedEmployee?.employeeCode ??
+              widget.currentEmployeeCode;
+          final targetEmp = widget.employees.firstWhere(
+                (e) => e.employeeCode == targetCode,
+            orElse: () => AttendanceEmployee(
+              employeeCode: targetCode,
+              name: 'Employee',
+            ),
+          );
+          // Create an open record so their card immediately updates to [Present] with Clock Out button
           final openRecord = EmployeeAttendanceRecord(
             id: 'open-${targetEmp.employeeCode}',
             employeeCode: targetEmp.employeeCode,
@@ -120,7 +134,6 @@ class _EmployeeAttendanceDialogState extends State<_EmployeeAttendanceDialog> {
             clockIn: DateTime.now(),
             status: 'PRESENT',
           );
-
           EmployeeAttendanceRepository.cacheRecord(openRecord);
 
           context.read<EmployeeAttendanceBloc>().emit(
@@ -221,36 +234,53 @@ class _EmployeeAttendanceDialogState extends State<_EmployeeAttendanceDialog> {
     );
   }
 
-  Widget _header(BuildContext context) => Row(
-    children: [
-      Container(
-        width: 46,
-        height: 46,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E2745).withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
+  Widget _header(BuildContext context) {
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    return Row(
+      children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E2745).withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Icon(Icons.fact_check_outlined, color: Color(0xFF1E2745)),
         ),
-        child: const Icon(Icons.fact_check_outlined,
-            color: Color(0xFF1E2745)),
-      ),
-      const SizedBox(width: 12),
-      const Expanded(
-        child: Text(
-          'Employee Attendance',
-          style: TextStyle(
-            color: Color(0xFF1E2745),
-            fontSize: 21,
-            fontWeight: FontWeight.w700,
+        const SizedBox(width: 12),
+        const Expanded(
+          child: Text(
+            'Employee Attendance',
+            style: TextStyle(
+              color: Color(0xFF1E2745),
+              fontSize: 21,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
-      ),
-      IconButton(
-        tooltip: 'Close attendance',
-        onPressed: () => Navigator.of(context).pop(false),
-        icon: const Icon(Icons.close, color: Color(0xFF727C8B)),
-      ),
-    ],
-  );
+        // ★ Refresh button for syncing across devices ★
+        IconButton(
+          tooltip: 'Sync / Refresh from server',
+          icon: const Icon(Icons.refresh, color: Color(0xFF3B65B3)),
+          onPressed: () {
+            final bloc = context.read<EmployeeAttendanceBloc>();
+            final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+            for (final emp in widget.employees) {
+              bloc.add(AttendanceLoadRequested(
+                employeeCode: emp.employeeCode,
+                date: today,
+              ));
+            }
+          },
+        ),
+        IconButton(
+          tooltip: 'Close attendance',
+          onPressed: () => Navigator.of(context).pop(false),
+          icon: const Icon(Icons.close, color: Color(0xFF727C8B)),
+        ),
+      ],
+    );
+  }
 
   Widget _topBarAction(BuildContext context, EmployeeAttendanceState state) {
     if (widget.employees.isEmpty) return const SizedBox.shrink();
@@ -545,41 +575,80 @@ class _EmployeeAttendanceDialogState extends State<_EmployeeAttendanceDialog> {
 
     final pin = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-            '${isClockIn ? 'Clock in' : 'Clock out'} · ${employee.name}'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          obscureText: true,
-          keyboardType: TextInputType.number,
-          maxLength: 8,
-          decoration: const InputDecoration(
-            labelText: 'Employee PIN',
-            counterText: '',
-          ),
-          onSubmitted: (value) =>
-              Navigator.of(dialogContext).pop(value.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(dialogContext).pop(controller.text.trim()),
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
+      builder: (dialogContext) {
+        bool obscurePin = true; // local state for this dialog
+
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: Text(
+                '${isClockIn ? 'Clock in' : 'Clock out'} · ${employee.name}',
+              ),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                obscureText: obscurePin,           // ← controlled by toggle
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(6),
+                ],
+                maxLength: 6,
+                decoration: InputDecoration(
+                  labelText: 'Employee PIN (6 digits)',
+                  counterText: '',
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscurePin ? Icons.visibility_off : Icons.visibility,
+                      color: const Color(0xFF64748B),
+                    ),
+                    tooltip: obscurePin ? 'Show PIN' : 'Hide PIN',
+                    onPressed: () =>
+                        setDialogState(() => obscurePin = !obscurePin),
+                  ),
+                ),
+                onSubmitted: (value) {
+                  final trimmed = value.trim();
+                  if (trimmed.length != 6) return;
+                  Navigator.of(dialogContext).pop(trimmed);
+                },
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final trimmed = controller.text.trim();
+                    if (trimmed.length != 6) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('PIN must be exactly 6 digits.'),
+                          backgroundColor: Color(0xFFB42318),
+                        ),
+                      );
+                      return;
+                    }
+                    Navigator.of(dialogContext).pop(trimmed);
+                  },
+                  child: const Text('Continue'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
     controller.dispose();
     if (!context.mounted || pin == null) return;
-    if (pin.length < 4 || pin.length > 8) {
+    // Strict 6 digits validation:
+    if (pin.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Enter a PIN between 4 and 8 digits.')),
+          content: Text('PIN must be exactly 6 digits.'),
+          backgroundColor: Color(0xFFB42318),
+        ),
       );
       return;
     }

@@ -607,6 +607,8 @@ import '../../Database/fast_key_db_helper.dart';
 import '../../Database/order_panel_db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import '../../DeviceActivationScreen/DeviceActivationScreen.dart';
+import '../../Employee/Attendance/employee_attendance_model.dart';
+import '../../Employee/Attendance/employee_attendance_repository.dart';
 import '../../Helper/api_response.dart';
 import '../../Models/Auth/login_model.dart';
 import '../../Models/Auth/logout_model.dart';
@@ -1204,24 +1206,73 @@ class _LoginScreenState extends State<LoginScreen> {
                                         loadingMessage: snapshot.data?.message,
                                       ),
                                     );
-
                                   case Status.COMPLETED:
-                                    if (snapshot.data?.data?.token != null) {
-                                      WidgetsBinding.instance
-                                          .addPostFrameCallback((_) async {
-                                        final loginResponse =
-                                            snapshot.data!.data!;
+                                    if (snapshot.data?.data != null) {
+                                      WidgetsBinding.instance.addPostFrameCallback((_) async {
+                                        final loginResponse = snapshot.data!.data!;
                                         final pin = _password.join();
-                                        final token =
-                                            loginResponse.token ?? "";
+                                        final token = loginResponse.token ?? "";
 
-                                        // SAVE PIN ENCRYPTED
+                                        // 1. SAVE PIN ENCRYPTED FOR OFFLINE
                                         await _savePinSecurely(pin);
 
-                                        // ★★★ SAVE USER DATA FOR OFFLINE ★★★
-                                        await _saveUserDataForOffline(
-                                            loginResponse);
+                                        // 2. SAVE USER DATA FOR OFFLINE
+                                        await _saveUserDataForOffline(loginResponse);
 
+                                        // 3. Extract the employee code from the employee object in response
+                                        // From your log: employee.employeeCode is "000002"
+                                        String empCode = '';
+                                        try {
+                                          final dynamic respJson = loginResponse.toJson();
+                                          if (respJson['employee'] != null && respJson['employee'] is Map) {
+                                            empCode = respJson['employee']['employeeCode']?.toString() ?? '';
+                                          } else if (respJson['employeeCode'] != null) {
+                                            empCode = respJson['employeeCode'].toString();
+                                          }
+                                        } catch (_) {}
+
+                                        if (empCode.isEmpty) {
+                                          // Fallback to DB or padded ID
+                                          final dbUser = await UserDbHelper().getUserData();
+                                          empCode = dbUser?[AppDBConst.userNickname]?.toString() ??
+                                              (loginResponse.id?.toString().padLeft(6, '0') ?? '');
+                                        }
+
+                                        // 4. SAVE PIN & EMP CODE FOR ATTENDANCE POPUP
+                                        await _secureStorage.write(key: 'attendance_login_pin', value: pin);
+                                        await _secureStorage.write(key: 'attendance_employee_code', value: empCode);
+
+                                        // 5. ★★★ BACKGROUND CLOCK-IN (DO NOT AWAIT - PREVENTS STUCK LOADER) ★★★
+                                        if (empCode.isNotEmpty && pin.length == 6) {
+                                          unawaited(() async {
+                                            try {
+                                              final attendanceRepo = EmployeeAttendanceRepository.forCurrentApp();
+                                              final record = await attendanceRepo.clockIn(
+                                                employeeCode: empCode,
+                                                pin: pin,
+                                              );
+                                              EmployeeAttendanceRepository.cacheRecord(record);
+                                              if (kDebugMode) {
+                                                print('✅ Background auto clock-in succeeded for $empCode');
+                                              }
+                                            } catch (e) {
+                                              // If already clocked in today, cache an open record
+                                              final openRecord = EmployeeAttendanceRecord(
+                                                id: 'open-$empCode',
+                                                employeeCode: empCode,
+                                                employeeName: loginResponse.displayName ?? 'Employee',
+                                                clockIn: DateTime.now(),
+                                                status: 'PRESENT',
+                                              );
+                                              EmployeeAttendanceRepository.cacheRecord(openRecord);
+                                              if (kDebugMode) {
+                                                print('ℹ️ Auto clock-in handled (open session cached): $e');
+                                              }
+                                            }
+                                          }());
+                                        }
+
+                                        // 6. Token validation & flags
                                         TokenValidationService.startValidation(
                                           token: token,
                                           pin: pin,
@@ -1230,9 +1281,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         await SafeStorageHelper.saveSafeEnable(
                                           loginResponse.safeEnable == "1",
                                         );
-
-                                        await SafeStorageHelper
-                                            .saveSafeEnableDrop(
+                                        await SafeStorageHelper.saveSafeEnableDrop(
                                           loginResponse.safeEnableDrop == "1",
                                         );
 
@@ -1240,67 +1289,35 @@ class _LoginScreenState extends State<LoginScreen> {
                                           _discountSyncDone = true;
                                           try {
                                             final repo = OrderRepository();
-                                            await syncDiscountRulesFromApi(
-                                              AppDB.isar,
-                                              repo,
-                                            );
-                                            debugPrint(
-                                              "✅ Discount rules synced after login",
-                                            );
+                                            await syncDiscountRulesFromApi(AppDB.isar, repo);
+                                            debugPrint("✅ Discount rules synced after login");
                                           } catch (e) {
-                                            debugPrint(
-                                              "❌ Discount rule sync failed: $e",
-                                            );
+                                            debugPrint("❌ Discount rule sync failed: $e");
                                           }
                                         }
 
-                                        if (kDebugMode) {
-                                          print(
-                                            "🔐 safe_enable = ${loginResponse.safeEnable}",
-                                          );
-                                          print(
-                                            "💾 safe_enable stored = ${loginResponse.safeEnable == "1"}",
-                                          );
-                                          print(
-                                            "🔽 safe_enable_drop = ${loginResponse.safeEnableDrop}",
-                                          );
-                                        }
-
+                                        unawaited(_assetBloc.fetchImageAssets());
                                         try {
-                                          unawaited(
-                                            _assetBloc.fetchImageAssets(),
-                                          );
                                           await _assetBloc.fetchAssets();
                                         } catch (e) {
-                                          if (kDebugMode) {
-                                            print(
-                                              "Asset fetch warning (offline mode): $e",
-                                            );
-                                          }
+                                          if (kDebugMode) print("Asset fetch warning: $e");
                                         }
+
                                         resetLoadStatus();
 
-                                        int? shiftId = await UserDbHelper()
-                                            .getUserShiftId();
-
-                                        if (shiftId != null) {
+                                        // 7. IMMEDIATE NAVIGATION (No more hanging loader!)
+                                        int? shiftId = await UserDbHelper().getUserShiftId();
+                                        if (shiftId != null && loginResponse.shiftId != null) {
                                           Navigator.pushReplacement(
                                             context,
-                                            MaterialPageRoute(
-                                              builder: (context) =>
-                                                  const POSHomeScreen(),
-                                            ),
+                                            MaterialPageRoute(builder: (context) => const POSHomeScreen()),
                                           );
                                         } else {
                                           Navigator.pushReplacement(
                                             context,
                                             MaterialPageRoute(
-                                              builder: (context) =>
-                                                  const ShiftOpenCloseBalanceScreen(),
-                                              settings: RouteSettings(
-                                                arguments:
-                                                    TextConstants.loginScreen,
-                                              ),
+                                              builder: (context) => const ShiftOpenCloseBalanceScreen(),
+                                              settings: RouteSettings(arguments: TextConstants.loginScreen),
                                             ),
                                           );
                                         }
@@ -1308,11 +1325,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
                                       return Center(
                                         child: Loading(
-                                          loadingMessage:
-                                          TextConstants.loading,
+                                          loadingMessage: TextConstants.loading,
                                         ),
                                       );
-                                    } else {
+                                    }else {
                                       if (kDebugMode) {
                                         print(
                                           "Error in login bloc in completed and token is null",
