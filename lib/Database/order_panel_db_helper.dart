@@ -181,7 +181,7 @@ class OrderHelper {
             for (final p in products) {
               if (p is Map) {
                 final pid = int.tryParse(
-                        (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                    (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
                     -1;
                 if (pid > 0) {
                   final pStatus = (p["tax_status"] ?? "taxable").toString();
@@ -215,7 +215,7 @@ class OrderHelper {
             for (final p in allProducts) {
               if (p is Map) {
                 final pid = int.tryParse(
-                        (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                    (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
                     -1;
                 if (pid > 0) {
                   final pStatus = (p["tax_status"] ?? "taxable").toString();
@@ -326,7 +326,7 @@ class OrderHelper {
         if (raw is! Map) continue;
         final oi = Map<String, dynamic>.from(raw);
         final itemType =
-            (oi['item_type'] ?? oi['type'] ?? 'product').toString().toLowerCase();
+        (oi['item_type'] ?? oi['type'] ?? 'product').toString().toLowerCase();
         if (itemType.contains('discount') ||
             itemType.contains('coupon') ||
             itemType.contains('loyalty') ||
@@ -336,22 +336,22 @@ class OrderHelper {
         }
 
         final qty = int.tryParse(
-                (oi['items_count'] ?? oi['quantity'] ?? 1).toString()) ??
+            (oi['items_count'] ?? oi['quantity'] ?? 1).toString()) ??
             1;
         final sumPrice = double.tryParse(
-                (oi['item_sum_price'] ?? oi['amount'] ?? '').toString()) ??
+            (oi['item_sum_price'] ?? oi['amount'] ?? '').toString()) ??
             0.0;
         final unitPrice = sumPrice > 0
             ? sumPrice
             : (double.tryParse(
-                    (oi['item_price'] ?? oi['price'] ?? '0').toString()) ??
-                0.0) *
-                qty;
+            (oi['item_price'] ?? oi['price'] ?? '0').toString()) ??
+            0.0) *
+            qty;
         grossTotal += unitPrice;
 
         final lineTax = double.tryParse(
-                (oi['item_tax'] ?? oi['tax'] ?? oi['total_tax'] ?? '0')
-                    .toString()) ??
+            (oi['item_tax'] ?? oi['tax'] ?? oi['total_tax'] ?? '0')
+                .toString()) ??
             0.0;
         if (lineTax > 0) {
           orderTax += lineTax;
@@ -2553,8 +2553,8 @@ class OrderHelper {
         final itemTax = savedItemTax > 0
             ? savedItemTax
             : (taxStatus.toLowerCase() == 'taxable' && taxRate > 0
-                ? roundTaxHalfUp(sumPrice * taxRate / 100)
-                : 0.0);
+            ? roundTaxHalfUp(sumPrice * taxRate / 100)
+            : 0.0);
 
         final multipack = _toDouble(
             map['multipack_discount_total'] ?? map['multipackDiscount'] ?? 0);
@@ -2727,7 +2727,7 @@ class OrderHelper {
           for (final p in products) {
             if (p is Map) {
               final pid = int.tryParse(
-                      (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                  (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
                   -1;
               if (pid > 0) {
                 final pStatus = (p["tax_status"] ?? "taxable").toString();
@@ -2759,12 +2759,12 @@ class OrderHelper {
 
       // Fallback to flattened product list cache.
       final allProducts =
-          await StorageProvider.productCache.get("all_products_list");
+      await StorageProvider.productCache.get("all_products_list");
       if (allProducts is List) {
         for (final p in allProducts) {
           if (p is Map) {
             final pid = int.tryParse(
-                    (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
                 -1;
             if (pid > 0) {
               final pStatus = (p["tax_status"] ?? "taxable").toString();
@@ -3405,6 +3405,18 @@ class OrderHelper {
           print('   Calculated Weight: $finalWeightQty');
         }
 
+        // Line tax for new item (same formula as merge path / saveOfflineOrder)
+        final String newTaxStatus =
+        effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus;
+        double newItemTax = 0.0;
+        if (newTaxStatus.toLowerCase() == "taxable" &&
+            effectiveTaxRate > 0) {
+          final double taxableBase =
+          isWeightedItem ? price : (price * itemQuantity);
+          newItemTax =
+              roundTaxHalfUp(taxableBase * (effectiveTaxRate / 100));
+        }
+
         // Build the new product map
         final newProduct = {
           'server_item_id': serverItemId,
@@ -3427,14 +3439,14 @@ class OrderHelper {
           'regular_price': regularPrice,
           'unit_price': unitPrice,
           'is_ebt_eligible': isEbtEligible,
-          'tax_status': effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus,
+          'tax_status': newTaxStatus,
           'tax_class': effectiveTaxClass,
           'tax_rate': effectiveTaxRate,
           'auto_discount': 0.0,
           'auto_discount_total': 0.0,
           'multipack_discount_total': 0.0,
           'combo_discount_total': 0.0,
-          'item_tax': 0.0,
+          'item_tax': newItemTax,
           'meta_data': metaData ?? [],           // ✅ persists loyalty points meta
           'loyalty_points': loyaltyPoints ?? 0,   // ✅ persists computed loyalty points
         };
