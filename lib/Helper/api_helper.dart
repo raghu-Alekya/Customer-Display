@@ -64,11 +64,11 @@ class APIHelper {
   }
 
   Future<dynamic> postForm(
-    String url,
-    Map<String, String> params,
-    bool useToken, {
-    bool validateMarchentUrl = false,
-  }) async {
+      String url,
+      Map<String, String> params,
+      bool useToken, {
+        bool validateMarchentUrl = false,
+      }) async {
     String finalUrl = "";
     String token = ""; //  non-nullable
 
@@ -109,10 +109,11 @@ class APIHelper {
 
     try {
       await _initializeBaseUrl(); // Ensure base URL is initialized
-      finalUrl = UrlHelper.baseUrl + url;
+      // Allow absolute URLs (e.g. safeApiBaseUrl endpoints) without prepending connector base
+      finalUrl = url.startsWith('http') ? url : UrlHelper.baseUrl + url;
       final headers = await _buildAuthHeaders(useToken: useToken);
       token = headers[HttpHeaders.authorizationHeader]
-              ?.replaceFirst('Bearer ', '') ??
+          ?.replaceFirst('Bearer ', '') ??
           '';
 
       if (kDebugMode) {
@@ -183,7 +184,7 @@ class APIHelper {
       // Connector create-order requires Bearer + x-merchant-id + x-store-id
       final headers = await _buildAuthHeaders(useToken: useToken);
       token = headers[HttpHeaders.authorizationHeader]
-              ?.replaceFirst('Bearer ', '') ??
+          ?.replaceFirst('Bearer ', '') ??
           '';
 
       if (kDebugMode) {
@@ -200,7 +201,7 @@ class APIHelper {
       }
 
       final response =
-          await http.post(Uri.parse(finalUrl), body: body, headers: headers);
+      await http.post(Uri.parse(finalUrl), body: body, headers: headers);
       responseJson = _returnResponse(response);
     } on SocketException {
       //Build #1.0.34: if turn off internet need this exception here
@@ -257,7 +258,7 @@ class APIHelper {
         // Attach file to the request
         String fieldName = 'file'; // Customize field name as needed
         var file =
-            await http.MultipartFile.fromPath(fieldName, formDataFile.path);
+        await http.MultipartFile.fromPath(fieldName, formDataFile.path);
         request.files.add(file);
 
         var streamedResponse = await request.send();
@@ -313,7 +314,7 @@ class APIHelper {
 
       final headers = await _buildAuthHeaders(useToken: useToken);
       token = headers[HttpHeaders.authorizationHeader]
-              ?.replaceFirst('Bearer ', '') ??
+          ?.replaceFirst('Bearer ', '') ??
           '';
 
       if (kDebugMode) {
@@ -324,7 +325,7 @@ class APIHelper {
       }
 
       final response =
-          await http.put(Uri.parse(finalUrl), body: body, headers: headers);
+      await http.put(Uri.parse(finalUrl), body: body, headers: headers);
       responseJson = _returnResponse(response);
     } on SocketException {
       throw FetchDataException('No Internet connection');

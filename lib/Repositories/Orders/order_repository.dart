@@ -106,12 +106,27 @@ class FastKeyImageModel {
     required this.imageType,
   });
 
+  /// Supports both legacy and new store API shapes:
+  /// - 2D/3D: { name, folder, url }
+  /// - database: { id (uuid), fastkey_title, fastkey_image, name }
   factory FastKeyImageModel.fromJson(Map<String, dynamic> json) {
+    final rawId = json["id"]?.toString() ?? '';
+    final parsedId =
+        int.tryParse(rawId) ?? (rawId.isNotEmpty ? rawId.hashCode : 0);
+    final imageUrl = json["url"]?.toString() ??
+        json["fastkey_image"]?.toString() ??
+        '';
+    final imageName = json["name"]?.toString() ??
+        json["fastkey_title"]?.toString() ??
+        '';
+    final type = json["image_type"]?.toString() ??
+        json["folder"]?.toString() ??
+        '';
     return FastKeyImageModel(
-      id: int.tryParse(json["id"]?.toString() ?? '') ?? 0,
-      name: json["name"]?.toString() ?? '',
-      url: json["url"]?.toString() ?? '',
-      imageType: json["image_type"]?.toString() ?? '',
+      id: parsedId,
+      name: imageName,
+      url: imageUrl,
+      imageType: type,
     );
   }
 }
@@ -5177,7 +5192,9 @@ class OrderRepository {
   }
 
   Future<Map<String, List<FastKeyImageModel>>> getFastKeyImages() async {
-    final String url = UrlMethodConstants.fastkeyimages;
+    // New API: GET https://pch.alektasolutions.com/api/v1/store/get-all-fastkeys-images
+    final String url =
+        "${UrlHelper.safeApiBaseUrl}/${UrlMethodConstants.fastkeyimages}";
 
     try {
       final raw = await _helper.get(url, true);
@@ -5187,12 +5204,23 @@ class OrderRepository {
         print("FastKey Images Response: $response");
       }
 
-      final data = response["data"] as Map<String, dynamic>;
+      final data = response["data"];
+      if (data is! Map<String, dynamic>) {
+        if (kDebugMode) {
+          print("FastKey Images: unexpected data shape: ${data.runtimeType}");
+        }
+        return {};
+      }
+
       Map<String, List<FastKeyImageModel>> result = {};
 
       data.forEach((key, value) {
-        result[key] = (value as List)
-            .map((json) => FastKeyImageModel.fromJson(json))
+        if (value is! List) return;
+        result[key] = value
+            .whereType<Map>()
+            .map((json) =>
+            FastKeyImageModel.fromJson(Map<String, dynamic>.from(json)))
+            .where((img) => img.url.isNotEmpty)
             .toList();
       });
 
