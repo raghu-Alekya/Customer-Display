@@ -1,11 +1,24 @@
+<<<<<<< HEAD
+=======
 import 'dart:convert';
 
+>>>>>>> origin/Grocery_pch_api_integration
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart'; // For displaying SVG images
 import 'package:pinaka_pos/Constants/text.dart';
 import 'package:pinaka_pos/Helper/Extentions/text_extensions.dart';
 import 'package:provider/provider.dart';
+<<<<<<< HEAD
+
+import '../Helper/Extentions/theme_notifier.dart'; // Contains text constants for UI
+
+// Enum for different payment completion states
+enum PaymentStatus { successful, partial, receipt, exitConfirmation, voidConfirmation }
+
+// Enum for payment method types
+enum PaymentMode { cash, card, wallet, ebt }
+=======
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -36,6 +49,7 @@ enum PaymentStatus {
 
 // Enum for payment method types
 enum PaymentMode { cash, card, payLater, ebt }
+>>>>>>> origin/Grocery_pch_api_integration
 
 class PaymentDialog extends StatefulWidget {
   final PaymentStatus status; // Current payment status
@@ -45,16 +59,23 @@ class PaymentDialog extends StatefulWidget {
   final VoidCallback? onVoid; // Callback for cancelling payment
   final VoidCallback? onPrint; // Callback for printing receipt
   final VoidCallback? onNextPayment; // Callback for proceeding to next payment
+<<<<<<< HEAD
+  final Function(String, {String? email})? onDone; // Callback for completing the payment flow
+=======
   final Function(String, {String? email})?
       onDone; // Callback for completing the payment flow
+>>>>>>> origin/Grocery_pch_api_integration
   final VoidCallback? onNoReceipt; // Callback when user doesn't want receipt
   final VoidCallback? onExitCancel; // Callback for canceling exit
   final VoidCallback? onExitConfirm; // Callback for confirming exit
   final Function(String)? onEmail; // Callback for sending receipt via email
   final Function(String)? onSMS; // Callback for sending receipt via SMS
+<<<<<<< HEAD
+=======
   final Map<String, dynamic>? couponResponse;
   final double? remainingBalance; // Add this
   final bool isVoidDisabled;
+>>>>>>> origin/Grocery_pch_api_integration
 
   const PaymentDialog({
     Key? key,
@@ -71,16 +92,23 @@ class PaymentDialog extends StatefulWidget {
     this.onExitConfirm,
     this.onEmail,
     this.onSMS,
+<<<<<<< HEAD
+=======
     this.couponResponse,
     this.remainingBalance, // Add this
     this.isVoidDisabled = false,
+>>>>>>> origin/Grocery_pch_api_integration
   }) : super(key: key);
 
   @override
   State<PaymentDialog> createState() => _PaymentDialogState();
 
+<<<<<<< HEAD
+  factory PaymentDialog.voidConfirmation({  // Build #1.0.49
+=======
   factory PaymentDialog.voidConfirmation({
     // Build #1.0.49
+>>>>>>> origin/Grocery_pch_api_integration
     VoidCallback? onVoidCancel,
     VoidCallback? onVoidConfirm,
   }) {
@@ -90,6 +118,18 @@ class PaymentDialog extends StatefulWidget {
       onExitConfirm: onVoidConfirm,
     );
   }
+<<<<<<< HEAD
+  // factory PaymentDialog.exitConfirmation({
+  //   VoidCallback? onExitCancel,
+  //   VoidCallback? onExitConfirm
+  // }) {
+  //   return PaymentDialog(
+  //     status: PaymentStatus.exitConfirmation,
+  //     onExitCancel: onExitCancel,
+  //     onExitConfirm: onExitConfirm,
+  //   );
+  // }
+=======
 // factory PaymentDialog.exitConfirmation({
 //   VoidCallback? onExitCancel,
 //   VoidCallback? onExitConfirm
@@ -100,10 +140,17 @@ class PaymentDialog extends StatefulWidget {
 //     onExitConfirm: onExitConfirm,
 //   );
 // }
+>>>>>>> origin/Grocery_pch_api_integration
 }
 
 class _PaymentDialogState extends State<PaymentDialog> {
   String _selectedOption = 'Print'; // Default selected receipt option
+<<<<<<< HEAD
+  final TextEditingController _contactController = TextEditingController(); // For email/phone input
+  String? _validationError; // To hold validation error messages
+  String capitalize(String s) => s[0].toUpperCase() + s.substring(1); //Build #1.0.34: added for "Cash" in success popup dialog
+  bool _isVoidCancelLoading = false; // Build #1.0.49: Track loading for void cancel
+=======
   final TextEditingController _contactController =
       TextEditingController(); // For email/phone input
   String? _validationError; // To hold validation error messages
@@ -112,13 +159,18 @@ class _PaymentDialogState extends State<PaymentDialog> {
       s.substring(1); //Build #1.0.34: added for "Cash" in success popup dialog
   bool _isVoidCancelLoading =
       false; // Build #1.0.49: Track loading for void cancel
+>>>>>>> origin/Grocery_pch_api_integration
   bool _isVoidConfirmLoading = false; // Track loading for void confirm
   bool _isDoneLoading = false; // Track loading for done action
   bool _isNoReceiptLoading = false; // Track loading for no receipt action
   bool _isContinueLoading = false; // Track loading for no receipt action
+<<<<<<< HEAD
+
+=======
   String? _selectedCouponCode;
   final _printerSettings = PrinterSettings();
   List<int> bytes = [];
+>>>>>>> origin/Grocery_pch_api_integration
   @override
   Widget build(BuildContext context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -126,6 +178,16 @@ class _PaymentDialogState extends State<PaymentDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20), // Rounded corners for dialog
       ),
+<<<<<<< HEAD
+      backgroundColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.popUpsBackground : null,
+      child: SingleChildScrollView(
+        child: Container(
+          padding: const EdgeInsets.all(30), // Padding inside dialog
+          width: 750, // Fixed width for dialog
+          child: Column(
+            mainAxisSize: MainAxisSize.min, // Keep dialog as small as possible
+            crossAxisAlignment: CrossAxisAlignment.center, // Center content horizontally
+=======
       backgroundColor: themeHelper.themeMode == ThemeMode.dark
           ? ThemeNotifier.popUpsBackground
           : null,
@@ -137,43 +199,63 @@ class _PaymentDialogState extends State<PaymentDialog> {
             mainAxisSize: MainAxisSize.min, // Keep dialog as small as possible
             crossAxisAlignment:
                 CrossAxisAlignment.center, // Center content horizontally
+>>>>>>> origin/Grocery_pch_api_integration
             children: [
               _buildStatusIcon(), // Display appropriate status icon
               const SizedBox(height: 24), // Vertical spacing
               _buildTitle(), // Display appropriate title based on status
               const SizedBox(height: 32),
+<<<<<<< HEAD
+              if (widget.status == PaymentStatus.voidConfirmation)  // Build #1.0.49: added void confirm dialog code
+=======
               if (widget.status ==
                   PaymentStatus
                       .voidConfirmation) // Build #1.0.49: added void confirm dialog code
+>>>>>>> origin/Grocery_pch_api_integration
                 Text(
                   TextConstants.voidConfirmText,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 24,
+<<<<<<< HEAD
+                    color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey[800],
+                    height: 1.5,
+                  ),
+                )// Vertical spacing
+=======
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? ThemeNotifier.textDark
                         : Colors.grey[800],
                     height: 1.5,
                   ),
                 ) // Vertical spacing
+>>>>>>> origin/Grocery_pch_api_integration
               else if (widget.status == PaymentStatus.exitConfirmation)
                 Text(
                   TextConstants.exitConfirmText,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 24,
+<<<<<<< HEAD
+                    color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey[800],
+=======
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? ThemeNotifier.textDark
                         : Colors.grey[800],
+>>>>>>> origin/Grocery_pch_api_integration
                     height: 1.5, // Line height
                   ),
                 )
               else
                 _buildPaymentInfo(), // Show payment details or receipt options
               const SizedBox(height: 20), // Vertical spacing
+<<<<<<< HEAD
+              if (widget.status == PaymentStatus.partial) //Build #1.0.34: Show only for partial payment - code updated as per new UI
+=======
               if (widget.status ==
                   PaymentStatus
                       .partial) //Build #1.0.34: Show only for partial payment - code updated as per new UI
+>>>>>>> origin/Grocery_pch_api_integration
                 Text(
                   TextConstants.partialPaymentText,
                   textAlign: TextAlign.center,
@@ -184,9 +266,14 @@ class _PaymentDialogState extends State<PaymentDialog> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+<<<<<<< HEAD
+              const SizedBox(height: 32), // Vertical spacing
+              _buildActionButtons(), // Display appropriate action buttons
+=======
               const SizedBox(height: 15), // Vertical spacing
               _buildActionButtons(),
               const SizedBox(height: 15), // Display appropriate action buttons
+>>>>>>> origin/Grocery_pch_api_integration
             ],
           ),
         ),
@@ -194,6 +281,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
     );
   }
 
+<<<<<<< HEAD
+=======
   Widget _buildCouponCard(Map c, ThemeNotifier themeHelper) {
     final bool isSelected = _selectedCouponCode == c["code"];
 
@@ -538,6 +627,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
     }
   }
 
+>>>>>>> origin/Grocery_pch_api_integration
   Widget _buildStatusIcon() {
     //Color iconColor; // Commented out unused variable
     Color backgroundColor = Colors.white; // Background color for icon
@@ -547,6 +637,32 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
     switch (widget.status) {
       case PaymentStatus.successful:
+<<<<<<< HEAD
+      //iconColor = Colors.green;
+      //backgroundColor = Colors.green.withOpacity(0.1);
+      //icon = Icons.check_circle_outline;
+        svgPath = 'assets/svg/check_broken.svg'; // Success icon path
+        break;
+      case PaymentStatus.partial:
+      //iconColor = Colors.orange;
+      //backgroundColor = Colors.orange.withOpacity(0.1);
+      //icon = Icons.check_circle_outline;
+        svgPath = 'assets/svg/check_broken_partial.svg'; // Partial payment icon path
+        break;
+      case PaymentStatus.receipt:
+      //iconColor = Colors.blue;
+      //backgroundColor = Colors.blue.withOpacity(0.1);
+      //icon = Icons.print;
+        isPng = true; // Using PNG instead of SVG
+        svgPath = 'assets/printer.png'; // Receipt printer icon path
+        break;
+    // If you don't have this image, replace with an Icon:
+    // return Icon(icon, size: 90, color: iconColor);
+      case PaymentStatus.exitConfirmation:
+        svgPath = 'assets/svg/check_broken_exit.svg';
+
+      case PaymentStatus.voidConfirmation:  // Build #1.0.49
+=======
         //iconColor = Colors.green;
         //backgroundColor = Colors.green.withOpacity(0.1);
         //icon = Icons.check_circle_outline;
@@ -572,6 +688,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
         svgPath = 'assets/svg/check_broken_exit.svg';
 
       case PaymentStatus.voidConfirmation: // Build #1.0.49
+>>>>>>> origin/Grocery_pch_api_integration
         svgPath = 'assets/svg/check_broken_alert.svg';
         break;
     }
@@ -584,6 +701,18 @@ class _PaymentDialogState extends State<PaymentDialog> {
         color: backgroundColor,
       ),
       child: isPng
+<<<<<<< HEAD
+          ? Image.asset( // Use Image.asset for PNG
+        svgPath,
+        width: 50,
+        height: 50,
+      )
+          : SvgPicture.asset( // Use SvgPicture for SVG
+        svgPath,
+        width: 50,
+        height: 50,
+      ),
+=======
           ? Image.asset(
               // Use Image.asset for PNG
               svgPath,
@@ -596,6 +725,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
               width: 50,
               height: 50,
             ),
+>>>>>>> origin/Grocery_pch_api_integration
     );
   }
 
@@ -604,8 +734,12 @@ class _PaymentDialogState extends State<PaymentDialog> {
     String title; // Title text based on payment status
     switch (widget.status) {
       case PaymentStatus.successful:
+<<<<<<< HEAD
+        title = TextConstants.successPaymentTitle; // Title for successful payment
+=======
         title =
             TextConstants.successPaymentTitle; // Title for successful payment
+>>>>>>> origin/Grocery_pch_api_integration
         break;
       case PaymentStatus.partial:
         title = TextConstants.partialPaymentTitle; // Title for partial payment
@@ -619,6 +753,10 @@ class _PaymentDialogState extends State<PaymentDialog> {
       case PaymentStatus.voidConfirmation:
         title = TextConstants.voidConfirmTitle;
         break;
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/Grocery_pch_api_integration
     }
 
     return Text(
@@ -628,17 +766,28 @@ class _PaymentDialogState extends State<PaymentDialog> {
       style: TextStyle(
         fontSize: 24,
         fontWeight: FontWeight.w700, // Bold title
+<<<<<<< HEAD
+        color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : widget.status == PaymentStatus.exitConfirmation ? Colors.black87 : Colors.blueGrey[800],
+=======
         color: themeHelper.themeMode == ThemeMode.dark
             ? ThemeNotifier.textDark
             : widget.status == PaymentStatus.exitConfirmation
                 ? Colors.black87
                 : Colors.blueGrey[800],
+>>>>>>> origin/Grocery_pch_api_integration
       ),
     ).poppins();
   }
 
   Widget _buildPaymentInfo() {
     final themeHelper = Provider.of<ThemeNotifier>(context);
+<<<<<<< HEAD
+    if (widget.status == PaymentStatus.receipt) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center, // Center the receipt options
+        children: [
+          _buildReceiptOptionButton( // Print receipt option
+=======
     // ===================================================
     // 🎁 READ COUPONS (SAFE)
     // ===================================================
@@ -655,6 +804,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
         children: [
           _buildReceiptOptionButton(
             // Print receipt option
+>>>>>>> origin/Grocery_pch_api_integration
             icon: Icons.print,
             label: TextConstants.print,
             isSelected: _selectedOption == TextConstants.print,
@@ -665,8 +815,12 @@ class _PaymentDialogState extends State<PaymentDialog> {
             },
           ),
           const SizedBox(width: 12), // Horizontal spacing
+<<<<<<< HEAD
+          _buildReceiptOptionButton( // Email receipt option
+=======
           _buildReceiptOptionButton(
             // Email receipt option
+>>>>>>> origin/Grocery_pch_api_integration
             icon: Icons.email_outlined,
             label: TextConstants.email,
             isSelected: _selectedOption == TextConstants.email,
@@ -677,8 +831,12 @@ class _PaymentDialogState extends State<PaymentDialog> {
             },
           ),
           const SizedBox(width: 12), // Horizontal spacing
+<<<<<<< HEAD
+          _buildReceiptOptionButton( // SMS receipt option
+=======
           _buildReceiptOptionButton(
             // SMS receipt option
+>>>>>>> origin/Grocery_pch_api_integration
             icon: Icons.sms_outlined,
             label: TextConstants.sms,
             isSelected: _selectedOption == TextConstants.sms,
@@ -691,6 +849,13 @@ class _PaymentDialogState extends State<PaymentDialog> {
         ],
       );
     }
+<<<<<<< HEAD
+    return Container( //Build #1.0.34: UI updated as per new figma ui
+      width: MediaQuery.of(context).size.width * 0.25,
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 0),
+      decoration: BoxDecoration(
+        color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.popUpsBackground : Colors.white,
+=======
     return Container(
       //Build #1.0.34: UI updated as per new figma ui
       constraints: const BoxConstraints(maxWidth: 580),
@@ -699,6 +864,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
         color: themeHelper.themeMode == ThemeMode.dark
             ? ThemeNotifier.popUpsBackground
             : Colors.white,
+>>>>>>> origin/Grocery_pch_api_integration
       ),
       child: Column(
         children: [
@@ -738,7 +904,11 @@ class _PaymentDialogState extends State<PaymentDialog> {
               ],
             ),
           ),
+<<<<<<< HEAD
+          if (widget.changeAmount != null && widget.changeAmount! > 0) ...[
+=======
           if (widget.changeAmount != null && widget.changeAmount! != 0) ...[
+>>>>>>> origin/Grocery_pch_api_integration
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -777,6 +947,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
               ),
             ),
           ],
+<<<<<<< HEAD
+=======
 
           // ===================================================
           // 🎁 COUPON SECTION (FULL LINE)
@@ -804,22 +976,32 @@ class _PaymentDialogState extends State<PaymentDialog> {
               );
             }).toList(),
           ],
+>>>>>>> origin/Grocery_pch_api_integration
         ],
       ),
     );
   }
 
+<<<<<<< HEAD
+  Widget _buildActionButtons() {// Build #1.0.49: Updated code with void confirm dialog code and loader adder
+    final bool isVoidable = (widget.amount ?? 0.0) <= 0.0; // Build #1.0.175: added default value
+=======
   Widget _buildActionButtons() {
     // Build #1.0.49: Updated code with void confirm dialog code and loader adder
     final bool isVoidable =
         (widget.amount ?? 0.0) <= 0.0; // Build #1.0.175: added default value
+>>>>>>> origin/Grocery_pch_api_integration
     if (widget.status == PaymentStatus.voidConfirmation) {
       return Row(
         children: [
           Expanded(
             child: _buildButton(
               TextConstants.noKeepIt,
+<<<<<<< HEAD
+                  () {
+=======
               () {
+>>>>>>> origin/Grocery_pch_api_integration
                 if (kDebugMode) {
                   print("DEBUG: Void cancel button pressed");
                 }
@@ -828,8 +1010,12 @@ class _PaymentDialogState extends State<PaymentDialog> {
                 });
                 widget.onExitCancel?.call();
                 Future.delayed(const Duration(milliseconds: 500), () {
+<<<<<<< HEAD
+                  if(mounted) { // Build #1.0.80: fixed setState Error
+=======
                   if (mounted) {
                     // Build #1.0.80: fixed setState Error
+>>>>>>> origin/Grocery_pch_api_integration
                     setState(() {
                       _isVoidCancelLoading = false; // Hide loader after action
                     });
@@ -845,7 +1031,11 @@ class _PaymentDialogState extends State<PaymentDialog> {
           Expanded(
             child: _buildButton(
               TextConstants.yesVoid,
+<<<<<<< HEAD
+                  () {
+=======
               () {
+>>>>>>> origin/Grocery_pch_api_integration
                 if (kDebugMode) {
                   print("DEBUG: Void confirm button pressed");
                 }
@@ -881,8 +1071,12 @@ class _PaymentDialogState extends State<PaymentDialog> {
           Expanded(
             child: _buildButton(
               TextConstants.continueText,
+<<<<<<< HEAD
+                  () { // Build #1.0.104: Fixed: Exit button loader issue
+=======
               () {
                 // Build #1.0.104: Fixed: Exit button loader issue
+>>>>>>> origin/Grocery_pch_api_integration
                 if (kDebugMode) {
                   print("DEBUG: continue button pressed");
                 }
@@ -901,6 +1095,13 @@ class _PaymentDialogState extends State<PaymentDialog> {
     }
     if (widget.status == PaymentStatus.receipt) {
       return Column(
+<<<<<<< HEAD
+        crossAxisAlignment: CrossAxisAlignment.center, // Center children horizontally
+        children: [
+          Center(
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width * 0.25, // Responsive width
+=======
         crossAxisAlignment:
             CrossAxisAlignment.center, // Center children horizontally
         children: [
@@ -908,6 +1109,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
             child: SizedBox(
               width:
                   MediaQuery.of(context).size.width * 0.25, // Responsive width
+>>>>>>> origin/Grocery_pch_api_integration
               child: TextField(
                 controller: _contactController, // Controller for input text
                 decoration: InputDecoration(
@@ -917,6 +1119,13 @@ class _PaymentDialogState extends State<PaymentDialog> {
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
+<<<<<<< HEAD
+                    borderSide: BorderSide(color: _validationError != null ? Colors.red : Colors.grey[300]!),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: _validationError != null ? Colors.red : Colors.grey[400]!),
+=======
                     borderSide: BorderSide(
                         color: _validationError != null
                             ? Colors.red
@@ -928,15 +1137,21 @@ class _PaymentDialogState extends State<PaymentDialog> {
                         color: _validationError != null
                             ? Colors.red
                             : Colors.grey[400]!),
+>>>>>>> origin/Grocery_pch_api_integration
                   ),
                   hintText: TextConstants.enterEmailOrPhone, // Placeholder text
                   hintStyle: TextStyle(
                     color: Colors.grey[500],
                     fontSize: 18,
                   ),
+<<<<<<< HEAD
+                  contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 16), // Padding inside text field
+=======
                   contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 16), // Padding inside text field
+>>>>>>> origin/Grocery_pch_api_integration
                 ),
                 style: TextStyle(
                   fontSize: 16,
@@ -966,18 +1181,35 @@ class _PaymentDialogState extends State<PaymentDialog> {
           const SizedBox(height: 24), // Vertical spacing
           Center(
             child: SizedBox(
+<<<<<<< HEAD
+              width: MediaQuery.of(context).size.width * 0.25, // Responsive width
+=======
               width:
                   MediaQuery.of(context).size.width * 0.25, // Responsive width
+>>>>>>> origin/Grocery_pch_api_integration
               child: Row(
                 children: [
                   Expanded(
                     child: _buildButton(
                       TextConstants.noReceipt,
+<<<<<<< HEAD
+                          () {
+=======
                       () async {
+>>>>>>> origin/Grocery_pch_api_integration
                         if (kDebugMode) {
                           print("DEBUG: No receipt button pressed");
                         }
                         setState(() {
+<<<<<<< HEAD
+                          _isNoReceiptLoading = true; // Show loader on button
+                        });
+                        widget.onNoReceipt?.call();
+                        Future.delayed(const Duration(milliseconds: 500), () {
+                          setState(() {
+                            _isNoReceiptLoading = false; // Hide loader after action
+                          });
+=======
                           _isNoReceiptLoading = true;
                         });
                         await PrinterSettings.openDrawer(context: context);
@@ -990,17 +1222,37 @@ class _PaymentDialogState extends State<PaymentDialog> {
                               _isNoReceiptLoading = false;
                             });
                           }
+>>>>>>> origin/Grocery_pch_api_integration
                         });
                       },
                       backgroundColor: Colors.grey[200]!,
                       textColor: Colors.blueGrey[700]!,
+<<<<<<< HEAD
+                      isLoading: _isNoReceiptLoading, // Pass loading state
+=======
                       isLoading: _isNoReceiptLoading, // Loader state
+>>>>>>> origin/Grocery_pch_api_integration
                     ),
                   ),
                   const SizedBox(width: 16), // Horizontal spacing
                   Expanded(
                     child: _buildButton(
                       TextConstants.done, // "Done" button
+<<<<<<< HEAD
+                          () {
+                            final contactInfo = _contactController.text.trim();
+                            bool isValid = true;
+                            // Validate only if Email or SMS is selected
+                            if (_selectedOption == TextConstants.email || _selectedOption == TextConstants.sms) {
+                              if (contactInfo.isEmpty) {
+                                setState(() {
+                                  _validationError = 'Please enter a valid ${_selectedOption.toLowerCase()}.';
+                                });
+                                isValid = false;
+                              }
+                            }
+                         // If valid, proceed with the action
+=======
                       () {
                         final contactInfo = _contactController.text.trim();
                         bool isValid = true;
@@ -1016,6 +1268,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                           }
                         }
                         // If valid, proceed with the action
+>>>>>>> origin/Grocery_pch_api_integration
                         if (isValid) {
                           if (kDebugMode) {
                             print(
@@ -1025,6 +1278,15 @@ class _PaymentDialogState extends State<PaymentDialog> {
                             _isDoneLoading = true; // Show loader on button
                           });
                           if (_selectedOption == TextConstants.print) {
+<<<<<<< HEAD
+                            widget.onPrint?.call(); // Call print callback if selected
+                            widget.onDone?.call(_selectedOption);
+                          } else if (_selectedOption == TextConstants.email) {
+                            widget.onEmail?.call(contactInfo); // Email receipt
+                            widget.onDone?.call(_selectedOption, email: contactInfo); // Build #1.0.159: Pass email to onDone btn action
+                          } else if (_selectedOption == TextConstants.sms) {
+                            widget.onSMS?.call(contactInfo);// SMS receipt
+=======
                             widget.onDone?.call(
                                 _selectedOption); // Let onDone handle printing
                           } else if (_selectedOption == TextConstants.email) {
@@ -1034,6 +1296,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                     contactInfo); // Build #1.0.159: Pass email to onDone btn action
                           } else if (_selectedOption == TextConstants.sms) {
                             widget.onSMS?.call(contactInfo); // SMS receipt
+>>>>>>> origin/Grocery_pch_api_integration
                             widget.onDone?.call(_selectedOption);
                           }
                           // widget.onDone?.call(_selectedOption); // Call done callback
@@ -1050,6 +1313,32 @@ class _PaymentDialogState extends State<PaymentDialog> {
         ],
       );
     }
+<<<<<<< HEAD
+
+    // For successful and partial payment states
+    return Center(
+      child: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.3, // Responsive width
+        child: Row(
+          children: [
+            Expanded(
+              child: _buildButton(
+                TextConstants.vOid,
+                isVoidable ? () {} : widget.onVoid ?? () {},
+                backgroundColor:  isVoidable ? Colors.grey : const Color(0xFFFE6464),
+              ),
+            ),
+            const SizedBox(width: 16), // Horizontal spacing
+            Expanded(
+              child: _buildButton(
+                widget.status == PaymentStatus.successful
+                    ? TextConstants.print // "Print" for successful payment
+                    : TextConstants.nextPayment, // "Next Payment" for partial
+                widget.status == PaymentStatus.successful
+                    ? (widget.onPrint ?? () {}) // Print callback for successful
+                    : (widget.onNextPayment ?? () {}), // Next payment callback for partial
+                backgroundColor: const Color(0xFF1BA672), // Green button
+=======
     // For successful and partial payment states
     return Center(
       child: SizedBox(
@@ -1159,6 +1448,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
                 backgroundColor: const Color(0xFF1BA672),
                 isLoading: _isDoneLoading,
+>>>>>>> origin/Grocery_pch_api_integration
               ),
             ),
           ],
@@ -1168,10 +1458,15 @@ class _PaymentDialogState extends State<PaymentDialog> {
   }
 
   // Build #1.0.49: updated code
+<<<<<<< HEAD
+  Widget _buildButton(String text, VoidCallback onPressed,
+      {Color backgroundColor = Colors.blue, Color textColor = Colors.white, bool isLoading = false}) {
+=======
   Widget _buildButton(String text, VoidCallback? onPressed,
       {Color backgroundColor = Colors.blue,
       Color textColor = Colors.white,
       bool isLoading = false}) {
+>>>>>>> origin/Grocery_pch_api_integration
     if (kDebugMode) {
       print("DEBUG: Building button '$text', isLoading: $isLoading");
     }
@@ -1185,6 +1480,26 @@ class _PaymentDialogState extends State<PaymentDialog> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
         ),
+<<<<<<< HEAD
+        disabledBackgroundColor: backgroundColor, // Keep same color when disabled
+      ),
+      child: isLoading
+          ? const SizedBox(
+        width: 28, // Increased loader size
+        height: 28,
+        child: CircularProgressIndicator(
+          strokeWidth: 3, // Slightly thicker stroke for visibility
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+      )
+          : Text(
+        text,
+        style: const TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+        ),
+      ).poppins(),
+=======
         disabledBackgroundColor: isLoading
             ? backgroundColor
             : Colors.grey.shade400, // Show grey when disabled for other reasons
@@ -1205,6 +1520,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                 fontWeight: FontWeight.w700,
               ),
             ).poppins(),
+>>>>>>> origin/Grocery_pch_api_integration
     );
   }
 
@@ -1217,6 +1533,14 @@ class _PaymentDialogState extends State<PaymentDialog> {
     return InkWell(
       onTap: onTap, // Handle taps
       child: Container(
+<<<<<<< HEAD
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), // Inner padding
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFFFE1E1) : Colors.transparent, // Light red when selected
+          borderRadius: BorderRadius.circular(20), // Rounded corners
+          border: Border.all(
+            color: isSelected ? const Color(0xFFFE6464) : Colors.grey[300]!, // Red border when selected
+=======
         padding: const EdgeInsets.symmetric(
             horizontal: 16, vertical: 10), // Inner padding
         decoration: BoxDecoration(
@@ -1228,6 +1552,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
             color: isSelected
                 ? const Color(0xFFFE6464)
                 : Colors.grey[300]!, // Red border when selected
+>>>>>>> origin/Grocery_pch_api_integration
             width: 1,
           ),
         ),
@@ -1244,17 +1569,25 @@ class _PaymentDialogState extends State<PaymentDialog> {
             Icon(
               icon, // Display icon (print, email, sms)
               size: 20,
+<<<<<<< HEAD
+              color: isSelected ? const Color(0xFFFE6464) : Colors.grey[600], // Red when selected
+=======
               color: isSelected
                   ? const Color(0xFFFE6464)
                   : Colors.grey[600], // Red when selected
+>>>>>>> origin/Grocery_pch_api_integration
             ),
             const SizedBox(width: 8), // Horizontal spacing
             Text(
               label, // Option label text
               style: TextStyle(
+<<<<<<< HEAD
+                color: isSelected ? const Color(0xFFFE6464) : Colors.grey[700], // Red when selected
+=======
                 color: isSelected
                     ? const Color(0xFFFE6464)
                     : Colors.grey[700], // Red when selected
+>>>>>>> origin/Grocery_pch_api_integration
                 fontWeight: FontWeight.w600, // Semi-bold
                 fontSize: 18,
               ),
@@ -1264,4 +1597,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
       ),
     );
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/Grocery_pch_api_integration

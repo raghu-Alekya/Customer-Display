@@ -5,9 +5,13 @@ import 'package:flutter/cupertino.dart';
 class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedPreferenceTextConstants classes
 
   static const String age_restricted              = 'Age Restricted';
+<<<<<<< HEAD
+  static String currencySymbol              =  '\u{20AC}';//"\u{20B9}"; //  \\u{20AC})
+=======
   static String currencySymbol              =  '\u{24}'; // Store currency is restored from local asset data at startup
   static String dateFormat                  =  "MMM d, yyyy";
   static String timeFormat                  =  "hh:mm:ss a";
+>>>>>>> origin/Grocery_pch_api_integration
   static const String loginBtnText          = "Login";
   static const String settingsHeaderText    = "Settings";
   static const String saveChangesBtnText    = "Save Changes";
@@ -15,7 +19,10 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String personalInfoSubText   = "Change your personal information";
   static const String userText              = "user";
   static const String administratorText     = "ADMINISTRATOR";
+<<<<<<< HEAD
+=======
   static const String Issuecoupon                = "Issue Coupon";
+>>>>>>> origin/Grocery_pch_api_integration
   static const String fullNameText          = "Full Name";
   static const String contactNoText         = "Contact No";
   static const String emailText             = "Email Address";
@@ -23,7 +30,10 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String ownReceiptText        = "Customize your own receipt";
   static const String companyNameText       = "Company Name";
   static const String companyNameHintText   = "Company Name";
+<<<<<<< HEAD
+=======
   static const String cashbackFee               = "Cashback Fee";
+>>>>>>> origin/Grocery_pch_api_integration
   static const String gstinText             = "GSTIN";
   static const String gstinHintText         = "GSTIN";
   static const String headerText            = "Header";
@@ -59,7 +69,10 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String layoutNavLeftOrderRight    = "Navigation at left & Orders at right";
   static const String layoutNavRightOrderLeft    = "Navigation at right & Orders at left";
   static const String layoutNavBottomOrderLeft   = "Navigation at bottom & Orders at left";
+<<<<<<< HEAD
+=======
   static const String layoutNavBottomOrderRight  = "Navigation at bottom & Orders at right";
+>>>>>>> origin/Grocery_pch_api_integration
 
   static const String printerSettText       = "Printer Settings";
   static const String selectPrintText       = "Select a printer";
@@ -112,11 +125,14 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String searchAddItemText     = "Search and Add Item";
   static const String searchItemText        = "Search Item";
   static const String typeSearchText        = "Type to search...";
+<<<<<<< HEAD
+=======
   /// Shown when product search needs more input before queries run.
   static const String searchMinCharactersHint =
       "Enter at least 3 characters to search";
   /// Shown while debounced product search is loading results.
   static const String searchPausedSearchingHint = "Searching…";
+>>>>>>> origin/Grocery_pch_api_integration
   static const String backText              = "Back";
   static const String addItemText           = "Add Item";
   static const String addProductText        = "Add Product";
@@ -125,7 +141,11 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
 
   static const String ebtText               = "EBT";
   static const String payoutsText           = "Payouts";
+<<<<<<< HEAD
+  static const String subTotalText          = "Sub total";
+=======
   static const String subTotalText          = "Sub Total";
+>>>>>>> origin/Grocery_pch_api_integration
   static const String grossTotal            = "Gross Total";
   static const String taxText               = "Tax";
   static const String netTotalText          = "Net Total"; //Build #1.0.67
@@ -140,7 +160,10 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String modeText              = "Mode";
 
   static const String orderId              = "Order ID";
+<<<<<<< HEAD
+=======
   static const String orderID              = "OrderID:";
+>>>>>>> origin/Grocery_pch_api_integration
   static const String paymentSummary       = "Payment Summary";
   static const String merchantDiscount     = "Merchant Discount";
   static const String total                = "Total";
@@ -152,6 +175,10 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String payByOther           = "Pay By Other";
   static const String tenderAmount         = "Tender Amount.";
   static const String change               = "Change";
+<<<<<<< HEAD
+  static const String balanceAmount        = "Balance Amount.";
+  static const String cashPayment          = "Cash Payment";
+=======
   static const String balanceAmount        = "Balance Amount";
   static const String amountTendered       = "Amount tendered";
   static const String EBTAmount            = "EBT Amount.";
@@ -159,6 +186,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String cardPayment          = "Card Payment";
   static const String walletPayment          = "wallet Payment";
   static const String ebtPayment          = "EBT Payment";
+>>>>>>> origin/Grocery_pch_api_integration
   static const String selectPaymentMode    = "Select Payment Mode";
   static const String cash                 = "Cash";
   static const String card                 = "Card";
@@ -189,6 +217,8 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String vendorPayoutNotFound  = 'No vendor payouts found';
   static const String invalidCoupon         = "Invalid Coupon";
   static const String coupon                = "Coupon";
+<<<<<<< HEAD
+=======
   static const String generatecoupon            = "Redeem Coupon";
   static const String cashback                = "Cashback";
   static const String servicecharges               = "Service Charges";
@@ -196,6 +226,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
 
 
 
+>>>>>>> origin/Grocery_pch_api_integration
   static const String invalidCouponDescription = "The coupon code you entered is not valid. Please check the code and try again.";
   static const String letsTryAgain          = "Let's, Try Again";
   static const String removePayoutFailed    = "Failed to remove payout";
@@ -227,17 +258,28 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String customItemAlert       = "Custom Item Alert";
   static const String customItemAlertDescription = "You're about to add a custom item. Make sure the item details are accurate before proceeding.";
   static const String addCustomItem         = "Add Custom Item";
+<<<<<<< HEAD
+=======
   static const String addCashbackAmount      = "Add Cashback Amount";
+>>>>>>> origin/Grocery_pch_api_integration
   static const String couponNotApplied      = "Coupon Not Applied";
   static const String couponNotAppliedDescription = "The coupon couldn’t be applied. Please double-check the eligibility criteria or try a different code.";
   static const String invalidDiscount       = "Invalid Discount";
   static const String invalidDiscountDescription = "The discount entered is not valid. Please review the discount details.";
   static const String customItemCouldNotBeAdded = "Custom item could not be added";
+<<<<<<< HEAD
+  static const String discounts             = "Discounts";
+  static const String coupons               = "Coupons";
+  static const String customItem            = "Custom Item";
+  static const String customItemCouldNotBeAddedDescription = "Please check the items and try again. Contact your manager if the issue continues.";
+  static const String applyDiscountToSale   = "Apply Discount to Sale";
+=======
   static const String discounts             = "Merchant\nDiscount";
   static const String coupons               = "Coupons";
   static const String customItem            = "Custom Item";
   static const String customItemCouldNotBeAddedDescription = "Please check the items and try again. Contact your manager if the issue continues.";
   static const String applyDiscountToSale   = "Apply Merchant Discount to Sale";
+>>>>>>> origin/Grocery_pch_api_integration
   static const String enterCouponCode       = "Enter Coupon Code";
   static const String customItemName        = "Custom item name";
   static const String itemPrice             = "Item Price";
@@ -288,15 +330,25 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String cancelled             = "cancelled";
   static const String completed             = "completed";
   static const String onhold                = "on-hold";
+<<<<<<< HEAD
+  static const String pending               = "pending";
+=======
   static const String pending               = "Pending"; //Pending
+>>>>>>> origin/Grocery_pch_api_integration
   static const String orderCancelled        = "Order successfully cancelled";
   static const String orderCompleted        = "Order successfully completed";
   static const String orderOnHold           = "Order changed to \'On Hold\'";
   static const String payout                = "Payout"; // Build #1.0.53
+<<<<<<< HEAD
+  static const String discountText          = "Discount";
+  static const String none                  = "none";
+ // static const String customProductText     = "CustomProduct"; // Build #1.0.64
+=======
   static const String discountText          = "Coupon";
   static const String discountCoupon          = "Coupon";
   static const String none                  = "none";
   // static const String customProductText     = "CustomProduct"; // Build #1.0.64
+>>>>>>> origin/Grocery_pch_api_integration
   static const String couponText            = "coupon"; //Build #1.0.68
   static const String payoutText            = "payout";
   static const String productText           = "Product";
@@ -351,9 +403,14 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   //Build #1.0.54: added
   static const String allStatus             = "pending, processing, on-hold, completed, cancelled, refunded, failed";
   static const String processing            = "processing";
+<<<<<<< HEAD
+  static const String orderScreenStatus     = "pending, on-hold, completed, cancelled, refunded, failed";
+ // Build #1.0.144: Added TextConstants from static snackBar string error's to here
+=======
   // Match connector total-orders status filter (include processing)
   static const String orderScreenStatus     = "pending, processing, on-hold, completed, cancelled, refunded, failed";
   // Build #1.0.144: Added TextConstants from static snackBar string error's to here
+>>>>>>> origin/Grocery_pch_api_integration
   static const String failedToCreateFastKey = 'Failed to create fast key';
   static const String failedToAddItemToFastKey = 'Failed to add item to fast key';
   static const String failedToDeleteProductFromFastKey = 'Failed to delete product from fast key';
@@ -408,6 +465,8 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String tranFailed = "Transaction Failed !"; // Build #1.0.240
   static const String wantRetry = "Do you want to retry?";
   static const String dismiss = "Dismiss";
+<<<<<<< HEAD
+=======
   // Build #1.0.248
   static const String failedToStartShift  = 'Failed to start shift. Please try again.';
   static const String failedToUpdateShift = 'Failed to update shift. Please try again.';
@@ -420,6 +479,7 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String addProductToOrder = 'Added Product to Order API Time';
   static const String refreshDBUITime = 'Refresh DB & UI Time';
   static const String closeText = 'Close';
+>>>>>>> origin/Grocery_pch_api_integration
 }
 
 class TextFontSize {
@@ -436,6 +496,11 @@ class SharedPreferenceTextConstants {
   static const String navLeftOrderRight = 'NavLeftOrderRight'; //Build #1.0.54: added
   static const String navRightOrderLeft = 'NavRightOrderLeft';
   static const String navBottomOrderLeft = 'NavBottomOrderLeft';
+<<<<<<< HEAD
+
+}
+=======
   static const String navBottomOrderRight = 'NavBottomOrderRight';
 
 }
+>>>>>>> origin/Grocery_pch_api_integration

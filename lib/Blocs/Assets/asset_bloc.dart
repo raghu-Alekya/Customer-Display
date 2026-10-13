@@ -28,6 +28,8 @@ class AssetBloc { //Build #1.0.40
     }
   }
 
+<<<<<<< HEAD
+=======
   Future<void> fetchImageAssets({bool forceRefresh = false}) async {
     if (_imageAssetController.isClosed) return;
 
@@ -79,6 +81,7 @@ class AssetBloc { //Build #1.0.40
     }
   }
 
+>>>>>>> origin/Grocery_pch_api_integration
   Future<void> fetchAssets() async {
     if (_assetController.isClosed) return;
 
@@ -98,6 +101,50 @@ class AssetBloc { //Build #1.0.40
   }
 
   // Build #1.0.163: Added Image assets api
+<<<<<<< HEAD
+  Future<void> fetchImageAssets() async {
+    if (_imageAssetController.isClosed) return;
+
+    imageAssetSink.add(APIResponse.loading(TextConstants.loading));
+    try {
+      if (kDebugMode) {
+        print("************** Fetching image assets in background");
+      }
+      // Call the API without UI loading indicators
+      ImageAssetsResponse response = await _assetRepository.getImageAssets();
+
+      // Get the current asset ID (usually 1)
+      final db = await AssetDBHelper.instance.database;
+      final existingAsset = await db.query(AppDBConst.assetTable, limit: 1);
+      int assetId = existingAsset.isNotEmpty ? 1 : 1;
+
+      // Delete existing media and save new ones
+      await db.delete(AppDBConst.mediaTable, where: '${AppDBConst.assetId} = ?', whereArgs: [assetId]);
+
+      for (var media in response.media) { // Build #1.0.163
+        await db.insert(AppDBConst.mediaTable, {
+          ...media.toMap(),
+          AppDBConst.assetId: assetId,
+        });
+        if (kDebugMode) {
+            print("#### fetchImageAssets: Inserted media with ID: ${media.id}");
+         }
+      }
+
+      if (kDebugMode) {
+        print("************** Successfully saved ${response.media.length} image assets to DB");
+      }
+      imageAssetSink.add(APIResponse.completed(response));
+    } catch (e) {
+      if (e.toString().contains('SocketException')) {
+        imageAssetSink.add(APIResponse.error("Network error. Please check your connection."));
+      } else {
+        imageAssetSink.add(APIResponse.error("Failed to fetch image assets: ${e.toString()}"));
+      }
+      if (kDebugMode) print("Exception in fetchImageAssets: $e");
+    }
+  }
+=======
   // Future<void> fetchImageAssets() async {
   //   if (_imageAssetController.isClosed) return;
   //
@@ -140,6 +187,7 @@ class AssetBloc { //Build #1.0.40
   //     if (kDebugMode) print("Exception in fetchImageAssets: $e");
   //   }
   // }
+>>>>>>> origin/Grocery_pch_api_integration
 
   void dispose() {
     if (!_assetController.isClosed) {

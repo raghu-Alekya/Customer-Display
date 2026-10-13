@@ -4,10 +4,47 @@
     android:layout_height="match_parent"
     android:background="#3D506E">
 
+<<<<<<< HEAD
+    <!-- Foreground Content -->
+=======
+>>>>>>> origin/Grocery_pch_api_integration
     <LinearLayout
         android:id="@+id/welcome_root"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+<<<<<<< HEAD
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:scaleX="0.85"
+        android:scaleY="0.85"
+        android:layout_gravity="top"
+        android:layout_marginTop="170dp">
+
+        <ImageView
+            android:id="@+id/welcome_logo"
+            android:layout_width="100dp"
+            android:layout_height="wrap_content"
+            android:src="@drawable/pinaka_logo"
+            android:contentDescription="Logo"
+            android:adjustViewBounds="true"
+            android:layout_marginBottom="20dp" />
+
+        <TextView
+            android:id="@+id/welcome_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Welcome To Pinaka"
+            android:textSize="50dp"
+            android:textStyle="bold"
+            android:fontFamily="serif"
+            android:textColor="#FFFFFF"
+            android:gravity="center"
+            android:lineSpacingExtra="2dp"
+            android:letterSpacing="0.02"
+            android:singleLine="false"
+            android:breakStrategy="simple" />
+=======
         android:orientation="horizontal">
 
         <!-- Left half: Logo + Welcome Text -->
@@ -62,6 +99,7 @@
                 android:layout_height="match_parent"
                 android:scaleType="centerCrop"/>
         </FrameLayout>
+>>>>>>> origin/Grocery_pch_api_integration
 
     </LinearLayout>
 
@@ -71,6 +109,16 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Powered by Pinaka"
+<<<<<<< HEAD
+        android:textSize="12sp"
+        android:textColor="#FFFFFF"
+        android:gravity="center"
+        android:layout_gravity="bottom|center_horizontal"
+        android:padding="8dp"
+        android:visibility="gone" />
+
+</FrameLayout>
+=======
         android:textSize="20sp"
         android:textColor="#FFFFFF"
         android:gravity="center"
@@ -79,3 +127,4 @@
         android:visibility="gone" />
 
 </FrameLayout>
+>>>>>>> origin/Grocery_pch_api_integration

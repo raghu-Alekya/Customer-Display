@@ -1,5 +1,13 @@
+<<<<<<< HEAD
+/// FAST KEY PRODUCT MANAGEMENT MODELS
+/// API: POST /fastkeys/add-products
+/// Request for adding products to a FastKey
+class FastKeyProductRequest {  // Build #1.0.15
+  final int fastKeyId;
+=======
 class FastKeyProductRequest {
   final dynamic fastKeyId;
+>>>>>>> origin/Grocery_pch_api_integration
   final List<FastKeyProductItem> products;
 
   FastKeyProductRequest({
@@ -8,9 +16,15 @@ class FastKeyProductRequest {
   });
 
   Map<String, dynamic> toJson() => {
+<<<<<<< HEAD
+    'fastkey_id': fastKeyId,
+    'products': products.map((item) => item.toJson()).toList(),
+  };
+=======
         'fastkey_id': fastKeyId,
         'products': products.map((item) => item.toJson()).toList(),
       };
+>>>>>>> origin/Grocery_pch_api_integration
 }
 
 /// Individual product item for adding to FastKey
@@ -24,6 +38,19 @@ class FastKeyProductItem {
   });
 
   Map<String, dynamic> toJson() => {
+<<<<<<< HEAD
+    'product_id': productId,
+    'sl_number': slNumber,
+  };
+}
+
+/// API RESPONSE: POST /fastkeys/add-products
+/// Response when adding products to FastKey
+class FastKeyProductResponse {
+  final String status;
+  final String message;
+  final int fastkeyId;
+=======
         'product_id': productId,
         'sl_number': slNumber,
       };
@@ -38,6 +65,7 @@ class FastKeyProductResponse {
   final String status;
   final String message;
   final dynamic fastkeyId;
+>>>>>>> origin/Grocery_pch_api_integration
   final List<FastKeyProduct>? products;
   final List<dynamic>? failedProducts;
 
@@ -50,6 +78,14 @@ class FastKeyProductResponse {
   });
 
   factory FastKeyProductResponse.fromJson(Map<String, dynamic> json) {
+<<<<<<< HEAD
+    return FastKeyProductResponse(
+      status: json['status'] ?? '',
+      message: json['message'] ?? '',
+      fastkeyId: json['fastkey_id'] ?? 0,
+      products: (json['products'] as List<dynamic>?)
+          ?.map((item) => FastKeyProduct.fromJson(item))
+=======
     var rawId = json['fastkey_id'] ?? json['fastkeyId'] ?? json['id'];
     return FastKeyProductResponse(
       status: json['status']?.toString() ?? '',
@@ -57,6 +93,7 @@ class FastKeyProductResponse {
       fastkeyId: rawId ?? 0,
       products: (json['products'] as List<dynamic>?)
           ?.map((item) => FastKeyProduct.fromJson(item as Map<String, dynamic>))
+>>>>>>> origin/Grocery_pch_api_integration
           .toList(),
       failedProducts: json['failed_products'] as List<dynamic>?,
     );
@@ -64,6 +101,10 @@ class FastKeyProductResponse {
 }
 
 /// API RESPONSE: GET /fastkeys/get-by-fastkey-id/{id}
+<<<<<<< HEAD
+/// Response for getting products in a specific FastKey
+=======
+>>>>>>> origin/Grocery_pch_api_integration
 class FastKeyProductsResponse {
   final String status;
   final String message;
@@ -84,6 +125,18 @@ class FastKeyProductsResponse {
   });
 
   factory FastKeyProductsResponse.fromJson(Map<String, dynamic> json) {
+<<<<<<< HEAD
+    return FastKeyProductsResponse(
+      status: json['status'] ?? '',
+      message: json['message'] ?? '',
+      fastkeyId: json['fastkey_id']?.toString() ?? '0',
+      fastkeyTitle: json['fastkey_title'] ?? '',
+      fastkeyImage: json['fastkey_image'],
+      fastkeyIndex: json['fastkey_index']?.toString() ?? '0',
+      products: (json['products'] as List<dynamic>?)
+          ?.map((item) => FastKeyProduct.fromJson(item))
+          .toList() ?? [],
+=======
     final responseData = json['data'] is Map
         ? Map<String, dynamic>.from(json['data'] as Map)
         : json;
@@ -104,10 +157,15 @@ class FastKeyProductsResponse {
                   FastKeyProduct.fromJson(Map<String, dynamic>.from(item)))
               .toList() ??
           [],
+>>>>>>> origin/Grocery_pch_api_integration
     );
   }
 }
 
+<<<<<<< HEAD
+/// Shared model for FastKey Product representation
+/// Used in both product addition and listing responses
+=======
 /// =============================================
 /// SHARED MODELS
 /// =============================================
@@ -167,21 +225,32 @@ class Tags {
 }
 
 /// Main Product Model (Updated with meta_data)
+>>>>>>> origin/Grocery_pch_api_integration
 class FastKeyProduct {
   final int productId;
   final String name;
   final String price;
+<<<<<<< HEAD
+  final String image; // Still a String, as it should be a URL or empty
+  final List<String> category;
+  final int slNumber;
+  List<Tags>? tags;
+=======
   final String image;
   final List<String> category;
   final int slNumber;
   final List<Tags>? tags;
+>>>>>>> origin/Grocery_pch_api_integration
   final String? sku;
   final bool? isVariant;
   final bool? hasVariant;
 
+<<<<<<< HEAD
+=======
   // ✅ NEW: Meta Data Support
   final List<ProductMetaData>? metaData;
 
+>>>>>>> origin/Grocery_pch_api_integration
   FastKeyProduct({
     required this.productId,
     required this.name,
@@ -193,6 +262,22 @@ class FastKeyProduct {
     this.sku,
     this.isVariant,
     this.hasVariant,
+<<<<<<< HEAD
+  });
+
+  factory FastKeyProduct.fromJson(Map<String, dynamic> json) {
+    return FastKeyProduct(
+      productId: json['product_id'] ?? 0,
+      name: json['name'] ?? '',
+      price: json['price']?.toString() ?? '0',
+      image: json['image'] ?? '',
+      category: (json['category'] as List<dynamic>?)
+          ?.map((item) => item.toString())
+          .toList() ?? [],
+      slNumber: json['sl_number'] ?? 0,
+      tags: json['tags'] != null
+          ? List<Tags>.from(json['tags'].map((x) => Tags.fromJson(x)))
+=======
     this.metaData, // Optional - No breaking changes
   });
 
@@ -232,10 +317,40 @@ class FastKeyProduct {
               .whereType<Map>()
               .map((tag) => Tags.fromJson(Map<String, dynamic>.from(tag)))
               .toList()
+>>>>>>> origin/Grocery_pch_api_integration
           : null,
       sku: json['sku'] ?? '',
       isVariant: json['is_variant'] ?? false,
       hasVariant: json['has_variants'] ?? false,
+<<<<<<< HEAD
+    );
+  }
+}
+
+class Tags {
+  int? id;
+  String? name;
+  String? slug;
+
+  Tags({this.id, this.name, this.slug});
+
+  factory Tags.fromJson(Map<String, dynamic> json) {
+    return Tags(
+      id: json['id'] as int?,
+      name: json['name'] as String?,
+      slug: json['slug'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'slug': slug,
+    };
+  }
+}
+=======
 
       // Meta Data Parsing
       metaData: (json['meta_data'] as List<dynamic>?)
@@ -255,3 +370,4 @@ class FastKeyProduct {
     return null;
   }
 }
+>>>>>>> origin/Grocery_pch_api_integration

@@ -4,7 +4,11 @@ class LoginResponse {
   String? code;
   String? message;
   String? token;
+<<<<<<< HEAD
+  int? id;
+=======
   dynamic id;
+>>>>>>> origin/Grocery_pch_api_integration
   String? email;
   String? nicename;
   String? firstName;
@@ -13,11 +17,14 @@ class LoginResponse {
   String? role; //Build #1.0.122: Updated
   String? avatar;
   int? shiftId; // Build #1.0.149: Added shift_id from API response
+<<<<<<< HEAD
+=======
   String? safeEnable;
   String? safeEnableDrop;
   // Build #offline: Terminal identity from login API
   String? deviceDisplayName;
   String? tableId;
+>>>>>>> origin/Grocery_pch_api_integration
 
   LoginResponse({
     this.success,
@@ -33,6 +40,26 @@ class LoginResponse {
     this.displayName,
     this.role,
     this.avatar,
+<<<<<<< HEAD
+    this.shiftId, // Build #1.0.149: added
+  });
+
+  LoginResponse.fromJson(Map<String, dynamic> json) {
+    success = json['success'];
+    statusCode = json['statusCode'];
+    code = json['code'];
+    message = json['message'];
+    token = json['data']?['token'];
+    id = json['data']?['id'];
+    email = json['data']?['email'];
+    nicename = json['data']?['nicename'];
+    firstName = json['data']?['firstName'];
+    lastName = json['data']?['lastName'];
+    displayName = json['data']?['displayName'];
+    role = json['data']?['role'];
+    avatar = json['data']?['avatar'];
+    shiftId = json['data']?['shift_id']; // Build #1.0.149: added
+=======
     this.shiftId,
     this.safeEnable,
     this.safeEnableDrop,
@@ -195,6 +222,7 @@ class LoginResponse {
       }
     }
     return null;
+>>>>>>> origin/Grocery_pch_api_integration
   }
 
   Map<String, dynamic> toJson() {
@@ -203,7 +231,10 @@ class LoginResponse {
       'statusCode': statusCode,
       'code': code,
       'message': message,
+<<<<<<< HEAD
+=======
       'accessToken': token,
+>>>>>>> origin/Grocery_pch_api_integration
       'data': {
         'token': token,
         'id': id,
@@ -214,17 +245,25 @@ class LoginResponse {
         'displayName': displayName,
         'role': role,
         'avatar': avatar,
+<<<<<<< HEAD
+        'shift_id': shiftId, // Build #1.0.149: added
+=======
         'shift_id': shiftId,
         'safe_enable': safeEnable,
         'safe_enable_drop': safeEnableDrop,
         'device_display_name': deviceDisplayName,
         'table_id': tableId,
+>>>>>>> origin/Grocery_pch_api_integration
       }
     };
   }
 }
 
+<<<<<<< HEAD
+class LoginRequest { // Build #1.0.13: Updated login request
+=======
 class LoginRequest {
+>>>>>>> origin/Grocery_pch_api_integration
   String _empLoginPin;
 
   set empLoginPin(String value) {
@@ -238,4 +277,8 @@ class LoginRequest {
     data['emp_login_pin'] = _empLoginPin;
     return data;
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/Grocery_pch_api_integration

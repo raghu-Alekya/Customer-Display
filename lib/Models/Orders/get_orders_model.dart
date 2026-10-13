@@ -1,3 +1,13 @@
+<<<<<<< HEAD
+import 'package:flutter/foundation.dart';
+import 'package:pinaka_pos/Constants/text.dart';
+
+import 'orders_model.dart';
+
+class OrdersListModel { //Build #1.0.40
+  final List<OrderModel> orders;
+
+=======
 // import 'dart:convert';
 // import 'package:flutter/foundation.dart';
 // import 'package:pinaka_pos/Constants/text.dart';
@@ -765,6 +775,7 @@ import 'package:pinaka_pos/Constants/text.dart';
 
 class OrdersListModel {
   final List<OrderModel> orders;
+>>>>>>> origin/Grocery_pch_api_integration
   OrdersListModel({required this.orders});
 
   factory OrdersListModel.fromJson(List<dynamic> json) {
@@ -792,14 +803,27 @@ class OrderModel {
   final String totalTax;
   final int customerId;
   final String orderKey;
+<<<<<<< HEAD
+  final Billing billing;
+  final Shipping shipping;
+  final List<LineItem> lineItems;
+  List<FeeLine>? feeLines;    // For payout and discount data
+  List<CouponLine> couponLines; // For coupon data
+=======
   final List<LineItem> lineItems;
   List<FeeLine>? feeLines;
   List<CouponLine> couponLines;
+>>>>>>> origin/Grocery_pch_api_integration
   final List<MetaData> metaData;
   final String? datePaid;
   final String? dateCompleted;
   final String paymentMethod;
   final String createdVia;
+<<<<<<< HEAD
+  final String number;
+  final String currencySymbol;
+
+=======
   final String? orderType;
   final String number;
   final String currencySymbol;
@@ -814,6 +838,7 @@ class OrderModel {
   final double refundOrderTotal;
   final double netPayment;
 
+>>>>>>> origin/Grocery_pch_api_integration
   OrderModel({
     required this.id,
     required this.parentId,
@@ -832,6 +857,11 @@ class OrderModel {
     required this.totalTax,
     required this.customerId,
     required this.orderKey,
+<<<<<<< HEAD
+    required this.billing,
+    required this.shipping,
+=======
+>>>>>>> origin/Grocery_pch_api_integration
     required this.lineItems,
     this.feeLines,
     required this.couponLines,
@@ -840,6 +870,18 @@ class OrderModel {
     this.dateCompleted,
     required this.paymentMethod,
     required this.createdVia,
+<<<<<<< HEAD
+    required this.number,
+    required this.currencySymbol,
+  });
+
+  factory OrderModel.fromJson(Map<String, dynamic> json) {
+    return OrderModel(
+      id: json['id'] ?? 0,
+      parentId: json['parent_id'] ?? 0,
+      status: json['status'] ?? '',
+      currency: json['currency'] ?? 'INR',
+=======
     this.orderType,
     required this.number,
     required this.currencySymbol,
@@ -915,6 +957,7 @@ class OrderModel {
       parentId: int.tryParse(json['parent_id']?.toString() ?? '0') ?? 0,
       status: (json['status'] ?? json['state'] ?? '').toString(),
       currency: json['currency'] ?? 'USD',
+>>>>>>> origin/Grocery_pch_api_integration
       version: json['version'] ?? '',
       pricesIncludeTax: json['prices_include_tax'] ?? false,
       dateCreated: json['date_created'] ?? '',
@@ -928,10 +971,29 @@ class OrderModel {
       totalTax: json['total_tax'] ?? '0.00',
       customerId: json['customer_id'] ?? 0,
       orderKey: json['order_key'] ?? '',
+<<<<<<< HEAD
+      billing: Billing.fromJson(json['billing'] ?? {}),
+      shipping: Shipping.fromJson(json['shipping'] ?? {}),
+=======
+>>>>>>> origin/Grocery_pch_api_integration
       lineItems: (json['line_items'] as List<dynamic>?)
           ?.map((item) => LineItem.fromJson(item))
           .toList() ??
           [],
+<<<<<<< HEAD
+      feeLines: (json['fee_lines'] is List) //Build #1.0.134: updated
+          ? (json['fee_lines'] as List<dynamic>?)?.map((e) => FeeLine.fromJson(e as Map<String, dynamic>)).toList()
+          : (json['fee_lines'] is Map)
+          ? (json['fee_lines'] as Map<String, dynamic>).values
+          .map((e) => FeeLine.fromJson(e as Map<String, dynamic>))
+          .toList()
+          : null,
+      couponLines: (json['coupon_lines'] as List<dynamic>?)?.map((e) => CouponLine.fromJson(e as Map<String, dynamic>)).toList() ?? [],
+      metaData: (json['meta_data'] as List<dynamic>?)
+          ?.map((item) => MetaData.fromJson(item))
+          .toList() ??
+          [],
+=======
       feeLines: (json['fee_lines'] is List)
           ? (json['fee_lines'] as List<dynamic>?)
           ?.map((e) => FeeLine.fromJson(e as Map<String, dynamic>))
@@ -947,10 +1009,20 @@ class OrderModel {
           .toList() ??
           [],
       metaData: metaList,
+>>>>>>> origin/Grocery_pch_api_integration
       datePaid: json['date_paid'],
       dateCompleted: json['date_completed'],
       paymentMethod: json['payment_method'] ?? '',
       createdVia: json['created_via'] ?? '',
+<<<<<<< HEAD
+      number: json['number'] ?? '',
+      currencySymbol: json['currency_symbol'] ?? TextConstants.currencySymbol,
+    );
+  }
+}
+
+class FeeLine {// Build #1.0.64
+=======
       orderType: resolveOrderType(),
       number: json['number'] ?? '',
       currencySymbol: json['currency_symbol'] ?? TextConstants.currencySymbol,
@@ -1006,6 +1078,7 @@ class OrderModel {
 }
 
 class FeeLine {
+>>>>>>> origin/Grocery_pch_api_integration
   int? id;
   String? name;
   String? taxClass;
@@ -1043,7 +1116,11 @@ class FeeLine {
   }
 }
 
+<<<<<<< HEAD
+class CouponLine { // Build #1.0.64
+=======
 class CouponLine {
+>>>>>>> origin/Grocery_pch_api_integration
   int? id;
   String? code;
   String? discount;
@@ -1080,7 +1157,55 @@ class CouponLine {
   }
 }
 
+<<<<<<< HEAD
+class Billing {
+  final String firstName;
+  final String lastName;
+  final String email;
+  final String phone;
+
+  Billing({
+    required this.firstName,
+    required this.lastName,
+    required this.email,
+    required this.phone,
+  });
+
+  factory Billing.fromJson(Map<String, dynamic> json) {
+    return Billing(
+      firstName: json['first_name'] ?? '',
+      lastName: json['last_name'] ?? '',
+      email: json['email'] ?? '',
+      phone: json['phone'] ?? '',
+    );
+  }
+}
+
+class Shipping {
+  final String firstName;
+  final String lastName;
+  final String phone;
+
+  Shipping({
+    required this.firstName,
+    required this.lastName,
+    required this.phone,
+  });
+
+  factory Shipping.fromJson(Map<String, dynamic> json) {
+    return Shipping(
+      firstName: json['first_name'] ?? '',
+      lastName: json['last_name'] ?? '',
+      phone: json['phone'] ?? '',
+    );
+  }
+}
+
 class LineItem {
+
+=======
+class LineItem {
+>>>>>>> origin/Grocery_pch_api_integration
   final int id;
   final String name;
   final int productId;
@@ -1093,6 +1218,16 @@ class LineItem {
   final String totalTax;
   final List<MetaData> metaData;
   final String? sku;
+<<<<<<< HEAD
+  final double price; // Use double to handle both int and double
+  final ImageData image;
+  final ProductData productData;
+  final ProductVariationData? productVariationData;
+
+  LineItem({
+    required this.productId,
+    required this.variationId,
+=======
   final double price;
   final ImageData image;
   final ProductData productData;
@@ -1124,12 +1259,50 @@ class LineItem {
     required this.productId,
     required this.variationId,
     required this.quantity,
+>>>>>>> origin/Grocery_pch_api_integration
     required this.taxClass,
     required this.subtotal,
     required this.subtotalTax,
     required this.total,
     required this.totalTax,
     required this.metaData,
+<<<<<<< HEAD
+    required this.id,
+    required this.name,
+    required this.quantity,
+    required this.price,
+    this.sku,
+    required this.image,
+    required this.productData,
+    this.productVariationData,
+  });
+
+  factory LineItem.fromJson(Map<String, dynamic> json) {
+    return LineItem(
+      id: json['id'] ?? 0,
+      name: json['name'] ?? '',
+      quantity: json['quantity'] ?? 0,
+      image: ImageData.fromJson(json['image'] ?? {}),
+      productData: ProductData.fromJson(json['product_data'] ?? {}),
+      productVariationData: ProductVariationData.fromJson(json['product_variation_data'] ?? {}),
+      productId: json['product_id'] ?? 0,
+      variationId: json['variation_id'] ?? 0,
+      taxClass: json['tax_class'] ?? '',
+      subtotal: json['subtotal'] ?? '0.00',
+      subtotalTax: json['subtotal_tax'] ?? '0.00',
+      total: json['total'] ?? '0.00',
+      totalTax: json['total_tax'] ?? '0.00',
+      metaData: (json['meta_data'] as List<dynamic>?)
+          ?.map((e) => MetaData.fromJson(e))
+          .toList() ??
+          [],
+      sku: json['sku'] ?? '',
+      price: (json['price'] is int
+          ? (json['price'] as int).toDouble() // Convert int to double
+          : json['price'] ?? 0.0), // Use double directly or default to 0.0
+    );
+  }
+=======
     this.sku,
     required this.price,
     required this.image,
@@ -1364,6 +1537,7 @@ class LineItem {
 
   double get totalDiscountAmount =>
       multipackDiscountAmount + autoDiscountAmount + comboDiscountAmount + displayAutoDiscountAmount;
+>>>>>>> origin/Grocery_pch_api_integration
 }
 
 class Tag {
@@ -1371,7 +1545,15 @@ class Tag {
   final String name;
   final String slug;
 
+<<<<<<< HEAD
+  Tag({
+    required this.id,
+    required this.name,
+    required this.slug,
+  });
+=======
   Tag({required this.id, required this.name, required this.slug});
+>>>>>>> origin/Grocery_pch_api_integration
 
   factory Tag.fromJson(Map<String, dynamic> json) {
     return Tag(
@@ -1402,6 +1584,12 @@ class ProductData {
   });
 
   factory ProductData.fromJson(Map<String, dynamic> json) {
+<<<<<<< HEAD
+    if (kDebugMode) {
+      print("get_order_model = ProductData ${json['variations']}");
+    }
+=======
+>>>>>>> origin/Grocery_pch_api_integration
     return ProductData(
       id: json['id'] ?? 0,
       name: json['name'] ?? '',
@@ -1409,9 +1597,13 @@ class ProductData {
           ?.map((tag) => Tag.fromJson(tag))
           .toList() ??
           [],
+<<<<<<< HEAD
+      variations: (json['variations'] as List?)?.map((item) => item as int).toList() ?? [],
+=======
       variations: (json['variations'] as List?)
           ?.map((item) => item as int)
           .toList(),
+>>>>>>> origin/Grocery_pch_api_integration
       price: json['price'] == "" ? "0" : json['price'] ?? "0",
       regularPrice: json['regular_price'] == "" ? "0" : json['regular_price'] ?? "0",
       salePrice: json['sale_price'] == "" ? "0" : json['sale_price'] ?? "0",
@@ -1432,7 +1624,11 @@ class ProductVariationData {
     this.regularPrice,
     this.salePrice,
     this.price,
+<<<<<<< HEAD
+    required this.metaData,
+=======
     this.metaData,
+>>>>>>> origin/Grocery_pch_api_integration
     required this.id,
     required this.type,
     required this.sku,
@@ -1444,7 +1640,12 @@ class ProductVariationData {
       type: json['type'] ?? '',
       metaData: (json['meta_data'] as List<dynamic>?)
           ?.map((item) => MetaData.fromJson(item))
+<<<<<<< HEAD
+          .toList() ??
+          [],
+=======
           .toList(),
+>>>>>>> origin/Grocery_pch_api_integration
       sku: json['sku'] ?? "",
       price: json['price'] ?? "",
       regularPrice: json['regular_price'] ?? "",
@@ -1458,7 +1659,21 @@ class MetaData {
   final String key;
   final dynamic value;
 
+<<<<<<< HEAD
+  MetaData({
+    required this.id,
+    required this.key,
+    required this.value,
+  });
+
+  // {
+  // "id": 3962,
+  // "key": "age_restricted",
+  // "value": "18" true/false
+  // },
+=======
   MetaData({required this.id, required this.key, required this.value});
+>>>>>>> origin/Grocery_pch_api_integration
 
   factory MetaData.fromJson(Map<String, dynamic> json) {
     return MetaData(
@@ -1473,7 +1688,14 @@ class ImageData {
   final String id;
   final String src;
 
+<<<<<<< HEAD
+  ImageData({
+    required this.id,
+    required this.src,
+  });
+=======
   ImageData({required this.id, required this.src});
+>>>>>>> origin/Grocery_pch_api_integration
 
   factory ImageData.fromJson(Map<String, dynamic> json) {
     return ImageData(
@@ -1481,4 +1703,9 @@ class ImageData {
       src: json['src'] ?? '',
     );
   }
+<<<<<<< HEAD
 }
+
+=======
+}
+>>>>>>> origin/Grocery_pch_api_integration

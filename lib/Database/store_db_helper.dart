@@ -2,9 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import '../Constants/text.dart';
 import '../Models/Auth/store_validation_model.dart';
+<<<<<<< HEAD
+import 'db_helper.dart';
+=======
 import '../Preferences/pinaka_preferences.dart';
 import 'db_helper.dart';
 import '../Repositories/Auth/AuthIdsStore.dart';
+>>>>>>> origin/Grocery_pch_api_integration
 
 class StoreDbHelper { //Build #1.0.126: Updated code - store validation data management
   static final StoreDbHelper instance = StoreDbHelper._internal();
@@ -20,6 +24,8 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
   Future<void> saveStoreValidationData(StoreValidationResponse response) async {
     final db = await DBHelper.instance.database;
 
+<<<<<<< HEAD
+=======
     // New connector API may omit license fields; default so re-open checks pass.
     final licenseStatus = response.licenseStatus.trim().isNotEmpty
         ? response.licenseStatus.trim()
@@ -28,6 +34,7 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
         ? response.expirationDate.trim()
         : DateTime.now().add(const Duration(days: 3650)).toIso8601String();
 
+>>>>>>> origin/Grocery_pch_api_integration
     Map<String, dynamic> validationMap = {
       AppDBConst.storeId: response.storeId,
       AppDBConst.storeUserId: response.userId,
@@ -35,18 +42,26 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
       AppDBConst.email: response.email,
       AppDBConst.subscriptionType: response.subscriptionType,
       AppDBConst.storeName: response.storeName,
+<<<<<<< HEAD
+      AppDBConst.expirationDate: response.expirationDate,
+=======
       AppDBConst.expirationDate: expirationDate,
+>>>>>>> origin/Grocery_pch_api_integration
       AppDBConst.storeBaseUrl: response.storeBaseUrl,
       AppDBConst.storeAddress: response.storeAddress,
       AppDBConst.storePhone: response.storePhone,
       AppDBConst.storeInfo: response.storeInfo,
       AppDBConst.licenseKey: response.licenseKey,
+<<<<<<< HEAD
+      AppDBConst.licenseStatus: response.licenseStatus,
+=======
       AppDBConst.licenseStatus: licenseStatus,
       // Build #offline: terminal identity fields
       AppDBConst.deviceDisplayName: response.deviceDisplayName,
       AppDBConst.deviceTableId: response.deviceTableId,
       AppDBConst.storeLogo: response.storeLogo,
       AppDBConst.storeGstin: response.storeGstin,
+>>>>>>> origin/Grocery_pch_api_integration
     };
 
     await db.insert(
@@ -55,6 +70,8 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
 
+<<<<<<< HEAD
+=======
     try {
       await PinakaPreferences.saveLoggedInStore(
         storeId: response.storeId,
@@ -64,6 +81,7 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
       );
     } catch (_) {}
 
+>>>>>>> origin/Grocery_pch_api_integration
     if (kDebugMode) {
       print("#### Store validation data saved: $validationMap");
     }
@@ -86,6 +104,9 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
     return null;
   }
 
+<<<<<<< HEAD
+  /// Checks if store validation is valid
+=======
   /// Checks if store validation is valid.
   ///
   /// Once merchant/store login succeeds we persist the row in
@@ -98,10 +119,31 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
   /// storeId as sufficient proof of a prior successful store login. When
   /// those legacy fields are present we still enforce active license +
   /// non-expired date.
+>>>>>>> origin/Grocery_pch_api_integration
   Future<bool> isStoreValidationValid() async {
     try {
       final validationData = await getStoreValidationData();
       if (validationData == null) {
+<<<<<<< HEAD
+        if (kDebugMode) print("#### No validation data found, store validation invalid");
+        return false;
+      }
+
+      final expirationDateStr = validationData[AppDBConst.expirationDate];
+      final licenseStatus = validationData[AppDBConst.licenseStatus];
+
+      if (expirationDateStr == null || licenseStatus != 'Active') {
+        if (kDebugMode) print("#### Invalid expiration date or license status");
+        return false;
+      }
+
+      final expirationDate = DateTime.parse(expirationDateStr);
+      final now = DateTime.now();
+      final isValid = expirationDate.isAfter(now);
+
+      if (kDebugMode) print("#### Store validation status: $isValid, expires: $expirationDateStr");
+      return isValid;
+=======
         if (kDebugMode) {
           print("#### No validation data found, store validation invalid");
         }
@@ -168,6 +210,7 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
         print("#### Store validation valid (storeId=$storeId)");
       }
       return true;
+>>>>>>> origin/Grocery_pch_api_integration
     } catch (e) {
       if (kDebugMode) print("#### Error checking store validation status: $e");
       return false;
@@ -182,6 +225,16 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
     return baseUrl;
   }
 
+<<<<<<< HEAD
+  /// Clears store validation data during logout
+  Future<void> logout() async {
+    final db = await DBHelper.instance.database;
+    await db.delete(AppDBConst.storeValidationTable);
+    if (kDebugMode) {
+      print("#### Store validation data cleared during logout");
+    }
+  }
+=======
   // Build #offline: get terminal display name
   Future<String?> getDeviceDisplayName() async {
     final data = await getStoreValidationData();
@@ -210,4 +263,5 @@ class StoreDbHelper { //Build #1.0.126: Updated code - store validation data man
     }
   }
 
+>>>>>>> origin/Grocery_pch_api_integration
 }

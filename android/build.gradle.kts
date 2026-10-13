@@ -13,6 +13,8 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 subprojects {
+<<<<<<< HEAD
+=======
     afterEvaluate {
         val android = extensions.findByName("android") as? com.android.build.gradle.BaseExtension
         android?.apply {
@@ -42,6 +44,7 @@ subprojects {
 }
 
 subprojects {
+>>>>>>> origin/Grocery_pch_api_integration
     project.evaluationDependsOn(":app")
 }
 tasks.register<Delete>("clean") {

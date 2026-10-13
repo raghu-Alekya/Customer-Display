@@ -105,6 +105,8 @@ class ShiftBloc { //Build #1.0.74: Updated Code
       if (kDebugMode) print("Exception in manageShift: $e");
     }
   }
+<<<<<<< HEAD
+=======
   /// Sync all pending offline shifts and execute ID mapping
   Future<void> syncPendingShifts() async {
     try {
@@ -114,6 +116,7 @@ class ShiftBloc { //Build #1.0.74: Updated Code
       if (kDebugMode) print('❌ ShiftBloc: Error syncing pending shifts: $e');
     }
   }
+>>>>>>> origin/Grocery_pch_api_integration
 
   void dispose() {
     if (!_shiftsByUserController.isClosed) { //Build #1.0.74

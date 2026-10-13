@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/svg.dart';
+=======
 // import 'package:flutter/foundation.dart';
 // import 'package:flutter/material.dart';
 // import 'package:flutter_bloc/flutter_bloc.dart';
@@ -1598,23 +1603,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:isar_community/isar.dart';
+>>>>>>> origin/Grocery_pch_api_integration
 import 'package:pinaka_pos/Screens/Auth/login_screen.dart';
 import 'package:pinaka_pos/Screens/Home/apps_dashboard_screen.dart';
 import 'package:pinaka_pos/Screens/Home/categories_screen.dart';
 import 'package:pinaka_pos/Screens/Home/fast_key_screen.dart';
+<<<<<<< HEAD
+=======
 import 'package:pinaka_pos/Screens/Home/pos_home_screen.dart';
 import 'package:pinaka_pos/Widgets/scanner_guard.dart';
 import 'package:pinaka_pos/Widgets/widget_topbar.dart';
+>>>>>>> origin/Grocery_pch_api_integration
 import 'package:provider/provider.dart';
 import 'package:quickalert/models/quickalert_animtype.dart';
 import 'package:quickalert/models/quickalert_type.dart';
 import 'package:quickalert/widgets/quickalert_dialog.dart';
 import 'package:flutter_swipe_button/flutter_swipe_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+<<<<<<< HEAD
+=======
 import '../Blocs/Orders/refund_orderlist_bloc.dart';
 import '../Constants/misc_features.dart';
 import '../Database/isar_cache_entry.dart';
 import '../Database/isar_service.dart';
+>>>>>>> origin/Grocery_pch_api_integration
 import '../Database/order_panel_db_helper.dart';
 import '../Database/user_db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
@@ -1622,35 +1634,58 @@ import '../Helper/Extentions/theme_notifier.dart';
 import '../Constants/text.dart';
 import '../Blocs/Auth/logout_bloc.dart';
 import '../Helper/api_response.dart';
+<<<<<<< HEAD
+import '../Repositories/Auth/logout_repository.dart';
+=======
 import '../Helper/customerdisplayhelper.dart';
 import '../Preferences/pinaka_preferences.dart';
 import '../Repositories/Auth/logout_repository.dart';
 import '../Repositories/Orders/refund_orderlist_repository.dart';
 import '../Screens/Auth/store_id_screen.dart';
+>>>>>>> origin/Grocery_pch_api_integration
 import '../Screens/Home/add_screen.dart';
 import '../Screens/Home/Settings/settings_screen.dart';
 import '../Screens/Home/shift_open_close_balance.dart';
 import '../Screens/Home/total_orders_screen.dart';
+<<<<<<< HEAD
+import '../Utilities/svg_images_utility.dart';
+=======
 import '../Screens/refund_screen.dart';
 import '../Utilities/svg_images_utility.dart';
 import '../services/CustomerDisplayService.dart';
+>>>>>>> origin/Grocery_pch_api_integration
 import 'widget_alert_popup_dialogs.dart';
 
 class NavigationBar extends StatelessWidget {
   final int selectedSidebarIndex;
   final Function(int) onSidebarItemSelected;
   final bool isVertical;
+<<<<<<< HEAD
+=======
   final bool isShiftScreen; // ✅ ADD THIS
   final Future<bool> Function(int index)? onWillNavigate;
 
   /// When non-null, tapping these indices only calls onSidebarItemSelected (no Navigator push).
   /// Used by POSHomeScreen to switch tabs without replacing route.
   final Set<int>? callbackOnlyIndices;
+>>>>>>> origin/Grocery_pch_api_integration
 
   const NavigationBar({
     required this.selectedSidebarIndex,
     required this.onSidebarItemSelected,
     this.isVertical = true,
+<<<<<<< HEAD
+    Key? key,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme =
+    Theme.of(context); // Build #1.0.6 - Added theme for navigation bar
+    final themeHelper = Provider.of<ThemeNotifier>(context);
+    final logoutBloc = LogoutBloc(
+        LogoutRepository()); // Build #1.0.163: Initialize LogoutBloc with repository
+=======
     this.isShiftScreen = false, // default
     this.onWillNavigate,
     this.callbackOnlyIndices,
@@ -1771,6 +1806,7 @@ class NavigationBar extends StatelessWidget {
     final logoutBloc = LogoutBloc(
       LogoutRepository(),
     ); // Build #1.0.163: Initialize LogoutBloc with repository
+>>>>>>> origin/Grocery_pch_api_integration
     return Container(
       width: isVertical ? MediaQuery.of(context).size.width * 0.07 : null,
       height: isVertical ? null : MediaQuery.of(context).size.height * 0.125,
@@ -1779,7 +1815,11 @@ class NavigationBar extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(5, 10, 5, 10),
         child: Container(
           decoration: BoxDecoration(
+<<<<<<< HEAD
+            color: const Color(0xFF0B1023),// latest color
+=======
             color: const Color(0xFF0B1023), // latest color
+>>>>>>> origin/Grocery_pch_api_integration
             // color: theme.primaryColor,
             borderRadius: BorderRadius.all(Radius.circular(10)),
           ),
@@ -1793,10 +1833,14 @@ class NavigationBar extends StatelessWidget {
               final shiftId = snapshot.data;
               return isVertical
                   ? _buildVerticalLayout(
+<<<<<<< HEAD
+                  context, shiftId, logoutBloc) // Build #1.0.163
+=======
                 context,
                 shiftId,
                 logoutBloc,
               ) // Build #1.0.163
+>>>>>>> origin/Grocery_pch_api_integration
                   : _buildHorizontalLayout(context, shiftId, logoutBloc);
             },
           ),
@@ -1805,6 +1849,13 @@ class NavigationBar extends StatelessWidget {
     );
   }
 
+<<<<<<< HEAD
+  Future<String?> _getShiftId() async { //Build #1.0.78
+    if (kDebugMode) {
+      print("### Getting shiftId from database");
+    }
+    int? shiftId = await UserDbHelper().getUserShiftId(); // Build #1.0.161: added debug prints
+=======
   Future<String?> _getShiftId() async {
     //Build #1.0.78
     if (kDebugMode) {
@@ -1812,21 +1863,32 @@ class NavigationBar extends StatelessWidget {
     }
     int? shiftId = await UserDbHelper()
         .getUserShiftId(); // Build #1.0.161: added debug prints
+>>>>>>> origin/Grocery_pch_api_integration
     if (kDebugMode) {
       print("### Retrieved shiftId: $shiftId");
     }
     return shiftId.toString();
   }
 
+<<<<<<< HEAD
+  Widget _buildVerticalLayout(BuildContext context, String? shiftId, LogoutBloc logoutBloc) {
+=======
   Widget _buildVerticalLayout(
       BuildContext context,
       String? shiftId,
       LogoutBloc logoutBloc,
       ) {
+>>>>>>> origin/Grocery_pch_api_integration
     int lastSelectedIndex = 0;
     final BuildContext scaffoldContext = context;
     final themeHelper = Provider.of<ThemeNotifier>(context);
     // Build #1.0.161: Fixed Issue - navigation bar icons are not disabled before create shift
+<<<<<<< HEAD
+    bool isShiftInvalid = shiftId == null || shiftId == "null" || shiftId.isEmpty;
+    // Build #1.0.221 : Fixed Issue -> Disable navigation bar menu icons while shift create,update,close
+    bool isShiftScreen = ModalRoute.of(context)?.settings.arguments == TextConstants.navLogout ||
+        ModalRoute.of(context)?.settings.arguments == TextConstants.navShiftHistory;
+=======
     bool isShiftInvalid =
         shiftId == null || shiftId == "null" || shiftId.isEmpty;
     // Build #1.0.221 : Fixed Issue -> Disable navigation bar menu icons while shift create,update,close
@@ -1834,6 +1896,7 @@ class NavigationBar extends StatelessWidget {
     //     ModalRoute.of(context)?.settings.arguments == TextConstants.navShiftHistory;
     bool isShiftScreen = this.isShiftScreen;
 
+>>>>>>> origin/Grocery_pch_api_integration
     return LayoutBuilder(
       builder: (context, constraints) {
         if (kDebugMode) {
@@ -1842,6 +1905,26 @@ class NavigationBar extends StatelessWidget {
         // Dynamic items (scrollable if needed)
         List<Widget> dynamicItems = [
           SidebarButton(
+<<<<<<< HEAD
+            svgAsset: selectedSidebarIndex == 0 ? SvgUtils.fastKeySelectedIcon : SvgUtils.fastKeyIcon, // Build #1.0.148: Fixed Issue: Menu Bar Icons not matching with latest Figma Design , now using from assets/svg/navigation/
+            label: TextConstants.fastKeyText,
+            isSelected: selectedSidebarIndex == 0,
+            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 0 // Build #1.0.240 : Disabled Multiple tap on same SidebarButton
+                ? () {}
+                : () {
+              if (kDebugMode) {
+                print("##### Fast Keys button tapped");
+              }
+              lastSelectedIndex = 0; // Store last selection
+              onSidebarItemSelected(0);
+
+              /// FastKeyScreen
+              // Build #1.0.247 : Updated pushReplacement TO pushAndRemoveUntil
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex)),
+                    (route) => false,
+              );
+=======
             svgAsset: selectedSidebarIndex == 0
                 ? SvgUtils.fastKeySelectedIcon
                 : SvgUtils
@@ -1873,19 +1956,40 @@ class NavigationBar extends StatelessWidget {
               //   MaterialPageRoute(builder: (context) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
               // );
+>>>>>>> origin/Grocery_pch_api_integration
               // Navigator.pushReplacement(
               //   context,
               //   MaterialPageRoute(builder: (context) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex)),
               // );
             },
             isVertical: isVertical,
+<<<<<<< HEAD
+            isDisabled: isShiftInvalid || isShiftScreen,
+=======
             isDisabled: isShiftScreen,
+>>>>>>> origin/Grocery_pch_api_integration
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.categoriesIcon,
             label: TextConstants.categoriesText,
             isSelected: selectedSidebarIndex == 1,
+<<<<<<< HEAD
+            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 1
+                ? () {}
+                : () {
+              if (kDebugMode) {
+                print("##### Categories button tapped");
+              }
+              lastSelectedIndex = 1; //Build #1.0.7: Store last selection
+              onSidebarItemSelected(1);
+
+              /// CategoriesScreen
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => CategoriesScreen(lastSelectedIndex: lastSelectedIndex)),
+                    (route) => false,
+              );
+=======
             onTap: (isShiftScreen || selectedSidebarIndex == 1)
                 ? () {}
                 : () async {
@@ -1906,19 +2010,38 @@ class NavigationBar extends StatelessWidget {
               //   MaterialPageRoute(builder: (context) => CategoriesScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
               // );
+>>>>>>> origin/Grocery_pch_api_integration
               // Navigator.pushReplacement(
               //   context,
               //   MaterialPageRoute(builder: (context) => CategoriesScreen( lastSelectedIndex: lastSelectedIndex)),
               // );
             },
             isVertical: isVertical,
+<<<<<<< HEAD
+            isDisabled: isShiftInvalid || isShiftScreen,
+=======
             isDisabled: isShiftScreen,
+>>>>>>> origin/Grocery_pch_api_integration
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.addIcon,
             label: TextConstants.addText,
             isSelected: selectedSidebarIndex == 2,
+<<<<<<< HEAD
+            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 2
+                ? () {}
+                : () {
+              if (kDebugMode) {
+                print("##### AddScreen button tapped");
+              }
+              lastSelectedIndex = 2;
+              onSidebarItemSelected(2);
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => AddScreen(lastSelectedIndex: lastSelectedIndex)),
+                    (route) => false,
+              );
+=======
             onTap: (isShiftScreen || selectedSidebarIndex == 2)
                 ? () {}
                 : () async {
@@ -1939,17 +2062,41 @@ class NavigationBar extends StatelessWidget {
               //   MaterialPageRoute(builder: (context) => AddScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
               // );
+>>>>>>> origin/Grocery_pch_api_integration
               //  Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => AddScreen(lastSelectedIndex: lastSelectedIndex)),
               //  );
             },
             isVertical: isVertical,
+<<<<<<< HEAD
+            isDisabled: isShiftInvalid || isShiftScreen,
+=======
             isDisabled: isShiftScreen,
+>>>>>>> origin/Grocery_pch_api_integration
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.ordersIcon,
             label: TextConstants.ordersText,
             isSelected: selectedSidebarIndex == 3,
+<<<<<<< HEAD
+            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 3
+                ? () {}
+                : () {
+              if (kDebugMode) {
+                print("##### OrdersScreen button tapped");
+              }
+              lastSelectedIndex = 3;
+              onSidebarItemSelected(3);
+
+              /// OrdersScreen
+              // Build #1.0.245: Fixed Re-Opened [SCRUM - 356] Issue -> Order items not displaying in Bottom Mode
+              // -> the processing order is showing when we switch to bottom mode
+              // -> Empty Cart/ Items shown for pending orders when move navigation bar to bottom mode.
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => TotalOrdersScreen(lastSelectedIndex: lastSelectedIndex)),
+                    (route) => false,
+              );
+=======
             onTap: (isShiftScreen || selectedSidebarIndex == 3)
                 ? () {}
                 : () async {
@@ -1974,19 +2121,38 @@ class NavigationBar extends StatelessWidget {
               //   MaterialPageRoute(builder: (context) => TotalOrdersScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
               // );
+>>>>>>> origin/Grocery_pch_api_integration
               // Navigator.pushAndRemoveUntil(
               //   context,
               //   MaterialPageRoute(builder: (context) => TotalOrdersScreen(lastSelectedIndex: lastSelectedIndex)), // Build #1.0.226: Updated class name
               // );
             },
             isVertical: isVertical,
+<<<<<<< HEAD
+            isDisabled: isShiftInvalid || isShiftScreen,
+=======
             isDisabled: isShiftScreen,
+>>>>>>> origin/Grocery_pch_api_integration
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.appsIcon,
             label: TextConstants.appsText,
             isSelected: selectedSidebarIndex == 4,
+<<<<<<< HEAD
+            onTap: selectedSidebarIndex == 4
+                ? () {}
+                : () {
+              if (kDebugMode) {
+                print("##### AppsScreen button tapped");
+              }
+              lastSelectedIndex = 4;
+              onSidebarItemSelected(4);
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => AppsDashboardScreen(lastSelectedIndex: lastSelectedIndex)),
+                    (route) => false,
+              );
+=======
             onTap: (selectedSidebarIndex == 4)
                 ? () {}
                 : () async {
@@ -2008,6 +2174,7 @@ class NavigationBar extends StatelessWidget {
               //   MaterialPageRoute(builder: (context) => AppsDashboardScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
               // );
+>>>>>>> origin/Grocery_pch_api_integration
               // Navigator.pushReplacement(
               //   context,
               //   MaterialPageRoute(
@@ -2016,6 +2183,10 @@ class NavigationBar extends StatelessWidget {
               // );
             },
             isVertical: isVertical,
+<<<<<<< HEAD
+          ),
+          // You can add more dynamic items here in the future.
+=======
             isDisabled: isShiftScreen,
           ),
           const SizedBox(height: 10),
@@ -2048,6 +2219,7 @@ class NavigationBar extends StatelessWidget {
             },
             isVertical: isVertical,
           ),
+>>>>>>> origin/Grocery_pch_api_integration
         ];
 
         // Fixed items (always visible at the bottom)
@@ -2057,6 +2229,23 @@ class NavigationBar extends StatelessWidget {
             SidebarButton(
               svgAsset: SvgUtils.settingsIcon,
               label: TextConstants.settingsHeaderText,
+<<<<<<< HEAD
+              isSelected: selectedSidebarIndex == 5,
+              onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5
+                  ? () {}
+                  : () {
+                if (kDebugMode) {
+                  print("##### Settings button tapped");
+                }
+                lastSelectedIndex = selectedSidebarIndex; // Build #1.0.7: Store before navigating
+
+                onSidebarItemSelected(5); // Highlight settings
+
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SettingsScreen(),
+=======
               isSelected: selectedSidebarIndex == 6,
               onTap: isShiftScreen || selectedSidebarIndex == 6
                   ? () {}
@@ -2086,11 +2275,17 @@ class NavigationBar extends StatelessWidget {
                     },
                     transitionDuration:
                     Duration.zero, // Instant transition
+>>>>>>> origin/Grocery_pch_api_integration
                   ),
                 ).then((_) {
                   // Restore the sidebar selection when coming back
                   onSidebarItemSelected(lastSelectedIndex);
                 });
+<<<<<<< HEAD
+              },
+              isVertical: isVertical,
+              isDisabled: isShiftInvalid || isShiftScreen,
+=======
                 // Navigator.push(
                 //   context,
                 //   MaterialPageRoute(
@@ -2103,11 +2298,26 @@ class NavigationBar extends StatelessWidget {
               },
               isVertical: isVertical,
               isDisabled: isShiftScreen,
+>>>>>>> origin/Grocery_pch_api_integration
             ),
             const SizedBox(height: 10),
             SidebarButton(
               svgAsset: SvgUtils.logoutIcon,
               label: TextConstants.logoutText,
+<<<<<<< HEAD
+              isSelected: selectedSidebarIndex == 6,
+              onTap: isShiftInvalid || isShiftScreen // Build #1.0.247: Enabled Multiple click for Logout
+                  ? () {}
+                  : () {
+                onSidebarItemSelected(6);
+                if (kDebugMode) {
+                  print("nav logout called");
+                }
+                _showLogoutDialog(context,logoutBloc,themeHelper);
+              },
+              isVertical: isVertical,
+              isDisabled: isShiftInvalid || isShiftScreen,
+=======
               isSelected: selectedSidebarIndex == 7,
               onTap:
               isShiftScreen // Build #1.0.247: Enabled Multiple click for Logout
@@ -2128,13 +2338,19 @@ class NavigationBar extends StatelessWidget {
               },
               isVertical: isVertical,
               isDisabled: isShiftScreen,
+>>>>>>> origin/Grocery_pch_api_integration
             ),
             const SizedBox(height: 10),
           ],
         );
 
         return Padding(
+<<<<<<< HEAD
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 0), // Adjust padding as needed
+          //padding: const EdgeInsets.only(top: 10.0), // Adjust padding as needed
+=======
           padding: const EdgeInsets.only(top: 10.0), // Adjust padding as needed
+>>>>>>> origin/Grocery_pch_api_integration
           child: Column(
             children: [
               // Dynamic part: scrollable on small screens, fixed layout on larger screens.
@@ -2152,6 +2368,16 @@ class NavigationBar extends StatelessWidget {
     );
   }
 
+<<<<<<< HEAD
+  Widget _buildHorizontalLayout(BuildContext context, String? shiftId, LogoutBloc logoutBloc) {
+    int lastSelectedIndex = 0;
+    final themeHelper = Provider.of<ThemeNotifier>(context);
+    // Build #1.0.161: Fixed Issue - navigation bar icons are not disabled before create shift
+    bool isShiftInvalid = shiftId == null || shiftId == "null" || shiftId.isEmpty;
+    // Build #1.0.221 : Fixed Issue -> Disable navigation bar menu icons while shift create,update,close
+    bool isShiftScreen = ModalRoute.of(context)?.settings.arguments == TextConstants.navLogout ||
+        ModalRoute.of(context)?.settings.arguments == TextConstants.navShiftHistory;
+=======
   Widget _buildHorizontalLayout(
       BuildContext context,
       String? shiftId,
@@ -2167,6 +2393,7 @@ class NavigationBar extends StatelessWidget {
     //     ModalRoute.of(context)?.settings.arguments == TextConstants.navShiftHistory;
     bool isShiftScreen = this.isShiftScreen;
 
+>>>>>>> origin/Grocery_pch_api_integration
     return LayoutBuilder(
       builder: (context, constraints) {
         if (kDebugMode) {
@@ -2175,6 +2402,25 @@ class NavigationBar extends StatelessWidget {
         // Dynamic items (scrollable horizontally if needed)
         List<Widget> dynamicItems = [
           SidebarButton(
+<<<<<<< HEAD
+            svgAsset: selectedSidebarIndex == 0 ? SvgUtils.fastKeySelectedIcon : SvgUtils.fastKeyIcon, // Build #1.0.148: Fixed Issue: Menu Bar Icons not matching with latest Figma Design , now using from assets/svg/navigation/
+            label: TextConstants.fastKeyText,
+            isSelected: selectedSidebarIndex == 0,
+            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 0 // Build #1.0.240 : Disabled Multiple tap on same SidebarButton
+                ? () {}
+                : () {
+              if (kDebugMode) {
+                print("##### Fast Keys button tapped");
+              }
+              lastSelectedIndex = 0; // Store last selection
+              onSidebarItemSelected(0);
+
+              /// FastKeyScreen
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex)),
+                    (route) => false,
+              );
+=======
             svgAsset: selectedSidebarIndex == 0
                 ? SvgUtils.fastKeySelectedIcon
                 : SvgUtils
@@ -2204,19 +2450,38 @@ class NavigationBar extends StatelessWidget {
               //   MaterialPageRoute(builder: (context) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
               // );
+>>>>>>> origin/Grocery_pch_api_integration
               // Navigator.pushReplacement(
               //   context,
               //   MaterialPageRoute(builder: (context) => FastKeyScreen(lastSelectedIndex: lastSelectedIndex)),
               // );
             },
             isVertical: false, //Build #1.0.54: updated
+<<<<<<< HEAD
+            isDisabled: isShiftInvalid || isShiftScreen,
+=======
             isDisabled: isShiftScreen,
+>>>>>>> origin/Grocery_pch_api_integration
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.categoriesIcon,
             label: TextConstants.categoriesText,
             isSelected: selectedSidebarIndex == 1,
+<<<<<<< HEAD
+            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 1
+                ? () {}
+                : () {
+              if (kDebugMode) {
+                print("##### Categories button tapped");
+              }
+              lastSelectedIndex = 1; // Store last selection
+              onSidebarItemSelected(1);
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => CategoriesScreen(lastSelectedIndex: lastSelectedIndex)),
+                    (route) => false,
+              );
+=======
             onTap: (isShiftScreen || selectedSidebarIndex == 1)
                 ? () {}
                 : () async {
@@ -2238,6 +2503,7 @@ class NavigationBar extends StatelessWidget {
               //   MaterialPageRoute(builder: (context) => CategoriesScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
               // );
+>>>>>>> origin/Grocery_pch_api_integration
               // Navigator.pushReplacement(
               //   context,
               //   MaterialPageRoute(
@@ -2246,13 +2512,27 @@ class NavigationBar extends StatelessWidget {
               // );
             },
             isVertical: false,
+<<<<<<< HEAD
+            isDisabled: isShiftInvalid || isShiftScreen,
+=======
             isDisabled: isShiftScreen,
+>>>>>>> origin/Grocery_pch_api_integration
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.addIcon,
             label: TextConstants.addText,
             isSelected: selectedSidebarIndex == 2,
+<<<<<<< HEAD
+            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 2
+                ? () {}
+                : () {
+              if (kDebugMode) {
+                print("##### AddScreen button tapped");
+              }
+              lastSelectedIndex = 2;
+              onSidebarItemSelected(2);
+=======
             onTap: (isShiftScreen || selectedSidebarIndex == 2)
                 ? () {}
                 : () async {
@@ -2270,10 +2550,20 @@ class NavigationBar extends StatelessWidget {
                 context,
                     () => POSHomeScreen(lastSelectedIndex: 2),
               );
+>>>>>>> origin/Grocery_pch_api_integration
               // Navigator.pushReplacement(
               //   context,
               //   MaterialPageRoute(builder: (context) => AddScreen()),
               // );
+<<<<<<< HEAD
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => AddScreen(lastSelectedIndex: lastSelectedIndex)),
+                    (route) => false,
+              );
+            },
+            isVertical: false,
+            isDisabled: isShiftInvalid || isShiftScreen,
+=======
               // Navigator.of(context).pushAndRemoveUntil(
               //   MaterialPageRoute(builder: (context) => AddScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
@@ -2281,12 +2571,29 @@ class NavigationBar extends StatelessWidget {
             },
             isVertical: false,
             isDisabled: isShiftScreen,
+>>>>>>> origin/Grocery_pch_api_integration
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.ordersIcon,
             label: TextConstants.ordersText,
             isSelected: selectedSidebarIndex == 3,
+<<<<<<< HEAD
+            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 3
+                ? () {}
+                : () {
+              if (kDebugMode) {
+                print("##### OrdersScreen button tapped");
+              }
+              lastSelectedIndex = 3;
+              onSidebarItemSelected(3);
+
+              /// OrdersScreen
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => TotalOrdersScreen(lastSelectedIndex: lastSelectedIndex)),
+                    (route) => false,
+              );
+=======
             onTap: (isShiftScreen || selectedSidebarIndex == 3)
                 ? () {}
                 : () async {
@@ -2308,19 +2615,38 @@ class NavigationBar extends StatelessWidget {
               //   MaterialPageRoute(builder: (context) => TotalOrdersScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
               // );
+>>>>>>> origin/Grocery_pch_api_integration
               // Navigator.pushReplacement(
               //   context,
               //   MaterialPageRoute(builder: (context) => TotalOrdersScreen(lastSelectedIndex: lastSelectedIndex)), // Build #1.0.226: Updated class name
               // );
             },
             isVertical: false,
+<<<<<<< HEAD
+            isDisabled: isShiftInvalid || isShiftScreen,
+=======
             isDisabled: isShiftScreen,
+>>>>>>> origin/Grocery_pch_api_integration
           ),
           const SizedBox(height: 10),
           SidebarButton(
             svgAsset: SvgUtils.appsIcon,
             label: TextConstants.appsText,
             isSelected: selectedSidebarIndex == 4,
+<<<<<<< HEAD
+            onTap: selectedSidebarIndex == 4
+                ? () {}
+                : () {
+              if (kDebugMode) {
+                print("##### AppsScreen button tapped");
+              }
+              lastSelectedIndex = 4;
+              onSidebarItemSelected(4);
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => AppsDashboardScreen(lastSelectedIndex: lastSelectedIndex)),
+                    (route) => false,
+              );
+=======
             onTap: (selectedSidebarIndex == 4)
                 ? () {}
                 : () async {
@@ -2342,12 +2668,15 @@ class NavigationBar extends StatelessWidget {
               //   MaterialPageRoute(builder: (context) => AppsDashboardScreen(lastSelectedIndex: lastSelectedIndex)),
               //       (route) => false,
               // );
+>>>>>>> origin/Grocery_pch_api_integration
               // Navigator.pushReplacement(
               //   context,
               //   MaterialPageRoute(builder: (context) => AppsDashboardScreen()),
               // );
             },
             isVertical: false,
+<<<<<<< HEAD
+=======
             isDisabled: isShiftScreen,
           ),
           const SizedBox(height: 10),
@@ -2381,6 +2710,7 @@ class NavigationBar extends StatelessWidget {
               );
             },
             isVertical: isVertical,
+>>>>>>> origin/Grocery_pch_api_integration
           ),
           // Additional dynamic items can be added here.
         ];
@@ -2391,6 +2721,22 @@ class NavigationBar extends StatelessWidget {
           SidebarButton(
             svgAsset: SvgUtils.settingsIcon,
             label: TextConstants.settingsHeaderText,
+<<<<<<< HEAD
+            isSelected: selectedSidebarIndex == 5,
+            onTap: isShiftInvalid || isShiftScreen || selectedSidebarIndex == 5
+                ? () {}
+                : () {
+              if (kDebugMode) {
+                print("##### Settings button tapped");
+              }
+              lastSelectedIndex = selectedSidebarIndex; // Store before navigating
+
+              onSidebarItemSelected(5); // Highlight settings
+
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => SettingsScreen()),
+=======
             isSelected: selectedSidebarIndex == 6,
             onTap: isShiftScreen || selectedSidebarIndex == 6
                 ? () {}
@@ -2419,10 +2765,16 @@ class NavigationBar extends StatelessWidget {
                   },
                   transitionDuration: Duration.zero, // Instant transition
                 ),
+>>>>>>> origin/Grocery_pch_api_integration
               ).then((_) {
                 // Restore the sidebar selection when coming back
                 onSidebarItemSelected(lastSelectedIndex);
               });
+<<<<<<< HEAD
+            },
+            isVertical: false,
+            isDisabled: isShiftInvalid || isShiftScreen,
+=======
               // Navigator.push(
               //   context,
               //   MaterialPageRoute(builder: (context) => SettingsScreen()),
@@ -2433,11 +2785,26 @@ class NavigationBar extends StatelessWidget {
             },
             isVertical: false,
             isDisabled: isShiftScreen,
+>>>>>>> origin/Grocery_pch_api_integration
           ),
           const SizedBox(width: 10),
           SidebarButton(
             svgAsset: SvgUtils.logoutIcon,
             label: TextConstants.logoutText,
+<<<<<<< HEAD
+            isSelected: selectedSidebarIndex == 6,
+            onTap: isShiftInvalid || isShiftScreen
+                ? () {}
+                : () {
+              onSidebarItemSelected(6);
+              if (kDebugMode) {
+                print("nav logout called");
+              }
+              _showLogoutDialog(context,logoutBloc,themeHelper);
+            },
+            isVertical: false,
+            isDisabled: isShiftInvalid || isShiftScreen,
+=======
             isSelected: selectedSidebarIndex == 7,
             onTap: isShiftScreen
                 ? () {}
@@ -2457,6 +2824,7 @@ class NavigationBar extends StatelessWidget {
             },
             isVertical: false,
             isDisabled: isShiftScreen,
+>>>>>>> origin/Grocery_pch_api_integration
           ),
           const SizedBox(width: 10),
         ];
@@ -2474,18 +2842,28 @@ class NavigationBar extends StatelessWidget {
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(
+<<<<<<< HEAD
+              18, 0, 18, 0), // Adjust padding as needed
+=======
             16,
             0,
             16,
             0,
           ), // Adjust padding as needed
+>>>>>>> origin/Grocery_pch_api_integration
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               // Dynamic part takes the available space.
               Expanded(child: dynamicRow),
               // Fixed items remain at the end.
+<<<<<<< HEAD
+              Row(
+                children: fixedItems,
+              ),
+=======
               Row(children: fixedItems),
+>>>>>>> origin/Grocery_pch_api_integration
             ],
           ),
         );
@@ -2493,6 +2871,309 @@ class NavigationBar extends StatelessWidget {
     );
   }
 
+<<<<<<< HEAD
+  void _showLogoutDialog(BuildContext context,LogoutBloc logoutBloc, ThemeNotifier themeHelper){
+
+    QuickAlert.show(
+      backgroundColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.secondaryBackground : Colors.white ,
+      context: context,
+      width: 450,
+      type: QuickAlertType.custom,
+      title: TextConstants.logoutText,
+      headerBackgroundColor: const Color(0xFF2CD9C5),
+      titleColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
+      text: TextConstants.doYouWantTo,
+      textColor: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : ThemeNotifier.textLight,
+      customAsset: null,
+      animType: QuickAlertAnimType.scale,
+      barrierDismissible: false,
+      showCancelBtn: false, /// added custom button instead in widget below, change color on will
+      showConfirmBtn: false, /// added custom button instead in widget below, change color on will
+      // confirmBtnText: TextConstants.logoutText,
+      // cancelBtnText: TextConstants.cancelText,
+      // confirmBtnColor: Colors.blue,
+      // confirmBtnTextStyle: const TextStyle(color: Colors.white, fontSize: 16),
+      // cancelBtnTextStyle: TextStyle(color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey, fontSize: 16),
+
+      // Widget for the Close Shift button
+      widget: Container(
+        // color: Colors.red,
+        height: 130,
+        padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+        child:
+        Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SwipeButton(
+              thumb: const Icon(
+                Icons.double_arrow_rounded,
+                color: Colors.white,
+              ),
+              borderRadius: BorderRadius.circular(25),
+              activeThumbColor: Colors.orangeAccent,  /// swipe button color change it on will
+              activeTrackColor: Colors.orange, /// swipe track color change it on will
+              onSwipe: () async {
+                // Get instance of OrderHelper
+                final orderHelper = OrderHelper();
+                // Load processing orders for the active user
+                await orderHelper.loadProcessingData();
+                // Check if there are any processing orders
+                if (orderHelper.orders.isNotEmpty) { // Build #1.0.175: Added
+                  if (kDebugMode) {
+                    print("Processing Orders > 0 -> orders length: ${orderHelper.orders.length}");
+                  }
+                  Navigator.of(context).pop(); // dismiss logout alert
+                  // Show popup warning before closing shift
+                  CustomDialog.showCloseShiftWarning(context);
+                } else {
+                  // Close shift functionality
+                  if (kDebugMode) {
+                    print("Shift closed");
+                  }
+                  ///Todo: call shift-open-close-balance screen and set the title to "Shift close balanse"
+                  ///
+                  Navigator.of(context).pop();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ShiftOpenCloseBalanceScreen(),
+                      settings: RouteSettings(arguments: TextConstants.navLogout),  // Build #1.0.70
+                    ),
+                  );
+                }
+              },
+              child: Text(
+                TextConstants.swipeToCloseShift,
+                style: TextStyle(color: Colors.white, fontSize: 16),
+              ),
+            ),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: themeHelper.themeMode == ThemeMode.dark ? Colors.grey : Colors.white, padding: EdgeInsets.only(right: 5), fixedSize: Size(10, 45)),
+                    onPressed: (){
+                      Navigator.of(context).pop();
+                    },
+                    child: Text(TextConstants.cancelText, style: TextStyle(color: themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.textDark : Colors.grey, fontSize: 16)),
+                  ),
+                ),
+                Spacer(flex: 1,),
+                Expanded(
+                  flex: 5,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, padding: EdgeInsets.only(right: 5), fixedSize: Size(10, 45)),
+                    onPressed: (){
+                      // You must capture the context BEFORE the dialog is even shown
+                      // Trigger logout through BLoC
+                      if (kDebugMode) {
+                        print("Logout confirmed, initiating logout process");
+                      }
+
+                      // Build #1.0.163: call Logout API
+                      // Use StatefulBuilder to manage loading state
+                      showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (BuildContext context) {
+                          bool isLoading = true; // Initial loading state
+                          logoutBloc.logoutStream.listen((response) {
+                            if (response.status == Status.COMPLETED) {
+                              if (kDebugMode) {
+                                print(
+                                    "Logout successful, navigating to LoginScreen");
+                              }
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(response.message ??
+                                      TextConstants.successfullyLogout),
+                                  backgroundColor: Colors.green,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                              // Update loading state and navigate
+                              isLoading = false;
+                              Navigator.of(context).pop(); // Close loader dialog
+                              Navigator.of(context).pop(); // Close QuickAlert dialog
+                              Navigator.of(context).pushAndRemoveUntil(
+                                MaterialPageRoute(builder: (context) => LoginScreen()),
+                                    (route) => false,
+                              );
+                              //   Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LoginScreen()),);
+                            } else if (response.status == Status.ERROR) {
+                              if (response.message!.contains('Unauthorised')) {
+                                if (kDebugMode) {
+                                  print("Nav bar -- Unauthorised : response.message ${response.message!}");
+                                }
+                                isLoading = false;
+                                Navigator.of(context).pop();
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  Navigator.of(context).pushAndRemoveUntil(
+                                    MaterialPageRoute(builder: (context) => LoginScreen()),
+                                        (route) => false,
+                                  );
+                                  //  Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LoginScreen()));
+
+                                  if (kDebugMode) {
+                                    print("message --- ${response.message}");
+                                  }
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Unauthorised. Session is expired on this device."),
+                                      backgroundColor: Colors.red,
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                });
+                              }
+                              else {
+                                if (kDebugMode) {
+                                  print("Logout failed: ${response.message}");
+                                }
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(response.message ??
+                                        TextConstants.failedToLogout),
+                                    backgroundColor: Colors.red,
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                              // Update loading state
+                              isLoading = false;
+                              Navigator.of(context)
+                                  .pop(); // Close loader dialog
+                            }
+                          });
+
+                          // Trigger logout API call
+                          logoutBloc.performLogout();
+
+                          // Show circular loader
+                          return StatefulBuilder(
+                            builder: (context, setState) {
+                              return Center(
+                                child: CircularProgressIndicator(),
+                              );
+                            },
+                          );
+                        },
+                      );
+                    },
+                    child: Text(TextConstants.logoutText, style: TextStyle(color: Colors.white, fontSize: 16)),
+                  ),
+                )
+              ],
+            ),
+          ],
+        ),
+      ),
+      onConfirmBtnTap: () async {
+        // You must capture the context BEFORE the dialog is even shown
+        // Trigger logout through BLoC
+        if (kDebugMode) {
+          print("Logout confirmed, initiating logout process");
+        }
+
+        // Build #1.0.163: call Logout API
+        // Use StatefulBuilder to manage loading state
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            bool isLoading = true; // Initial loading state
+            logoutBloc.logoutStream.listen((response) {
+              if (response.status == Status.COMPLETED) {
+                if (kDebugMode) {
+                  print(
+                      "Logout successful, navigating to LoginScreen");
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(response.message ??
+                        TextConstants.successfullyLogout),
+                    backgroundColor: Colors.green,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+                // Update loading state and navigate
+                isLoading = false;
+                Navigator.of(context).pop(); // Close loader dialog
+                Navigator.of(context).pop(); // Close QuickAlert dialog
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => LoginScreen()),
+                      (route) => false,
+                );
+                // Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LoginScreen()),);
+              } else if (response.status == Status.ERROR) {
+                if (response.message!.contains('Unauthorised')) {
+                  if (kDebugMode) {
+                    print("Nav bar -- Unauthorised : response.message ${response.message!}");
+                  }
+                  isLoading = false;
+                  Navigator.of(context).pop();
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    //  Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LoginScreen()));
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (context) => LoginScreen()),
+                          (route) => false,
+                    );
+                    if (kDebugMode) {
+                      print("message --- ${response.message}");
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Unauthorised. Session is expired on this device."),
+                        backgroundColor: Colors.red,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  });
+                }
+                else {
+                  if (kDebugMode) {
+                    print("Logout failed: ${response.message}");
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(response.message ??
+                          TextConstants.failedToLogout),
+                      backgroundColor: Colors.red,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+                // Update loading state
+                isLoading = false;
+                Navigator.of(context)
+                    .pop(); // Close loader dialog
+              }
+            });
+
+            // Trigger logout API call
+            logoutBloc.performLogout();
+
+            // Show circular loader
+            return StatefulBuilder(
+              builder: (context, setState) {
+                return Center(
+                  child: CircularProgressIndicator(),
+                );
+              },
+            );
+          },
+        );
+      },
+      onCancelBtnTap: () {
+        /// cancel
+        Navigator.of(context).pop();
+      },
+=======
   /// Handles swipe-to-close-shift: checks for open orders, then navigates to close shift screen or shows warning.
   void _handleSwipeToCloseShift(
       BuildContext context,
@@ -2900,6 +3581,7 @@ class NavigationBar extends StatelessWidget {
           ),
         );
       },
+>>>>>>> origin/Grocery_pch_api_integration
     );
   }
 }
@@ -2912,7 +3594,10 @@ class SidebarButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool isVertical;
   final bool isDisabled;
+<<<<<<< HEAD
+=======
   final String? imageAsset; // PNG / JPG
+>>>>>>> origin/Grocery_pch_api_integration
 
   const SidebarButton({
     this.icon,
@@ -2922,7 +3607,10 @@ class SidebarButton extends StatelessWidget {
     required this.onTap,
     this.isVertical = true,
     this.isDisabled = false,
+<<<<<<< HEAD
+=======
     this.imageAsset,
+>>>>>>> origin/Grocery_pch_api_integration
     super.key,
   });
 
@@ -2943,6 +3631,13 @@ class SidebarButton extends StatelessWidget {
     return Column(
       children: [
         Container(
+<<<<<<< HEAD
+          width: MediaQuery.of(context).size.width * 0.06,
+          padding: const EdgeInsets.only(top: 10.0,bottom: 10, left: 2,right: 2),
+          decoration: BoxDecoration(
+            shape: BoxShape.rectangle,
+            color: isSelected ? Color(0xFFFE6464) : Color(0xFF292D3E),// latest color, #323849,FE6464
+=======
           width: MediaQuery.of(context).size.width * 0.05,
           padding: const EdgeInsets.only(
             top: 10.0,
@@ -2954,12 +3649,21 @@ class SidebarButton extends StatelessWidget {
             shape: BoxShape.rectangle,
             color: isSelected ? Color(0xFFFE6464) : Color(0xFF3B4259),
             // latest color
+>>>>>>> origin/Grocery_pch_api_integration
             // color: isSelected ? Colors.red : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+<<<<<<< HEAD
+
+              svgAsset != null
+                  ? SvgPicture.asset( // Build #1.0.148: Fixed Issue: Menu Bar Icons not matching with latest Figma Design , now using from assets/svg/navigation/
+                svgAsset!,
+                colorFilter: ColorFilter.mode(
+                  isSelected
+=======
               // 🔹 ICON (SVG / PNG / ICONDATA)
               if (svgAsset != null)
                 SvgPicture.asset(
@@ -2988,15 +3692,32 @@ class SidebarButton extends StatelessWidget {
                 Icon(
                   icon,
                   color: isSelected
+>>>>>>> origin/Grocery_pch_api_integration
                       ? Colors.white
                       : isDisabled
                       ? Colors.grey.shade800
                       : Colors.white70,
+<<<<<<< HEAD
+                  BlendMode.srcIn,
+                ),
+                height: 20,
+              )
+                  : Icon(
+                icon,
+                color: isSelected
+                    ? Colors.white
+                    : isDisabled
+                    ? Colors.grey.shade800
+                    : Colors.white70,
+              ),
+              const SizedBox(height: 7),
+=======
                 ),
 
               const SizedBox(height: 7),
 
               // 🔹 LABEL
+>>>>>>> origin/Grocery_pch_api_integration
               Text(
                 label,
                 style: TextStyle(
@@ -3006,6 +3727,16 @@ class SidebarButton extends StatelessWidget {
                       ? Colors.grey.shade800
                       : Colors.white70,
                   fontWeight: FontWeight.bold,
+<<<<<<< HEAD
+                  fontSize: isSelected ? 10.0 : 9.0, // Increase if selected
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+            ],
+          ),
+        )
+=======
                   fontSize: isSelected ? 10.0 : 9.0,
                 ),
                 textAlign: TextAlign.center,
@@ -3013,12 +3744,65 @@ class SidebarButton extends StatelessWidget {
             ],
           ),
         ),
+>>>>>>> origin/Grocery_pch_api_integration
       ],
     );
   }
 
   Widget _buildHorizontalLayout() {
     return Container(
+<<<<<<< HEAD
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
+      decoration: BoxDecoration(
+        shape: BoxShape.rectangle,
+        color: isSelected ? Color(0xFFFE6464) : const Color(0xFF3B4259),
+        borderRadius: const BorderRadius.all(Radius.circular(8)),
+      ),
+      child: Row(
+        children: [
+          svgAsset != null
+              ? SvgPicture.asset(
+            svgAsset!,
+            colorFilter: ColorFilter.mode(
+              isSelected
+                  ? Colors.white
+                  : isDisabled
+                  ? Colors.grey.shade800
+                  : Colors.white70,
+              BlendMode.srcIn,
+            ),
+
+            height: 22,
+          )
+              : Icon(
+            icon,
+            color: isSelected
+                ? Colors.white
+                : isDisabled
+                ? Colors.grey.shade800
+                : Colors.white,
+          ),
+          SizedBox(width: isSelected ? 6.0 : 4.0),
+          // const SizedBox(width: 6), // reduced from 10
+          Text(
+            label,
+            style: TextStyle(
+              color: isSelected
+                  ? Colors.white
+                  : isDisabled
+                  ? Colors.grey.shade800
+                  : Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: isSelected ? 16.0 : 14.0, // Slight increase if selected
+            ),
+          ),
+
+        ],
+      ),
+    );
+  }
+
+=======
         padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
         decoration: BoxDecoration(
           shape: BoxShape.rectangle,
@@ -3075,4 +3859,5 @@ class SidebarButton extends StatelessWidget {
           ],
         ));
   }
+>>>>>>> origin/Grocery_pch_api_integration
 }

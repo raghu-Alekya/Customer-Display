@@ -1,19 +1,28 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+<<<<<<< HEAD
+=======
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
 import 'package:http/http.dart' as http;
+>>>>>>> origin/Grocery_pch_api_integration
 import '../../Helper/api_helper.dart';
 import '../../Helper/url_helper.dart';
 import '../../Models/Search/product_custom_item_model.dart';
 import '../../Models/Search/product_by_sku_model.dart';
 import '../../Models/Search/product_search_model.dart';
 import '../../Models/Search/product_variation_model.dart';
+<<<<<<< HEAD
+=======
 import '../Auth/AuthIdsStore.dart';
 import '../../core/api/token_storage.dart';
+>>>>>>> origin/Grocery_pch_api_integration
 
 class ProductRepository { // Build #1.0.13 : added product search repository
   final APIHelper _helper = APIHelper();
 
+<<<<<<< HEAD
+  Future<List<ProductResponse>> fetchProducts({String? searchQuery}) async {
+=======
   /// ✅ Utility: Recursively convert Map<dynamic, dynamic> → Map<String, dynamic>
   Map<String, dynamic> deepConvertToStringKeys(Map<dynamic, dynamic> input) {
     final Map<String, dynamic> output = {};
@@ -95,6 +104,7 @@ class ProductRepository { // Build #1.0.13 : added product search repository
 
   Future<List<ProductResponse>> fetchProducts(  {String? searchQuery}) async {
     final box = StorageProvider.productCache;
+>>>>>>> origin/Grocery_pch_api_integration
     String url = "${UrlHelper.wooCommerceV3}${UrlMethodConstants.products}";
 
     if (searchQuery != null && searchQuery.isNotEmpty) {
@@ -103,6 +113,39 @@ class ProductRepository { // Build #1.0.13 : added product search repository
       url += EndUrlConstants.productSearchEndUrl;
     }
 
+<<<<<<< HEAD
+    if (kDebugMode) {
+      print("ProductRepository - URL: $url");
+    }
+
+    final response = await _helper.get(url, true);
+
+    if (kDebugMode) {
+      print("ProductRepository - Raw Response: $response");
+    }
+
+    // Parse the response
+    if (response is String) {
+      try {
+        final List<dynamic> responseData = json.decode(response);
+        return responseData.map((productJson) => ProductResponse.fromJson(productJson)).toList();
+      } catch (e) {
+        if (kDebugMode) {
+          print("Error parsing response: $e");
+        }
+        throw Exception("Failed to parse products");
+      }
+    } else if (response is List) {
+      return response.map((productJson) => ProductResponse.fromJson(productJson)).toList();
+    } else {
+      throw Exception("Unexpected response type");
+    }
+  }
+
+  //Build 1.1.36: Fetches product variations from the wc/v3 endpoint
+  Future<List<ProductVariation>> fetchProductVariations(int productId) async {
+    String url = "${UrlHelper.wooCommerceV3}${UrlMethodConstants.variations}/$productId${EndUrlConstants.variationsEndUrl}";
+=======
     if (kDebugMode) print("🛰 ProductRepository - URL: $url");
 
     try {
@@ -203,6 +246,7 @@ class ProductRepository { // Build #1.0.13 : added product search repository
     // Path uses singular "store" (connector API)
     final String url =
         "store/$storeId/products/$productId/variations";
+>>>>>>> origin/Grocery_pch_api_integration
 
     if (kDebugMode) {
       print("ProductRepository - FetchProductVariations URL: $url");
@@ -211,6 +255,34 @@ class ProductRepository { // Build #1.0.13 : added product search repository
     final response = await _helper.get(url, true);
 
     if (kDebugMode) {
+<<<<<<< HEAD
+      print("ProductRepository - FetchProductVariations Raw Response: $response");
+    }
+
+    if (response is String) {
+      try {
+        final List<dynamic> responseData = json.decode(response);
+        return responseData.map((variationJson) => ProductVariation.fromJson(variationJson)).toList();
+      } catch (e) {
+        if (kDebugMode) {
+          print("ProductRepository - Error parsing variations response: $e");
+        }
+        throw Exception("Failed to parse variations");
+      }
+    } else if (response is List) {
+      return response.map((variationJson) => ProductVariation.fromJson(variationJson)).toList();
+    } else {
+      throw Exception("Unexpected response type");
+    }
+  }
+
+  // Build #1.0.43: added by naveen
+  Future<List<ProductBySkuResponse>> fetchProductBySku(String sku) async {
+    String url = "${UrlHelper.wooCommerceV3}${UrlMethodConstants.products}${UrlParameterConstants.productBySku}$sku";
+
+    if (kDebugMode) {
+      print("ProductRepository - FetchProductBySku URL: $url");
+=======
       print(
           "ProductRepository - FetchProductVariations Raw Response type: ${response.runtimeType}");
     }
@@ -335,10 +407,38 @@ class ProductRepository { // Build #1.0.13 : added product search repository
 
     if (kDebugMode) {
       print("🌐 Fetching SKU from connector catalog → $url");
+>>>>>>> origin/Grocery_pch_api_integration
     }
 
     final response = await _helper.get(url, true);
 
+<<<<<<< HEAD
+    if (kDebugMode) {
+      print("ProductRepository - FetchProductBySku Raw Response: $response");
+    }
+
+    if (response is String) {
+      try {
+        final List<dynamic> responseData = json.decode(response);
+        return responseData.map((productJson) => ProductBySkuResponse.fromJson(productJson)).toList();
+      } catch (e) {
+        if (kDebugMode) {
+          print("ProductRepository - Error parsing product by SKU response: $e");
+        }
+        throw Exception("Failed to parse product by SKU");
+      }
+    } else if (response is List) {
+      return response.map((productJson) => ProductBySkuResponse.fromJson(productJson)).toList();
+    } else {
+      throw Exception("Unexpected response type");
+    }
+  }
+
+  Future<AddCustomItemModel> addCustomItem(AddCustomItemRequest request) async {
+    String url = "${UrlHelper.wooCommerceV3}${UrlMethodConstants.products}";
+    if (kDebugMode) {
+      print("ProductRepository - CreateProduct URL: $url");
+=======
     List<dynamic> responseList = [];
 
     if (response is String) {
@@ -427,11 +527,32 @@ class ProductRepository { // Build #1.0.13 : added product search repository
     if (kDebugMode) {
       print("🧩 ProductRepository - CreateProduct URL: $url");
       print("📦 Request Body: ${json.encode(request.toJson())}");
+>>>>>>> origin/Grocery_pch_api_integration
     }
 
     final response = await _helper.post(url, request.toJson(), true);
 
     if (kDebugMode) {
+<<<<<<< HEAD
+      print("ProductRepository - CreateProduct Raw Response: $response");
+    }
+
+    if (response is String) {
+      try {
+        final Map<String, dynamic> responseData = json.decode(response);
+        return AddCustomItemModel.fromJson(responseData);
+      } catch (e) {
+        if (kDebugMode) {
+          print("ProductRepository - Error parsing create product response: $e");
+        }
+        throw Exception("Failed to parse create product response");
+      }
+    } else if (response is Map<String, dynamic>) {
+      return AddCustomItemModel.fromJson(response);
+    } else {
+      throw Exception("Unexpected response type");
+    }
+=======
       print("🧩 ProductRepository - CreateProduct Raw Response: $response");
     }
 
@@ -484,5 +605,6 @@ class ProductRepository { // Build #1.0.13 : added product search repository
     }
 
     return addCustomItem;
+>>>>>>> origin/Grocery_pch_api_integration
   }
 }

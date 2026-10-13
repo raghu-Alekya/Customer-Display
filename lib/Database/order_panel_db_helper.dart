@@ -1,4 +1,17 @@
 import 'dart:async';
+<<<<<<< HEAD
+import 'package:flutter/foundation.dart';
+import 'package:pinaka_pos/Blocs/Orders/order_bloc.dart';
+import 'package:pinaka_pos/Database/user_db_helper.dart';
+import 'package:pinaka_pos/Models/Orders/orders_model.dart';
+import 'package:pinaka_pos/Repositories/Orders/order_repository.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
+import '../Constants/text.dart';
+import '../Helper/api_response.dart';
+import '../Models/Orders/get_orders_model.dart' as model;
+import 'db_helper.dart';
+=======
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -53,6 +66,7 @@ String resolveProductImageFromMap(dynamic map) {
 
   return '';
 }
+>>>>>>> origin/Grocery_pch_api_integration
 
 // Build #1.0.64: Add ItemType enum
 enum ItemType {
@@ -65,6 +79,18 @@ enum ItemType {
   const ItemType(this.value);
 }
 
+<<<<<<< HEAD
+class OrderHelper { // Build #1.0.10 - Naveen: Added Order Helper to Maintain Order data
+  static final OrderHelper _instance = OrderHelper._internal(); // Singleton instance to ensure only one instance of OrderHelper exists
+  factory OrderHelper() => _instance;
+  static bool isOrderPanelLoaded = false;
+
+  int? activeOrderId; // Stores the currently active order ID
+  int? activeUserId; // Stores the active user ID
+  int? cancelledOrderId; // Build #1.0.189: Stores the cancelled order ID
+  List<int> orderIds = []; // List of order IDs for the active user
+  List<Map<String, dynamic>> orders = [];
+=======
 class OrderHelper {
   // Build #1.0.10 - Naveen: Added Order Helper to Maintain Order data
   static final OrderHelper _instance = OrderHelper
@@ -119,13 +145,17 @@ class OrderHelper {
   List<int> orderIds = []; // List of order IDs for the active user
   List<Map<String, dynamic>> orders = [];
 
+>>>>>>> origin/Grocery_pch_api_integration
   /// Build 1.0.171: Concurrency Control: _syncFuture ensures only one sync operation runs at a time by checking if a sync is in progress; if so, it waits for completion, preventing data corruption or race conditions.
   /// Reliable Sync Process: Using a Completer, _syncFuture manages the sync, clears and updates the database with API orders, handles errors, and resets to allow new syncs, maintaining data consistency.
   static Future<void>? _syncFuture;
 
+<<<<<<< HEAD
+=======
   /// Ensures only one ensureOrderExists runs at a time to avoid race conditions.
   static Future<int?>? _ensureOrderInProgress;
 
+>>>>>>> origin/Grocery_pch_api_integration
   OrderHelper._internal() {
     if (kDebugMode) {
       print("#### OrderHelper initialized!");
@@ -133,6 +163,64 @@ class OrderHelper {
     loadData(); // Load existing order data on initialization
   }
 
+<<<<<<< HEAD
+  // Loads processing order data from the local database and shared preferences
+  Future<void> loadProcessingData() async {
+    final prefs = await SharedPreferences.getInstance();
+    activeOrderId = prefs.getInt('activeOrderId'); // Retrieve the saved active order ID
+    activeUserId = await getUserIdFromDB();
+    // Debugging logs
+    if (kDebugMode) {
+      print("#### Order Panel DB helper loadData: before activeOrderId = $activeOrderId, activeUserId= $activeUserId ");
+      print("#### DEBUG orders: $orders");  // Build #1.0.189
+      print("#### DEBUG orders length >>>>> : ${orders.length}");
+      print("#### DEBUG orderIds >>>>> : $orderIds");
+    }
+    // Fetch the user's orders from the database
+    final db = await DBHelper.instance.database;
+    orders = await db.query(
+      AppDBConst.orderTable,
+      where: '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} = ?',
+      whereArgs: [activeUserId ?? 1, 'processing'],
+      /// Build #1.0.161
+      /// If required "asc" orders list, un-comment this line (order id's order low to high)
+      orderBy: '${AppDBConst.orderDate} ASC', // Ensure orders are sorted by creation date
+    );
+
+    if (orders.isNotEmpty) {
+      // Convert order list from DB into a list of order IDs
+      orderIds = orders.map((order) => order[AppDBConst.orderServerId] as int).toList();
+      // If activeOrderId is null or invalid, set it to the last available order ID
+      if (activeOrderId == null || !orderIds.contains(activeOrderId)) {
+        activeOrderId = orders.last[AppDBConst.orderServerId];///changed to order server id
+        await prefs.setInt('activeOrderId', activeOrderId!);
+      }
+    } else {
+      // No orders found, reset values
+      activeOrderId = null;
+      orderIds = [];
+      orders = [];
+    }
+
+    // Debugging logs
+    if (kDebugMode) {
+      print("#### Order Panel DB helper loadData: activeOrderId = $activeOrderId");
+      print("#### Order Panel DB helper loadData: orderIds = $orderIds, activeUserId: $activeUserId");
+    }
+  }
+
+  // Loads order data from the local database and shared preferences
+  Future<void> loadData() async {
+    final prefs = await SharedPreferences.getInstance();
+    activeOrderId = prefs.getInt('activeOrderId'); // Retrieve the saved active order ID
+    activeUserId = await getUserIdFromDB();
+    // Build #1.0.189: Clear First
+    orderIds = [];
+    orders = [];
+    // Debugging logs
+    if (kDebugMode) {
+      print("#### Order Panel DB helper loadData: before activeOrderId = $activeOrderId, activeUserId= $activeUserId ");
+=======
   double getCurrentMerchantDiscount(Map<String, dynamic> order, {double? grossTotal, double? orderDiscount, double? orderTax}) {
     double currentGross = grossTotal ?? 0.0;
     if (grossTotal == null) {
@@ -464,12 +552,30 @@ class OrderHelper {
     if (kDebugMode) {
       print(
           "#### Order Panel DB helper loadData: before activeOrderId = $activeOrderId, activeUserId= $activeUserId ");
+>>>>>>> origin/Grocery_pch_api_integration
       print("#### DEBUG orders: $orders"); // Build #1.0.189
       print("#### DEBUG orders length >>>>> : ${orders.length}");
       print("#### DEBUG orderIds >>>>> : $orderIds");
     }
     // Fetch the user's orders from the database
     final db = await DBHelper.instance.database;
+<<<<<<< HEAD
+    orders = await db.query(
+      AppDBConst.orderTable,
+      where: '${AppDBConst.userId} = ?',
+      whereArgs: [activeUserId ?? 1],
+    /// Build #1.0.161
+    /// If required "asc" orders list, un-comment this line (order id's order low to high)
+     orderBy: '${AppDBConst.orderDate} ASC', // Ensure orders are sorted by creation date
+    );
+
+    if (orders.isNotEmpty) {
+      // Convert order list from DB into a list of order IDs
+      orderIds = orders.map((order) => order[AppDBConst.orderServerId] as int).toList();
+      // If activeOrderId is null or invalid, set it to the last available order ID
+      if (activeOrderId == null || !orderIds.contains(activeOrderId)) {
+        activeOrderId = orders.last[AppDBConst.orderServerId];///changed to order server id
+=======
     final queryResult = await db.query(
       AppDBConst.orderTable,
       where: '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} = ?',
@@ -494,6 +600,7 @@ class OrderHelper {
         activeOrderId = orders.last[AppDBConst.orderServerId];
 
         ///changed to order server id
+>>>>>>> origin/Grocery_pch_api_integration
         await prefs.setInt('activeOrderId', activeOrderId!);
       }
     } else {
@@ -505,6 +612,13 @@ class OrderHelper {
 
     // Debugging logs
     if (kDebugMode) {
+<<<<<<< HEAD
+      print("#### Order Panel DB helper loadData: activeOrderId = $activeOrderId");
+      print("#### Order Panel DB helper loadData: orderIds = $orderIds, activeUserId: $activeUserId");
+    }
+  }
+
+=======
       print(
           "#### Order Panel DB helper loadData: activeOrderId = $activeOrderId");
       print(
@@ -869,6 +983,7 @@ class OrderHelper {
     return false;
   }
 
+>>>>>>> origin/Grocery_pch_api_integration
   Future<int> getUserIdFromDB() async {
     var userId = 0;
     try {
@@ -885,6 +1000,10 @@ class OrderHelper {
     return userId;
   }
 
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/Grocery_pch_api_integration
   // Update an orderID from API
   Future<void> updateServerOrderIDInDB(int orderServerId) async {
     ///Call to Create order REST API here, it should be done on add order at UI
@@ -941,8 +1060,12 @@ class OrderHelper {
     await prefs.setInt('activeOrderId', activeOrderId!);
 
     if (kDebugMode) {
+<<<<<<< HEAD
+      print("#### Order updated with ID: Active DBOrder ID $activeOrderId, serverOrderID $orderServerId, orderDate: ${DateTime.now().toString()}");
+=======
       print(
           "#### Order updated with ID: Active DBOrder ID $activeOrderId, serverOrderID $orderServerId, orderDate: ${DateTime.now().toString()}");
+>>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
@@ -951,8 +1074,12 @@ class OrderHelper {
     // Build 1.0.171: Check if a sync operation is already in progress
     if (_syncFuture != null) {
       if (kDebugMode) {
+<<<<<<< HEAD
+        print("#### DEBUG: syncOrdersFromApi - Sync already in progress, waiting for completion");
+=======
         print(
             "#### DEBUG: syncOrdersFromApi - Sync already in progress, waiting for completion");
+>>>>>>> origin/Grocery_pch_api_integration
       }
       await _syncFuture; // Wait for the existing sync to complete
       return;
@@ -966,6 +1093,172 @@ class OrderHelper {
     }
 
     try {
+<<<<<<< HEAD
+    final db = await DBHelper.instance.database;
+    activeUserId = await getUserIdFromDB(); // Build #1.0.165: to load user before update order table, to filter user based processing order only
+    // Build #1.0.80: Count orders in the database
+    final dbOrdersCount = await db.query(AppDBConst.orderTable);
+    final apiOrdersCount = apiOrders.length;
+
+    if (kDebugMode) {
+      print("#### DEBUG: syncOrdersFromApi - API orders count: $apiOrdersCount, DB orders count: ${dbOrdersCount.length}, activeUserId :${activeUserId ?? 1}");
+    }
+
+    // Check if counts match
+    //Build #1.0.165: delete db every time because of user filter logic applied for order table
+    // if (dbOrdersCount.length != apiOrdersCount) {
+      if (kDebugMode) {
+        print("#### DEBUG: syncOrdersFromApi - Counts do not match, deleting DB orders");
+      }
+      // Build #1.0.80: Delete all orders in the database
+     // await db.delete(AppDBConst.orderTable);
+    /// Build #1.0.207: Fixed -> No popup warning for open orders when closing shift via Vendor Payouts [SCRUM- 360]
+    /// When ever navigating to orderPanel to orderScreenPanel related screen's, deleting all orders
+    /// If we go to order screen - prev all processing orders will remove that the cause of checking processing orders while closing shift
+    if (apiOrders.isNotEmpty) {
+      // Check if we're syncing processing orders
+      final isSyncingProcessingOrders = apiOrders.any((order) => order.status == 'processing');
+      if (kDebugMode) {
+        print("#### DEBUG: isSyncingProcessingOrders $isSyncingProcessingOrders");
+      }
+      if (isSyncingProcessingOrders) {
+        // If syncing processing orders, only delete processing orders
+        // when ever orderPanel calls like - fastKey/categories/add screens prev processing orders will remove and re-adding below
+        await db.delete(
+          AppDBConst.orderTable,
+          where: '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} = ?',
+          whereArgs: [activeUserId ?? 1, 'processing'],
+        );
+      } else {
+        // If syncing non-processing orders, only delete non-processing orders
+        // when ever orderScreenPanel calls like - order screen prev non-processing orders will remove and re-adding below
+        await db.delete(
+          AppDBConst.orderTable,
+          where: '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} != ?',
+          whereArgs: [activeUserId ?? 1, 'processing'],
+        );
+      }
+    } else {
+      ///  BUILD 1.0.213: FIXED RE-OPENED ISSUE [SCRUM-360]: No popup warning for open orders when closing shift via Vendor Payouts
+      // DON'T delete all orders when apiOrders is empty
+      // Just skip the deletion and proceed with sync (which will do nothing)
+      if (kDebugMode) {
+        print("#### DEBUG: syncOrdersFromApi - No orders to sync, skipping deletion");
+      }
+     // await db.delete(AppDBConst.orderTable); // NO NEED TO DELETE COMPLETE ORDER TABLE
+    }
+      //  delete purchasedItemsTable related data
+     /// Build #1.0.226: purchasedItemsTable foreign key has ON DELETE CASCADE which means when a parent order is deleted, all child purchased items are automatically deleted
+     // await db.delete(AppDBConst.purchasedItemsTable); // NO NEED HERE
+      OrderHelper.isOrderPanelLoaded = false;/// set 'false' to load 'processing' orders in order panel again, if db is empty by orders screen loading.
+    // }
+    // if(!isProcessing) {
+    //   if (kDebugMode) {
+    //     print("#### DEBUG: syncOrdersFromApi - Counts do not match, deleting DB orders");
+    //   }
+    //   // Build #1.0.80: Delete all orders in the database
+    //   await db.delete(AppDBConst.orderTable, where: '${AppDBConst.orderStatus} != ?', whereArgs: ['processing']);
+    //   //  delete purchasedItemsTable related data
+    //   await db.delete(AppDBConst.purchasedItemsTable, where: '${AppDBConst.orderStatus} != ?', whereArgs: ['processing']);
+    // }
+    // Proceed with syncing only if counts match or after clearing DB
+    if (kDebugMode) {
+      print("#### DEBUG: syncOrdersFromApi - Processing ${apiOrders.length} orders");
+    }
+
+    for (var apiOrder in apiOrders) {
+      if (kDebugMode) {
+        print("#### DEBUG: syncOrdersFromApi - Processing order serverId: ${apiOrder.id}");
+      }
+      // Check if order exists in DB by API id
+      final existingOrders = await db.query(
+        AppDBConst.orderTable,
+        where: '${AppDBConst.orderServerId} = ?', //Build #1.0.78
+        whereArgs: [apiOrder.id],
+      );
+
+      if (kDebugMode) {
+        print("#### DEBUG: syncOrdersFromApi - existingOrders: ${existingOrders.length}");
+      }
+
+      if (existingOrders.isNotEmpty) {
+        await db.update(
+          AppDBConst.orderTable,
+          {
+            AppDBConst.orderServerId: apiOrder.id,
+            AppDBConst.orderTotal: double.tryParse(apiOrder.total) ?? 0.0,
+            AppDBConst.orderStatus: apiOrder.status,
+            AppDBConst.orderDate: apiOrder.dateCreated,
+            AppDBConst.orderTime: apiOrder.dateCreated,
+            AppDBConst.orderPaymentMethod: apiOrder.paymentMethod,
+            AppDBConst.orderDiscount: double.tryParse(apiOrder.discountTotal) ?? 0.0, // Store discount
+            AppDBConst.orderTax: double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
+            AppDBConst.orderAgeRestricted: apiOrder.metaData.firstWhere( //Build #1.0.234: Saving Age Restricted value in order table
+                  (meta) => meta.key == TextConstants.ageRestrictedKey,
+              orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
+            ).value.toString(),
+          },
+          where: '${AppDBConst.orderServerId} = ?',
+          whereArgs: [apiOrder.id],
+        );
+        if (kDebugMode) {
+          print("#### DEBUG: syncOrdersFromApi Updated order with serverId: ${apiOrder.id}, orderTotal: ${apiOrder.total}");
+        }
+      } else {
+        await db.insert(AppDBConst.orderTable, {
+          // AppDBConst.orderId: apiOrder.id,
+          AppDBConst.userId: activeUserId ?? 1,
+          AppDBConst.orderServerId: apiOrder.id,
+          AppDBConst.orderTotal: double.tryParse(apiOrder.total) ?? 0.0,
+          AppDBConst.orderStatus: apiOrder.status,
+          AppDBConst.orderType: apiOrder.createdVia ?? 'in-store',
+          AppDBConst.orderDate: apiOrder.dateCreated,
+          AppDBConst.orderTime: apiOrder.dateCreated,
+          AppDBConst.orderPaymentMethod: apiOrder.paymentMethod,
+          AppDBConst.orderDiscount: double.tryParse(apiOrder.discountTotal) ?? 0.0, // Store discount
+          AppDBConst.orderTax: double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
+          AppDBConst.orderShipping: double.tryParse(apiOrder.shippingTotal) ?? 0.0, // Store shipping
+          AppDBConst.orderAgeRestricted: apiOrder.metaData //Build #1.0.234: Saving Age Restricted value in order table
+              .firstWhere((meta) => meta.key == TextConstants.ageRestrictedKey,
+              orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
+              ).value.toString(),
+        });
+        if (kDebugMode) {
+          print("#### DEBUG: syncOrdersFromApi Inserted new order with serverId: ${apiOrder.id}, orderTotal: ${apiOrder.total}");
+        }
+      }
+
+      // Sync line items using API order id
+      await updateOrderItems(apiOrder.id, apiOrder.lineItems);
+      // await updateOrderPayoutItems(apiOrder.id, apiOrder.feeLines ?? []); // Build #1.0.64
+      await updateOrderPayoutItem(apiOrder.id, apiOrder.lineItems); // Build #1.0.198
+      // Build #1.0.207: Fixed Issue - Always Merchant discount showing "0"
+      // Ex: updateOrderPayoutItem modified to lineItems but discount we are getting in fee lines only , we are not using this, that's why merchant discount calculation is 0.
+      await updateOrderMerchantDiscount(apiOrder.id, apiOrder.feeLines ?? []);
+      await updateOrderCouponItems(apiOrder.id, apiOrder.couponLines ?? []);
+    }
+
+    if (kDebugMode) {
+    // Calculate order total from items
+      for (var order in apiOrders) {
+        final items = await getOrderItems(order.id);
+        for (var item in items) {
+            print(
+                "#### DEBUG: Check after insert if Order items ID: ${item[AppDBConst
+                    .itemId]},  ${item[AppDBConst
+                    .itemServerId]} for order ${order.id} is correct?, loadOrderItems 3");
+        }
+      }
+      print("#### DEBUG: syncOrdersFromApi - Refreshing local data");
+    }
+    await loadData();
+    // Complete the sync operation
+    if (kDebugMode) {
+      print("#### DEBUG: syncOrdersFromApi - Sync completed successfully");
+    }
+    completer.complete();
+    } catch (e) { // Build 1.0.171
+=======
       final db = await DBHelper.instance.database;
       activeUserId =
       await getUserIdFromDB(); // Build #1.0.165: to load user before update order table, to filter user based processing order only
@@ -1165,12 +1458,20 @@ class OrderHelper {
       completer.complete();
     } catch (e) {
       // Build 1.0.171
+>>>>>>> origin/Grocery_pch_api_integration
       // Handle errors and propagate them
       if (kDebugMode) {
         print("#### DEBUG: syncOrdersFromApi - Error occurred: $e");
       }
       completer.completeError(e);
       rethrow;
+<<<<<<< HEAD
+    } finally { // Build 1.0.171
+      // Reset _syncFuture to allow new sync operations
+      _syncFuture = null;
+      if (kDebugMode) {
+        print("#### DEBUG: syncOrdersFromApi - Sync future reset, ready for new sync");
+=======
     } finally {
       // Build 1.0.171
       // Reset _syncFuture to allow new sync operations
@@ -1178,11 +1479,17 @@ class OrderHelper {
       if (kDebugMode) {
         print(
             "#### DEBUG: syncOrdersFromApi - Sync future reset, ready for new sync");
+>>>>>>> origin/Grocery_pch_api_integration
       }
     }
   }
 
   //Build #1.0.40: update order items using item id
+<<<<<<< HEAD
+  Future<void> updateOrderItems(int orderId, List<model.LineItem> apiItems) async {
+    if (kDebugMode) {
+      print("#### DEBUG: updateOrderItems orderId: $orderId");
+=======
 
   Future<void> updateOrderItems(int orderId, List<model.LineItem> apiItems,
       model.OrderModel orderModel) async {
@@ -1195,6 +1502,7 @@ class OrderHelper {
           "#### DEBUG: Total combo discount: ${orderModel.totalComboDiscount}");
       print(
           "#### DEBUG: Total display auto discount: ${orderModel.totalDisplayAutoDiscount}");
+>>>>>>> origin/Grocery_pch_api_integration
     }
     final db = await DBHelper.instance.database;
     final existingItems = await db.query(
@@ -1204,6 +1512,53 @@ class OrderHelper {
     );
 
     final existingItemsMap = {
+<<<<<<< HEAD
+      for (var item in existingItems) item[AppDBConst.itemServerId].toString(): item,
+    };
+
+    if (kDebugMode) {
+      print("#### DEBUG: updateOrderItems - Processing ${apiItems.length} items for order $orderId, existing items: ${existingItemsMap.length}");
+    }
+
+    for (var apiItem in apiItems) {
+      if(apiItem.name.contains('Payout')){ //Build #1.0.198: do not add payout item again, it is already added by separate function
+        continue;
+      }
+      final itemId = apiItem.id.toString();
+      final double itemPrice = apiItem.productData.regularPrice == '' ?  double.parse(apiItem.productData.price ?? '0.0') : double.parse(apiItem.productData.regularPrice ?? '0.0');
+      final int itemQuantity = apiItem.quantity ?? 0;
+      final double itemSumPrice = double.parse(apiItem.subtotal); //Build #1.0.134: updated item sum price using from api response
+
+      if (kDebugMode) {
+         print("         salesPrice: ${apiItem.productData.salePrice ?? "0.0"}, "
+             "regularPrice:${apiItem.productData.regularPrice ?? "0.0"},"
+             " unitPrice: ${apiItem.productData.price ?? "0.0"}");
+      }
+
+      final String variationName = apiItem.productVariationData?.metaData?.firstWhere((e) => e.key == "custom_name", orElse: () => model.MetaData(id: 0, key: "", value: "")).value ?? "";
+      final int variationCount = apiItem.productData.variations?.length ?? 0;
+      final String combo = apiItem.metaData.firstWhere((e) => e.value.contains('Combo'), orElse: () => model.MetaData(id: 0, key: "", value: "")).value.split(' ').first ?? "";
+      ///Todo: check if these values should come from product data or product variation data or line item data
+      // Build #1.0.118: Fix: Use double.tryParse to safely handle invalid or null values
+      // final double salesPrice = double.tryParse(apiItem.productData.salePrice ?? "0.0") ?? 0.0;
+      // final double regularPrice = double.tryParse(apiItem.productData.regularPrice ?? "0.0") ?? 0.0;
+      // final double unitPrice = double.tryParse(apiItem.productData.price ?? "0.0") ?? 0.0;
+      /// Build #1.0.168: Fixed Issue - Order Panel gross total seems incorrect again
+      /// The issue is we are using productData values always not checking productVariationData if have those!
+      final bool hasVariations = apiItem.productData.variations != null && apiItem.productData.variations!.isNotEmpty;
+      final double salesPrice = hasVariations
+          ? double.tryParse(apiItem.productVariationData?.salePrice?.isNotEmpty == true ? apiItem.productVariationData!.salePrice! : "0.0") ?? 0.0
+          : double.tryParse(apiItem.productData.salePrice?.isNotEmpty == true ? apiItem.productData.salePrice! : "0.0") ?? 0.0;
+      final double regularPrice = hasVariations
+          ? double.tryParse(apiItem.productVariationData?.regularPrice?.isNotEmpty == true ? apiItem.productVariationData!.regularPrice! : "0.0") ?? 0.0
+          : double.tryParse(apiItem.productData.regularPrice?.isNotEmpty == true ? apiItem.productData.regularPrice! : "0.0") ?? 0.0;
+      final double unitPrice = hasVariations
+          ? double.tryParse(apiItem.productVariationData?.price?.isNotEmpty == true ? apiItem.productVariationData!.price! : "0.0") ?? 0.0
+          : double.tryParse(apiItem.productData.price?.isNotEmpty == true ? apiItem.productData.price! : "0.0") ?? 0.0;
+      if (kDebugMode) {
+        print("#### DEBUG: updateOrderItems - Processing API item ID: $itemId, name: ${apiItem.name}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
+        print("variationName $variationName, variationCount:$variationCount, combo:$combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
+=======
       for (var item in existingItems)
         item[AppDBConst.itemServerId].toString(): item,
     };
@@ -1324,6 +1679,7 @@ class OrderHelper {
         // NEW: Log item-level discounts
         print(
             "Item discounts - Multipack: ${apiItem.multipackDiscountAmount}, Auto: ${apiItem.autoDiscountAmount}, Combo: ${apiItem.comboDiscountAmount}, Display Auto: ${apiItem.displayAutoDiscountAmount}");
+>>>>>>> origin/Grocery_pch_api_integration
       }
 
       if (existingItemsMap.containsKey(itemId)) {
@@ -1340,6 +1696,14 @@ class OrderHelper {
             AppDBConst.itemSalesPrice: salesPrice,
             AppDBConst.itemRegularPrice: regularPrice,
             AppDBConst.itemUnitPrice: unitPrice,
+<<<<<<< HEAD
+            AppDBConst.itemProductId: apiItem.productId, //Build #1.0.128: Update - missed to update productId & variationId
+            AppDBConst.itemVariationId: apiItem.variationId,
+           // AppDBConst.itemType: isCustomItem ? ItemType.customProduct.value :  ItemType.product.value,
+          },
+          where: '${AppDBConst.itemServerId} = ?',
+          whereArgs: [existingItem[AppDBConst.itemServerId]], //Build #1.0.128: use itemServerId instead of itemId
+=======
             AppDBConst.itemProductId: apiItem.productId,
             AppDBConst.itemVariationId: apiItem.variationId,
             AppDBConst.multipackDiscount: apiItem.multipackDiscountAmount,
@@ -1355,18 +1719,29 @@ class OrderHelper {
           // names and prices in a different order.
           where: '${AppDBConst.itemServerId} = ? AND ${AppDBConst.orderIdForeignKey} = ?',
           whereArgs: [existingItem[AppDBConst.itemServerId], orderId],
+>>>>>>> origin/Grocery_pch_api_integration
         );
         if (kDebugMode) {
           print("#### DEBUG: Updated item ID: $itemId for order $orderId");
         }
         existingItemsMap.remove(itemId);
       } else {
+<<<<<<< HEAD
+        // Safe way to check if the item is a custom product
+=======
+>>>>>>> origin/Grocery_pch_api_integration
         bool isCustomItem = false;
         if (apiItem.productData != null &&
             apiItem.productData.tags != null &&
             apiItem.productData.tags.isNotEmpty) {
+<<<<<<< HEAD
+          isCustomItem = apiItem.productData.tags.any(
+                  (tag) => tag.name == TextConstants.customItem
+          );
+=======
           isCustomItem = apiItem.productData.tags
               .any((tag) => tag.name == TextConstants.customItem);
+>>>>>>> origin/Grocery_pch_api_integration
         }
         await db.insert(AppDBConst.purchasedItemsTable, {
           AppDBConst.itemServerId: apiItem.id,
@@ -1377,13 +1752,26 @@ class OrderHelper {
           AppDBConst.itemCount: itemQuantity,
           AppDBConst.itemSumPrice: itemSumPrice,
           AppDBConst.orderIdForeignKey: orderId,
+<<<<<<< HEAD
+          AppDBConst.itemType: isCustomItem ? ItemType.customProduct.value :  ItemType.product.value, //Build #1.0.128: Updated - missed to enum type
+=======
           AppDBConst.itemType: isCustomItem
               ? ItemType.customProduct.value
               : ItemType.product.value,
+>>>>>>> origin/Grocery_pch_api_integration
           AppDBConst.itemVariationCustomName: variationName,
           AppDBConst.itemVariationCount: variationCount,
           AppDBConst.itemCombo: combo,
           AppDBConst.itemSalesPrice: salesPrice,
+<<<<<<< HEAD
+          AppDBConst.itemRegularPrice: regularPrice, // Build #1.0.80: added
+          AppDBConst.itemUnitPrice: unitPrice,
+          AppDBConst.itemProductId: apiItem.productId, //Build #1.0.128: Updated - missed to add productId & variationId
+          AppDBConst.itemVariationId: apiItem.variationId,
+        });
+        if (kDebugMode) {
+          print("#### DEBUG: Inserted new item ID: $itemId for order $orderId");
+=======
           AppDBConst.itemRegularPrice: regularPrice,
           AppDBConst.itemUnitPrice: unitPrice,
           AppDBConst.itemProductId: apiItem.productId,
@@ -1406,6 +1794,7 @@ class OrderHelper {
                 "COMBO:${apiItem.comboDiscountAmount} "
                 "MULTIPACK:${apiItem.multipackDiscountAmount}",
           );
+>>>>>>> origin/Grocery_pch_api_integration
         }
       }
     }
@@ -1413,6 +1802,62 @@ class OrderHelper {
     for (var item in existingItemsMap.values) {
       await db.delete(
         AppDBConst.purchasedItemsTable,
+<<<<<<< HEAD
+        where: '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
+        whereArgs: [item[AppDBConst.itemServerId]],
+      );
+      if (kDebugMode) {
+        print("#### DEBUG: Deleted obsolete item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
+      }
+    }
+
+    // Calculate order total from items
+    final items = await getOrderItems(orderId);
+    for (var item in items) {
+      if (kDebugMode) {
+        print("#### DEBUG: Check after insert if Order items ID: ${item[AppDBConst.itemId]},  ${item[AppDBConst.itemServerId]} for order $orderId is correct?, loadOrderItems 2");
+      }
+    }
+
+    // var orderTotal = items.fold(0.0, (sum, item) => sum + (item[AppDBConst.itemSumPrice] as num).toDouble());
+    //
+    // // Fetch discount and tax from the database (set by syncOrdersFromApi)
+    // final order = await db.query(
+    //   AppDBConst.orderTable,
+    //   where: '${AppDBConst.orderServerId} = ?',
+    //   whereArgs: [orderId],
+    // );
+    // double orderDiscount = 0.0;
+    // double orderTax = 0.0;
+    // if (order.isNotEmpty) {
+    //   orderDiscount = order.first[AppDBConst.orderDiscount] as double? ?? 0.0;
+    //   orderTax = order.first[AppDBConst.orderTax] as double? ?? 0.0;
+    //   orderTotal = order.first[AppDBConst.orderTotal] as double? ?? 0.0;
+    // }
+    // orderTotal = orderTotal + orderTax;
+
+    // Update order with total, discount, and tax
+    // await db.update(
+    //   AppDBConst.orderTable,
+    //   {
+    //     AppDBConst.orderTotal: orderTotal,
+    //     AppDBConst.orderDiscount: orderDiscount,
+    //     AppDBConst.orderTax: orderTax,
+    //   },
+    //   where: '${AppDBConst.orderServerId} = ?',
+    //   whereArgs: [orderId],
+    // );
+    if (kDebugMode) {
+      print("#### DEBUG: updateOrderItems for order id $orderId completed...");
+          // print( "total: $orderTotal, discount: $orderDiscount, tax: $orderTax for order $orderId, items: $items");
+    }
+  }
+
+
+  // Build #1.0.64 : Modified updateOrderPayoutItems to align with updateOrderItems
+  @Deprecated("This API is deprecated and replaced by 'updateOrderPayoutItem' with line_item")
+  Future<void> updateOrderPayoutItems(int orderId, List<model.FeeLine> feeLines) async {
+=======
         where: '${AppDBConst.itemServerId} = ? AND ${AppDBConst.orderIdForeignKey} = ?',
         whereArgs: [item[AppDBConst.itemServerId], orderId],
       );
@@ -1469,18 +1914,30 @@ class OrderHelper {
       "This API is deprecated and replaced by 'updateOrderPayoutItem' with line_item")
   Future<void> updateOrderPayoutItems(
       int orderId, List<model.FeeLine> feeLines) async {
+>>>>>>> origin/Grocery_pch_api_integration
     if (kDebugMode) {
       print("#### DEBUG: updateOrderPayoutItems orderId: $orderId");
     }
     final db = await DBHelper.instance.database;
     final existingItems = await db.query(
       AppDBConst.purchasedItemsTable,
+<<<<<<< HEAD
+      where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+=======
       where:
       '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+>>>>>>> origin/Grocery_pch_api_integration
       whereArgs: [orderId, ItemType.payout.value],
     );
 
     final existingItemsMap = {
+<<<<<<< HEAD
+      for (var item in existingItems) item[AppDBConst.itemServerId].toString(): item,
+    };
+
+    if (kDebugMode) {
+      print("#### DEBUG: updateOrderPayoutItems - Processing ${feeLines.length} payout items for order $orderId, existing items: ${existingItems.length}");
+=======
       for (var item in existingItems)
         item[AppDBConst.itemServerId].toString(): item,
     };
@@ -1488,6 +1945,7 @@ class OrderHelper {
     if (kDebugMode) {
       print(
           "#### DEBUG: updateOrderPayoutItems - Processing ${feeLines.length} payout items for order $orderId, existing items: ${existingItems.length}");
+>>>>>>> origin/Grocery_pch_api_integration
     }
     double merchantDiscount = 0.0;
     var merchantDiscountIds = "";
@@ -1504,8 +1962,12 @@ class OrderHelper {
       final double itemSumPrice = itemPrice;
 
       if (kDebugMode) {
+<<<<<<< HEAD
+        print("#### DEBUG: updateOrderPayoutItems - Processing payout item ID: $itemId, name: ${feeLine.name}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
+=======
         print(
             "#### DEBUG: updateOrderPayoutItems - Processing payout item ID: $itemId, name: ${feeLine.name}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
+>>>>>>> origin/Grocery_pch_api_integration
       }
 
       if (feeLine.name == TextConstants.payout) {
@@ -1525,13 +1987,21 @@ class OrderHelper {
             whereArgs: [existingItem[AppDBConst.itemServerId]],
           );
           if (kDebugMode) {
+<<<<<<< HEAD
+            print("#### DEBUG: Updated payout item ID: $itemId for order $orderId");
+=======
             print(
                 "#### DEBUG: Updated payout item ID: $itemId for order $orderId");
+>>>>>>> origin/Grocery_pch_api_integration
           }
           existingItemsMap.remove(itemId);
         } else {
           await db.insert(AppDBConst.purchasedItemsTable, {
+<<<<<<< HEAD
+         //   AppDBConst.itemId: orderId,
+=======
             //   AppDBConst.itemId: orderId,
+>>>>>>> origin/Grocery_pch_api_integration
             AppDBConst.itemServerId: feeLine.id, //Build #1.0.67: updated
             AppDBConst.itemName: feeLine.name ?? 'Payout',
             AppDBConst.itemSKU: '',
@@ -1543,8 +2013,12 @@ class OrderHelper {
             AppDBConst.itemType: ItemType.payout.value,
           });
           if (kDebugMode) {
+<<<<<<< HEAD
+            print("#### DEBUG: Inserted new payout item ID: $itemId for order $orderId");
+=======
             print(
                 "#### DEBUG: Inserted new payout item ID: $itemId for order $orderId");
+>>>>>>> origin/Grocery_pch_api_integration
           }
         }
       }
@@ -1563,8 +2037,12 @@ class OrderHelper {
       whereArgs: [orderId],
     );
     if (kDebugMode) {
+<<<<<<< HEAD
+      print("#### DEBUG: updateOrderPayoutItems - Processing merchantDiscount item IDs: $merchantDiscountIds, discountTotal: $merchantDiscount");
+=======
       print(
           "#### DEBUG: updateOrderPayoutItems - Processing merchantDiscount item IDs: $merchantDiscountIds, discountTotal: $merchantDiscount");
+>>>>>>> origin/Grocery_pch_api_integration
     }
 
     for (var item in existingItemsMap.values) {
@@ -1574,27 +2052,46 @@ class OrderHelper {
         whereArgs: [item[AppDBConst.itemServerId]],
       );
       if (kDebugMode) {
+<<<<<<< HEAD
+        print("#### DEBUG: Deleted obsolete payout item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
+=======
         print(
             "#### DEBUG: Deleted obsolete payout item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
+>>>>>>> origin/Grocery_pch_api_integration
       }
     }
   }
 
   //  Build #1.0.198 : Modified updateOrderPayoutItem to align with new payout API changes
+<<<<<<< HEAD
+  Future<void> updateOrderPayoutItem(int orderId, List<model.LineItem> lineItems) async {
+=======
   Future<void> updateOrderPayoutItem(
       int orderId, List<model.LineItem> lineItems) async {
+>>>>>>> origin/Grocery_pch_api_integration
     if (kDebugMode) {
       print("#### DEBUG: updateOrderPayoutItems orderId: $orderId");
     }
     final db = await DBHelper.instance.database;
     final existingItems = await db.query(
       AppDBConst.purchasedItemsTable,
+<<<<<<< HEAD
+      where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+=======
       where:
       '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+>>>>>>> origin/Grocery_pch_api_integration
       whereArgs: [orderId, ItemType.payout.value],
     );
 
     final existingItemsMap = {
+<<<<<<< HEAD
+      for (var item in existingItems) item[AppDBConst.itemServerId].toString(): item,
+    };
+
+    if (kDebugMode) {
+      print("#### DEBUG: updateOrderPayoutItems - Processing ${lineItems.length} payout items for order $orderId, existing items: ${existingItems.length}");
+=======
       for (var item in existingItems)
         item[AppDBConst.itemServerId].toString(): item,
     };
@@ -1602,6 +2099,7 @@ class OrderHelper {
     if (kDebugMode) {
       print(
           "#### DEBUG: updateOrderPayoutItems - Processing ${lineItems.length} payout items for order $orderId, existing items: ${existingItems.length}");
+>>>>>>> origin/Grocery_pch_api_integration
     }
     double merchantDiscount = 0.0;
     var merchantDiscountIds = "";
@@ -1618,8 +2116,12 @@ class OrderHelper {
       final double itemSumPrice = itemPrice;
 
       if (kDebugMode) {
+<<<<<<< HEAD
+        print("#### DEBUG: updateOrderPayoutItems - Processing payout item ID: $itemId, name: ${lineItem.name}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
+=======
         print(
             "#### DEBUG: updateOrderPayoutItems - Processing payout item ID: $itemId, name: ${lineItem.name}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
+>>>>>>> origin/Grocery_pch_api_integration
       }
 
       if (lineItem.name == TextConstants.payout) {
@@ -1639,8 +2141,12 @@ class OrderHelper {
             whereArgs: [existingItem[AppDBConst.itemServerId]],
           );
           if (kDebugMode) {
+<<<<<<< HEAD
+            print("#### DEBUG: Updated payout item ID: $itemId for order $orderId");
+=======
             print(
                 "#### DEBUG: Updated payout item ID: $itemId for order $orderId");
+>>>>>>> origin/Grocery_pch_api_integration
           }
           existingItemsMap.remove(itemId);
         } else {
@@ -1657,8 +2163,12 @@ class OrderHelper {
             AppDBConst.itemType: ItemType.payout.value,
           });
           if (kDebugMode) {
+<<<<<<< HEAD
+            print("#### DEBUG: Inserted new payout item ID: $itemId for order $orderId");
+=======
             print(
                 "#### DEBUG: Inserted new payout item ID: $itemId for order $orderId");
+>>>>>>> origin/Grocery_pch_api_integration
           }
         }
       }
@@ -1677,8 +2187,12 @@ class OrderHelper {
       whereArgs: [orderId],
     );
     if (kDebugMode) {
+<<<<<<< HEAD
+      print("#### DEBUG: updateOrderPayoutItems - Processing merchantDiscount item IDs: $merchantDiscountIds, discountTotal: $merchantDiscount");
+=======
       print(
           "#### DEBUG: updateOrderPayoutItems - Processing merchantDiscount item IDs: $merchantDiscountIds, discountTotal: $merchantDiscount");
+>>>>>>> origin/Grocery_pch_api_integration
     }
 
     for (var item in existingItemsMap.values) {
@@ -1688,12 +2202,31 @@ class OrderHelper {
         whereArgs: [item[AppDBConst.itemServerId]],
       );
       if (kDebugMode) {
+<<<<<<< HEAD
+        print("#### DEBUG: Deleted obsolete payout item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
+=======
         print(
             "#### DEBUG: Deleted obsolete payout item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
+>>>>>>> origin/Grocery_pch_api_integration
       }
     }
   }
 
+<<<<<<< HEAD
+  // Build #1.0.207: Fixed Issue - Always Merchant discount showing "0"
+  // Ex: updateOrderPayoutItem modified to lineItems but discount we are getting in fee lines only , we are not using this, that's why merchant discount calculation is 0.
+  // Added this function to handle merchant discounts from feeLines
+  Future<void> updateOrderMerchantDiscount(int orderId, List<model.FeeLine> feeLines) async {
+    final db = await DBHelper.instance.database;
+    double merchantDiscount = 0.0;
+   // Use a list instead of string concatenation
+    List<String> merchantDiscountIdsList = []; // Build #1.0.216: FIXED Issue - Merchant discount not deleting, showing error "Payout ID not found"
+
+    for (var feeLine in feeLines) {
+      if (feeLine.name == TextConstants.discountText) {
+        merchantDiscount += double.parse(feeLine.total ?? '0.0').abs();
+        merchantDiscountIdsList.add(feeLine.id.toString()); // Added to list
+=======
   Future<void> updateOrderField(
       int orderId, String fieldKey, dynamic value) async {
     try {
@@ -1793,6 +2326,7 @@ class OrderHelper {
       if (name.contains('discount')) {
         merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
         merchantDiscountIdsList.add(lineItem.id.toString());
+>>>>>>> origin/Grocery_pch_api_integration
       }
     }
     // Build #1.0.216: Join with commas and ensure no leading comma
@@ -1810,20 +2344,35 @@ class OrderHelper {
   }
 
   // Build #1.0.64 : Modified updateOrderCouponItems to align with updateOrderItems
+<<<<<<< HEAD
+  Future<void> updateOrderCouponItems(int orderId, List<model.CouponLine> couponLines) async {
+=======
   Future<void> updateOrderCouponItems(
       int orderId, List<model.CouponLine> couponLines) async {
+>>>>>>> origin/Grocery_pch_api_integration
     if (kDebugMode) {
       print("#### DEBUG: updateOrderCouponItems orderId: $orderId");
     }
     final db = await DBHelper.instance.database;
     final existingItems = await db.query(
       AppDBConst.purchasedItemsTable,
+<<<<<<< HEAD
+      where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+=======
       where:
       '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+>>>>>>> origin/Grocery_pch_api_integration
       whereArgs: [orderId, ItemType.coupon.value],
     );
 
     final existingItemsMap = {
+<<<<<<< HEAD
+      for (var item in existingItems) item[AppDBConst.itemServerId].toString(): item,
+    };
+
+    if (kDebugMode) {
+      print("#### DEBUG: updateOrderCouponItems - Processing ${couponLines.length} coupon items for order $orderId, existing items: ${existingItems.length}");
+=======
       for (var item in existingItems)
         item[AppDBConst.itemServerId].toString(): item,
     };
@@ -1831,6 +2380,7 @@ class OrderHelper {
     if (kDebugMode) {
       print(
           "#### DEBUG: updateOrderCouponItems - Processing ${couponLines.length} coupon items for order $orderId, existing items: ${existingItems.length}");
+>>>>>>> origin/Grocery_pch_api_integration
     }
 
     for (var coupon in couponLines) {
@@ -1840,8 +2390,12 @@ class OrderHelper {
       final double itemSumPrice = itemPrice;
 
       if (kDebugMode) {
+<<<<<<< HEAD
+        print("#### DEBUG: updateOrderCouponItems - Processing coupon item ID: $itemId, code: ${coupon.code}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
+=======
         print(
             "#### DEBUG: updateOrderCouponItems - Processing coupon item ID: $itemId, code: ${coupon.code}, price: $itemPrice, quantity: $itemQuantity, sumPrice: $itemSumPrice");
+>>>>>>> origin/Grocery_pch_api_integration
       }
 
       if (existingItemsMap.containsKey(itemId)) {
@@ -1856,6 +2410,13 @@ class OrderHelper {
             AppDBConst.itemImage: 'assets/svg/coupon.svg',
             AppDBConst.itemSKU: '',
           },
+<<<<<<< HEAD
+          where: '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
+          whereArgs: [existingItem[AppDBConst.itemServerId]],
+        );
+        if (kDebugMode) {
+          print("#### DEBUG: Updated coupon item ID: $itemId for order $orderId");
+=======
           where:
           '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
           whereArgs: [existingItem[AppDBConst.itemServerId]],
@@ -1863,11 +2424,16 @@ class OrderHelper {
         if (kDebugMode) {
           print(
               "#### DEBUG: Updated coupon item ID: $itemId for order $orderId");
+>>>>>>> origin/Grocery_pch_api_integration
         }
         existingItemsMap.remove(itemId);
       } else {
         await db.insert(AppDBConst.purchasedItemsTable, {
+<<<<<<< HEAD
+       //   AppDBConst.itemId: orderId,
+=======
           //   AppDBConst.itemId: orderId,
+>>>>>>> origin/Grocery_pch_api_integration
           AppDBConst.itemServerId: coupon.id, //Build #1.0.67: updated
           AppDBConst.itemName: coupon.code ?? 'Coupon',
           AppDBConst.itemSKU: '',
@@ -1879,8 +2445,12 @@ class OrderHelper {
           AppDBConst.itemType: ItemType.coupon.value,
         });
         if (kDebugMode) {
+<<<<<<< HEAD
+          print("#### DEBUG: Inserted new coupon item ID: $itemId for order $orderId");
+=======
           print(
               "#### DEBUG: Inserted new coupon item ID: $itemId for order $orderId");
+>>>>>>> origin/Grocery_pch_api_integration
         }
       }
     }
@@ -1888,6 +2458,33 @@ class OrderHelper {
     for (var item in existingItemsMap.values) {
       await db.delete(
         AppDBConst.purchasedItemsTable,
+<<<<<<< HEAD
+        where: '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
+        whereArgs: [item[AppDBConst.itemServerId]],
+      );
+      if (kDebugMode) {
+        print("#### DEBUG: Deleted obsolete coupon item ID: ${item[AppDBConst.itemServerId]} for order $orderId");
+      }
+    }
+ }
+
+  // Creates a new order and sets it as active
+  Future<int> createOrder({int? serverOrderId}) async { // Build #1.0.11 : updated
+    ///check if 'orderServerId' is 0 or not, if yes show alert
+    final db = await DBHelper.instance.database;
+    activeOrderId = serverOrderId;
+    await db.insert(AppDBConst.orderTable, {
+      AppDBConst.userId: activeUserId ?? 1,
+      if (serverOrderId != null) AppDBConst.orderServerId: serverOrderId, /// server created order id, update after order created at backend
+      AppDBConst.orderTotal: 0.0, /// initially it will be 0
+      AppDBConst.orderStatus: "processing", /// initial value will be 'processing'
+      AppDBConst.orderType: 'in-store',
+      AppDBConst.orderDate: DateTime.now().toString(), /// update these from order created on server
+      AppDBConst.orderTime: DateTime.now().toString(),
+    });
+
+    // Update the user's order count
+=======
         where:
         '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
         whereArgs: [item[AppDBConst.itemServerId]],
@@ -2045,10 +2642,20 @@ class OrderHelper {
       AppDBConst.orderTime: DateTime.now().toString(),
     });
 
+>>>>>>> origin/Grocery_pch_api_integration
     await db.rawUpdate('''
     UPDATE ${AppDBConst.userTable}
     SET ${AppDBConst.userOrderCount} = ${AppDBConst.userOrderCount} + 1
     WHERE ${AppDBConst.userId} = ?
+<<<<<<< HEAD
+    ''', [activeUserId ?? 1]);
+
+    // Save the newly created order ID in shared preferences
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('activeOrderId', activeOrderId!);
+
+    // Refresh the order list
+=======
     ''', [activeUserId ?? 0]);
 
     // When order was created on server/offline, ensure storage has it (only if not already)
@@ -2073,6 +2680,7 @@ class OrderHelper {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('activeOrderId', activeOrderId!);
 
+>>>>>>> origin/Grocery_pch_api_integration
     await loadData();
 
     if (kDebugMode) {
@@ -2082,6 +2690,12 @@ class OrderHelper {
     return activeOrderId!;
   }
 
+<<<<<<< HEAD
+  // Deletes an order from the database and updates local storage
+  Future<void> deleteOrder(int orderId) async {
+    final db = await DBHelper.instance.database;
+    await db.delete( //Build #1.0.78 : delete from db -> purchasedItemsTable
+=======
   // Deletes an order from the database and offline storage
   Future<void> deleteOrder(int orderId) async {
     // Remove from offline storage (Isar) - required for orders to disappear from UI
@@ -2091,17 +2705,26 @@ class OrderHelper {
     final db = await DBHelper.instance.database;
     await db.delete(
       //Build #1.0.78 : delete from db -> purchasedItemsTable
+>>>>>>> origin/Grocery_pch_api_integration
       AppDBConst.purchasedItemsTable,
       where: '${AppDBConst.orderIdForeignKey} = ?',
       whereArgs: [orderId],
     );
+<<<<<<< HEAD
+    await db.delete( //Build #1.0.78 : delete from db -> orderTable
+=======
     await db.delete(
       //Build #1.0.78 : delete from db -> orderTable
+>>>>>>> origin/Grocery_pch_api_integration
       AppDBConst.orderTable,
       where: '${AppDBConst.orderServerId} = ?',
       whereArgs: [orderId],
     );
 
+<<<<<<< HEAD
+   //  orders.removeWhere((order) => order[AppDBConst.orderServerId] == orderId); // read-only property
+=======
+>>>>>>> origin/Grocery_pch_api_integration
     // Build #1.0.189: Remove the orderId from orderIds list
     orderIds.remove(orderId);
 
@@ -2113,6 +2736,11 @@ class OrderHelper {
       await prefs.remove('activeOrderId');
     }
 
+<<<<<<< HEAD
+    // Reload the updated order list
+    await loadData();
+
+=======
     // Prevent restoreActiveOrderId() from reviving a deleted or last-deleted cart
     if (prefs.getInt('lastActiveOrderId') == orderId || orderIds.isEmpty) {
       await prefs.remove('lastActiveOrderId');
@@ -2139,6 +2767,7 @@ class OrderHelper {
 
       await CustomerDisplayService.resetDisplay();
     }
+>>>>>>> origin/Grocery_pch_api_integration
     // Debugging logs
     if (kDebugMode) {
       print('#### Order deleted with ID: $orderId');
@@ -2148,6 +2777,14 @@ class OrderHelper {
   }
 
   // Sets a specific order as the active order
+<<<<<<< HEAD
+  Future<void> setActiveOrder(int orderId) async {
+    activeOrderId = orderId;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('activeOrderId', activeOrderId!);
+
+    // Debugging log
+=======
   Future<void> setActiveOrder(int? orderId) async {
     activeOrderId = orderId;
 
@@ -2159,6 +2796,7 @@ class OrderHelper {
       await prefs.setInt('activeOrderId', orderId);
     }
 
+>>>>>>> origin/Grocery_pch_api_integration
     if (kDebugMode) {
       print("#### Active order set to: $activeOrderId");
     }
@@ -2171,6 +2809,11 @@ class OrderHelper {
   Future<void> saveLastActiveOrderId(int orderId) async {
     activeOrderId = orderId;
     final prefs = await SharedPreferences.getInstance();
+<<<<<<< HEAD
+    await prefs.setInt('lastActiveOrderId', activeOrderId!);
+    if (kDebugMode) {
+      print("##### Saved last active order ID: $activeOrderId");
+=======
     await prefs.setInt('lastActiveOrderId', orderId);
     // Build #1.0.316: Also sync with activeOrderId to ensure consistency during transitions
     await prefs.setInt('activeOrderId', orderId);
@@ -2203,6 +2846,7 @@ class OrderHelper {
     await prefs.remove('lastActiveOrderId');
     if (kDebugMode) {
       print("##### Cleared persisted cart selection (active + lastActive)");
+>>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
@@ -2211,6 +2855,13 @@ class OrderHelper {
     final prefs = await SharedPreferences.getInstance();
     final lastOrderId = prefs.getInt('lastActiveOrderId');
 
+<<<<<<< HEAD
+    if (lastOrderId != null && lastOrderId != -1) {
+      await setActiveOrder(lastOrderId);
+      if (kDebugMode) {
+        print("##### Restored active order ID: $lastOrderId");
+      }
+=======
     if (lastOrderId == null || lastOrderId == -1) return;
 
     if (!await localOrderExistsForActiveUser(lastOrderId)) {
@@ -2225,12 +2876,17 @@ class OrderHelper {
     await setActiveOrder(lastOrderId);
     if (kDebugMode) {
       print("##### Restored active order ID: $lastOrderId");
+>>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
   // Fetch all orders for a specific user
+<<<<<<< HEAD
+  Future<List<Map<String, dynamic>>> getUserOrders(int userID) async { // Build #1.0.11 : added here from db_helper
+=======
   Future<List<Map<String, dynamic>>> getUserOrders(int userID) async {
     // Build #1.0.11 : added here from db_helper
+>>>>>>> origin/Grocery_pch_api_integration
     final db = await DBHelper.instance.database;
     return await db.query(
       AppDBConst.orderTable,
@@ -2239,6 +2895,34 @@ class OrderHelper {
     );
   }
 
+<<<<<<< HEAD
+  // Fetch order for a specific orderId
+  Future<List<Map<String, dynamic>>> getOrderById(int orderId) async { // Build #1.0.11 : added here from db_helper
+    final db = await DBHelper.instance.database;
+    return await db.query(
+      AppDBConst.orderTable,
+      where: '${AppDBConst.orderServerId} = ?',
+      whereArgs: [orderId],
+    );
+  }
+
+// Fetch all items for a specific order
+  Future<List<Map<String, dynamic>>> getOrderItems(int orderID) async {
+    final db = await DBHelper.instance.database;
+    return await db.query(
+      AppDBConst.purchasedItemsTable,
+      where: '${AppDBConst.orderIdForeignKey} = ?',
+      whereArgs: [orderID],
+    );
+  }
+
+// Delete an item from an order
+  Future<void> deleteItem(int itemServerId) async { // delete the item/product based on serverID not item id
+    final db = await DBHelper.instance.database;
+    await db.delete(
+      AppDBConst.purchasedItemsTable,
+      where: '${AppDBConst.itemServerId} = ?', // Build #1.0.92: using item server id , checked used places!!
+=======
   // Fetch order for a specific orderId - Build #1.0.285: Filter by user ID with fallback
   Future<List<Map<String, dynamic>>> getOrderById(int orderId) async {
     final db = await DBHelper.instance.database;
@@ -2660,6 +3344,7 @@ class OrderHelper {
       AppDBConst.purchasedItemsTable,
       where:
       '${AppDBConst.itemServerId} = ?', // Build #1.0.92: using item server id , checked used places!!
+>>>>>>> origin/Grocery_pch_api_integration
       whereArgs: [itemServerId],
     );
 
@@ -2683,6 +3368,9 @@ class OrderHelper {
   }
 
   // Adds an item to the currently active order; creates an order if none exists
+<<<<<<< HEAD
+  Future<void> addItemToOrder( // Build #1.0.80: updated
+=======
 
   // Adds an item to the currently active order; creates an order if none exists
 
@@ -3151,12 +3839,131 @@ class OrderHelper {
   // }
 
   Future<void> addItemToOrder(
+>>>>>>> origin/Grocery_pch_api_integration
       int? serverItemId,
       String name,
       String image,
       double price,
       int quantity,
       String sku,
+<<<<<<< HEAD
+      int orderId,
+      {
+        VoidCallback? onItemAdded, String? type ,int? productId = -1, int? variationId = -1,
+        String? variationName, int? variationCount, String? combo, double? salesPrice, double? regularPrice, double? unitPrice,
+      }) async {
+    ///Build #1.0.128: No need here , we are already doing createOrder in orderBloc of updateOrderProducts
+    // if (orderId == null) {
+    //   await createOrder();
+    // }
+    //Build #1.0.68: For default product pass enum item type was product
+  //  type = ItemType.product.value;
+
+    // Debugging log
+    if (kDebugMode) {
+      print("#### Adding item to order: $orderId, productId:$productId, variationId:$variationId, SKU: $sku, Type: $type, Quantity: $quantity");
+      print("variationName $variationName, variationCount:$variationCount, combo:$combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
+    }
+    // if (activeOrderId == null) {
+    //   await createOrder();
+    // }
+    // var order = await getOrderById(activeOrderId!);
+    // orderId = order.first[AppDBConst.orderServerId];
+    // List<Map<String, dynamic>> items = await getOrderItems(order.first[AppDBConst.orderServerId]);
+
+    final db = await DBHelper.instance.database;
+    var existingItem = [];
+
+    if(variationId! > 0) {
+      existingItem = await db.query(
+        AppDBConst.purchasedItemsTable,
+        where:
+        '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemVariationId} = ? AND ${AppDBConst.itemType} = ?',
+        whereArgs: [orderId, variationId, type ?? ItemType.product.value],
+      );
+    }
+    if(existingItem.isEmpty){
+      if (kDebugMode) {
+        print("HELPER existingItem not found with variation id");
+      }
+      if(productId! > 0){
+        existingItem = await db.query(
+          AppDBConst.purchasedItemsTable,
+          where:
+          '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemType} = ?',
+          whereArgs: [orderId, productId, type ?? ItemType.product.value],
+        );
+        if(existingItem.isNotEmpty && ((existingItem.first[AppDBConst.itemVariationId] as int) > 0)){
+          if (kDebugMode) {
+            print(
+              "OrderDBHelper - addItemToOrder Existing item found productID: ${existingItem.first[AppDBConst.itemServerId]}, but variationId: ${existingItem.first[AppDBConst.itemVariationId]} instead $variationId");
+          }
+          existingItem = [];
+        }
+      }
+    }
+
+    if (existingItem.isNotEmpty) {
+      if (kDebugMode) {
+        print("HELPER existingItem");
+      }
+      await db.rawUpdate('''
+      UPDATE ${AppDBConst.purchasedItemsTable}
+      SET ${AppDBConst.itemCount} = ?,
+          ${AppDBConst.itemSumPrice} = ?,
+          ${AppDBConst.itemProductId} = ?,
+          ${AppDBConst.itemVariationId} = ?,
+          ${AppDBConst.itemSalesPrice} = ?,
+          ${AppDBConst.itemRegularPrice} = ?,
+          ${AppDBConst.itemUnitPrice} = ?
+      WHERE ${AppDBConst.itemServerId} = ?
+    ''', [quantity, price, productId, variationId, salesPrice, regularPrice, unitPrice, serverItemId]); //Build #1.0.146: Fixed Issue: We don't need to multiply with qty because we are already getting from line items sub total value
+    } else {
+      if (kDebugMode) {
+        print("HELPER NOT existingItem");
+      }
+      await db.insert(AppDBConst.purchasedItemsTable, {
+        AppDBConst.itemServerId: serverItemId,
+        AppDBConst.itemName: name,
+        AppDBConst.itemImage: image,
+        AppDBConst.itemPrice: price,
+        AppDBConst.itemCount: quantity,
+        AppDBConst.itemSumPrice: price, //Build #1.0.146: Fixed Issue: We don't need to multiply with qty because we are already getting from line items sub total value
+        AppDBConst.orderIdForeignKey: orderId,
+        AppDBConst.itemSKU: sku,
+        AppDBConst.itemType: type,
+        AppDBConst.itemProductId: productId, // Build #1.0.80: added
+        AppDBConst.itemVariationId: variationId,
+        AppDBConst.itemVariationCustomName: variationName,
+        AppDBConst.itemVariationCount: variationCount,
+        AppDBConst.itemCombo: combo,
+        AppDBConst.itemSalesPrice: salesPrice,
+        AppDBConst.itemRegularPrice: regularPrice, // Build #1.0.80: added
+        AppDBConst.itemUnitPrice: unitPrice,
+      });
+    }
+
+    //Build #1.0.78: Update order total
+    // final items = await getOrderItems(orderId);
+    // final orderTotal = items.fold(0.0, (sum, item) => (item[AppDBConst.itemSumPrice] as num).toDouble());
+    // if (kDebugMode) {
+    //   print("orderTotal $orderTotal");
+    // }
+    // await db.update(
+    //   AppDBConst.orderTable,
+    //   {AppDBConst.orderTotal: orderTotal},
+    //   where: '${AppDBConst.orderServerId} = ?',
+    //   whereArgs: [orderId],
+    // );
+
+    loadData();
+    if (onItemAdded != null) {
+      onItemAdded();
+    }
+
+    if (kDebugMode) {
+      print('#### Item added to order: $orderId, SKU: $sku, Type: $type, Quantity: $quantity, name:$name, serverItemId: $serverItemId, productId: $productId, variationId: $variationId, Type: $type');
+=======
       int orderId, {
         VoidCallback? onItemAdded,
         String? type,
@@ -3736,6 +4543,7 @@ class OrderHelper {
             "❌ [orderHasItems] Failed to check items for Order ID $orderId: $e\n$s");
       }
       return false;
+>>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
@@ -3767,12 +4575,17 @@ class OrderHelper {
       );
 
       // Update the order total in the orders table
+<<<<<<< HEAD
+      final items = await getOrderItems(item.first[AppDBConst.orderIdForeignKey] as int);
+      double orderTotal = items.fold(0.0, (sum, item) => sum + (item[AppDBConst.itemSumPrice] as num).toDouble());
+=======
       final items =
       await getOrderItems(item.first[AppDBConst.orderIdForeignKey] as int);
       double orderTotal = items.fold(
           0.0,
               (sum, item) =>
           sum + (item[AppDBConst.itemSumPrice] as num).toDouble());
+>>>>>>> origin/Grocery_pch_api_integration
 
       await db.update(
         AppDBConst.orderTable,
@@ -3782,14 +4595,60 @@ class OrderHelper {
       );
 
       if (kDebugMode) {
+<<<<<<< HEAD
+        print('#### Item quantity updated: ID=$itemId, Quantity=$newQuantity, New Sum Price=$newSumPrice');
+        print('#### Order total updated: Order ID=${item.first[AppDBConst.orderIdForeignKey]}, Total=$orderTotal');
+=======
         print(
             '#### Item quantity updated: ID=$itemId, Quantity=$newQuantity, New Sum Price=$newSumPrice');
         print(
             '#### Order total updated: Order ID=${item.first[AppDBConst.orderIdForeignKey]}, Total=$orderTotal');
+>>>>>>> origin/Grocery_pch_api_integration
       }
     }
   }
 
+<<<<<<< HEAD
+  // If using a StatefulWidget
+  // Future<void> updateItemQuantity(int itemId, int quantity) async {
+  //   final db = await DBHelper.instance.database;
+  //
+  //   // Calculate the new sum price based on the updated quantity
+  //   final item = await db.query(
+  //     AppDBConst.purchasedItemsTable,
+  //     where: '${AppDBConst.itemId} = ?',
+  //     whereArgs: [itemId],
+  //   );
+  //
+  //   if (item.isNotEmpty) {
+  //     double price = (item.first[AppDBConst.itemPrice] as num).toDouble();
+  //     double newSumPrice = price * quantity;
+  //
+  //     await db.update(
+  //         AppDBConst.purchasedItemsTable,
+  //         {
+  //           AppDBConst.itemCount: quantity,
+  //           AppDBConst.itemSumPrice: newSumPrice
+  //         },
+  //         where: '${AppDBConst.itemId} = ?',
+  //         whereArgs: [itemId]
+  //     );
+  //
+  //     if (kDebugMode) {
+  //       print('#### Item quantity updated: ID=$itemId, Quantity=$quantity');
+  //     }
+  //
+  //     // After database update, refresh the UI
+  //     // setState(() {
+  //     //   // If needed, update any widget state variables here
+  //     // });
+  //
+  //     // Or if using a provider
+  //     // Provider.of<YourProvider>(context, listen: false).refreshItems();
+  //   }
+  // }
+}
+=======
 // If using a StatefulWidget
 // Future<void> updateItemQuantity(int itemId, int quantity) async {
 //   final db = await DBHelper.instance.database;
@@ -3905,3 +4764,4 @@ class OrderHelper {
 
 
 }
+>>>>>>> origin/Grocery_pch_api_integration

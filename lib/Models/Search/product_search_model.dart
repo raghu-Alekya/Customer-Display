@@ -32,9 +32,12 @@ class ProductResponse { // Build #1.0.13 : Added product search model
   String? dateOnSaleTo;
   List<int>? variations;
 
+<<<<<<< HEAD
+=======
   // ✅ NEW: Cached loyalty points for quick access
   int? _cachedLoyaltyPoints;
 
+>>>>>>> origin/Grocery_pch_api_integration
   ProductResponse({
     this.id,
     this.name,
@@ -165,6 +168,8 @@ class ProductResponse { // Build #1.0.13 : Added product search model
       'variations': variations,
     };
   }
+<<<<<<< HEAD
+=======
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ✅ NEW: Helper methods for loyalty points (no breaking changes)
@@ -225,6 +230,7 @@ class ProductResponse { // Build #1.0.13 : Added product search model
     final points = getLoyaltyPoints();
     return points > 0 ? points.toString() : '';
   }
+>>>>>>> origin/Grocery_pch_api_integration
 }
 
 class Dimensions {
@@ -304,7 +310,10 @@ class MetaData {
   }
 }
 
+<<<<<<< HEAD
+=======
 // Uncomment if Tags class is needed
+>>>>>>> origin/Grocery_pch_api_integration
 // class Tags {
 //   int? id;
 //   String? name;
@@ -332,7 +341,11 @@ class MetaData {
 class ProductRequest { // Build #1.0.13 : Added product search model
   int page;
   int limit;
+<<<<<<< HEAD
+   String? search;
+=======
   String? search;
+>>>>>>> origin/Grocery_pch_api_integration
 
   ProductRequest({
     required this.page,

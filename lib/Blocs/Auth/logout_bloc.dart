@@ -41,12 +41,19 @@ class LogoutBloc {
       // Call repository to perform logout
       String response = await _logoutRepository.logout();
       LogoutResponse logoutResponse = LogoutResponse.fromJson(json.decode(response));
+<<<<<<< HEAD
+
+      if (kDebugMode) {
+        print("LogoutBloc - Logout response: ${logoutResponse.message}");
+      }
+=======
       // await UserDbHelper().logout();
       if (kDebugMode) {
         print("LogoutBloc - Logout response: ${logoutResponse.message}");
       }
       await UserDbHelper().logout();
 
+>>>>>>> origin/Grocery_pch_api_integration
 
       if (logoutResponse.success) {
          // If i clear user data from database and shared preferences / shiftId and another values will delete just for logout

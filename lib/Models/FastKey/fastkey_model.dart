@@ -1,11 +1,39 @@
 import 'fastkey_product_model.dart';
 
+<<<<<<< HEAD
+// //Using for Fast Key Screen Horizontal List Scroll
+// class FastKeyModel { // Build #1.0.19: No need
+//   late int id; // Build #1.0.11
+//   late String name; //Build #1.0.4
+//   late String itemCount;
+//   late String imageAsset;
+//
+//   FastKeyModel({
+//     required this.id,
+//     required this.name,
+//     required this.itemCount,
+//     required this.imageAsset,
+//   });
+// }
+
+/// ==============================================
+/// 1. FAST KEY CREATION AND LISTING MODELS
+/// ==============================================
+
+/// API: POST /fastkeys/create
+/// Creates a new FastKey
+=======
+>>>>>>> origin/Grocery_pch_api_integration
 class FastKeyRequest {  // Build #1.0.15
   final String fastkeyTitle;
   final int fastkeyIndex;
   final String fastkeyImage;
   final int? userId;
+<<<<<<< HEAD
+  final int? fastkeyServerId;
+=======
   final dynamic fastkeyServerId;
+>>>>>>> origin/Grocery_pch_api_integration
 
   FastKeyRequest({
     required this.fastkeyTitle,
@@ -36,7 +64,11 @@ class FastKeyRequest {  // Build #1.0.15
 class FastKeyResponse {
   final String status;
   final String message;
+<<<<<<< HEAD
+  final int fastkeyId;
+=======
   final dynamic fastkeyId;
+>>>>>>> origin/Grocery_pch_api_integration
   final String fastkeyTitle;
   final String fastkeyIndex;
   final String fastkeyImage;
@@ -51,6 +83,15 @@ class FastKeyResponse {
   });
 
   factory FastKeyResponse.fromJson(Map<String, dynamic> json) {
+<<<<<<< HEAD
+    return FastKeyResponse(
+      status: json['status'] ?? '',
+      message: json['message'] ?? '',
+      fastkeyId: json['fastkey_id'] ?? 0,
+      fastkeyTitle: json['fastkey_title'] ?? '',
+      fastkeyIndex: json['fastkey_index']?.toString() ?? '0',
+      fastkeyImage: json['fastkey_image'] ?? '',
+=======
     var rawId = json['fastkey_id'] ?? json['fastkeyId'] ?? json['id'];
     return FastKeyResponse(
       status: json['status']?.toString() ?? '',
@@ -59,6 +100,7 @@ class FastKeyResponse {
       fastkeyTitle: json['fastkey_title']?.toString() ?? '',
       fastkeyIndex: json['fastkey_index']?.toString() ?? '0',
       fastkeyImage: json['fastkey_image']?.toString() ?? '',
+>>>>>>> origin/Grocery_pch_api_integration
     );
   }
 }
@@ -79,6 +121,14 @@ class FastKeyListResponse {
   });
 
   factory FastKeyListResponse.fromJson(Map<String, dynamic> json) {
+<<<<<<< HEAD
+    return FastKeyListResponse(
+      status: json['status'] ?? '',
+      message: json['message'] ?? '',
+      userId: json['user_id'] ?? 0,
+      fastkeys: (json['fastkeys'] as List<dynamic>?)
+          ?.map((item) => FastKey.fromJson(item))
+=======
     List<dynamic>? rawList;
     if (json['fastkeys'] is List) {
       rawList = json['fastkeys'] as List<dynamic>;
@@ -94,6 +144,7 @@ class FastKeyListResponse {
       userId: int.tryParse(json['user_id']?.toString() ?? '') ?? 0,
       fastkeys: rawList
           ?.map((item) => FastKey.fromJson(item as Map<String, dynamic>))
+>>>>>>> origin/Grocery_pch_api_integration
           .toList() ??
           [],
     );
@@ -103,7 +154,11 @@ class FastKeyListResponse {
 /// Shared model for FastKey representation
 /// Used in both creation and listing responses
 class FastKey {
+<<<<<<< HEAD
+  final int fastkeyServerId; // Build #1.0.19: Updated fastkeyId to fastkeyServerId for better understanding
+=======
   final dynamic fastkeyServerId; // Build #1.0.19: Updated fastkeyId to fastkeyServerId for better understanding
+>>>>>>> origin/Grocery_pch_api_integration
   final int userId;
   final String fastkeyTitle;
   final dynamic fastkeyImage; // Can be bool or String
@@ -122,6 +177,17 @@ class FastKey {
   });
 
   factory FastKey.fromJson(Map<String, dynamic> json) {
+<<<<<<< HEAD
+    return FastKey(
+      fastkeyServerId: json['fastkey_id'] ?? 0,
+      userId: json['user_id'] ?? 0,
+      fastkeyTitle: json['fastkey_title'] ?? '',
+      fastkeyImage: json['fastkey_image'],
+      fastkeyIndex: json['fastkey_index']?.toString() ?? '0',
+      itemCount: json['itemCount'] ?? 0,
+      products: (json['products'] as List<dynamic>?)
+          ?.map((item) => FastKeyProduct.fromJson(item))
+=======
     var rawServerId = json['fastkey_id'] ?? json['fastkeyId'] ?? json['id'];
     var rawUserId = json['user_id'] ?? json['userId'];
 
@@ -134,12 +200,17 @@ class FastKey {
       itemCount: json['itemCount'] is int ? json['itemCount'] as int : (int.tryParse(json['itemCount']?.toString() ?? '') ?? 0),
       products: (json['products'] as List<dynamic>?)
           ?.map((item) => FastKeyProduct.fromJson(item as Map<String, dynamic>))
+>>>>>>> origin/Grocery_pch_api_integration
           .toList() ?? [],
     );
   }
 
   FastKey copyWith({
+<<<<<<< HEAD
+    int? fastkeyServerId,
+=======
     dynamic fastkeyServerId,
+>>>>>>> origin/Grocery_pch_api_integration
     int? userId,
     String? fastkeyTitle,
     dynamic fastkeyImage,

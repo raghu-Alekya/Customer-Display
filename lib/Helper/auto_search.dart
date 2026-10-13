@@ -1,4 +1,7 @@
+<<<<<<< HEAD
+=======
 import 'dart:async';
+>>>>>>> origin/Grocery_pch_api_integration
 
 import 'package:flutter/foundation.dart';
 import '../Repositories/Search/product_search_repository.dart';
@@ -25,9 +28,12 @@ class SearchProduct {
   List _productList = <dynamic>[];
   List get productList => _productList;
   bool isOnline = true;
+<<<<<<< HEAD
+=======
   Timer? _queryDebounce;
   static const int _minQueryLength = 3;
   static const Duration _debounceDelay = Duration(seconds: 2);
+>>>>>>> origin/Grocery_pch_api_integration
   // Build #1.1.226: Fixed - updated xCountryCode to global string to fix the destinationController not getting auto search result because country code is empty
   // Cause: SearchAutoSuggest _autoSuggest; is initializing second time when AddDestination calls, that time xCountryCode is empty
   //String xCountryCode ="";
@@ -36,10 +42,15 @@ class SearchProduct {
     _productList = value;
 
   }
+<<<<<<< HEAD
+  SearchProduct(){
+
+=======
   SearchProduct();
 
   void dispose() {
     _queryDebounce?.cancel();
+>>>>>>> origin/Grocery_pch_api_integration
   }
 
   Future<List> getProductResults() async {
@@ -49,8 +60,14 @@ class SearchProduct {
     }
     return _productList;
   }
+<<<<<<< HEAD
+  listentextchange(String text) async {
+    // fetchSimpleData();
+   // _autoSuggestExample(text , isChooseOnMapAvailable);
+=======
   void listentextchange(String text) {
     _queryDebounce?.cancel();
+>>>>>>> origin/Grocery_pch_api_integration
     _productList.clear();
     if (kDebugMode) {
       print("auto_search.listentextchange ######################### $text, $_productList \n");
@@ -58,6 +75,20 @@ class SearchProduct {
         print("auto_search.listentextchange product #########################${element.label} \n");
       });
     }
+<<<<<<< HEAD
+    if(text.isEmpty){
+      return [];
+    }
+    await _productBloc.fetchProducts(searchQuery: text).whenComplete((){
+      _loadProduct();
+      if (kDebugMode) {
+        print("2 auto_search.listentextchange object#########################${_productList.length} \n");
+      }
+    });
+    if (kDebugMode) {
+      print("3 auto_search.listentextchange object#########################${_productList.length} \n");
+    }
+=======
     final trimmed = text.trim();
     if (trimmed.isEmpty || trimmed.length < _minQueryLength) {
       return;
@@ -75,6 +106,7 @@ class SearchProduct {
         print("3 auto_search.listentextchange object#########################${_productList.length} \n");
       }
     });
+>>>>>>> origin/Grocery_pch_api_integration
   }
 
   Future<List> fetchSimpleData() async {
@@ -137,11 +169,54 @@ class SearchProduct {
 
     _productList.clear();
 
+<<<<<<< HEAD
+   ///perform search and update the productList
+=======
     ///perform search and update the productList
+>>>>>>> origin/Grocery_pch_api_integration
 
     return _productList;
   }
 
+<<<<<<< HEAD
+  // void searchResult(String text,  List<Suggestion>? list){
+  //   if (searchError != null) {
+  //     ///Add logs for the errors
+  //     if (kDebugMode) {
+  //       print("Auto suggest Error (Online): $text, $searchError");
+  //     }
+  //     return;
+  //   }
+  //   // If error is null, list is guaranteed to be not empty.
+  //   int listLength = list!.length;
+  //   if (kDebugMode) {
+  //     print("Auto suggest results: $listLength.");
+  //   }
+  //   _productList.clear();
+  //
+  //  ///read the items from list and add to the product items before showing on UI
+  //   // for (ProductItem autoSuggestResult in list) {
+  //   //   String addressText = "Not a place.";
+  //   //   Place? place = autoSuggestResult.place;
+  //   //   // List _list = <dynamic>[];
+  //   //   if (place != null) {
+  //   //     var address = place.address.addressText.split(',');
+  //   //     addressText = place.address.addressText;//.substring(0,55);
+  //   //     if (kDebugMode) {
+  //   //       print("place : ${place.address.addressText}.");
+  //   //     }
+  //   //     // addressText = place.address.street + place.address.state;
+  //   //     _productList.add(ProductItem(label: addressText,value: place));
+  //   //   }
+  //   // }
+  //   if (kDebugMode) {
+  //     // _placelist.forEach((element) {
+  //       // print("4 object#########################${element.label} \n");
+  //     // });
+  //
+  //   }
+  // }
+=======
 // void searchResult(String text,  List<Suggestion>? list){
 //   if (searchError != null) {
 //     ///Add logs for the errors
@@ -179,4 +254,5 @@ class SearchProduct {
 //
 //   }
 // }
+>>>>>>> origin/Grocery_pch_api_integration
 }

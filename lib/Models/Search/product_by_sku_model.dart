@@ -145,6 +145,8 @@ class ProductBySkuResponse { // Build #1.0.43: Added by naveen
     required this.links,
   });
 
+<<<<<<< HEAD
+=======
   // ✅ DETECT CUSTOM ITEM (MUST BE INSIDE CLASS)
   bool get isCustomItem {
     try {
@@ -168,6 +170,7 @@ class ProductBySkuResponse { // Build #1.0.43: Added by naveen
     return "assets/custom.png";
   }
 
+>>>>>>> origin/Grocery_pch_api_integration
   factory ProductBySkuResponse.fromJson(Map<String, dynamic> json) {
     return ProductBySkuResponse(
       id: json['id'] ?? 0,
@@ -229,6 +232,14 @@ class ProductBySkuResponse { // Build #1.0.43: Added by naveen
           .toList() ??
           [],
       tags: json['tags'] != null
+<<<<<<< HEAD
+          ? List<Tags>.from(json['tags'].map((x) => Tags.fromJson(x)))
+          : null,
+      images: (json['images'] as List<dynamic>?)
+          ?.map((e) => Image.fromJson(e))
+          .toList() ??
+          [],
+=======
           ? List<Tags>.from(json['tags'].map((x) => Tags.fromJson(x is Map
           ? Map<String, dynamic>.from(x)
           : <String, dynamic>{})))
@@ -261,6 +272,7 @@ class ProductBySkuResponse { // Build #1.0.43: Added by naveen
         }
         return <Image>[];
       }(),
+>>>>>>> origin/Grocery_pch_api_integration
       attributes: List<dynamic>.from(json['attributes'] ?? []),
       defaultAttributes: List<dynamic>.from(json['default_attributes'] ?? []),
       variations: List<dynamic>.from(json['variations'] ?? []),
