@@ -3407,12 +3407,12 @@ class OrderHelper {
 
         // Line tax for new item (same formula as merge path / saveOfflineOrder)
         final String newTaxStatus =
-        effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus;
+            effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus;
         double newItemTax = 0.0;
         if (newTaxStatus.toLowerCase() == "taxable" &&
             effectiveTaxRate > 0) {
           final double taxableBase =
-          isWeightedItem ? price : (price * itemQuantity);
+              isWeightedItem ? price : (price * itemQuantity);
           newItemTax =
               roundTaxHalfUp(taxableBase * (effectiveTaxRate / 100));
         }

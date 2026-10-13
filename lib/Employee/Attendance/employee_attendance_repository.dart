@@ -74,7 +74,7 @@ class EmployeeAttendanceRepository {
           employeeCode: map['employeeCode'] ?? '',
           name:
               fullName.isNotEmpty ? fullName : (map['username'] ?? 'Employee'),
-          isRegistered: map['pinSet'] == true || (map['loginPin'] != null),
+          isRegistered: true,
           loginPin: map['loginPin']?.toString(),
           roleName: map['roleName']?.toString() ?? 'Staff',
         );

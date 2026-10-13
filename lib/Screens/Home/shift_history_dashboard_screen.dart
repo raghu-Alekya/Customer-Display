@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pinaka_pos/Repositories/Auth/shift_repository.dart';
+import 'package:pinaka_pos/Repositories/Auth/AuthIdsStore.dart';
 import 'package:provider/provider.dart';
 import '../../Blocs/Auth/shift_bloc.dart';
 import '../../Constants/text.dart';
@@ -49,7 +50,14 @@ class _ShiftHistoryDashboardScreenState
     // Fetch shifts for user ID
     final userData = await UserDbHelper().getUserData();
     if (userData != null && userData[AppDBConst.userId] != null) {
-      shiftBloc.getShiftsByUser(userData[AppDBConst.userId] as int);
+      final userId = userData[AppDBConst.userId] as int;
+      final employeeId = (await AuthIdsStore.getEmployeeId()).trim();
+      if (employeeId.isNotEmpty) {
+        shiftBloc.getShiftsByEmployee(employeeId, userId);
+      } else {
+        // Sessions from before the employee UUID was stored
+        shiftBloc.getShiftsByUser(userId);
+      }
     }
   }
 
@@ -348,6 +356,7 @@ class _ShiftHistoryDashboardScreenState
                                                 lastSelectedIndex:
                                                 _selectedSidebarIndex,
                                                 shiftId: shift.shiftId,
+                                                shift: shift,
                                               ),
                                         ),
                                       );
@@ -477,6 +486,7 @@ class _ShiftHistoryDashboardScreenState
                 builder: (context) => ShiftSummaryDashboardScreen(
                   lastSelectedIndex: _selectedSidebarIndex,
                   shiftId: shift.shiftId,
+                  shift: shift,
                 ),
               ),
             );
@@ -619,13 +629,20 @@ class _ShiftHistoryDashboardScreenState
 
 //Build #1.0.74:  ADDED HELPER
 class DateTimeHelper {
+  // Accepts the old 'yyyy-MM-dd HH:mm:ss' format and ISO 8601 from the PCH
+  // shifts API ('2026-10-13T10:35:55.965Z'); UTC values are shown in local time.
+  static DateTime _parse(String value) {
+    final parsed = DateTime.tryParse(value.trim());
+    if (parsed != null) return parsed.toLocal();
+    return DateFormat('yyyy-MM-dd HH:mm:ss').parse(value);
+  }
+
   // Calculate duration from start time to current time or end time
   static String calculateDuration(String startTime, String endTime) {
     try {
-      final DateFormat dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
-      final DateTime start = dateFormat.parse(startTime);
+      final DateTime start = _parse(startTime);
       final DateTime end =
-      endTime.isNotEmpty ? dateFormat.parse(endTime) : DateTime.now();
+      endTime.isNotEmpty ? _parse(endTime) : DateTime.now();
       final Duration duration = end.difference(start);
       final int hours = duration.inHours;
       final int minutes = duration.inMinutes.remainder(60);
@@ -644,9 +661,8 @@ class DateTimeHelper {
   // Extract date from start time
   static String extractDate(String startTime) {
     try {
-      final DateFormat inputFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
       final DateFormat outputFormat = DateFormat('dd/MM/yyyy');
-      final DateTime dateTime = inputFormat.parse(startTime);
+      final DateTime dateTime = _parse(startTime);
       final String formattedDate = outputFormat.format(dateTime);
       if (kDebugMode) {
         print('Extracted date from $startTime -> $formattedDate');
@@ -661,9 +677,8 @@ class DateTimeHelper {
   // Extract time from datetime string
   static String extractTime(String time) {
     try {
-      final DateFormat inputFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
       final DateFormat outputFormat = DateFormat('HH:mm:ss');
-      final DateTime dateTime = inputFormat.parse(time);
+      final DateTime dateTime = _parse(time);
       final String formattedTime = outputFormat.format(dateTime);
       if (kDebugMode) {
         print('Extracted time from $time -> $formattedTime');

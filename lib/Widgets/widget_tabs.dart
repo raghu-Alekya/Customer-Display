@@ -711,7 +711,7 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
             cat['parent'] ??
             0;
         final description =
-        (payload['description'] ?? cat['description'] ?? '').toString();
+            (payload['description'] ?? cat['description'] ?? '').toString();
         final count = payload['count'] ??
             cat['productCount'] ??
             cat['count'] ??
@@ -719,14 +719,14 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
         final image = payload['image'] ?? cat['image'];
 
         final posTaxClass = (payload['pos_tax_class'] ??
-            cat['posTaxClass'] ??
-            cat['pos_tax_class'] ??
-            '')
+                cat['posTaxClass'] ??
+                cat['pos_tax_class'] ??
+                '')
             .toString();
         final posTaxPercent = (payload['pos_tax_percent'] ??
-            cat['posTaxPercent'] ??
-            cat['pos_tax_percent'] ??
-            '0')
+                cat['posTaxPercent'] ??
+                cat['pos_tax_percent'] ??
+                '0')
             .toString();
         final posTaxSlug = posTaxClass.isNotEmpty
             ? posTaxClass.toLowerCase().replaceAll(' ', '-')

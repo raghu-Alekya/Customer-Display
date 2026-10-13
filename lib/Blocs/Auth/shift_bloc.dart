@@ -61,6 +61,31 @@ class ShiftBloc { //Build #1.0.74: Updated Code
     }
   }
 
+  // Fetch shifts by employee UUID (/pos/shifts/employee/{id})
+  Future<void> getShiftsByEmployee(String employeeId, int userId) async {
+    if (_shiftsByUserController.isClosed) return;
+
+    shiftsByUserSink.add(APIResponse.loading(TextConstants.loading));
+    try {
+      ShiftsByUserResponse response =
+          await _shiftRepository.getShiftsByEmployee(employeeId, userId);
+      if (kDebugMode) {
+        print("ShiftBloc - Successfully fetched ${response.shifts.length} shifts for employee $employeeId");
+      }
+      shiftsByUserSink.add(APIResponse.completed(response));
+    } catch (e) {
+      if (e.toString().contains('Unauthorised')) {
+        shiftsByUserSink.add(APIResponse.error("Unauthorised. Session is expired."));
+      }
+      else if (e.toString().contains('SocketException')) {
+        shiftsByUserSink.add(APIResponse.error("Network error. Please check your connection."));
+      } else {
+        shiftsByUserSink.add(APIResponse.error("Failed to fetch shifts: ${e.toString()}"));
+      }
+      if (kDebugMode) print("Exception in getShiftsByEmployee: $e");
+    }
+  }
+
   //Build #1.0.74: Fetch shift by shift ID
   Future<void> getShiftById(int shiftId) async {
     if (_shiftByIdController.isClosed) return;

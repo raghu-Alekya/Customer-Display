@@ -7650,7 +7650,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                     .toString()
                                                     .toLowerCase();
                                                 final lineTaxRate = double.tryParse(
-                                                    (product['tax_rate'] ?? '0').toString()) ??
+                                                        (product['tax_rate'] ?? '0').toString()) ??
                                                     0.0;
                                                 final isEbt = product['is_ebt_eligible'] == true;
                                                 if (isEbt || lineTaxStatus == 'none') {
@@ -7662,9 +7662,9 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                   product['tax_status'] = 'taxable';
                                                 } else {
                                                   final pid = int.tryParse(
-                                                      (product['product_id'] ?? product['id'])
-                                                          ?.toString() ??
-                                                          '0') ??
+                                                          (product['product_id'] ?? product['id'])
+                                                              ?.toString() ??
+                                                              '0') ??
                                                       0;
                                                   product['item_tax'] = pid > 0
                                                       ? getProductTaxFromHive(pid, price, newQuantity)
@@ -7690,7 +7690,7 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                 custom['subtotal'] = price * newQuantity;
 
                                                 final cRate = double.tryParse(
-                                                    (custom['tax_rate'] ?? '0').toString()) ??
+                                                        (custom['tax_rate'] ?? '0').toString()) ??
                                                     0.0;
                                                 if (cRate > 0) {
                                                   custom['item_tax'] = roundTaxHalfUp(
@@ -7744,25 +7744,25 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                               double orderTax = 0.0;
                                               for (final p in products) {
                                                 final int qty = int.tryParse(
-                                                    p['quantity']?.toString() ??
-                                                        p['items_count']?.toString() ??
-                                                        '1') ??
+                                                        p['quantity']?.toString() ??
+                                                            p['items_count']?.toString() ??
+                                                            '1') ??
                                                     1;
                                                 final double price =
                                                     double.tryParse(p['price']?.toString() ?? '0') ??
                                                         0.0;
                                                 final bool isEbt = p['is_ebt_eligible'] == true;
                                                 final lineTaxStatus =
-                                                (p['tax_status'] ?? 'taxable')
-                                                    .toString()
-                                                    .toLowerCase();
+                                                    (p['tax_status'] ?? 'taxable')
+                                                        .toString()
+                                                        .toLowerCase();
                                                 final lineTaxRate = double.tryParse(
-                                                    (p['tax_rate'] ?? '0').toString()) ??
+                                                        (p['tax_rate'] ?? '0').toString()) ??
                                                     0.0;
                                                 final int productId = int.tryParse(
-                                                    (p['product_id'] ?? p['id'])
-                                                        ?.toString() ??
-                                                        '0') ??
+                                                        (p['product_id'] ?? p['id'])
+                                                            ?.toString() ??
+                                                            '0') ??
                                                     0;
 
                                                 double lineTax = 0.0;
@@ -7781,16 +7781,16 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                               }
                                               for (final c in customItems) {
                                                 final int qty = int.tryParse(
-                                                    c['quantity']?.toString() ?? '1') ??
+                                                        c['quantity']?.toString() ?? '1') ??
                                                     1;
                                                 final double price = double.tryParse(
-                                                    c['custom_item_price']?.toString() ??
-                                                        c['amount']?.toString() ??
-                                                        c['price']?.toString() ??
-                                                        '0') ??
+                                                        c['custom_item_price']?.toString() ??
+                                                            c['amount']?.toString() ??
+                                                            c['price']?.toString() ??
+                                                            '0') ??
                                                     0.0;
                                                 final cRate = double.tryParse(
-                                                    (c['tax_rate'] ?? '0').toString()) ??
+                                                        (c['tax_rate'] ?? '0').toString()) ??
                                                     0.0;
                                                 double lineTax = 0.0;
                                                 if (cRate > 0) {

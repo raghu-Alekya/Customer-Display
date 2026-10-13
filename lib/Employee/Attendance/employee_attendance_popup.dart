@@ -347,14 +347,15 @@ class _EmployeeAttendanceDialogState extends State<_EmployeeAttendanceDialog> {
             const SizedBox(width: 12),
             FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF16834B),
+                backgroundColor: const Color(0xFF00BFA5),
+                disabledBackgroundColor: const Color(0xFFE2E8F0),
+                disabledForegroundColor: const Color(0xFF94A3B8),
+                foregroundColor: Colors.white,
                 padding:
                 const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 visualDensity: VisualDensity.compact,
               ),
-              onPressed: !_selectedEmployee!.isRegistered ||
-                  isSubmitting ||
-                  isSelectedOpen
+              onPressed: isSubmitting || isSelectedOpen
                   ? null
                   : () => _askPinAndClock(context, _selectedEmployee!,
                   isClockIn: true),
@@ -365,13 +366,14 @@ class _EmployeeAttendanceDialogState extends State<_EmployeeAttendanceDialog> {
             FilledButton.icon(
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF00BFA5),
+                disabledBackgroundColor: const Color(0xFFE2E8F0),
+                disabledForegroundColor: const Color(0xFF94A3B8),
+                foregroundColor: Colors.white,
                 padding:
                 const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 visualDensity: VisualDensity.compact,
               ),
-              onPressed: !_selectedEmployee!.isRegistered ||
-                  isSubmitting ||
-                  !isSelectedOpen
+              onPressed: isSubmitting || !isSelectedOpen
                   ? null
                   : () => _askPinAndClock(context, _selectedEmployee!,
                   isClockIn: false),
@@ -525,21 +527,39 @@ class _EmployeeAttendanceDialogState extends State<_EmployeeAttendanceDialog> {
           Wrap(
             spacing: 8,
             children: [
-              FilledButton.tonalIcon(
-                onPressed: !employee.isRegistered || isSubmitting || isOpen
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF00BFA5),
+                  disabledBackgroundColor: const Color(0xFFE2E8F0),
+                  disabledForegroundColor: const Color(0xFF94A3B8),
+                  foregroundColor: Colors.white,
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: isSubmitting || isOpen
                     ? null
                     : () => _askPinAndClock(context, employee,
                     isClockIn: true),
                 icon: isSubmitting
                     ? const SizedBox.square(
                   dimension: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                 )
                     : const Icon(Icons.login, size: 17),
                 label: const Text('Clock In'),
               ),
-              FilledButton.tonalIcon(
-                onPressed: !employee.isRegistered || isSubmitting || !isOpen
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF00BFA5),
+                  disabledBackgroundColor: const Color(0xFFE2E8F0),
+                  disabledForegroundColor: const Color(0xFF94A3B8),
+                  foregroundColor: Colors.white,
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: isSubmitting || !isOpen
                     ? null
                     : () => _askPinAndClock(context, employee,
                     isClockIn: false),
@@ -568,8 +588,6 @@ class _EmployeeAttendanceDialogState extends State<_EmployeeAttendanceDialog> {
       AttendanceEmployee employee, {
         required bool isClockIn,
       }) async {
-    if (!employee.isRegistered) return;
-
     // Always empty fresh controller - never prefill old PIN
     final controller = TextEditingController();
 

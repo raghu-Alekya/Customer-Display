@@ -14,10 +14,11 @@ import 'AuthIdsStore.dart';
 import '../../Screens/Auth/store_id_screen.dart';
 
 class ShiftRepository {
-  static const String _openShiftUrl =
-      'https://pch.alektasolutions.com/api/v1/pos/shifts/open';
-  static const String _closeShiftUrl =
-      'https://pch.alektasolutions.com/api/v1/pos/shifts/close';
+  static const String _shiftsBaseUrl =
+      'https://pch.alektasolutions.com/api/v1/pos/shifts/';
+  static const String _openShiftUrl = '${_shiftsBaseUrl}open';
+  static const String _closeShiftUrl = '${_shiftsBaseUrl}close';
+  static const String _employeeShiftsUrl = '${_shiftsBaseUrl}employee/';
 
   final APIHelper _helper = APIHelper();
   final ShiftDbHelper _shiftDbHelper =
@@ -58,7 +59,51 @@ class ShiftRepository {
       }
     }
 
-    // Offline fallback: query local shifts from SQLite
+    return _getLocalShifts(userId);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Fetch shifts by employee UUID (Online first + Offline fallback)
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<ShiftsByUserResponse> getShiftsByEmployee(
+      String employeeId, int userId) async {
+    final isOnline = await OfflineHelper.isNetworkAvailable();
+    final isOfflineSession = await UserDbHelper().isOfflineSession();
+
+    if (isOnline && !isOfflineSession) {
+      final url = "$_employeeShiftsUrl$employeeId";
+
+      if (kDebugMode) {
+        print("ShiftRepository - GET URL for Shifts by Employee: $url");
+      }
+
+      try {
+        final response = await _helper.get(url, true);
+
+        if (kDebugMode) {
+          print("ShiftRepository - GET Raw Response: $response");
+        }
+
+        final dynamic decoded =
+        response is String ? json.decode(response) : response;
+        if (decoded is Map && decoded['success'] == false) {
+          throw Exception(
+            decoded['message']?.toString() ?? 'Failed to fetch shifts.',
+          );
+        }
+        return ShiftsByUserResponse.fromJson(decoded);
+      } catch (e) {
+        if (kDebugMode)
+          print("ShiftRepository - getShiftsByEmployee online failed: $e");
+        if (OfflineHelper.isSessionError(e)) rethrow;
+      }
+    }
+
+    return _getLocalShifts(userId);
+  }
+
+  // Offline fallback: query local shifts from SQLite
+  Future<ShiftsByUserResponse> _getLocalShifts(int userId) async {
     try {
       final shifts = await ShiftDbHelper().getPendingShifts();
       return ShiftsByUserResponse(
@@ -252,12 +297,15 @@ class ShiftRepository {
           cashierName == null || cashierName.isEmpty
               ? 'Cashier'
               : cashierName;
+          final employeeId = await _getEmployeeUuid();
           final payload = <String, dynamic>{
             'merchant_id': merchantId,
             'store_id': storeId,
             'device_id': deviceId,
             'cashier_name': effectiveCashierName,
             'opening_cash': request.totalAmount,
+            // Links the shift to the employee for /pos/shifts/employee/{id}
+            if (employeeId != null) 'opened_by_employee_id': employeeId,
           };
           final response = await _helper.post(
             url,
@@ -444,9 +492,11 @@ class ShiftRepository {
     required num closingCash,
     required String cashierName,
   }) async {
+    final employeeId = await _getEmployeeUuid();
     final payload = <String, dynamic>{
       'shift_id': serverShiftId,
       'closing_cash_actual': closingCash,
+      if (employeeId != null) 'closed_by_employee_id': employeeId,
     };
     final response = await _helper.post(
       _closeShiftUrl,
@@ -488,6 +538,16 @@ class ShiftRepository {
       status: (shiftData['status'] ?? responseData['status'])?.toString() ??
           'CLOSED',
     );
+  }
+
+  // pos_shifts.opened_by_employee_id / closed_by_employee_id are uuid columns,
+  // so only send the stored employee id when it is a valid UUID.
+  static final RegExp _uuidPattern = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+
+  Future<String?> _getEmployeeUuid() async {
+    final employeeId = (await AuthIdsStore.getEmployeeId()).trim();
+    return _uuidPattern.hasMatch(employeeId) ? employeeId : null;
   }
 
   ShiftResponse _parseOpenedShiftResponse(
