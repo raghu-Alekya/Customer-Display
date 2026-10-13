@@ -6,10 +6,20 @@ import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/Helper/url_helper.dart';
 import '../Database/db_helper.dart';
 import '../Database/user_db_helper.dart';
+<<<<<<< HEAD
 import 'file_helper.dart';
 import 'package:pinaka_pos/Helper/Extentions/exceptions.dart';
 
 class APIHelper { // Build #1.0.8, Naveen added
+=======
+import '../Repositories/Auth/AuthIdsStore.dart';
+import '../core/api/token_storage.dart';
+import 'file_helper.dart';
+import 'package:pinaka_pos/Helper/Extentions/exceptions.dart';
+
+class APIHelper {
+  // Build #1.0.8, Naveen added
+>>>>>>> origin/Grocery_pch_api_integration
   //Build #1.0.54: added insure UrlHelper base URL is initialized
   Future<void> _initializeBaseUrl() async {
     if (kDebugMode) {
@@ -17,7 +27,88 @@ class APIHelper { // Build #1.0.8, Naveen added
     }
     await UrlHelper.initializeBaseUrl();
     if (kDebugMode) {
+<<<<<<< HEAD
       print("#### APIHelper: UrlHelper base URL initialized: ${UrlHelper.baseUrl}");
+=======
+      print(
+          "#### APIHelper: UrlHelper base URL initialized: ${UrlHelper.baseUrl}");
+    }
+  }
+
+  /// Builds connector-API headers.
+  /// - Bearer from SQLite userToken, with TokenStorage fallback
+  /// - x-merchant-id / x-store-id from AuthIdsStore (required by POST /orders)
+  Future<Map<String, String>> _buildAuthHeaders({
+    required bool useToken,
+    String? tokenOverride,
+  }) async {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
+    String token = tokenOverride ?? '';
+    if (useToken && token.isEmpty) {
+      final userData = await UserDbHelper().getUserData();
+      token = userData?[AppDBConst.userToken]?.toString() ?? '';
+    }
+    if (useToken && token.isEmpty) {
+      token = (await TokenStorage().getAccessToken())?.trim() ?? '';
+    }
+    if (useToken && token.isNotEmpty) {
+      headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
+    }
+
+    try {
+      final merchantId = (await AuthIdsStore.getMerchantId()).trim();
+      final storeId = (await AuthIdsStore.getStoreId()).trim();
+      if (merchantId.isNotEmpty) {
+        headers['x-merchant-id'] = merchantId;
+      }
+      if (storeId.isNotEmpty) {
+        headers['x-store-id'] = storeId;
+      }
+    } catch (_) {}
+
+    return headers;
+  }
+
+  Future<dynamic> postForm(
+      String url,
+      Map<String, String> params,
+      bool useToken, {
+        bool validateMarchentUrl = false,
+      }) async {
+    String finalUrl = "";
+    String token = ""; //  non-nullable
+
+    try {
+      await _initializeBaseUrl();
+
+      finalUrl = validateMarchentUrl ? url : UrlHelper.baseUrl + url;
+
+      final userData = await UserDbHelper().getUserData();
+      token = userData?[AppDBConst.userToken] ?? "";
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse(finalUrl),
+      );
+
+      if (useToken && token.isNotEmpty) {
+        request.headers[HttpHeaders.authorizationHeader] = "Bearer $token";
+      }
+
+      request.fields.addAll(params);
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      return _returnResponse(response);
+    } catch (e, s) {
+      _logError("POST FORM", finalUrl, token, e, s);
+      throw Exception("Exception: $e; Stack: $s");
+>>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
@@ -29,13 +120,23 @@ class APIHelper { // Build #1.0.8, Naveen added
 
     try {
       await _initializeBaseUrl(); // Ensure base URL is initialized
+<<<<<<< HEAD
       finalUrl = UrlHelper.baseUrl + url;
       final userData = await UserDbHelper().getUserData();
       token =  userData?[AppDBConst.userToken] ?? ""; // Build #1.0.13: token get from the user table from db
+=======
+      // Allow absolute URLs (e.g. safeApiBaseUrl endpoints) without prepending connector base
+      finalUrl = url.startsWith('http') ? url : UrlHelper.baseUrl + url;
+      final headers = await _buildAuthHeaders(useToken: useToken);
+      token = headers[HttpHeaders.authorizationHeader]
+          ?.replaceFirst('Bearer ', '') ??
+          '';
+>>>>>>> origin/Grocery_pch_api_integration
 
       if (kDebugMode) {
         print("URL: $finalUrl");
         print("Environment: ${UrlHelper.environment[UrlHelper.baseUrl]}");
+<<<<<<< HEAD
         print("Bearer Token: $token");
       }
 
@@ -50,6 +151,11 @@ class APIHelper { // Build #1.0.8, Naveen added
           HttpHeaders.authorizationHeader: "Bearer $token",
       };
 
+=======
+        print("Headers keys: ${headers.keys.toList()}");
+      }
+
+>>>>>>> origin/Grocery_pch_api_integration
       final response = await http.get(Uri.parse(finalUrl), headers: headers);
       responseJson = _returnResponse(response);
     } on SocketException {
@@ -72,7 +178,11 @@ class APIHelper { // Build #1.0.8, Naveen added
       await _initializeBaseUrl(); // Ensure base URL is initialized
       finalUrl = UrlHelper.baseUrl + url;
       final userData = await UserDbHelper().getUserData();
+<<<<<<< HEAD
       token =  userData?[AppDBConst.userToken] ?? "";
+=======
+      token = userData?[AppDBConst.userToken] ?? "";
+>>>>>>> origin/Grocery_pch_api_integration
 
       if (kDebugMode) {
         print("URL: $finalUrl");
@@ -95,7 +205,12 @@ class APIHelper { // Build #1.0.8, Naveen added
   }
 
   // Base method for handling POST requests
+<<<<<<< HEAD
   Future<dynamic> post(String url, Map<String, dynamic> params, bool useToken, {bool? validateMarchentUrl}) async {
+=======
+  Future<dynamic> post(String url, Map<String, dynamic> params, bool useToken,
+      {bool? validateMarchentUrl}) async {
+>>>>>>> origin/Grocery_pch_api_integration
     var responseJson;
     String finalUrl = "";
     String? token = "";
@@ -103,6 +218,7 @@ class APIHelper { // Build #1.0.8, Naveen added
 
     try {
       await _initializeBaseUrl(); // Ensure base URL is initialized
+<<<<<<< HEAD
       finalUrl = (validateMarchentUrl ?? false) ? url : UrlHelper.baseUrl + url;  //Build #1.0.42: Updated url condition
       final userData = await UserDbHelper().getUserData();
       token =  userData?[AppDBConst.userToken] ?? "";
@@ -114,11 +230,24 @@ class APIHelper { // Build #1.0.8, Naveen added
         if (useToken && token != null && token.isNotEmpty)
           HttpHeaders.authorizationHeader: "Bearer $token",
       };
+=======
+      finalUrl = (validateMarchentUrl ?? false)
+          ? url
+          : UrlHelper.baseUrl + url; //Build #1.0.42: Updated url condition
+      body = json.encode(params);
+
+      // Connector create-order requires Bearer + x-merchant-id + x-store-id
+      final headers = await _buildAuthHeaders(useToken: useToken);
+      token = headers[HttpHeaders.authorizationHeader]
+          ?.replaceFirst('Bearer ', '') ??
+          '';
+>>>>>>> origin/Grocery_pch_api_integration
 
       if (kDebugMode) {
         print("URL: $finalUrl");
         print("Environment: ${UrlHelper.environment[UrlHelper.baseUrl]}");
         print("Body: $body");
+<<<<<<< HEAD
         if (useToken && token != null && token.isNotEmpty) {
           print("Bearer Token: $token");
         }
@@ -134,18 +263,46 @@ class APIHelper { // Build #1.0.8, Naveen added
     catch (e, s) {
       _logError("POST", finalUrl, token, e, s, body: body);
       if(e is SocketException){
+=======
+        print("Headers keys: ${headers.keys.toList()}");
+        if (headers.containsKey('x-merchant-id')) {
+          print("x-merchant-id: ${headers['x-merchant-id']}");
+        }
+        if (headers.containsKey('x-store-id')) {
+          print("x-store-id: ${headers['x-store-id']}");
+        }
+      }
+
+      final response =
+      await http.post(Uri.parse(finalUrl), body: body, headers: headers);
+      responseJson = _returnResponse(response);
+    } on SocketException {
+      //Build #1.0.34: if turn off internet need this exception here
+      throw FetchDataException('No Internet connection');
+    } catch (e, s) {
+      _logError("POST", finalUrl, token, e, s, body: body);
+      if (e is SocketException) {
+>>>>>>> origin/Grocery_pch_api_integration
         //treat SocketException
         if (kDebugMode) {
           print("Socket exception: ${e.toString()}");
         }
+<<<<<<< HEAD
       }
       else if(e is TimeoutException){
+=======
+      } else if (e is TimeoutException) {
+>>>>>>> origin/Grocery_pch_api_integration
         //treat TimeoutException
         if (kDebugMode) {
           print("Timeout exception: ${e.toString()}");
         }
+<<<<<<< HEAD
       }
       else if (kDebugMode) {
+=======
+      } else if (kDebugMode) {
+>>>>>>> origin/Grocery_pch_api_integration
         print("Unhandled exception: ${e.toString()}");
       }
       throw Exception("Exception: $e; Stack: $s");
@@ -155,7 +312,12 @@ class APIHelper { // Build #1.0.8, Naveen added
   }
 
   // Method for handling POST requests with file uploads
+<<<<<<< HEAD
   Future<dynamic> postWithFile(String url, bool useToken, FileHelper fileHelper) async {
+=======
+  Future<dynamic> postWithFile(
+      String url, bool useToken, FileHelper fileHelper) async {
+>>>>>>> origin/Grocery_pch_api_integration
     var responseJson;
     String finalUrl = "";
     String? token = "";
@@ -164,7 +326,11 @@ class APIHelper { // Build #1.0.8, Naveen added
       await _initializeBaseUrl(); // Ensure base URL is initialized
       finalUrl = UrlHelper.baseUrl + url;
       final userData = await UserDbHelper().getUserData();
+<<<<<<< HEAD
       token =  userData?[AppDBConst.userToken] ?? "";
+=======
+      token = userData?[AppDBConst.userToken] ?? "";
+>>>>>>> origin/Grocery_pch_api_integration
       File formDataFile = await fileHelper.getFile();
 
       if (kDebugMode) {
@@ -174,13 +340,25 @@ class APIHelper { // Build #1.0.8, Naveen added
         print("Bearer Token: $token");
       }
 
+<<<<<<< HEAD
       if (useToken && token != null && token.isNotEmpty && formDataFile != null) {
+=======
+      if (useToken &&
+          token != null &&
+          token.isNotEmpty &&
+          formDataFile != null) {
+>>>>>>> origin/Grocery_pch_api_integration
         var request = http.MultipartRequest('POST', Uri.parse(finalUrl));
         request.headers['Authorization'] = 'Bearer $token';
 
         // Attach file to the request
         String fieldName = 'file'; // Customize field name as needed
+<<<<<<< HEAD
         var file = await http.MultipartFile.fromPath(fieldName, formDataFile.path);
+=======
+        var file =
+        await http.MultipartFile.fromPath(fieldName, formDataFile.path);
+>>>>>>> origin/Grocery_pch_api_integration
         request.files.add(file);
 
         var streamedResponse = await request.send();
@@ -205,7 +383,11 @@ class APIHelper { // Build #1.0.8, Naveen added
       await _initializeBaseUrl(); // Ensure base URL is initialized
       finalUrl = UrlHelper.baseUrl + url;
       final userData = await UserDbHelper().getUserData();
+<<<<<<< HEAD
       token =  userData?[AppDBConst.userToken] ?? "";
+=======
+      token = userData?[AppDBConst.userToken] ?? "";
+>>>>>>> origin/Grocery_pch_api_integration
 
       final response = await http.delete(Uri.parse(finalUrl), headers: {
         HttpHeaders.authorizationHeader: "Bearer $token",
@@ -222,7 +404,12 @@ class APIHelper { // Build #1.0.8, Naveen added
   }
 
   // Base method for handling PUT requests
+<<<<<<< HEAD
   Future<dynamic> put(String url, Map<String, dynamic> params, bool useToken) async {
+=======
+  Future<dynamic> put(
+      String url, Map<String, dynamic> params, bool useToken) async {
+>>>>>>> origin/Grocery_pch_api_integration
     var responseJson;
     String finalUrl = "";
     String? token = "";
@@ -231,6 +418,7 @@ class APIHelper { // Build #1.0.8, Naveen added
     try {
       await _initializeBaseUrl(); // Ensure base URL is initialized
       finalUrl = UrlHelper.baseUrl + url;
+<<<<<<< HEAD
       final userData = await UserDbHelper().getUserData();
       token =  userData?[AppDBConst.userToken] ?? "";
       body = json.encode(params);
@@ -250,6 +438,24 @@ class APIHelper { // Build #1.0.8, Naveen added
       };
 
       final response = await http.put(Uri.parse(finalUrl), body: body, headers: headers);
+=======
+      body = json.encode(params);
+
+      final headers = await _buildAuthHeaders(useToken: useToken);
+      token = headers[HttpHeaders.authorizationHeader]
+          ?.replaceFirst('Bearer ', '') ??
+          '';
+
+      if (kDebugMode) {
+        print("URL: $finalUrl");
+        print("Environment: ${UrlHelper.environment[UrlHelper.baseUrl]}");
+        print("Body: $body");
+        print("Headers keys: ${headers.keys.toList()}");
+      }
+
+      final response =
+      await http.put(Uri.parse(finalUrl), body: body, headers: headers);
+>>>>>>> origin/Grocery_pch_api_integration
       responseJson = _returnResponse(response);
     } on SocketException {
       throw FetchDataException('No Internet connection');
@@ -262,7 +468,13 @@ class APIHelper { // Build #1.0.8, Naveen added
   }
 
   // Helper method to log errors consistently
+<<<<<<< HEAD
   void _logError(String method, String url, String? token, dynamic error, StackTrace stackTrace, {String body = ""}) {
+=======
+  void _logError(String method, String url, String? token, dynamic error,
+      StackTrace stackTrace,
+      {String body = ""}) {
+>>>>>>> origin/Grocery_pch_api_integration
     if (kDebugMode) {
       print("Exception in $method REQUEST: $error");
       print("Final URL: $url");
@@ -302,4 +514,8 @@ class APIHelper { // Build #1.0.8, Naveen added
             'Error occurred while communicating with the server. Status Code: ${response.statusCode}');
     }
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/Grocery_pch_api_integration

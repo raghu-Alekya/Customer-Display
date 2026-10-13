@@ -69,7 +69,11 @@ class _ShiftHistoryDashboardScreenState
       body: Column(
         children: [
           TopBar(
+<<<<<<< HEAD
             screen: Screen.SHIFT,
+=======
+            screen: Screen.ORDERS,
+>>>>>>> origin/Grocery_pch_api_integration
             onModeChanged: () async {
               /// Build #1.0.192: Fixed -> Exception -> setState() callback argument returned a Future. (onModeChanged in all screens)
               String newLayout;
@@ -79,7 +83,13 @@ class _ShiftHistoryDashboardScreenState
               } else if (sidebarPosition == SidebarPosition.right) {
                 newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
               } else {
+<<<<<<< HEAD
                 newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+=======
+                newLayout = orderPanelPosition == OrderPanelPosition.left
+                    ? SharedPreferenceTextConstants.navBottomOrderRight
+                    : SharedPreferenceTextConstants.navLeftOrderRight;
+>>>>>>> origin/Grocery_pch_api_integration
               }
 
               // Update the notifier which will trigger _onLayoutChanged
@@ -175,7 +185,11 @@ class _ShiftHistoryDashboardScreenState
                   icon: Icon(
                     Icons.arrow_back_rounded,
                     color: Colors.white,
+<<<<<<< HEAD
                     size: 14,
+=======
+                    size: 20,
+>>>>>>> origin/Grocery_pch_api_integration
                     weight: 10,
                   ),
                   label: Text(
@@ -191,6 +205,7 @@ class _ShiftHistoryDashboardScreenState
                   ),
                 ),
               ),
+<<<<<<< HEAD
               Container(
                 margin: const EdgeInsets.only(right: 16.0, top: 10),
                 width: MediaQuery.of(context).size.width * 0.075,
@@ -247,6 +262,64 @@ class _ShiftHistoryDashboardScreenState
                   ),
                 ),
               ),
+=======
+              // Container(
+              //   margin: const EdgeInsets.only(right: 16.0, top: 10),
+              //   width: MediaQuery.of(context).size.width * 0.075,
+              //   height: MediaQuery.of(context).size.height * 0.05,
+              //   decoration: BoxDecoration(
+              //     gradient: const LinearGradient(
+              //       colors: [
+              //         Color(0xFFFF5463),
+              //         Color(0xFFFF384A),
+              //       ],
+              //       begin: Alignment.topLeft, // start at top-left
+              //       end: Alignment.topRight, // end at top-right
+              //     ),
+              //     boxShadow: [
+              //       BoxShadow(
+              //         color: themeHelper.themeMode == ThemeMode.dark
+              //             ? Color(0xFFFF384A).withOpacity(0.60)
+              //             : Color(0xFFFF384A).withOpacity(0.50),
+              //         blurRadius: 10,
+              //         spreadRadius: 1,
+              //         offset: Offset(0, 2),
+              //       ),
+              //     ],
+              //     borderRadius: BorderRadius.circular(14),
+              //   ),
+              //   child: TextButton.icon(
+              //     onPressed: () {
+              //       Navigator.push(
+              //         context,
+              //         MaterialPageRoute(
+              //           builder: (context) => ShiftOpenCloseBalanceScreen(),
+              //           settings: const RouteSettings(
+              //               arguments: TextConstants.navShiftHistory),
+              //         ),
+              //       );
+              //     },
+              //     icon: const Icon(
+              //       Icons.add,
+              //       color: Colors.white,
+              //       size: 22,
+              //     ),
+              //     label: const Text(
+              //       'Update',
+              //       style: TextStyle(
+              //         color: Colors.white,
+              //         fontSize: 14,
+              //         fontWeight: FontWeight.bold,
+              //       ),
+              //     ),
+              //     style: TextButton.styleFrom(
+              //       backgroundColor: Colors
+              //           .transparent, // make button background transparent
+              //       padding: const EdgeInsets.symmetric(vertical: 5),
+              //     ),
+              //   ),
+              // ),
+>>>>>>> origin/Grocery_pch_api_integration
             ],
           ),
           Expanded(
@@ -356,7 +429,11 @@ class _ShiftHistoryDashboardScreenState
                                       decoration: BoxDecoration(
                                         color: themeHelper.themeMode ==
                                             ThemeMode.dark
+<<<<<<< HEAD
                                             ? Color(0xFF0A122D)
+=======
+                                            ? Color(0xFF030816)
+>>>>>>> origin/Grocery_pch_api_integration
                                             : Color(0xFFF8F8F8),
                                         border: Border(
                                           bottom: BorderSide(

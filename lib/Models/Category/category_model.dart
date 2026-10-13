@@ -20,6 +20,7 @@ class CategoryModel { // Build #1.0.21
 
   factory CategoryModel.fromJson(Map<String, dynamic> json) {
     return CategoryModel(
+<<<<<<< HEAD
       id: json['id'] ?? 0,
       name: json['name'] ?? '',
       slug: json['slug'] ?? '',
@@ -29,6 +30,17 @@ class CategoryModel { // Build #1.0.21
       image: json['image'],
     );
   }
+=======
+      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
+      name: json['name'] ?? '',
+      slug: json['slug'] ?? '',
+      parent: int.tryParse(json['parent']?.toString() ?? '') ?? 0,
+      description: json['description'] ?? '',
+      count: int.tryParse(json['count']?.toString() ?? '') ?? 0,
+      image: json['image'],
+    );
+  }  
+>>>>>>> origin/Grocery_pch_api_integration
 
   Map<String, dynamic> toJson() {
     return {

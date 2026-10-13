@@ -2,12 +2,20 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+<<<<<<< HEAD
+=======
+import 'package:flutter_svg/svg.dart';
+>>>>>>> origin/Grocery_pch_api_integration
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pinaka_pos/Helper/Extentions/text_extensions.dart';
 import 'package:pinaka_pos/Screens/Home/shift_history_dashboard_screen.dart';
 import 'package:provider/provider.dart';
 import '../../Blocs/Auth/shift_bloc.dart';
 import '../../Blocs/Auth/vendor_payment_bloc.dart';
+<<<<<<< HEAD
+=======
+import '../../Constants/misc_features.dart';
+>>>>>>> origin/Grocery_pch_api_integration
 import '../../Constants/text.dart';
 import '../../Database/assets_db_helper.dart';
 import '../../Database/db_helper.dart';
@@ -37,12 +45,19 @@ class ShiftSummaryDashboardScreen extends StatefulWidget {
   });
 
   @override
+<<<<<<< HEAD
   State<ShiftSummaryDashboardScreen> createState() =>
       _ShiftSummaryDashboardScreenState();
 }
 
 class _ShiftSummaryDashboardScreenState
     extends State<ShiftSummaryDashboardScreen> with LayoutSelectionMixin {
+=======
+  State<ShiftSummaryDashboardScreen> createState() => _ShiftSummaryDashboardScreenState();
+}
+
+class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScreen> with LayoutSelectionMixin {
+>>>>>>> origin/Grocery_pch_api_integration
   int _selectedSidebarIndex = 4;
   late ShiftBloc shiftBloc;
   late VendorPaymentBloc vendorPaymentBloc;
@@ -53,15 +68,24 @@ class _ShiftSummaryDashboardScreenState
 
   //state variables for API response and subscription
   APIResponse<ShiftByIdResponse>? apiResponse;
+<<<<<<< HEAD
   StreamSubscription?
   _shiftSubscription; // build 1.0.206 We changed the code to store the shift summary data within the screen's state,
   // which prevents the UI from getting stuck on a loading indicator after you change the display mode.
 
+=======
+  StreamSubscription? _shiftSubscription; // build 1.0.206 We changed the code to store the shift summary data within the screen's state,
+  // which prevents the UI from getting stuck on a loading indicator after you change the display mode.
+
+
+
+>>>>>>> origin/Grocery_pch_api_integration
   @override
   void initState() {
     super.initState();
     _selectedSidebarIndex = widget.lastSelectedIndex ?? 4;
     shiftBloc = ShiftBloc(ShiftRepository());
+<<<<<<< HEAD
     vendorPaymentBloc =
         VendorPaymentBloc(VendorPaymentRepository()); //Build #1.0.74
     if (widget.shiftId != null) {
@@ -78,6 +102,37 @@ class _ShiftSummaryDashboardScreenState
       if (kDebugMode)
         print(
             "ShiftSummaryDashboardScreen: Initialized with shiftId ${widget.shiftId}");
+=======
+    vendorPaymentBloc = VendorPaymentBloc(VendorPaymentRepository()); //Build #1.0.74
+    if (widget.shiftId != null) {
+      _subscribeAndFetchShift(widget.shiftId!);
+      _loadVendorData(); // Load vendor data from AssetDBHelper
+      if (kDebugMode) print("ShiftSummaryDashboardScreen: Initialized with shiftId ${widget.shiftId}");
+    }
+  }
+
+  void _subscribeAndFetchShift(int shiftId) {
+    _shiftSubscription?.cancel();
+    _shiftSubscription = shiftBloc.shiftByIdStream.listen((response) {
+      if (mounted) {
+        setState(() {
+          apiResponse = response;
+        });
+      }
+    });
+    shiftBloc.getShiftById(shiftId);
+  }
+
+  @override
+  void didUpdateWidget(covariant ShiftSummaryDashboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.shiftId != widget.shiftId && widget.shiftId != null) {
+      // Clear stale summary first, then fetch fresh data for new shift id.
+      setState(() {
+        apiResponse = null;
+      });
+      _subscribeAndFetchShift(widget.shiftId!);
+>>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
@@ -94,12 +149,19 @@ class _ShiftSummaryDashboardScreenState
         _purposes = purposes;
       });
       if (kDebugMode) {
+<<<<<<< HEAD
         print(
             "ShiftSummaryDashboardScreen: Loaded ${_vendors.length} vendors, ${_paymentTypes.length} payment types, ${_purposes.length} purposes");
       }
     } catch (e) {
       if (kDebugMode)
         print("ShiftSummaryDashboardScreen: Error loading vendor data: $e");
+=======
+        print("ShiftSummaryDashboardScreen: Loaded ${_vendors.length} vendors, ${_paymentTypes.length} payment types, ${_purposes.length} purposes");
+      }
+    } catch (e) {
+      if (kDebugMode) print("ShiftSummaryDashboardScreen: Error loading vendor data: $e");
+>>>>>>> origin/Grocery_pch_api_integration
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to load vendor data'),
@@ -125,16 +187,27 @@ class _ShiftSummaryDashboardScreenState
       body: Column(
         children: [
           TopBar(
+<<<<<<< HEAD
             screen: Screen.SHIFT,
             onModeChanged: () async {
               /// Build #1.0.192: Fixed -> Exception -> setState() callback argument returned a Future. (onModeChanged in all screens)
+=======
+            screen: Screen.ORDERS,
+            onModeChanged: () async{ /// Build #1.0.192: Fixed -> Exception -> setState() callback argument returned a Future. (onModeChanged in all screens)
+>>>>>>> origin/Grocery_pch_api_integration
               String newLayout;
               if (sidebarPosition == SidebarPosition.left) {
                 newLayout = SharedPreferenceTextConstants.navRightOrderLeft;
               } else if (sidebarPosition == SidebarPosition.right) {
                 newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
               } else {
+<<<<<<< HEAD
                 newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
+=======
+                newLayout = orderPanelPosition == OrderPanelPosition.left
+                    ? SharedPreferenceTextConstants.navBottomOrderRight
+                    : SharedPreferenceTextConstants.navLeftOrderRight;
+>>>>>>> origin/Grocery_pch_api_integration
               }
 
               // Update the notifier which will trigger _onLayoutChanged
@@ -142,9 +215,13 @@ class _ShiftSummaryDashboardScreenState
               // No need to call saveLayoutSelection here as it's handled in the notifier
               // _preferences.saveLayoutSelection(newLayout);
               //Build #1.0.122: update layout mode change selection to DB
+<<<<<<< HEAD
               await UserDbHelper().saveUserSettings(
                   {AppDBConst.layoutSelection: newLayout},
                   modeChange: true);
+=======
+              await UserDbHelper().saveUserSettings({AppDBConst.layoutSelection: newLayout}, modeChange: true);
+>>>>>>> origin/Grocery_pch_api_integration
               // update UI
               setState(() {});
             },
@@ -212,26 +289,40 @@ class _ShiftSummaryDashboardScreenState
             if (apiResponse!.message!.contains('Unauthorised')) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted) {
+<<<<<<< HEAD
                   Navigator.pushReplacement(context,
                       MaterialPageRoute(builder: (context) => LoginScreen()));
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
                           "Unauthorised. Session is expired on this device."),
+=======
+                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LoginScreen()));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Unauthorised. Session is expired on this device."),
+>>>>>>> origin/Grocery_pch_api_integration
                       backgroundColor: Colors.red,
                       duration: Duration(seconds: 2),
                     ),
                   );
                 }
               });
+<<<<<<< HEAD
               return const Center(
                   child:
                   CircularProgressIndicator()); // Show loader while redirecting
+=======
+              return const Center(child: CircularProgressIndicator()); // Show loader while redirecting
+>>>>>>> origin/Grocery_pch_api_integration
             } else {
               return Center(child: Text('Error: ${apiResponse!.message}'));
             }
           }
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/Grocery_pch_api_integration
           if (apiResponse!.status == Status.COMPLETED) {
             final shift = apiResponse!.data!.shift;
             return SingleChildScrollView(
@@ -268,6 +359,11 @@ class _ShiftSummaryDashboardScreenState
             );
           }
 
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> origin/Grocery_pch_api_integration
           // StreamBuilder<APIResponse<ShiftByIdResponse>>( //Build #1.0.74
           //   stream: shiftBloc.shiftByIdStream,
           //   builder: (context, snapshot) {
@@ -363,6 +459,7 @@ class _ShiftSummaryDashboardScreenState
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return InkWell(
       onTap: () => Navigator.of(context).pop(),
+<<<<<<< HEAD
       child: Container(
         height: 30,
         width: 100,
@@ -408,6 +505,32 @@ class _ShiftSummaryDashboardScreenState
             ),
           ],
         ),
+=======
+      child: Row(
+        children: [
+          IconButton(
+            padding: EdgeInsets.zero,
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            icon: Icon(
+                Icons.arrow_back_sharp,
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.textDark : Colors.black87,
+                size: 20
+            ),
+          ),
+          Text(
+            TextConstants.back,
+            style: TextStyle(
+              color: themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.textDark : Colors.black87,
+              fontSize: MediaQuery.of(context).size.width * 0.01,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+>>>>>>> origin/Grocery_pch_api_integration
       ),
     );
   }
@@ -433,7 +556,11 @@ class _ShiftSummaryDashboardScreenState
           GestureDetector(
             onTap: () => Navigator.of(context).pop(),
             child: Container(
+<<<<<<< HEAD
               height: 30,
+=======
+              height: 42,
+>>>>>>> origin/Grocery_pch_api_integration
               width: 100,
               decoration: BoxDecoration(
                 color: themeHelper.themeMode == ThemeMode.dark
@@ -475,7 +602,11 @@ class _ShiftSummaryDashboardScreenState
           SizedBox(height: 8),
           Container(
             width: MediaQuery.of(context).size.width * 0.280,
+<<<<<<< HEAD
             height: MediaQuery.of(context).size.height * 0.150,
+=======
+            height: MediaQuery.of(context).size.height * 0.135,
+>>>>>>> origin/Grocery_pch_api_integration
             decoration: BoxDecoration(
               color: themeHelper.themeMode == ThemeMode.dark
                   ? Color(0xFF273142)
@@ -516,6 +647,10 @@ class _ShiftSummaryDashboardScreenState
     );
   }
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/Grocery_pch_api_integration
   Widget _buildTimeCard(String title, String value) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     // Build #1.0.151: Updated - placeholder for startTime, duration, endTime if value is empty, present showing blank
@@ -593,6 +728,7 @@ class _ShiftSummaryDashboardScreenState
           ),
         ],
       ),
+<<<<<<< HEAD
       child: Row(
         children: [
           _buildSummaryCard(
@@ -624,6 +760,82 @@ class _ShiftSummaryDashboardScreenState
               Color(0xFF0F8B6A)),
         ],
       ),
+=======
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _buildSummaryCard(
+                TextConstants.openingAmount,
+                '${TextConstants.currencySymbol}${shift.openingBalance.toStringAsFixed(2)}',
+                Color(0xFFD3EAFF),
+                "assets/openwithround.png",
+                Color(0xFF487FFF)),
+            SizedBox(width: MediaQuery.of(context).size.width * 0.010),
+            _buildSummaryCard(
+                TextConstants.totalTransactions,
+                '${shift.totalSales}',
+                Color(0xFFF1E2FF),
+                "assets/totalwithround.png",
+                Color(0xFF8252E9)),
+            SizedBox(width: MediaQuery.of(context).size.width * 0.010),
+            _buildSummaryCard(
+                TextConstants.saleAmount,
+                '${TextConstants.currencySymbol}${shift.totalSaleAmount.toStringAsFixed(2)}',
+                Color(0xFFFDE9DB),
+                "assets/Groupwithround.png",
+                Color(0xFFFE8B3E)),
+            SizedBox(width: MediaQuery.of(context).size.width * 0.010),
+            _buildSummaryCard(
+              "Till Amount",
+              '${shift.tillAmount < 0 ? '-${TextConstants.currencySymbol}${shift.tillAmount.abs().toStringAsFixed(2)}'
+                  : '${TextConstants.currencySymbol}${shift.tillAmount.toStringAsFixed(2)}'}',
+              Color(0xFFE0F7FA),
+              "assets/svg/cash_drawer.svg",
+              Color(0xFF0097A7),
+            ),
+            SizedBox(width: MediaQuery.of(context).size.width * 0.010),
+            _buildSummaryCard(
+                TextConstants.closingAmount,
+                '${TextConstants.currencySymbol}${shift.closingBalance.toStringAsFixed(2)}',
+                Color(0xFFD2FFF3),
+                "assets/closewithround.png",
+                Color(0xFF0F8B6A)),
+          ],
+        ),
+      ),
+      // child: Row(
+      //   children: [
+      //     _buildSummaryCard(
+      //         TextConstants.openingAmount,
+      //         '${TextConstants.currencySymbol}${shift.openingBalance.toStringAsFixed(2)}',
+      //         Color(0xFFD3EAFF),
+      //         "assets/openwithround.png",
+      //         Color(0xFF487FFF)),
+      //     SizedBox(width: MediaQuery.of(context).size.width * 0.010),
+      //     _buildSummaryCard(
+      //         TextConstants.totalTransactions,
+      //         '${shift.totalSales}',
+      //         Color(0xFFF1E2FF),
+      //         "assets/totalwithround.png",
+      //         Color(0xFF8252E9)),
+      //     SizedBox(width: MediaQuery.of(context).size.width * 0.010),
+      //     _buildSummaryCard(
+      //         TextConstants.saleAmount,
+      //         '${TextConstants.currencySymbol}${shift.totalSaleAmount.toStringAsFixed(2)}',
+      //         Color(0xFFFDE9DB),
+      //         "assets/Groupwithround.png",
+      //         Color(0xFFFE8B3E)),
+      //     SizedBox(width: MediaQuery.of(context).size.width * 0.010),
+      //     _buildSummaryCard(
+      //         TextConstants.closingAmount,
+      //         '${TextConstants.currencySymbol}${shift.closingBalance.toStringAsFixed(2)}',
+      //         Color(0xFFD2FFF3),
+      //         "assets/closewithround.png",
+      //         Color(0xFF0F8B6A)),
+      //   ],
+      // ),
+>>>>>>> origin/Grocery_pch_api_integration
     );
   }
 
@@ -678,11 +890,32 @@ class _ShiftSummaryDashboardScreenState
                     shape: BoxShape.circle,
                   ),
                   child: Center(
+<<<<<<< HEAD
                     child: Image.asset(imagePath, height: 30, width: 30),
                   ),
                 ),
               ],
             )
+=======
+                    child: imagePath.endsWith('.svg')
+                        ? SvgPicture.asset(
+                      imagePath,
+                      height: 20,
+                      width: 20,
+                      fit: BoxFit.contain,
+                      color: Colors.white,
+                    )
+                        : Image.asset(
+                      imagePath,
+                      height: 30,
+                      width: 30,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+>>>>>>> origin/Grocery_pch_api_integration
           ],
         ),
       ),
@@ -693,7 +926,11 @@ class _ShiftSummaryDashboardScreenState
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return Container(
       width: MediaQuery.of(context).size.width * 0.3,
+<<<<<<< HEAD
       height: MediaQuery.of(context).size.height * 0.600,
+=======
+      height: MediaQuery.of(context).size.height * 0.595,
+>>>>>>> origin/Grocery_pch_api_integration
       decoration: BoxDecoration(
         color: themeHelper.themeMode == ThemeMode.dark
             ? Color(0xFF1F1D2B)
@@ -851,13 +1088,21 @@ class _ShiftSummaryDashboardScreenState
     );
   }
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/Grocery_pch_api_integration
   Widget _buildVendorPayoutsSection(Shift shift) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return Container(
       width: sidebarPosition == SidebarPosition.bottom
           ? MediaQuery.of(context).size.width * 0.675
           : MediaQuery.of(context).size.width * 0.608,
+<<<<<<< HEAD
       height: MediaQuery.of(context).size.height * 0.640,
+=======
+      height: MediaQuery.of(context).size.height * 0.650,
+>>>>>>> origin/Grocery_pch_api_integration
       decoration: BoxDecoration(
         color: themeHelper.themeMode == ThemeMode.dark
             ? ThemeNotifier.primaryBackground
@@ -946,7 +1191,11 @@ class _ShiftSummaryDashboardScreenState
                       children: [
                         Icon(
                           Icons.add,
+<<<<<<< HEAD
                           size: MediaQuery.of(context).size.width * 0.01,
+=======
+                          size: MediaQuery.of(context).size.width * 0.015,
+>>>>>>> origin/Grocery_pch_api_integration
                           color: shift.shiftStatus == 'closed'
                               ? Colors.grey
                               : Color(0xFFFFFFFF),
@@ -1320,20 +1569,409 @@ class _ShiftSummaryDashboardScreenState
     );
   }
 
+<<<<<<< HEAD
+=======
+
+
+  // Widget _buildVendorPayoutsSection(Shift shift) {
+  //   final themeHelper = Provider.of<ThemeNotifier>(context);
+  //   return Container(
+  //     width: MediaQuery.of(context).size.width * 0.595,
+  //     height: MediaQuery.of(context).size.height * 0.625,
+  //     decoration: BoxDecoration(
+  //       color: themeHelper.themeMode == ThemeMode.dark
+  //           ? ThemeNotifier.primaryBackground : Colors.white,
+  //       borderRadius: BorderRadius.circular(12),
+  //       boxShadow: [
+  //         BoxShadow(
+  //           color: themeHelper.themeMode == ThemeMode.dark
+  //               ? ThemeNotifier.shadow_F7 : Colors.grey.withValues(alpha: 0.05),
+  //           blurRadius: 2,
+  //           spreadRadius: 2,
+  //           offset: Offset(0, 0),
+  //         ),
+  //       ],
+  //     ),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: [
+  //         // Header
+  //         Container(
+  //           padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.0125),
+  //           child: Row(
+  //             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //             children: [
+  //               Row(
+  //                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+  //                 children: [
+  //                   Text(
+  //                     TextConstants.vendorPayouts,
+  //                     style: TextStyle(
+  //                       color: themeHelper.themeMode == ThemeMode.dark
+  //                           ? ThemeNotifier.textDark : Colors.black,
+  //                       fontSize: MediaQuery.of(context).size.width * 0.015,
+  //                       fontWeight: FontWeight.bold,
+  //                     ),
+  //                   ),
+  //                   SizedBox(width: MediaQuery.of(context).size.width * 0.05),
+  //                   Text(
+  //                     '${TextConstants.currencySymbol}${shift.totalVendorPayments.toStringAsFixed(2)}',
+  //                     style: TextStyle(
+  //                       color: Color(0xFF4CAF50),
+  //                       fontSize: MediaQuery.of(context).size.width * 0.012,
+  //                       fontWeight: FontWeight.bold,
+  //                     ),
+  //                   ),
+  //                 ],
+  //               ),
+  //               // Disable Add button if shift is closed
+  //               InkWell(
+  //                 onTap: shift.shiftStatus == 'closed'
+  //                     ? null
+  //                     : () {
+  //                   if (kDebugMode) print("ShiftSummaryDashboardScreen: Showing add vendor payout dialog");
+  //                   _showAddVendorPayoutDialog();
+  //                 },
+  //                 child: Container(
+  //                   padding: EdgeInsets.symmetric(
+  //                     horizontal: MediaQuery.of(context).size.width * 0.01,
+  //                     vertical: MediaQuery.of(context).size.height * 0.005,
+  //                   ),
+  //                   decoration: BoxDecoration(
+  //                     border: Border.all(
+  //                       color: shift.shiftStatus == 'closed' ? Colors.grey : themeHelper.themeMode == ThemeMode.dark
+  //                           ? ThemeNotifier.borderColor : Colors.black54,
+  //                     ),
+  //                     borderRadius: BorderRadius.circular(4),
+  //                     color: shift.shiftStatus == 'closed' ? Colors.grey.shade200 :themeHelper.themeMode == ThemeMode.dark
+  //                         ? ThemeNotifier.tabsBackground : Colors.white,
+  //                   ),
+  //                   child: Row(
+  //                     mainAxisSize: MainAxisSize.min,
+  //                     children: [
+  //                       Icon(
+  //                         Icons.add,
+  //                         size: MediaQuery.of(context).size.width * 0.01,
+  //                         color: shift.shiftStatus == 'closed' ? Colors.grey : themeHelper.themeMode == ThemeMode.dark
+  //                             ? ThemeNotifier.textDark : Colors.black87,
+  //                         weight: 2.0,
+  //                       ),
+  //                       SizedBox(width: MediaQuery.of(context).size.width * 0.003),
+  //                       Text(
+  //                         TextConstants.addText,
+  //                         style: TextStyle(
+  //                           color: shift.shiftStatus == 'closed' ? Colors.grey : themeHelper.themeMode == ThemeMode.dark
+  //                               ? ThemeNotifier.textDark : Colors.black87,
+  //                           fontSize: MediaQuery.of(context).size.width * 0.01,
+  //                           fontWeight: FontWeight.bold,
+  //                         ),
+  //                       ),
+  //                     ],
+  //                   ),
+  //                 ),
+  //               ),
+  //             ],
+  //           ),
+  //         ),
+  //         Expanded(
+  //           child: shift.vendorPayouts.isEmpty
+  //               ? Center(child: Text(TextConstants.vendorPayoutNotFound))
+  //               : Padding(
+  //                 padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+  //                 child: SingleChildScrollView(
+  //                               scrollDirection: Axis.vertical,
+  //                               child: DataTable(
+  //                 //columnSpacing: MediaQuery.of(context).size.width * 0.055,
+  //                 //horizontalMargin: MediaQuery.of(context).size.width * 0.015,
+  //                 headingRowHeight: MediaQuery.of(context).size.height * 0.085,
+  //                 dataRowHeight: MediaQuery.of(context).size.height * 0.085,
+  //
+  //                 headingRowColor: WidgetStateProperty.all(
+  //                   themeHelper.themeMode == ThemeMode.dark
+  //                       ? ThemeNotifier.secondaryBackground
+  //                       : Colors.white,
+  //                 ),
+  //                 dividerThickness: 0.5,
+  //
+  //                 columns: [
+  //                   DataColumn(
+  //                     label: Container(
+  //                       width: MediaQuery.of(context).size.width * 0.05,
+  //                       child: Text(
+  //                         TextConstants.amount,
+  //                         style: TextStyle(
+  //                           color: Colors.grey.shade500,
+  //                           fontSize: 14,
+  //                           fontWeight: FontWeight.bold,
+  //                         ),
+  //                       ),
+  //                     ),
+  //                   ),
+  //                   DataColumn(
+  //                     label: Container(
+  //                       width: MediaQuery.of(context).size.width * 0.05,
+  //                       child: Text(
+  //                         TextConstants.vendor,
+  //                         style: TextStyle(
+  //                           color: Colors.grey.shade500,
+  //                           fontSize: 14,
+  //                           fontWeight: FontWeight.bold,
+  //                         ),
+  //                       ),
+  //                     ),
+  //                   ),
+  //                   DataColumn(
+  //                     label: Container(
+  //                       width: MediaQuery.of(context).size.width * 0.135,
+  //                       child: Text(
+  //                         TextConstants.note,
+  //                         style: TextStyle(
+  //                           color: Colors.grey.shade500,
+  //                           fontSize: 14,
+  //                           fontWeight: FontWeight.bold,
+  //                         ),
+  //                       ),
+  //                     ),
+  //                   ),
+  //                   DataColumn(
+  //                     label: Container(
+  //                       width: MediaQuery.of(context).size.width * 0.05,
+  //                       child: Text(
+  //                        TextConstants.purpose,
+  //                         style: TextStyle(
+  //                           color: Colors.grey.shade500,
+  //                           fontSize: 14,
+  //                           fontWeight: FontWeight.bold,
+  //                         ),
+  //                       ),
+  //                     ),
+  //                   ),
+  //                   DataColumn(
+  //                     label: Container(
+  //                       width: MediaQuery.of(context).size.width * 0.12,
+  //                       child: Text(
+  //                         '',
+  //                         style: TextStyle(
+  //                           color: Colors.grey.shade500,
+  //                           fontSize: 14,
+  //                           fontWeight: FontWeight.bold,
+  //                         ),
+  //                       ),
+  //                     ),
+  //                   ),
+  //                 ],
+  //                 rows: shift.vendorPayouts.asMap().entries.map((entry) {
+  //                   int index = entry.key;
+  //                   VendorPayout item = entry.value;
+  //                   return DataRow(
+  //                       color: WidgetStateProperty.resolveWith<Color?>(
+  //                       (Set<WidgetState> states) => themeHelper.themeMode == ThemeMode.dark
+  //                       ? ThemeNotifier.tabsBackground  // Your dark theme color
+  //                       : Colors.white
+  //                       ),
+  //                   cells: [
+  //                       DataCell(
+  //                         Container(
+  //                           width: MediaQuery.of(context).size.width * 0.05,
+  //                           child: Text(
+  //                             '${TextConstants.currencySymbol}${item.amount.toStringAsFixed(2)}',
+  //                             style: TextStyle(
+  //                               color:themeHelper.themeMode == ThemeMode.dark
+  //                                   ? ThemeNotifier.textDark : Colors.black,
+  //                               fontSize: 11,
+  //                               //fontWeight: FontWeight.w500,
+  //                             ),
+  //                           ).poppins(),
+  //                         ),
+  //                       ),
+  //                       DataCell(
+  //                         Container(
+  //                           width: MediaQuery.of(context).size.width * 0.05,
+  //                           child: Text(
+  //                             item.vendorName,
+  //                             style: TextStyle(
+  //                               color: themeHelper.themeMode == ThemeMode.dark
+  //                                   ? ThemeNotifier.textDark : Colors.black,
+  //                               fontSize: 11,
+  //                              // fontWeight: FontWeight.w500,
+  //                             ),
+  //                           ).poppins(),
+  //                         ),
+  //                       ),
+  //                     DataCell(
+  //                       Container(
+  //                         width: MediaQuery.of(context).size.width * 0.135,
+  //                         child: Tooltip(
+  //                           message: item.note.isEmpty ? 'No note' : item.note,
+  //                           decoration: BoxDecoration(
+  //                             color: themeHelper.themeMode == ThemeMode.dark
+  //                                 ? ThemeNotifier.searchBarBackground
+  //                                 : Colors.grey,
+  //                             borderRadius: BorderRadius.circular(8),
+  //                             boxShadow: [
+  //                               BoxShadow(
+  //                                 color: Colors.black.withValues(alpha: 0.2),
+  //                                 blurRadius: 4,
+  //                                 offset: const Offset(0, 0),
+  //                               ),
+  //                             ],
+  //                           ),
+  //                           textStyle: const TextStyle(
+  //                             color: Colors.white,
+  //                             fontSize: 12,
+  //                             fontFamily: 'Poppins',
+  //                             fontWeight: FontWeight.w400,
+  //                           ),
+  //                           //padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+  //                           //margin: const EdgeInsets.all(8),
+  //                           child: Text(
+  //                             item.note.isEmpty ? 'No note' : item.note,
+  //                             style: TextStyle(
+  //                               color: themeHelper.themeMode == ThemeMode.dark
+  //                                   ? ThemeNotifier.textDark : ThemeNotifier.textLight,
+  //                               fontSize: 11,
+  //                               //fontWeight: FontWeight.w500,
+  //                             ),
+  //                             overflow: TextOverflow.ellipsis,
+  //                             maxLines: 2,
+  //                             softWrap: true,
+  //                           ).poppins(),
+  //                         ),
+  //                       ),
+  //                     ),
+  //                       DataCell(
+  //                         Container(
+  //                           width: MediaQuery.of(context).size.width * 0.05,
+  //                           child: Text(
+  //                             item.serviceType,
+  //                             style: TextStyle(
+  //                               color: themeHelper.themeMode == ThemeMode.dark
+  //                                   ? ThemeNotifier.textDark :  Colors.black,
+  //                               fontSize: 11,
+  //                               //fontWeight: FontWeight.w500,
+  //                             ),
+  //                           ).poppins(),
+  //                         ),
+  //                       ),
+  //                       DataCell(
+  //                         Container(
+  //                           width: MediaQuery.of(context).size.width * 0.12,
+  //                           child: Row(
+  //                             mainAxisSize: MainAxisSize.min,
+  //                             children: [
+  //                               InkWell(
+  //                                 onTap: shift.shiftStatus == 'closed'
+  //                                     ? null
+  //                                     : () {
+  //                                   if (kDebugMode) print('ShiftSummaryDashboardScreen: Delete vendor payout at index $index with ID ${item.id}');
+  //                                   _showDeleteConfirmation(index, item.id);
+  //                                 },
+  //                                 borderRadius: BorderRadius.circular(4),
+  //                                 child: Container(
+  //                                   height:30,
+  //                                   width:30,
+  //                                   decoration: BoxDecoration(
+  //                                     shape: BoxShape.rectangle,
+  //                                     borderRadius: BorderRadius.circular(8.0),
+  //                                     color: Colors.red.shade50,
+  //                                   ),
+  //                                   child: Icon(
+  //                                     Icons.delete_outline,
+  //                                     color: shift.shiftStatus == 'closed' ? Colors.grey : Colors.red.shade400,
+  //                                     size: 18,
+  //                                   ),
+  //                                 ),
+  //                               ),
+  //                               SizedBox(width: MediaQuery.of(context).size.width * 0.005),
+  //                               InkWell(
+  //                                 onTap: shift.shiftStatus == 'closed'
+  //                                     ? null
+  //                                     : () {
+  //                                   if (kDebugMode) print('ShiftSummaryDashboardScreen: Edit vendor payout at index $index with ID ${item.id}');
+  //                                   _showAddVendorPayoutDialog(payment: item);
+  //                                 },
+  //                                 borderRadius: BorderRadius.circular(4),
+  //                                 child: Padding(
+  //                                   padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.004),
+  //                                   child: Container(
+  //                                     height:30,
+  //                                     width:30,
+  //                                     decoration: BoxDecoration(
+  //                                       shape: BoxShape.circle,
+  //                                       color: Colors.blue.shade50,
+  //                                     ),
+  //                                     child: Icon(
+  //                                       Icons.edit_outlined,
+  //                                       color: shift.shiftStatus == 'closed' ? Colors.grey : Colors.blue.shade400,
+  //                                       size: 18,
+  //                                     ),
+  //                                   ),
+  //                                 ),
+  //                               ),
+  //                               SizedBox(width: MediaQuery.of(context).size.width * 0.005),
+  //                               InkWell(
+  //                                 onTap: () {
+  //                                   if (kDebugMode) print('ShiftSummaryDashboardScreen: Print vendor payout at index $index');
+  //                                 },
+  //                                 borderRadius: BorderRadius.circular(4),
+  //                                 child: Padding(
+  //                                   padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.004),
+  //                                   child: Container(
+  //                                     height:30,
+  //                                     width:30,
+  //                                     decoration: BoxDecoration(
+  //                                       shape: BoxShape.circle,
+  //                                       color: Colors.grey.shade200,
+  //                                     ),
+  //                                     child: Icon(
+  //                                       Icons.print_outlined,
+  //                                       color: Colors.grey.shade600,
+  //                                       size: 20,
+  //                                     ),
+  //                                   ),
+  //                                 ),
+  //                               ),
+  //                             ],
+  //                           ),
+  //                         ),
+  //                       ),
+  //                     ],
+  //                   );
+  //                 }).toList(),
+  //                               ),
+  //                             ),
+  //               ),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
+
+
+
+>>>>>>> origin/Grocery_pch_api_integration
   void _showDeleteConfirmation(int index, int paymentId) {
     bool _isDeleting = false; // Track delete button loading state
     CustomDialog.showAreYouSure(
       context,
       confirm: () async {
+<<<<<<< HEAD
         if (kDebugMode)
           print(
               'ShiftSummaryDashboardScreen: Initiating delete for payment ID $paymentId');
+=======
+        if (kDebugMode) print('ShiftSummaryDashboardScreen: Initiating delete for payment ID $paymentId');
+>>>>>>> origin/Grocery_pch_api_integration
         setState(() {
           _isDeleting = true; // Show loader on Yes button
         });
         vendorPaymentBloc.deleteVendorPayment(paymentId);
+<<<<<<< HEAD
         await for (var response
         in vendorPaymentBloc.deleteVendorPaymentStream) {
+=======
+        await for (var response in vendorPaymentBloc.deleteVendorPaymentStream) {
+>>>>>>> origin/Grocery_pch_api_integration
           if (response.status == Status.COMPLETED) {
             setState(() {
               _isDeleting = false; // Hide loader
@@ -1341,6 +1979,7 @@ class _ShiftSummaryDashboardScreenState
             // Navigator.of(context).pop(); // Dismiss confirmation dialog
 
             shiftBloc.getShiftById(widget.shiftId!);
+<<<<<<< HEAD
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
@@ -1356,6 +1995,25 @@ class _ShiftSummaryDashboardScreenState
               if (kDebugMode) {
                 print(
                     "shift summary screen -- Unauthorised : response.message ${response.message!}");
+=======
+            if (Misc.showDebugSnackBar) { // Build #1.0.254
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    response.message ?? 'Vendor payout deleted successfully',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          }
+          else if (response.status == Status.ERROR) {
+            if (response.message!.contains('Unauthorised')) {
+              if (kDebugMode) {
+                print("shift summary screen -- Unauthorised : response.message ${response.message!}");
+>>>>>>> origin/Grocery_pch_api_integration
               }
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted) {
@@ -1374,7 +2032,12 @@ class _ShiftSummaryDashboardScreenState
                   );
                 }
               });
+<<<<<<< HEAD
             } else {
+=======
+            }
+            else {
+>>>>>>> origin/Grocery_pch_api_integration
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
@@ -1397,15 +2060,22 @@ class _ShiftSummaryDashboardScreenState
   void _showAddVendorPayoutDialog({VendorPayout? payment}) {
     showDialog(
       context: context,
+<<<<<<< HEAD
       builder: (BuildContext context) {
         return AddVendorPayoutDialog(
           //Build #1.0.74: updated code
+=======
+      barrierDismissible: false, // 🔒 prevents closing on outside tap
+      builder: (BuildContext context) {
+        return AddVendorPayoutDialog( //Build #1.0.74: updated code
+>>>>>>> origin/Grocery_pch_api_integration
           shiftId: widget.shiftId!,
           vendors: _vendors,
           paymentTypes: _paymentTypes,
           purposes: _purposes,
           vendorPaymentBloc: vendorPaymentBloc,
           onAdd: (request) async {
+<<<<<<< HEAD
             if (kDebugMode)
               print(
                   'ShiftSummaryDashboardScreen: Adding/Editing vendor payout: ${request.toJson()}');
@@ -1435,13 +2105,46 @@ class _ShiftSummaryDashboardScreenState
                     if (kDebugMode) {
                       print(
                           "Unauthorised : response.message ${response.message!}");
+=======
+            if (kDebugMode) print('ShiftSummaryDashboardScreen: Adding/Editing vendor payout: ${request.toJson()}');
+            // Handle create or update
+            if (payment != null && request.vendorPaymentId != null) {
+              vendorPaymentBloc.updateVendorPayment(request, request.vendorPaymentId!);
+              // Listen to update stream
+              await for (var response in vendorPaymentBloc.updateVendorPaymentStream) {
+                if (response.status == Status.COMPLETED) {
+
+                  shiftBloc.getShiftById(widget.shiftId!); // Refresh shift data
+                  if (Misc.showDebugSnackBar) { // Build #1.0.254
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          response.message ?? 'Vendor payout updated successfully',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        backgroundColor: Colors.green,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                }
+                else if (response.status == Status.ERROR) {
+                  if (response.message!.contains('Unauthorised')) {
+                    if (kDebugMode) {
+                      print("Unauthorised : response.message ${response.message!}");
+>>>>>>> origin/Grocery_pch_api_integration
                     }
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (mounted) {
                         Navigator.pushReplacement(
+<<<<<<< HEAD
                             context,
                             MaterialPageRoute(
                                 builder: (context) => LoginScreen()));
+=======
+                            context, MaterialPageRoute(
+                            builder: (context) => LoginScreen()));
+>>>>>>> origin/Grocery_pch_api_integration
 
                         if (kDebugMode) {
                           print("message --- ${response.message}");
@@ -1456,7 +2159,12 @@ class _ShiftSummaryDashboardScreenState
                         );
                       }
                     });
+<<<<<<< HEAD
                   } else {
+=======
+                  }
+                  else {
+>>>>>>> origin/Grocery_pch_api_integration
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
@@ -1474,6 +2182,7 @@ class _ShiftSummaryDashboardScreenState
             } else {
               vendorPaymentBloc.createVendorPayment(request);
               // Listen to create stream
+<<<<<<< HEAD
               await for (var response
               in vendorPaymentBloc.createVendorPaymentStream) {
                 if (response.status == Status.COMPLETED) {
@@ -1493,13 +2202,39 @@ class _ShiftSummaryDashboardScreenState
                     if (kDebugMode) {
                       print(
                           "Unauthorised : response.message ${response.message!}");
+=======
+              await for (var response in vendorPaymentBloc.createVendorPaymentStream) {
+                if (response.status == Status.COMPLETED) {
+                  shiftBloc.getShiftById(widget.shiftId!); // Refresh shift data
+                  if (Misc.showDebugSnackBar) { // Build #1.0.254
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          response.message ?? 'Vendor payout added successfully',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        backgroundColor: Colors.green,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                } else if (response.status == Status.ERROR) {
+                  if (response.message!.contains('Unauthorised')) {
+                    if (kDebugMode) {
+                      print("Unauthorised : response.message ${response.message!}");
+>>>>>>> origin/Grocery_pch_api_integration
                     }
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (mounted) {
                         Navigator.pushReplacement(
+<<<<<<< HEAD
                             context,
                             MaterialPageRoute(
                                 builder: (context) => LoginScreen()));
+=======
+                            context, MaterialPageRoute(
+                            builder: (context) => LoginScreen()));
+>>>>>>> origin/Grocery_pch_api_integration
 
                         if (kDebugMode) {
                           print("message --- ${response.message}");
@@ -1514,7 +2249,12 @@ class _ShiftSummaryDashboardScreenState
                         );
                       }
                     });
+<<<<<<< HEAD
                   } else {
+=======
+                  }
+                  else {
+>>>>>>> origin/Grocery_pch_api_integration
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
@@ -1536,4 +2276,8 @@ class _ShiftSummaryDashboardScreenState
       },
     );
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/Grocery_pch_api_integration

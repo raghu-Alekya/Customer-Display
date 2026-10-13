@@ -1,5 +1,6 @@
 // repositories/order_repository.dart
 import 'dart:convert';
+<<<<<<< HEAD
 import 'dart:ffi';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -73,6 +74,5174 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
     if (kDebugMode) {
       print("OrderRepository - POST URL: $url");
+=======
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:pinaka_pos/Database/storage/storage_provider.dart';
+import 'package:http/http.dart' as _apiHelper;
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../Constants/text.dart';
+import '../../Database/db_helper.dart';
+import '../../Database/order_panel_db_helper.dart';
+import '../../Database/shift_db_helper.dart';
+import '../../Database/user_db_helper.dart';
+import '../../Helper/api_helper.dart';
+import '../../Helper/customerdisplayhelper.dart';
+import '../../Helper/offline_helper.dart';  // Build #offline
+import '../../Helper/url_helper.dart';
+import '../../Models/Assets/asset_model.dart';
+import '../../Models/Orders/apply_discount_model.dart';
+import '../../Models/Orders/get_orders_model.dart';
+import '../../Models/Orders/orders_model.dart' hide CouponLine;
+import '../../Models/Orders/total_orders_count_model.dart';
+import '../../Screens/Home/isar_payments/local_payments_db_helper.dart';
+import '../../Utilities/global_utility.dart';
+import '../../Screens/Auth/store_id_screen.dart'; // DeviceHelper.getDeviceId (same as login)
+import '../../core/api/pos_context_provider.dart';
+
+double resolveOfflineMerchantDiscountAmount(
+    Map<String, dynamic> offlineOrder, {
+      double? lineItemsTotal,
+    }) {
+  double amount = (double.tryParse(
+    offlineOrder['merchantDiscount']?.toString() ??
+        offlineOrder['merchant_discount']?.toString() ??
+        '0',
+  ) ??
+      0.0)
+      .abs();
+
+  if (amount > 0.000001) {
+    return amount;
+  }
+
+  final String type =
+      offlineOrder['merchantDiscountType']?.toString() ?? 'fixed';
+  final double perc = double.tryParse(
+    offlineOrder['merchantDiscountPercentage']?.toString() ?? '0',
+  ) ??
+      0.0;
+  final double fixed = (double.tryParse(
+    offlineOrder['merchantDiscountFixed']?.toString() ?? '0',
+  ) ??
+      0.0)
+      .abs();
+
+  if (type == 'percentage' && perc > 0) {
+    double gross = (offlineOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
+    if (gross <= 0 && lineItemsTotal != null && lineItemsTotal > 0) {
+      gross = lineItemsTotal;
+    }
+    if (gross <= 0) {
+      final products =
+      (offlineOrder['products'] ?? offlineOrder['items'] ?? []) as List;
+      for (final raw in products) {
+        if (raw is! Map) continue;
+        final item = Map<String, dynamic>.from(raw);
+        final price = double.tryParse(
+          item['item_price']?.toString() ??
+              item['price']?.toString() ??
+              '0',
+        ) ??
+            0.0;
+        final qty = int.tryParse(
+          item['items_count']?.toString() ??
+              item['quantity']?.toString() ??
+              '1',
+        ) ??
+            1;
+        gross += price * qty;
+      }
+    }
+
+    final double orderDisc =
+        (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+    final double base =
+    (gross - orderDisc.abs()).clamp(0.0, double.infinity);
+    amount = (base * perc) / 100.0;
+  } else if (fixed > 0) {
+    amount = fixed;
+  }
+
+  return amount < 0.000001 ? 0.0 : amount;
+}
+
+class FastKeyImageModel {
+  final int id;
+  final String name;
+  final String url;
+  final String imageType;
+
+  FastKeyImageModel({
+    required this.id,
+    required this.name,
+    required this.url,
+    required this.imageType,
+  });
+
+  /// Supports both legacy and new store API shapes:
+  /// - 2D/3D: { name, folder, url }
+  /// - database: { id (uuid), fastkey_title, fastkey_image, name }
+  factory FastKeyImageModel.fromJson(Map<String, dynamic> json) {
+    final rawId = json["id"]?.toString() ?? '';
+    final parsedId =
+        int.tryParse(rawId) ?? (rawId.isNotEmpty ? rawId.hashCode : 0);
+    final imageUrl = json["url"]?.toString() ??
+        json["fastkey_image"]?.toString() ??
+        '';
+    final imageName = json["name"]?.toString() ??
+        json["fastkey_title"]?.toString() ??
+        '';
+    final type = json["image_type"]?.toString() ??
+        json["folder"]?.toString() ??
+        '';
+    return FastKeyImageModel(
+      id: parsedId,
+      name: imageName,
+      url: imageUrl,
+      imageType: type,
+    );
+  }
+}
+
+class TaxModel {
+  final int id;
+  final String name;
+  final double rate;
+  final String taxClass;
+
+  TaxModel({
+    required this.id,
+    required this.name,
+    required this.rate,
+    required this.taxClass,
+  });
+
+  factory TaxModel.fromJson(Map<String, dynamic> json) {
+    return TaxModel(
+      id: json['id'],
+      name: json['name'],
+      rate: (json['rate'] as num).toDouble(),
+      taxClass: json['tax_class'],
+    );
+  }
+}
+
+class OrderRepository {
+  // Build #1.0.25 - added by naveen
+  final APIHelper _helper = APIHelper();
+
+  /// Same device id source as employee login (`device-id` body field).
+  /// Prefer DeviceHelper (Windows/Android/iOS), then POS context, then GlobalUtility.
+  Future<String> _currentPosDeviceId() async {
+    try {
+      final id = (await DeviceHelper.getDeviceId()).trim();
+      if (id.isNotEmpty && id.toLowerCase() != 'unknown') return id;
+    } catch (_) {}
+    try {
+      // Concrete impl — abstract PosContextProvider cannot be instantiated
+      final ctx = await PosContextProviderImpl().getContext();
+      final id = ctx?.deviceId.trim() ?? '';
+      if (id.isNotEmpty && id.toLowerCase() != 'unknown') return id;
+    } catch (_) {}
+    try {
+      final details = await GlobalUtility.getDeviceDetails();
+      final id = (details['device_id'] ?? '').toString().trim();
+      if (id.isNotEmpty && id.toLowerCase() != 'unknown') return id;
+    } catch (_) {}
+    return 'unknown';
+  }
+
+  // 1. Create Order
+  Future<CreateOrderResponseModel> createOrder() async {
+    // 🔹 Get local user and device info
+    int? shiftId = await UserDbHelper().getUserShiftId();
+    if (shiftId == null) {
+      throw Exception("Please start your shift before creating an order");
+    }
+
+    final deviceId = await _currentPosDeviceId();
+    if (kDebugMode) {
+      print("📤 [createOrder] pos_device_id: $deviceId");
+    }
+    final userData = await UserDbHelper().getUserData();
+    if (userData == null || userData[AppDBConst.userId] == null) {
+      throw Exception(
+          "User not logged in or user data not available. Please log in again.");
+    }
+    final userId = userData[AppDBConst.userId] as int;
+
+    final metaData = [
+      OrderMetaData(key: OrderMetaData.posDeviceId, value: deviceId),
+      OrderMetaData(key: OrderMetaData.posPlacedBy, value: '$userId'),
+      OrderMetaData(key: OrderMetaData.shiftId, value: shiftId.toString()),
+      OrderMetaData(
+          key: 'user_name', value: (userData?[AppDBConst.username] ?? "")),
+      OrderMetaData(key: 'user_id', value: userId.toString()),
+    ];
+
+    final request = CreateOrderRequestModel(metaData: metaData);
+
+    // ---------- OFFLINE MODE ONLY ----------
+    final box = StorageProvider.offlineOrders;
+    // ---------- UNIQUE ORDER ID: YYDD + secondBucket + milliseconds (avoids collisions) ----------
+
+    int newOrderId = 0;
+    for (int attempt = 0; attempt < 10; attempt++) {
+      final now = DateTime.now();
+      String yearPart = (now.year % 100).toString().padLeft(2, '0');
+      int dayOfYear = now.difference(DateTime(now.year, 1, 1)).inDays + 1;
+      String dayPart = dayOfYear.toString().padLeft(2, '0');
+      int totalSeconds = now.hour * 3600 + now.minute * 60 + now.second;
+      String secondPart = (totalSeconds % 100).toString().padLeft(2, '0');
+      String msPart = (now.millisecond % 100).toString().padLeft(2, '0');
+      String suffix = attempt > 0 ? attempt.toString() : '';
+      String finalOrderIdStr = "$yearPart$dayPart$secondPart$msPart$suffix";
+
+      final candidate = int.tryParse(finalOrderIdStr) ?? 0;
+      if (candidate <= 0) continue;
+
+      final key = candidate.toString();
+      if (!(await box.containsKey(key))) {
+        newOrderId = candidate;
+        break;
+      }
+      if (kDebugMode) {
+        print("Order ID collision detected for $candidate, retrying...");
+      }
+    }
+
+    if (newOrderId <= 0) {
+      newOrderId = DateTime.now().millisecondsSinceEpoch % 100000000;
+    }
+
+    if (kDebugMode) {
+      print("Generated Order ID: $newOrderId");
+    }
+
+    final localOrder = {
+      'order_id': newOrderId,
+      'request': request.toJson(),
+      'created_at': DateTime.now().toIso8601String(),
+      'synced': false,
+      'products': [],
+      'user_id': userId,
+      'user_name': userData?[AppDBConst.username] ?? "",
+      'shift_id': shiftId,
+      'order_type': "offline Order",
+      'status': "pending_offline",
+      'created_via': "offline Order",
+      'orderAgeRestricted': false,
+      'custom_items': [], // add to maintain compatibility
+    };
+
+    await box.put(newOrderId.toString(), localOrder);
+
+    if (kDebugMode) {
+      print("📦 Saved offline order: $localOrder");
+    }
+
+    // 🔹 Return local response for UI consistency
+    return CreateOrderResponseModel(
+      id: newOrderId,
+      parentId: 0,
+      status: "pending_offline",
+      currency: "INR",
+      discountTotal: "0",
+      total: "0",
+      metaData: metaData,
+      lineItems: [],
+      taxLines: [],
+      shippingLines: [],
+      feeLines: [],
+      couponLines: [],
+    );
+  }
+
+  Future<void> saveOfflineOrderTotals(int orderId) async {
+    final box = StorageProvider.offlineOrders;
+    final raw = await box.get(orderId.toString());
+
+    if (raw == null) return;
+
+    final order = Map<String, dynamic>.from(raw);
+
+    // ------------------ Products ------------------
+    final products = (order['products'] ?? []) as List;
+    num gross = 0;
+
+    for (final p in products) {
+      final price = double.tryParse(p['price'].toString()) ?? 0.0;
+      final qty = int.tryParse(p['quantity'].toString()) ?? 1;
+      gross += price * qty;
+    }
+
+    // ------------------ Discounts ------------------
+    num orderDiscount = (order['orderDiscount'] ?? 0.0) as num;
+    num merchantDiscount = (order['merchantDiscount'] ?? 0.0) as num;
+
+    // ------------------ Tax ------------------
+    num orderTax = (order['order_tax'] ?? 0.0) as num;
+
+    // ------------------ Totals ------------------
+    num netTotal = gross - orderDiscount - merchantDiscount;
+    num netPayable = netTotal + orderTax;
+
+    // Save
+    order['gross_total'] = gross;
+    order['orderDiscount'] = orderDiscount;
+    order['merchantDiscount'] = merchantDiscount;
+    order['order_tax'] = orderTax;
+    order['net_total'] = netTotal;
+    order['net_payable'] = netPayable;
+
+    await box.put(orderId.toString(), order);
+    print("💾 (Helper) Saved totals for order $orderId");
+  }
+
+  Future<void> addProductToOfflineOrder({
+    required int orderId,
+    required Map<String, dynamic> product,
+  }) async {
+    final box = StorageProvider.offlineOrders;
+    final order = await box.get(orderId.toString());
+
+    if (order == null) {
+      throw Exception("Offline order $orderId not found");
+    }
+
+    final List<Map<String, dynamic>> products = (order['products'] ?? [])
+        .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
+        .toList();
+
+    final newProductId = product['product_id'] ?? -1;
+    final newVariationId = product['variation_id'] ?? 0;
+
+    final existingIndex = products.indexWhere((p) {
+      final storedProductId = p['product_id'] ?? -1;
+      final storedVariationId = p['variation_id'] ?? 0;
+      return storedProductId == newProductId &&
+          storedVariationId == newVariationId;
+    });
+
+    if (existingIndex != -1) {
+      final existing = products[existingIndex];
+      final oldQty = (existing['quantity'] ?? 0).toInt();
+      final newQty = oldQty + (product['quantity'] ?? 1);
+
+      products[existingIndex] = {
+        ...existing,
+        'quantity': newQty,
+      };
+
+      if (kDebugMode) {
+        print(
+            "🔁 Updated existing offline product: ${product['name']} (Qty: $oldQty → $newQty)");
+      }
+    } else {
+      products.add(Map<String, dynamic>.from(product));
+
+      if (kDebugMode) {
+        print(
+            "🆕 Added new offline product: ${product['name']} (ID: $newProductId / Var: $newVariationId)");
+      }
+    }
+
+    await box.put(orderId.toString(), {
+      ...order,
+      'products': products,
+    });
+
+    if (kDebugMode) {
+      print("📦 Offline order updated -> Total products: ${products.length}");
+    }
+  }
+
+  double getCustomItemTax({
+    required String taxClass,
+    required double price,
+    required int qty,
+    required List<Tax> taxes,
+    double? taxRate,
+  }) {
+    try {
+      double rate = 0.0;
+
+      if (taxRate != null && taxRate > 0) {
+        rate = taxRate;
+      } else {
+        final selected = taxes.firstWhere(
+              (t) => t.slug == taxClass,
+          orElse: () => Tax(slug: "", name: ""),
+        );
+
+        if (selected.slug.isEmpty) {
+          print("⚠ No tax class match → tax = 0.0");
+          return 0.0;
+        }
+
+        final rateString = selected.slug.replaceAll(RegExp(r'[^0-9.]'), '');
+        rate = double.tryParse(rateString) ?? 0.0;
+      }
+
+      final taxAmount = ((price * rate) / 100) * qty;
+
+      print(
+        "🔥 Custom Item Tax → price:$price qty:$qty rate:$rate tax:$taxAmount",
+      );
+
+      return taxAmount;
+    } catch (e) {
+      print("❌ ERROR in getCustomItemTax → $e");
+      return 0.0;
+    }
+  }
+
+  void printFullJson(String label, Object json) {
+    final encoded = jsonEncode(json);
+    const chunkSize = 800;
+
+    for (int i = 0; i < encoded.length; i += chunkSize) {
+      debugPrint(
+        "🟢 [$label] ${encoded.substring(
+          i,
+          i + chunkSize > encoded.length ? encoded.length : i + chunkSize,
+        )}",
+      );
+    }
+  }
+
+  Future<void> _deleteProductLocally(String normalizedSku) async {
+    // 🧠 MEMORY
+    OrderHelper.removeFromCache(normalizedSku);
+
+    // 💽 SKU CACHE
+    await StorageProvider.productCache.delete("sku_$normalizedSku");
+
+    // 🗑 REMOVE FROM FULL LIST CACHE
+    final allProducts =
+    await StorageProvider.productCache.get("all_products_list");
+
+    if (allProducts is List) {
+      final updated = allProducts.where((item) {
+        try {
+          final sku = (item["sku"] ?? "").toString().toLowerCase();
+          return sku != normalizedSku.toLowerCase();
+        } catch (_) {
+          return true;
+        }
+      }).toList();
+
+      await StorageProvider.productCache.put("all_products_list", updated);
+    }
+
+    print("🗑 Local product removed → $normalizedSku");
+  }
+
+  Future<Map<String, dynamic>?> CouponApply(
+      Map<String, dynamic> offlineOrder) async {
+    try {
+      final String url = "${UrlHelper.componentVersionUrl}"
+          "${UrlMethodConstants.orders}/"
+          "${UrlMethodConstants.issuingCoupons}";
+
+      final List paymentsRaw = offlineOrder['payments'] as List? ?? [];
+
+      final List<Map<String, dynamic>> paymentsPayload = paymentsRaw.map((p) {
+        final double remaining =
+            double.tryParse(p['remainingBalance']?.toString() ?? '0') ?? 0.0;
+
+        return {
+          "local_id": p['local_id'] ?? p['id'],
+          "method": p['paymentMethod'],
+          "amount": double.tryParse(p['amount'].toString()) ?? 0.0,
+          "remaining": remaining < 0 ? 0.0 : remaining,
+          "status": p['status'] ?? 'pending',
+          "created_at": p['createdAt'],
+        };
+      }).toList();
+
+      // ✅ PRINT PAYMENTS CLEARLY
+      debugPrint("\n💰 PAYMENTS ATTACHED (${paymentsPayload.length}):");
+      for (final p in paymentsPayload) {
+        debugPrint(
+          " → LocalID:${p['local_id']} | "
+              "Method:${p['method']} | "
+              "Amount:\$${p['amount']} | "
+              "Remaining:\$${p['remaining']} | "
+              "Status:${p['status']}",
+        );
+      }
+
+      final String clientOrderId = offlineOrder['id']?.toString() ??
+          offlineOrder['order_id']?.toString() ??
+          offlineOrder['local_order_id']?.toString() ??
+          "";
+
+      // ---------------------------------------------------------
+      // ⭐ HANDLE PRODUCTS
+      // ---------------------------------------------------------
+      final productsRaw =
+      (offlineOrder['items'] ?? offlineOrder['products'] ?? []) as List;
+
+      final List<Map<String, dynamic>> lineItems = [];
+      final List<Map<String, dynamic>> feeLines = [];
+
+      // ---------------------------------------------------------
+      // ⭐ HANDLE PRODUCTS (Woo items + Custom items)
+      // ---------------------------------------------------------
+      for (var raw in productsRaw) {
+        final item = Map<String, dynamic>.from(raw);
+        final discountMeta =
+        Map<String, dynamic>.from(item['discount_meta'] ?? {});
+
+        final double autoDiscount =
+            double.tryParse(discountMeta['amount']?.toString() ?? '0') ?? 0.0;
+
+        final String discountType = discountMeta['type']?.toString() ?? '';
+        final String discountSource = discountMeta['source']?.toString() ?? '';
+        final String ruleId = discountMeta['rule_id']?.toString() ?? '';
+
+        // final double price =
+        //     double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+        // final double qty =
+        //     double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
+        // final double lineTotal = price * qty;
+
+        // ✅ NORMALIZE ITEM FIELDS (POS + API)
+        final String name = item['item_name'] ?? item['name'] ?? "Product";
+
+        // 🔒 HARD BLOCK payout & cashback from products loop
+        final String lowerName =
+        (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
+
+        final String itemType = item['type']?.toString().toLowerCase() ?? '';
+
+        if (lowerName == 'payout' ||
+            lowerName == 'cashback' ||
+            itemType == 'payout' ||
+            itemType == 'cashback' ||
+            item['is_payout'] == true ||
+            item['is_cashback'] == true) {
+          debugPrint(
+              "⏭ Skipping special item from products loop → $lowerName / $itemType");
+          continue;
+        }
+
+        final double price = double.tryParse(
+          item['item_price']?.toString() ??
+              item['price']?.toString() ??
+              '0',
+        ) ??
+            0.0;
+
+        final int qty = int.tryParse(
+          item['items_count']?.toString() ??
+              item['quantity']?.toString() ??
+              '1',
+        ) ??
+            1;
+
+        final double subtotal = price * qty;
+        final double total = subtotal - autoDiscount;
+
+        final dynamic pidRaw = item['product_id'] ??
+            item['id'] ??
+            item['productId'] ??
+            item['productID'] ??
+            item['product-id'] ??
+            item['meta']?['product_id'] ??
+            item['data']?['id'];
+
+        final int? pid =
+        pidRaw == null ? null : int.tryParse(pidRaw.toString());
+        if (pid == null || pid == 0) {
+          final int qtyInt = qty.toInt();
+
+          // 🔹 READ rate stored from UI
+          final double taxRate = double.tryParse(item['tax_rate']?.toString() ??
+              item['tax_Rate']?.toString() ??
+              '0') ??
+              0.0;
+
+          // ✅ READ TAX CLASS
+          final String taxClass = item['tax_class']?.toString() ??
+              item['tax_Class']?.toString() ??
+              "";
+
+          // 🔹 RECALCULATE tax HERE (new screen)
+          final double taxAmount = getCustomItemTax(
+            taxClass: taxClass,
+            price: price,
+            qty: qtyInt,
+            taxes: [],
+            taxRate: taxRate,
+          );
+
+          String resolveSku(Map<String, dynamic> item) {
+            return item['sku']?.toString().trim().isNotEmpty == true
+                ? item['sku'].toString()
+                : item['generated_sku']?.toString().trim().isNotEmpty == true
+                ? item['generated_sku'].toString()
+                : item['meta']?['sku']?.toString().trim().isNotEmpty == true
+                ? item['meta']['sku'].toString()
+                : "";
+          }
+
+          final String sku = resolveSku(item);
+
+          if (sku.isEmpty) {
+            debugPrint("⚠️ CUSTOM ITEM SKU MISSING → $name | raw: $item");
+          }
+
+          lineItems.add({
+            "name": name,
+            "quantity": qtyInt,
+            "sku": sku,
+            //"sku": item["sku"] ?? item["generated_sku"] ?? "",
+            "price": price.toStringAsFixed(2),
+
+            "tax_status": "taxable",
+            "tax_class": taxClass,
+
+            "subtotal": (price * qtyInt).toStringAsFixed(2),
+            "total": (price * qtyInt).toStringAsFixed(2),
+
+            //  SEND TAX
+            "subtotal_tax": taxAmount.toStringAsFixed(2),
+            "total_tax": taxAmount.toStringAsFixed(2),
+
+            "taxes": taxAmount > 0
+                ? [
+              {
+                "rate_id": 0,
+                "total": taxAmount.toStringAsFixed(2),
+                "subtotal": taxAmount.toStringAsFixed(2),
+              }
+            ]
+                : [],
+
+            // ✅ SEND RATE
+            "meta_data": [
+              {
+                "key": "_custom_tax_rate",
+                "value": taxRate.toString(),
+              }
+            ],
+
+            "type": "custom",
+          });
+
+          continue;
+        }
+
+        // ---------------------------------------------------------
+        // ⭐ WooCommerce normal product
+        // ---------------------------------------------------------
+        lineItems.add({
+          "product_id": pid,
+          //"name": item['name'] ?? "",
+          "quantity": qty,
+          // "subtotal": subtotal.toStringAsFixed(2),
+          "subtotal": autoDiscount > 0
+              ? total.toStringAsFixed(2)
+              : subtotal.toStringAsFixed(2),
+          "total": total.toStringAsFixed(2),
+
+          // Optional (Woo may override name, but fine to send)
+          "name": name,
+
+          "meta_data": [
+            {
+              "key": "_pos_auto_discount",
+              "value": autoDiscount.toStringAsFixed(2),
+            },
+            {
+              "key": "_pos_discount_type",
+              "value": discountType,
+            },
+            {
+              "key": "_pos_discount_source",
+              "value": discountSource,
+            },
+            {
+              "key": "_pos_discount_rule_id",
+              "value": ruleId,
+            },
+          ],
+        });
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ HANDLE PAYOUTS
+      // ---------------------------------------------------------
+      final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
+      for (final p in payouts) {
+        final double amount =
+            double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0;
+
+        final int? productId =
+        int.tryParse(p['payout_product_id']?.toString() ?? "");
+
+        if (productId != null && productId > 0) {
+          lineItems.add({
+            "product_id": productId,
+            "name": p["product_name"] ?? "Payout",
+            "quantity": 1,
+            "subtotal": amount.toStringAsFixed(2),
+            "total": amount.toStringAsFixed(2),
+          });
+        } else {
+          feeLines.add({
+            "name": p["product_name"] ?? "Payout",
+            "tax_status": "none",
+            "total": amount.toStringAsFixed(2),
+          });
+        }
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ HANDLE CASHBACK
+      // ---------------------------------------------------------
+      // ---------------------------------------------------------
+// ⭐ HANDLE CASHBACK
+// ---------------------------------------------------------
+      final cashbacks = (offlineOrder['cashbacks'] ?? []) as List? ?? [];
+      for (final c in cashbacks) {
+        final double amount =
+            double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
+
+        // Try multiple key names to be safe
+        final dynamic cashbackPidRaw = c['cashback_product_id'] ??
+            c['product_id'] ??
+            c['id'] ??
+            c['cashbackProductId'];
+
+        final int? productId = cashbackPidRaw == null
+            ? null
+            : int.tryParse(cashbackPidRaw.toString());
+
+        if (productId != null && productId > 0) {
+          lineItems.add({
+            "product_id": productId,
+            "name": c["product_name"] ?? "Cashback",
+            "quantity": 1,
+            "subtotal": amount.toStringAsFixed(2),
+            "total": amount.toStringAsFixed(2),
+          });
+          debugPrint("🟢 Added Cashback as product line → $productId");
+        } else {
+          feeLines.add({
+            "name": c["product_name"] ?? "Cashback",
+            "tax_status": "none",
+            "total": amount.toStringAsFixed(2),
+          });
+          debugPrint("🟡 Cashback product_id missing → sending as fee line");
+        }
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ HANDLE MERCHANT DISCOUNT (AS FEE LINE)
+      // ---------------------------------------------------------
+      // ---------------------------------------------------------
+      // ⭐ HANDLE MERCHANT DISCOUNT (AS FEE LINE)
+      // ---------------------------------------------------------
+      final double lineItemsSubtotal = lineItems.fold<double>(
+        0.0,
+            (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+      );
+
+      // ✅ NEW: Use UI-saved merchant discount amount if available (set by summary screen)
+      // This ensures what the cashier sees ($6.00) matches what gets sent to Woo.
+      final double _savedUiMerchantDiscount = (double.tryParse(
+        offlineOrder['uiMerchantDiscountAmount']?.toString() ?? '0',
+      ) ?? 0.0).abs();
+
+      final double merchantDiscount = _savedUiMerchantDiscount > 0.001
+          ? _savedUiMerchantDiscount
+          : resolveOfflineMerchantDiscountAmount(
+        offlineOrder,
+        lineItemsTotal: lineItemsSubtotal,
+      );
+      if (merchantDiscount > 0) {
+        feeLines.add({
+          "name": "merchant_discount",
+          "total": (-merchantDiscount).toStringAsFixed(2),
+          "tax_status": "none",
+        });
+        print(
+          "🟢 Added Merchant Discount as FEE LINE → -${merchantDiscount.toStringAsFixed(2)}",
+        );
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ FINAL TOTAL
+      // ---------------------------------------------------------
+      final totalAmount = lineItems.fold<double>(
+        0.0,
+            (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+      );
+
+      // ---------------------------------------------------------
+      // ⭐ Meta
+      // ---------------------------------------------------------
+      final shiftId = await UserDbHelper().getUserShiftId();
+      final userData = await UserDbHelper().getUserData();
+      final userId = userData?[AppDBConst.userId] ?? "admin";
+
+      // Same device id as login (DeviceHelper), not GlobalUtility alone
+      final String posDeviceId = await _currentPosDeviceId();
+      if (kDebugMode) {
+        print("📤 [Order meta] pos_device_id: $posDeviceId");
+      }
+
+      final List<Map<String, dynamic>> metaData = [
+        {"key": "pos_device_id", "value": posDeviceId},
+        {"key": "pos_placed_by", "value": "$userId"},
+        {"key": "shift_id", "value": "$shiftId"},
+        {"key": "pos_cash_paid", "value": totalAmount.toStringAsFixed(2)},
+        {"key": "_pos_client_order_id", "value": clientOrderId},
+      ];
+
+      if (paymentsPayload.isNotEmpty) {
+        metaData.add({
+          "key": "_pos_payments",
+          "value": paymentsPayload,
+        });
+      }
+      // ---------------------------------------------------------
+      // ⭐ FINAL PAYLOAD
+      // ---------------------------------------------------------
+      final payload = {
+        "payment_method": "cash",
+        "payment_method_title": "POS-CASH",
+        "set_paid": true,
+        "status": "processing",
+        "meta_data": metaData,
+        "fee_lines": feeLines,
+        "line_items": lineItems,
+        "tax_lines": [],
+        "coupon_lines": [],
+      };
+
+      printFullJson("SYNC Woo Payloaddddd", payload);
+
+      final response = await _helper.post(url, payload, true);
+
+      final decoded = (response is String) ? jsonDecode(response) : response;
+
+      debugPrint(
+        "🟦 [ISSUING COUPON RESPONSE] → ${jsonEncode(decoded)}",
+        wrapWidth: 1024,
+      );
+
+// 🔥 THIS IS THE KEY LINE
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+
+      return null;
+    } catch (e, s) {
+      print("❌ Failed to sync offline order: $e");
+      print("Stack: $s");
+    }
+    return null;
+  }
+
+  Map<String, dynamic> _normalizeHiveMap(dynamic data) {
+    if (data is Map) {
+      return data.map(
+              (key, value) => MapEntry(key.toString(), _normalizeHiveValue(value)));
+    }
+    return {};
+  }
+
+  dynamic _normalizeHiveValue(dynamic value) {
+    if (value is Map) {
+      return _normalizeHiveMap(value);
+    }
+    if (value is List) {
+      return value.map((e) => _normalizeHiveValue(e)).toList();
+    }
+    return value;
+  }
+
+
+
+
+//   Future<Map<String, dynamic>?> syncSingleOfflineOrder(
+//       Map<String, dynamic> offlineOrder) async {
+//     // Helper to determine if a coupon is redeemed (generate_type == true)
+//     bool _isRedeemedCoupon(Map<String, dynamic> coupon) {
+//       final gt = coupon['generate_type'];
+//       if (gt == true) return true;
+//       if (gt == false) return false;
+//       final keys = coupon.keys.toSet();
+//       return keys.length == 1 && keys.contains('code');
+//     }
+//
+//     try {
+//       final int? localOrderIdInt = int.tryParse(
+//         offlineOrder['id']?.toString() ?? offlineOrder['order_id']?.toString() ?? "",
+//       );
+//       if (localOrderIdInt == null) {
+//         debugPrint("❌ Cannot load payments → local order id missing");
+//       }
+//
+//       final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
+//       final int? existingWooOrderId =
+//       wooOrderIdRaw != null ? int.tryParse(wooOrderIdRaw.toString()) : null;
+//
+//       final Map<String, dynamic> couponResponse =
+//           (offlineOrder["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
+//
+//       final bool generatedCouponOnly =
+//           offlineOrder["generated_coupon_only"] == true;
+//
+//       final Map<int, Map<String, dynamic>> discountLines = {};
+//       final rawDiscountLines = offlineOrder['discount_lines'];
+//       if (rawDiscountLines is Map) {
+//         rawDiscountLines.forEach((key, value) {
+//           final int? k = int.tryParse(key.toString());
+//           if (k != null && value is Map) {
+//             discountLines[k] = Map<String, dynamic>.from(value);
+//           }
+//         });
+//       }
+//
+//       final bool isUpdate =
+//           existingWooOrderId != null && existingWooOrderId > 0;
+//
+//       final String url = isUpdate
+//           ? "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$existingWooOrderId"
+//           : "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
+//
+//       List<Map<String, dynamic>> paymentsPayload = [];
+//       if (localOrderIdInt != null) {
+//         final dbPayments = await LocalPaymentDBHelper.instance
+//             .getPaymentsByOrderId(localOrderIdInt);
+//         debugPrint("\n📊 LIVE PAYMENTS FROM DB (${dbPayments.length})");
+//         for (final p in dbPayments) {
+//           final remaining = p.remainingBalance < 0 ? 0.0 : p.remainingBalance;
+//           paymentsPayload.add({
+//             "local_id": p.id,
+//             "method": p.paymentMethod,
+//             "amount": p.amount,
+//             "remaining": remaining,
+//             "status": p.status?.name ?? "pending",
+//             "created_at": p.createdAt.toIso8601String(),
+//           });
+//           debugPrint(" → ID:${p.id} | ${p.paymentMethod} | "
+//               "Amount:${p.amount} | Remaining:$remaining | ${p.status?.name}");
+//         }
+//       }
+//
+//       final String clientOrderId = offlineOrder['id']?.toString() ??
+//           offlineOrder['order_id']?.toString() ??
+//           offlineOrder['local_order_id']?.toString() ??
+//           "";
+//
+//       // ---------------------------------------------------------
+// // ⭐ HANDLE PRODUCTS
+// // ---------------------------------------------------------
+//       List productsRaw = [];
+//       if ((offlineOrder['products'] as List?)?.isNotEmpty == true) {
+//         productsRaw = List.from(offlineOrder['products']);
+//         debugPrint("🟢 SYNC USING PRODUCTS (PERSISTED)");
+//         debugPrint("🌐 sync URLllllllllllllllllllll: $url");
+//
+//         debugPrint("\n📦 RAW PRODUCTS FROM HIVE -------------------");
+//         for (int i = 0; i < productsRaw.length; i++) {
+//           debugPrint("INDEX $i → ${productsRaw[i]}");
+//         }
+//         debugPrint("📦 END RAW PRODUCTS -------------------\n");
+//       }
+//
+//       final List<Map<String, dynamic>> lineItems = [];
+//       final List<Map<String, dynamic>> feeLines = [];
+//
+//       // ---------------------------------------------------------
+// // ⭐ HANDLE PRODUCTS (Woo items + Custom items)
+// // ---------------------------------------------------------
+//       for (var raw in productsRaw) {
+//         debugPrint("\n🧾 RAW ITEM TYPE → ${raw.runtimeType}");
+//         debugPrint("🧾 RAW ITEM DATA → $raw");
+//         debugPrint("🧾 RAW discount_meta → ${raw['discount_meta']}");
+//         debugPrint(
+//             "🧾 discount_meta TYPE → ${raw['discount_meta']?.runtimeType}");
+//
+//         final item = Map<String, dynamic>.from(raw);
+//         final String itemType = (item[AppDBConst.itemType] ?? item['type'] ?? '')
+//             .toString()
+//             .toLowerCase();
+//
+//         if (itemType.contains('custom')) {
+//           final String name = item[AppDBConst.itemName] ?? item['name'] ?? "Custom Item";
+//           final int qty = (item['quantity'] ?? item[AppDBConst.itemCount] ?? 1) as int;
+//           final double price = (item['price'] ?? item[AppDBConst.itemPrice] ?? 0.0) as double;
+//           final double total = price * qty;
+//           final dynamic pidRaw = item['product_id'] ?? item['selectedProductId'] ??
+//               item['server_item_id'] ?? item['id'];
+//           final int? productId = pidRaw != null ? int.tryParse(pidRaw.toString()) : null;
+//           final int finalProductId = productId ?? 60303;
+//           final String sku = item['sku']?.toString() ?? '';
+//           final String taxClass = (item['pos_tax_class'] ?? '').toString();
+//
+//           final Map<String, dynamic> customLineItem = {
+//             "product_id": finalProductId,
+//             "name": name,
+//             "quantity": qty,
+//             "subtotal": total.toStringAsFixed(2),
+//             "total": total.toStringAsFixed(2),
+//             "tax_class": taxClass,
+//             "type": "custom",
+//           };
+//           if (sku.isNotEmpty) {
+//             customLineItem["sku"] = sku;
+//           }
+//           lineItems.add(customLineItem);
+//           continue;
+//         }
+//
+//         // ---------------------------------------------------------
+// // 🔍 DETECT PRODUCT ID FIRST (Normal Product Path)
+// // ---------------------------------------------------------
+//         final dynamic pidRaw = item['product_id'] ?? item['id'] ??
+//             item['productId'] ?? item['productID'] ??
+//             item['product-id'] ?? item['meta']?['product_id'] ??
+//             item['data']?['id'];
+//
+//         int? safeParseInt(dynamic v) {
+//           if (v == null) return null;
+//           if (v is int) return v;
+//           if (v is double) return v.toInt();
+//           return int.tryParse(v.toString().split('.').first);
+//         }
+//         final int? pid = safeParseInt(pidRaw);
+//
+//         // ---------------------------------------------------------
+// // 🔥 FETCH DISCOUNT (SOURCE OF TRUTH)
+// // ---------------------------------------------------------
+//         final Map<String, dynamic> discountMeta = discountLines[pid] ?? {};
+//         final double autoDiscount =
+//             double.tryParse(discountMeta['amount']?.toString() ?? '0') ?? 0.0;
+//         final String discountType = discountMeta['type']?.toString() ?? '';
+//         final String discountSource = discountMeta['source']?.toString() ?? '';
+//         final String ruleId = discountMeta['rule_id']?.toString() ?? '';
+//
+//         debugPrint("🎯 MATCH PID = $pid");
+//         debugPrint("🎯 FOUND DISCOUNT = $discountMeta");
+//
+//         // ✅ NORMALIZE ITEM FIELDS (POS + API)
+//         final String name = item['item_name'] ?? item['name'] ?? "Product";
+//
+//         bool isEbtEligible = item['is_ebt_eligible'] == true ||
+//             item['is_ebt_eligible'] == 1 ||
+//             item['is_ebt_eligible'] == "1";
+//
+//         final tags = item['tags'] ?? item['product_data']?['tags'];
+//         if (tags is List) {
+//           isEbtEligible = tags.any((t) {
+//             if (t is Map) {
+//               return (t['slug'] ?? '').toString().toLowerCase() == 'ebt-eligible';
+//             }
+//             if (t is String) {
+//               return t.toLowerCase() == 'ebt-eligible';
+//             }
+//             return false;
+//           });
+//         }
+//         debugPrint("🟢 EBT DETECTED response → $isEbtEligible for $name");
+//
+//         // 🔒 HARD BLOCK payout & cashback from products loop
+//         final String lowerName =
+//         (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
+//         final String itemTypeNormal = item['type']?.toString().toLowerCase() ?? '';
+//         if (lowerName == 'payout' ||
+//             lowerName == 'cashback' ||
+//             itemTypeNormal == 'payout' ||
+//             itemTypeNormal == 'cashback' ||
+//             item['is_payout'] == true ||
+//             item['is_cashback'] == true) {
+//           debugPrint(
+//               "⏭ Skipping special item from products loop → $lowerName / $itemTypeNormal");
+//           continue;
+//         }
+//
+//         final double price = double.tryParse(
+//           item['item_price']?.toString() ?? item['price']?.toString() ?? '0',
+//         ) ??
+//             0.0;
+//         final int qty = int.tryParse(
+//           item['items_count']?.toString() ??
+//               item['quantity']?.toString() ??
+//               '1',
+//         ) ??
+//             1;
+//         final double subtotal = price * qty;
+//         final double total = subtotal - autoDiscount;
+//
+//         if (pid == null || pid == 0) {
+//           final int qtyInt = qty.toInt();
+//           final double taxRate = double.tryParse(
+//             item['tax_rate']?.toString() ?? item['tax_Rate']?.toString() ?? '0',
+//           ) ??
+//               0.0;
+//           final String taxClass =
+//               item['tax_class']?.toString() ?? item['tax_Class']?.toString() ?? "";
+//
+//           final double taxAmount = getCustomItemTax(
+//             taxClass: taxClass,
+//             price: price,
+//             qty: qtyInt,
+//             taxes: [],
+//             taxRate: taxRate,
+//           );
+//
+//           String resolveSku(Map<String, dynamic> item) {
+//             return item['sku']?.toString().trim().isNotEmpty == true
+//                 ? item['sku'].toString()
+//                 : item['generated_sku']?.toString().trim().isNotEmpty == true
+//                 ? item['generated_sku'].toString()
+//                 : item['meta']?['sku']?.toString().trim().isNotEmpty == true
+//                 ? item['meta']['sku'].toString()
+//                 : "";
+//           }
+//
+//           final String sku = resolveSku(item);
+//           if (sku.isEmpty) {
+//             debugPrint("⚠️ CUSTOM ITEM SKU MISSING → $name | raw: $item");
+//           }
+//
+//           lineItems.add({
+//             "name": name,
+//             "quantity": qtyInt,
+//             "sku": sku,
+//             "price": price.toStringAsFixed(2),
+//             "tax_status": "taxable",
+//             "tax_class": taxClass,
+//             "subtotal": (price * qtyInt).toStringAsFixed(2),
+//             "total": (price * qtyInt).toStringAsFixed(2),
+//             "subtotal_tax": taxAmount.toStringAsFixed(2),
+//             "total_tax": taxAmount.toStringAsFixed(2),
+//             "taxes": taxAmount > 0
+//                 ? [
+//               {
+//                 "rate_id": 0,
+//                 "total": taxAmount.toStringAsFixed(2),
+//                 "subtotal": taxAmount.toStringAsFixed(2),
+//               }
+//             ]
+//                 : [],
+//             "meta_data": [
+//               {
+//                 "key": "_custom_tax_rate",
+//                 "value": taxRate.toString(),
+//               }
+//             ],
+//             "type": "custom",
+//           });
+//           continue;
+//         }
+//
+//         // ---------------------------------------------------------
+// // ⭐ WooCommerce normal product
+// // ---------------------------------------------------------
+//         final int? variationId = int.tryParse(
+//           item['item_variation_id']?.toString() ??
+//               item['variation_id']?.toString() ??
+//               item['variationId']?.toString() ??
+//               item['itemVariationId']?.toString() ??
+//               "0",
+//         );
+//
+//         debugPrint("🟣 VARIANT ID → ${item['item_variation_id']}");
+//         debugPrint("🟣 VARIANT NAME → ${item['item_variation_custom_name']}");
+//         debugPrint("🟣 FINAL VARIANT ID SENT → $variationId");
+//
+//         final bool isWeightedItem = itemType.contains('weighted') ||
+//             (item['type']?.toString().toLowerCase() ?? '').contains('weighted');
+//
+// // 🔥 EXTRACT WEIGHT FIELDS
+//         double weightQty = 0.0;
+//         double unitPrice = 0.0;
+//         if (isWeightedItem) {
+//           weightQty = double.tryParse(
+//               item['weight_qty']?.toString() ??
+//                   item['weightQty']?.toString() ??
+//                   item['weight']?.toString() ??
+//                   '0'
+//           ) ?? 0.0;
+//
+//           unitPrice = double.tryParse(
+//               item['unit_price']?.toString() ??
+//                   item['regular_price']?.toString() ??
+//                   item['sales_price']?.toString() ??
+//                   item['item_price']?.toString() ??
+//                   '0'
+//           ) ?? 0.0;
+//
+//           debugPrint(" WEIGHTED ITEM DETECTED: $name | weightQty=$weightQty | unitPrice=$unitPrice");
+//         }
+//
+//         lineItems.add({
+//           "product_id": pid,
+//           if (variationId != null && variationId > 0) "variation_id": variationId,
+//           "quantity": qty,
+//           "total": total.toStringAsFixed(2),
+//           "subtotal": autoDiscount > 0
+//               ? total.toStringAsFixed(2)
+//               : subtotal.toStringAsFixed(2),
+//           "name": name,
+//           "meta_data": [
+//             {
+//               "key": "_pos_auto_discount",
+//               "value": autoDiscount.toStringAsFixed(2),
+//             },
+//             {
+//               "key": "_pos_discount_type",
+//               "value": discountType,
+//             },
+//             {
+//               "key": "_pos_discount_source",
+//               "value": discountSource,
+//             },
+//             {
+//               "key": "_pos_discount_rule_id",
+//               "value": ruleId,
+//             },
+//             {
+//               "key": "_is_ebt_eligible",
+//               "value": isEbtEligible ? "1" : "0",
+//             }
+//
+//           ],
+//         });
+//       }
+//
+//       // ---------------------------------------------------------
+// // ⭐ HANDLE PAYOUTS
+// // ---------------------------------------------------------
+//       final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
+//       for (final p in payouts) {
+//         final double amount =
+//             double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0;
+//         final int? productId =
+//         int.tryParse(p['payout_product_id']?.toString() ?? "");
+//
+//         if (productId != null && productId > 0) {
+//           lineItems.add({
+//             "product_id": productId,
+//             "name": p["product_name"] ?? "Payout",
+//             "quantity": 1,
+//             "subtotal": amount.toStringAsFixed(2),
+//             "total": amount.toStringAsFixed(2),
+//           });
+//         } else {
+//           feeLines.add({
+//             "name": p["product_name"] ?? "Payout",
+//             "tax_status": "none",
+//             "total": amount.toStringAsFixed(2),
+//           });
+//         }
+//       }
+//
+//       // ---------------------------------------------------------
+// // ⭐ RECALCULATE TAX AFTER COUPON/ORDER DISCOUNT (FIX: sends correct tax)
+// // ---------------------------------------------------------
+//       // Read stored values
+//       double storedOrderTax = (offlineOrder['order_tax'] as num?)?.toDouble() ?? 0.0;
+//       double storedOrderDiscount = (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+//       double storedGrossTotal = (offlineOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
+//
+//       // Recalculate gross from line items (most accurate)
+//       double computedGross = lineItems.fold<double>(
+//         0.0,
+//             (sum, li) {
+//           final t = double.tryParse(li['total'].toString()) ?? 0.0;
+//           return t > 0 ? sum + t : sum; // skip negative/discount lines
+//         },
+//       );
+//       if (computedGross <= 0) computedGross = storedGrossTotal;
+//
+//       // Recalculate tax proportionally if coupon/order discount exists
+//       double finalTax = storedOrderTax;
+//       if (storedOrderDiscount > 0 && storedOrderTax > 0 && computedGross > 0) {
+//         final double netAfterDiscount = computedGross - storedOrderDiscount;
+//         if (netAfterDiscount > 0 && netAfterDiscount < computedGross) {
+//           final double taxRatio = netAfterDiscount / computedGross;
+//           finalTax = double.parse((storedOrderTax * taxRatio).toStringAsFixed(2));
+//           debugPrint("🔁 TAX RECALCULATED FOR SYNC → gross:$computedGross "
+//               "discount:$storedOrderDiscount netAfter:$netAfterDiscount "
+//               "originalTax:$storedOrderTax finalTax:$finalTax");
+//         }
+//       }
+//
+//       // Also check tax_discount field (set by CustomerDisplayHelper after coupon)
+//       final double hiveRecalcTax = (offlineOrder['tax_discount'] as num?)?.toDouble() ?? 0.0;
+//       if (hiveRecalcTax > 0 && hiveRecalcTax < storedOrderTax) {
+//         // CustomerDisplayHelper already recalculated — trust it
+//         finalTax = hiveRecalcTax;
+//         debugPrint("✅ TAX FROM HIVE tax_discount (post-coupon) → $finalTax");
+//       }
+//
+//       // ---------------------------------------------------------
+// // ⭐ HANDLE CASHBACK
+// // ---------------------------------------------------------
+//       final cashbacks = (offlineOrder['cashbacks'] ?? []) as List? ?? [];
+//       for (final c in cashbacks) {
+//         final double amount =
+//             double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
+//         final dynamic cashbackPidRaw = c['cashback_product_id'] ??
+//             c['product_id'] ??
+//             c['id'] ??
+//             c['cashbackProductId'];
+//         final int? productId = cashbackPidRaw == null
+//             ? null
+//             : int.tryParse(cashbackPidRaw.toString());
+//
+//         if (productId != null && productId > 0) {
+//           lineItems.add({
+//             "product_id": productId,
+//             "name": c["product_name"] ?? "Cashback",
+//             "quantity": 1,
+//             "subtotal": amount.toStringAsFixed(2),
+//             "total": amount.toStringAsFixed(2),
+//           });
+//           debugPrint("🟢 Added Cashback as product line → $productId");
+//         } else {
+//           feeLines.add({
+//             "name": c["product_name"] ?? "Cashback",
+//             "tax_status": "none",
+//             "total": amount.toStringAsFixed(2),
+//           });
+//           debugPrint("🟡 Cashback product_id missing → sending as fee line");
+//         }
+//       }
+//
+//       // ---------------------------------------------------------
+// // ⭐ MERCHANT DISCOUNT - FIXED using existing helper (matches UI -6.00)
+// // ---------------------------------------------------------
+//       final double lineItemsSubtotal = lineItems.fold<double>(
+//         0.0,
+//             (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+//       );
+//
+//       // Use shared helper to ensure merchant discount matches UI display
+//       final double merchantDiscount = resolveOfflineMerchantDiscountAmount(
+//         offlineOrder,
+//         lineItemsTotal: lineItemsSubtotal,
+//       );
+//
+//       // ---------------------------------------------------------
+// // ⭐ SEPARATE ISSUED vs REDEEMED COUPONS
+// // ---------------------------------------------------------
+//       List<Map<String, dynamic>> issuedCoupons = [];
+//       List<Map<String, dynamic>> redeemedCoupons = [];
+//       final List<dynamic> allCoupons = couponResponse["coupons"] as List? ?? [];
+//       for (final dynamic coupon in allCoupons) {
+//         if (coupon is! Map) continue;
+//         final Map<String, dynamic> couponMap = Map<String, dynamic>.from(coupon);
+//         final gt = couponMap['generate_type'];
+//         final bool isRedeemed;
+//         if (gt == true) {
+//           isRedeemed = true;
+//         } else if (gt == false) {
+//           isRedeemed = false;
+//         } else {
+//           final keys = couponMap.keys.toSet();
+//           isRedeemed = keys.length == 1 && keys.contains('code');
+//         }
+//         if (isRedeemed) {
+//           redeemedCoupons.add(couponMap);
+//         } else {
+//           issuedCoupons.add(couponMap);
+//         }
+//       }
+//
+//       debugPrint("📊 Issued coupons (generate_type false): ${issuedCoupons.length}");
+//       debugPrint("📊 Redeemed coupons (generate_type true): ${redeemedCoupons.length}");
+//
+//       final shiftId = await UserDbHelper().getUserShiftId();
+//       final userData = await UserDbHelper().getUserData();
+//       final userId = userData?[AppDBConst.userId] ?? "admin";
+//
+//       // ---------------------------------------------------------
+// // ⭐ DECLARE METADATA HERE BEFORE USING IT
+// // ---------------------------------------------------------
+//       final List<Map<String, dynamic>> metaData = [
+//         {"key": "pos_device_id", "value": "b31b723b92047f4b"},
+//         {"key": "pos_placed_by", "value": "$userId"},
+//         {"key": "shift_id", "value": "$shiftId"},
+//         {"key": "pos_cash_paid", "value": "0.00"},
+//         {"key": "_pos_client_order_id", "value": clientOrderId},
+//       ];
+//
+//       // Add recalculated tax to meta_data so backend receives correct value
+//       metaData.add({
+//         "key": "_pos_order_tax",
+//         "value": finalTax.toStringAsFixed(2),
+//       });
+//
+//       debugPrint("📤 SYNC SENDING TAX → $finalTax (was stored: $storedOrderTax)");
+//
+//       if (merchantDiscount > 0) {
+//         metaData.add({
+//           "key": "_merchant_discount",
+//           "value": merchantDiscount.toStringAsFixed(2),
+//         });
+//         print(
+//           "🟢 Added Merchant Discount as META_DATA → ${merchantDiscount.toStringAsFixed(2)}",
+//         );
+//       }
+//
+//       if (issuedCoupons.isNotEmpty) {
+//         metaData.add({
+//           "key": "_pos_generated_coupon",
+//           "value": {
+//             "coupons": issuedCoupons,
+//           },
+//         });
+//         debugPrint(" Generated coupon stored in meta only");
+//       }
+//
+//       if (paymentsPayload.isNotEmpty) {
+//         metaData.add({
+//           "key": "_pos_payments",
+//           "value": paymentsPayload,
+//         });
+//       }
+//
+//       if (isUpdate) {
+//         metaData.add({"key": "pos_order_tag", "value": "updated_from_pos"});
+//       }
+//
+//       // ---------------------------------------------------------
+// // COUPON LINES: only include redeemed coupons
+// // ---------------------------------------------------------
+//       final List<Map<String, dynamic>> couponLines = [];
+//       if (generatedCouponOnly && redeemedCoupons.isEmpty) {
+//         debugPrint(" Generated coupon only → skipping coupon_lines");
+//       } else {
+//         for (final c in redeemedCoupons) {
+//           final String code = c["code"]?.toString().trim() ?? "";
+//           if (code.isNotEmpty) {
+//             couponLines.add({"code": code});
+//             debugPrint("✅ Passing redeemed coupon to Woo → $code");
+//           }
+//         }
+//       }
+//
+//       debugPrint(
+//         "🧾 Final coupon_lines → ${jsonEncode(couponLines)}",
+//         wrapWidth: 1024,
+//       );
+//
+//       // ---------------------------------------------------------
+// // ⭐ FINAL TOTAL
+// // ---------------------------------------------------------
+//       final totalAmount = lineItems.fold<double>(
+//         0.0,
+//             (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+//       );
+//
+//       // Update the cash paid meta field with actual total
+//       final cashPaidIndex =
+//       metaData.indexWhere((m) => m['key'] == 'pos_cash_paid');
+//       if (cashPaidIndex != -1) {
+//         metaData[cashPaidIndex]['value'] = totalAmount.toStringAsFixed(2);
+//       }
+//
+//       // ---------------------------------------------------------
+// // ⭐ FINAL PAYLOAD
+// // ---------------------------------------------------------
+//       final payload = {
+//         "payment_method": "cash",
+//         "payment_method_title": "POS-CASH",
+//         "set_paid": true,
+//         "status": "processing",
+//         "meta_data": metaData,
+//         "fee_lines": feeLines,
+//         "line_items": lineItems,
+//         "coupon_lines": couponLines,
+//         "tax_lines": [],
+//       };
+//
+//       printFullJson("woo payloadrrrrrrrrrrrrrrrrrrrrrrrrr", payload);
+//
+//       final prettyJson = const JsonEncoder.withIndent('  ').convert(payload);
+//
+//       const chunkSize = 800;
+//       for (int i = 0; i < prettyJson.length; i += chunkSize) {
+//         debugPrint(
+//           prettyJson.substring(
+//             i,
+//             i + chunkSize > prettyJson.length
+//                 ? prettyJson.length
+//                 : i + chunkSize,
+//           ),
+//         );
+//       }
+//
+//       final response = isUpdate
+//           ? await _helper.put(url, payload, true)
+//           : await _helper.post(url, payload, true);
+//
+//       String body = response.toString().trim();
+//       if (body.startsWith('1{')) {
+//         body = body.substring(1);
+//       }
+//       final decoded = jsonDecode(body);
+//
+//       final String wooStatus = decoded is Map<String, dynamic>
+//           ? decoded['status']?.toString() ?? 'processing'
+//           : 'processing';
+//
+//       debugPrint("woo Status from sync response → $wooStatus");
+//       debugPrint(
+//         "woo Response → ${jsonEncode(decoded)}",
+//         wrapWidth: 1024,
+//       );
+//
+//       if (decoded is Map<String, dynamic>) {
+//         debugPrint(
+//           " woo Response coupon_lines → ${jsonEncode(decoded['coupon_lines'] ?? [])}",
+//           wrapWidth: 1024,
+//         );
+//       }
+//
+//       double cashbackFee = 0.0;
+//       final wooFees = decoded["fee_lines"] as List? ?? [];
+//       for (final fee in wooFees) {
+//         final name = fee["name"]?.toString().toLowerCase() ?? "";
+//         if (name.contains("cashback fee")) {
+//           cashbackFee = double.tryParse(fee["total"]?.toString() ?? "0") ?? 0.0;
+//         }
+//       }
+//
+//       if (decoded is Map<String, dynamic> && decoded['id'] != null) {
+//         final int serverOrderId = int.tryParse(decoded['id'].toString()) ?? 0;
+//         final double wooTax =
+//             double.tryParse(decoded['total_tax']?.toString() ?? "0") ?? 0.0;
+//         final double wooTotal =
+//             double.tryParse(decoded['total']?.toString() ?? "0") ?? 0.0;
+//         final double wooDiscount =
+//             double.tryParse(decoded['discount_total']?.toString() ?? "0") ?? 0.0;
+//         final double wooDiscountTax =
+//             double.tryParse(decoded['discount_tax']?.toString() ?? "0") ?? 0.0;
+//
+//         final box = StorageProvider.offlineOrders;
+//         final localOrderId = offlineOrder['id']?.toString() ??
+//             offlineOrder['order_id']?.toString() ??
+//             serverOrderId.toString();
+//
+//         // ⭐ SAVE ALL UPDATED VALUES INTO HIVE
+//         offlineOrder['wooOrderId'] = serverOrderId;
+//         offlineOrder['wooTax'] = wooTax;
+//         offlineOrder['wooTotal'] = wooTotal;
+//         offlineOrder['wooStatus'] = wooStatus;
+//         offlineOrder['orderDiscount'] = wooDiscount;
+//         offlineOrder['tax_discount'] = wooDiscountTax;
+//         offlineOrder['order_tax'] = wooTax;
+//         offlineOrder['net_total'] = wooTotal;
+//         offlineOrder['net_payable'] = wooTotal;
+//         offlineOrder['remainingBalance'] = wooTotal;
+//         offlineOrder['coupon_lines'] = decoded['coupon_lines'];
+//
+//         await box.put(localOrderId, offlineOrder);
+//         await box.put(serverOrderId.toString(), {"map_to_local": localOrderId});
+//
+//         await CustomerDisplayHelper.updateCustomerDisplay(
+//             int.tryParse(localOrderId) ?? serverOrderId);
+//
+//         return {
+//           "id": serverOrderId,
+//           "status": wooStatus,
+//           "total": wooTotal,
+//           "tax": wooTax,
+//           "discount_total": wooDiscount,
+//           "discount_tax": wooDiscountTax,
+//           "cashback_fee": cashbackFee,
+//           "line_items": decoded["line_items"],
+//         };
+//       }
+//     } catch (e, s) {
+//       print(" Failed to sync offline order: $e");
+//       print("Stack: $s");
+//     }
+//     return null;
+//   }
+
+
+  //bala old
+
+  // Future<Map<String, dynamic>?> syncSingleOfflineOrder(
+  //     Map<String, dynamic> offlineOrder) async {
+  //   // Helper to determine if a coupon is redeemed (generate_type == true)
+  //   bool _isRedeemedCoupon(Map<String, dynamic> coupon) {
+  //     final gt = coupon['generate_type'];
+  //     if (gt == true) return true;
+  //     if (gt == false) return false;
+  //     final keys = coupon.keys.toSet();
+  //     return keys.length == 1 && keys.contains('code');
+  //   }
+  //
+  //   try {
+  //     final int? localOrderIdInt = int.tryParse(
+  //       offlineOrder['id']?.toString() ?? offlineOrder['order_id']?.toString() ?? "",
+  //     );
+  //     if (localOrderIdInt == null) {
+  //       debugPrint("❌ Cannot load payments → local order id missing");
+  //     }
+  //
+  //     final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
+  //     final int? existingWooOrderId =
+  //     wooOrderIdRaw != null ? int.tryParse(wooOrderIdRaw.toString()) : null;
+  //
+  //     final Map<String, dynamic> couponResponse =
+  //         (offlineOrder["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
+  //
+  //     final bool generatedCouponOnly =
+  //         offlineOrder["generated_coupon_only"] == true;
+  //
+  //     final Map<int, Map<String, dynamic>> discountLines = {};
+  //     final rawDiscountLines = offlineOrder['discount_lines'];
+  //     if (rawDiscountLines is Map) {
+  //       rawDiscountLines.forEach((key, value) {
+  //         final int? k = int.tryParse(key.toString());
+  //         if (k != null && value is Map) {
+  //           discountLines[k] = Map<String, dynamic>.from(value);
+  //         }
+  //       });
+  //     }
+  //
+  //     final bool isUpdate =
+  //         existingWooOrderId != null && existingWooOrderId > 0;
+  //
+  //     final String url = isUpdate
+  //         ? "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$existingWooOrderId"
+  //         : "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
+  //
+  //     List<Map<String, dynamic>> paymentsPayload = [];
+  //     if (localOrderIdInt != null) {
+  //       final dbPayments = await LocalPaymentDBHelper.instance
+  //           .getPaymentsByOrderId(localOrderIdInt);
+  //       debugPrint("\n📊 LIVE PAYMENTS FROM DB (${dbPayments.length})");
+  //       for (final p in dbPayments) {
+  //         final remaining = p.remainingBalance < 0 ? 0.0 : p.remainingBalance;
+  //         paymentsPayload.add({
+  //           "local_id": p.id,
+  //           "method": p.paymentMethod,
+  //           "amount": p.amount,
+  //           "remaining": remaining,
+  //           "status": p.status?.name ?? "pending",
+  //           "created_at": p.createdAt.toIso8601String(),
+  //         });
+  //         debugPrint(" → ID:${p.id} | ${p.paymentMethod} | "
+  //             "Amount:${p.amount} | Remaining:$remaining | ${p.status?.name}");
+  //       }
+  //     }
+  //
+  //     final String clientOrderId = offlineOrder['id']?.toString() ??
+  //         offlineOrder['order_id']?.toString() ??
+  //         offlineOrder['local_order_id']?.toString() ??
+  //         "";
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ HANDLE PRODUCTS
+  //     // ---------------------------------------------------------
+  //     List productsRaw = [];
+  //     if ((offlineOrder['products'] as List?)?.isNotEmpty == true) {
+  //       productsRaw = List.from(offlineOrder['products']);
+  //       debugPrint("🟢 SYNC USING PRODUCTS (PERSISTED)");
+  //       debugPrint("🌐 sync URL: $url");
+  //
+  //       debugPrint("\n📦 RAW PRODUCTS FROM HIVE -------------------");
+  //       for (int i = 0; i < productsRaw.length; i++) {
+  //         debugPrint("INDEX $i → ${productsRaw[i]}");
+  //       }
+  //       debugPrint("📦 END RAW PRODUCTS -------------------\n");
+  //     }
+  //
+  //     final List<Map<String, dynamic>> lineItems = [];
+  //     final List<Map<String, dynamic>> feeLines = [];
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ HANDLE PRODUCTS (Woo items + Custom items)
+  //     // ---------------------------------------------------------
+  //     for (var raw in productsRaw) {
+  //       debugPrint("\n🧾 RAW ITEM TYPE → ${raw.runtimeType}");
+  //       debugPrint("🧾 RAW ITEM DATA → $raw");
+  //       debugPrint("🧾 RAW discount_meta → ${raw['discount_meta']}");
+  //       debugPrint(
+  //           "🧾 discount_meta TYPE → ${raw['discount_meta']?.runtimeType}");
+  //
+  //       final item = Map<String, dynamic>.from(raw);
+  //       final String itemType = (item[AppDBConst.itemType] ?? item['type'] ?? '')
+  //           .toString()
+  //           .toLowerCase();
+  //
+  //       // 🔥 CHECK IF THIS IS A WEIGHTED ITEM
+  //       final bool isWeightedItem = itemType.contains('weighted') ||
+  //           (item['type']?.toString().toLowerCase() ?? '').contains('weighted');
+  //
+  //       // 🔥 EXTRACT WEIGHT FIELDS
+  //       double weightQty = 0.0;
+  //       double unitPrice = 0.0;
+  //       if (isWeightedItem) {
+  //         weightQty = double.tryParse(
+  //             item['weight_qty']?.toString() ??
+  //                 item['weightQty']?.toString() ??
+  //                 item['weight']?.toString() ??
+  //                 '0'
+  //         ) ?? 0.0;
+  //
+  //         unitPrice = double.tryParse(
+  //             item['unit_price']?.toString() ??
+  //                 item['regular_price']?.toString() ??
+  //                 item['sales_price']?.toString() ??
+  //                 item['item_price']?.toString() ??
+  //                 '0'
+  //         ) ?? 0.0;
+  //
+  //         debugPrint("️ WEIGHTED ITEM DETECTED: ${item['name']} | weightQty=$weightQty | unitPrice=$unitPrice");
+  //       }
+  //
+  //       // ---------------------------------------------------------
+  //       // ⭐ CUSTOM ITEMS (including weighted custom items)
+  //       // ---------------------------------------------------------
+  //       if (itemType.contains('custom')) {
+  //         final String name = item[AppDBConst.itemName] ?? item['name'] ?? "Custom Item";
+  //         final int qty = (item['quantity'] ?? item[AppDBConst.itemCount] ?? 1) as int;
+  //         final double price = (item['price'] ?? item[AppDBConst.itemPrice] ?? 0.0) as double;
+  //
+  //         // 🔥 For weighted custom items, calculate price based on weight
+  //         double finalPrice = price;
+  //         String displayName = name;
+  //         dynamic quantityValue = qty;
+  //
+  //         if (isWeightedItem && weightQty > 0 && unitPrice > 0) {
+  //           finalPrice = unitPrice * weightQty;
+  //           // 🔥 USE WEIGHT AS QUANTITY
+  //           quantityValue = weightQty; // decimal weight as quantity
+  //           displayName = "$name";
+  //           debugPrint(" CUSTOM WEIGHTED: $displayName | weight=$weightQty | total=\$${finalPrice.toStringAsFixed(2)}");
+  //         }
+  //
+  //         final double total = finalPrice * (isWeightedItem ? 1 : qty);
+  //         final dynamic pidRaw = item['product_id'] ?? item['selectedProductId'] ??
+  //             item['server_item_id'] ?? item['id'];
+  //         final int? productId = pidRaw != null ? int.tryParse(pidRaw.toString()) : null;
+  //         final int finalProductId = productId ?? 60303;
+  //         final String sku = item['sku']?.toString() ?? '';
+  //         final String taxClass = (item['pos_tax_class'] ?? '').toString();
+  //
+  //         final Map<String, dynamic> customLineItem = {
+  //           "product_id": finalProductId,
+  //           "name": isWeightedItem ? displayName : name,
+  //           "quantity": quantityValue, // 🔥 Weight as quantity for weighted items
+  //           "subtotal": total.toStringAsFixed(2),
+  //           "total": total.toStringAsFixed(2),
+  //           "tax_class": taxClass,
+  //           "type": "custom",
+  //         };
+  //
+  //         // 🔥 ADD WEIGHT META DATA FOR WEIGHTED CUSTOM ITEMS
+  //         if (isWeightedItem && weightQty > 0) {
+  //           customLineItem["meta_data"] = [
+  //             {
+  //               "key": "_weight_qty",
+  //               "value": weightQty.toStringAsFixed(3),
+  //             },
+  //             {
+  //               "key": "_weight_unit",
+  //               "value": "lb",
+  //             },
+  //             {
+  //               "key": "_unit_price",
+  //               "value": unitPrice.toStringAsFixed(2),
+  //             },
+  //             {
+  //               "key": "_weighted_item",
+  //               "value": "1",
+  //             },
+  //             // Visible meta for WooCommerce admin
+  //             {
+  //               "key": "Weight (lbs)",
+  //               "value": weightQty.toStringAsFixed(3),
+  //             },
+  //             {
+  //               "key": "Price per lb",
+  //               "value": "\$${unitPrice.toStringAsFixed(2)}",
+  //             },
+  //           ];
+  //           debugPrint(" CUSTOM WEIGHT META ADDED: _weight_qty=${weightQty.toStringAsFixed(3)} | quantity=${quantityValue.toString()}");
+  //         }
+  //
+  //         if (sku.isNotEmpty) {
+  //           customLineItem["sku"] = sku;
+  //         }
+  //         lineItems.add(customLineItem);
+  //         continue;
+  //       }
+  //
+  //       // ---------------------------------------------------------
+  //       // 🔍 DETECT PRODUCT ID FIRST (Normal Product Path)
+  //       // ---------------------------------------------------------
+  //       final dynamic pidRaw = item['product_id'] ?? item['id'] ??
+  //           item['productId'] ?? item['productID'] ??
+  //           item['product-id'] ?? item['meta']?['product_id'] ??
+  //           item['data']?['id'];
+  //
+  //       int? safeParseInt(dynamic v) {
+  //         if (v == null) return null;
+  //         if (v is int) return v;
+  //         if (v is double) return v.toInt();
+  //         return int.tryParse(v.toString().split('.').first);
+  //       }
+  //       final int? pid = safeParseInt(pidRaw);
+  //
+  //       // ---------------------------------------------------------
+  //       // 🔥 FETCH DISCOUNT (SOURCE OF TRUTH)
+  //       // ---------------------------------------------------------
+  //       final Map<String, dynamic> discountMeta = discountLines[pid] ?? {};
+  //       final double autoDiscount =
+  //           double.tryParse(discountMeta['amount']?.toString() ?? '0') ?? 0.0;
+  //       final String discountType = discountMeta['type']?.toString() ?? '';
+  //       final String discountSource = discountMeta['source']?.toString() ?? '';
+  //       final String ruleId = discountMeta['rule_id']?.toString() ?? '';
+  //
+  //       debugPrint("🎯 MATCH PID = $pid");
+  //       debugPrint("🎯 FOUND DISCOUNT = $discountMeta");
+  //
+  //       // ✅ NORMALIZE ITEM FIELDS (POS + API)
+  //       final String name = item['item_name'] ?? item['name'] ?? "Product";
+  //
+  //       bool isEbtEligible = item['is_ebt_eligible'] == true ||
+  //           item['is_ebt_eligible'] == 1 ||
+  //           item['is_ebt_eligible'] == "1";
+  //
+  //       final tags = item['tags'] ?? item['product_data']?['tags'];
+  //       if (tags is List) {
+  //         isEbtEligible = tags.any((t) {
+  //           if (t is Map) {
+  //             return (t['slug'] ?? '').toString().toLowerCase() == 'ebt-eligible';
+  //           }
+  //           if (t is String) {
+  //             return t.toLowerCase() == 'ebt-eligible';
+  //           }
+  //           return false;
+  //         });
+  //       }
+  //       debugPrint("🟢 EBT DETECTED response → $isEbtEligible for $name");
+  //
+  //       // 🔒 HARD BLOCK payout & cashback from products loop
+  //       final String lowerName =
+  //       (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
+  //       final String itemTypeNormal = item['type']?.toString().toLowerCase() ?? '';
+  //       if (lowerName == 'payout' ||
+  //           lowerName == 'cashback' ||
+  //           itemTypeNormal == 'payout' ||
+  //           itemTypeNormal == 'cashback' ||
+  //           item['is_payout'] == true ||
+  //           item['is_cashback'] == true) {
+  //         debugPrint(
+  //             "⏭ Skipping special item from products loop → $lowerName / $itemTypeNormal");
+  //         continue;
+  //       }
+  //
+  //       // ---------------------------------------------------------
+  //       // ⭐ EXTRACT PRICE AND QUANTITY
+  //       // ---------------------------------------------------------
+  //       final double price = double.tryParse(
+  //         item['item_price']?.toString() ?? item['price']?.toString() ?? '0',
+  //       ) ??
+  //           0.0;
+  //       final int qty = int.tryParse(
+  //         item['items_count']?.toString() ??
+  //             item['quantity']?.toString() ??
+  //             '1',
+  //       ) ??
+  //           1;
+  //
+  //       // 🔥 For weighted items, use weight as quantity
+  //       String displayName = name;
+  //       double effectivePrice = price;
+  //       double effectiveTotal = price * qty;
+  //       dynamic quantityValue = qty;
+  //
+  //       if (isWeightedItem && weightQty > 0 && unitPrice > 0) {
+  //         effectivePrice = unitPrice;
+  //         effectiveTotal = unitPrice * weightQty;
+  //         // 🔥 USE WEIGHT AS QUANTITY (decimal value)
+  //         quantityValue = weightQty;
+  //         displayName = "$name";
+  //         debugPrint("️ WEIGHT AS QUANTITY: $displayName | weight=$weightQty | total=\$${effectiveTotal.toStringAsFixed(2)}");
+  //       }
+  //
+  //       final double subtotal = effectiveTotal;
+  //       final double total = subtotal - autoDiscount;
+  //
+  //       // ---------------------------------------------------------
+  //       // ⭐ HANDLE PRODUCT WITH NO PRODUCT ID (Custom)
+  //       // ---------------------------------------------------------
+  //       if (pid == null || pid == 0) {
+  //         final int qtyInt = qty.toInt();
+  //         final double taxRate = double.tryParse(
+  //           item['tax_rate']?.toString() ?? item['tax_Rate']?.toString() ?? '0',
+  //         ) ??
+  //             0.0;
+  //         final String taxClass =
+  //             item['tax_class']?.toString() ?? item['tax_Class']?.toString() ?? "";
+  //
+  //         final double taxAmount = getCustomItemTax(
+  //           taxClass: taxClass,
+  //           price: effectivePrice,
+  //           qty: isWeightedItem ? 1 : qtyInt,
+  //           taxes: [],
+  //           taxRate: taxRate,
+  //         );
+  //
+  //         String resolveSku(Map<String, dynamic> item) {
+  //           return item['sku']?.toString().trim().isNotEmpty == true
+  //               ? item['sku'].toString()
+  //               : item['generated_sku']?.toString().trim().isNotEmpty == true
+  //               ? item['generated_sku'].toString()
+  //               : item['meta']?['sku']?.toString().trim().isNotEmpty == true
+  //               ? item['meta']['sku'].toString()
+  //               : "";
+  //         }
+  //
+  //         final String sku = resolveSku(item);
+  //         if (sku.isEmpty) {
+  //           debugPrint("⚠️ CUSTOM ITEM SKU MISSING → $name | raw: $item");
+  //         }
+  //
+  //         final Map<String, dynamic> customLineItem = {
+  //           "name": isWeightedItem ? displayName : name,
+  //           "quantity": quantityValue, // 🔥 Weight as quantity for weighted items
+  //           "sku": sku,
+  //           "price": effectivePrice.toStringAsFixed(2),
+  //           "tax_status": "taxable",
+  //           "tax_class": taxClass,
+  //           "subtotal": total.toStringAsFixed(2),
+  //           "total": total.toStringAsFixed(2),
+  //           "subtotal_tax": taxAmount.toStringAsFixed(2),
+  //           "total_tax": taxAmount.toStringAsFixed(2),
+  //           "taxes": taxAmount > 0
+  //               ? [
+  //             {
+  //               "rate_id": 0,
+  //               "total": taxAmount.toStringAsFixed(2),
+  //               "subtotal": taxAmount.toStringAsFixed(2),
+  //             }
+  //           ]
+  //               : [],
+  //           "meta_data": [
+  //             {
+  //               "key": "_custom_tax_rate",
+  //               "value": taxRate.toString(),
+  //             }
+  //           ],
+  //           "type": "custom",
+  //         };
+  //
+  //         // 🔥 ADD WEIGHT META DATA FOR WEIGHTED ITEMS
+  //         if (isWeightedItem && weightQty > 0) {
+  //           customLineItem["meta_data"].addAll([
+  //             {
+  //               "key": "_weight_qty",
+  //               "value": weightQty.toStringAsFixed(3),
+  //             },
+  //             {
+  //               "key": "_weight_unit",
+  //               "value": "lb",
+  //             },
+  //             {
+  //               "key": "_unit_price",
+  //               "value": unitPrice.toStringAsFixed(2),
+  //             },
+  //             {
+  //               "key": "_weighted_item",
+  //               "value": "1",
+  //             },
+  //             // Visible meta for WooCommerce admin
+  //             {
+  //               "key": "Weight (lbs)",
+  //               "value": weightQty.toStringAsFixed(3),
+  //             },
+  //             {
+  //               "key": "Price per lb",
+  //               "value": "\$${unitPrice.toStringAsFixed(2)}",
+  //             },
+  //           ]);
+  //           debugPrint(" CUSTOM WEIGHT META ADDED: _weight_qty=${weightQty.toStringAsFixed(3)} | quantity=${quantityValue.toString()}");
+  //         }
+  //
+  //         lineItems.add(customLineItem);
+  //         continue;
+  //       }
+  //
+  //       // ---------------------------------------------------------
+  //       // ⭐ WooCommerce normal product
+  //       // ---------------------------------------------------------
+  //       final int? variationId = int.tryParse(
+  //         item['item_variation_id']?.toString() ??
+  //             item['variation_id']?.toString() ??
+  //             item['variationId']?.toString() ??
+  //             item['itemVariationId']?.toString() ??
+  //             "0",
+  //       );
+  //
+  //       debugPrint("🟣 VARIANT ID → ${item['item_variation_id']}");
+  //       debugPrint("🟣 VARIANT NAME → ${item['item_variation_custom_name']}");
+  //       debugPrint("🟣 FINAL VARIANT ID SENT → $variationId");
+  //
+  //       // Build the line item with weight as quantity
+  //       final Map<String, dynamic> lineItem = {
+  //         "product_id": pid,
+  //         if (variationId != null && variationId > 0) "variation_id": variationId,
+  //         "quantity": quantityValue, // 🔥 Weight as quantity for weighted items
+  //         "total": total.toStringAsFixed(2),
+  //         "subtotal": autoDiscount > 0
+  //             ? total.toStringAsFixed(2)
+  //             : subtotal.toStringAsFixed(2),
+  //         "name": isWeightedItem ? displayName : name,
+  //         "meta_data": [
+  //           {
+  //             "key": "_pos_auto_discount",
+  //             "value": autoDiscount.toStringAsFixed(2),
+  //           },
+  //           {
+  //             "key": "_pos_discount_type",
+  //             "value": discountType,
+  //           },
+  //           {
+  //             "key": "_pos_discount_source",
+  //             "value": discountSource,
+  //           },
+  //           {
+  //             "key": "_pos_discount_rule_id",
+  //             "value": ruleId,
+  //           },
+  //           {
+  //             "key": "_is_ebt_eligible",
+  //             "value": isEbtEligible ? "1" : "0",
+  //           },
+  //         ],
+  //       };
+  //
+  //       // 🔥 ADD WEIGHT META DATA IF WEIGHTED
+  //       if (isWeightedItem && weightQty > 0) {
+  //         lineItem["meta_data"].addAll([
+  //           {
+  //             "key": "_weight_qty",
+  //             "value": weightQty.toStringAsFixed(3),
+  //           },
+  //           {
+  //             "key": "_weight_unit",
+  //             "value": "lb",
+  //           },
+  //           {
+  //             "key": "_unit_price",
+  //             "value": unitPrice.toStringAsFixed(2),
+  //           },
+  //           {
+  //             "key": "_weighted_item",
+  //             "value": "1",
+  //           },
+  //           // Visible meta for WooCommerce admin
+  //           {
+  //             "key": "Weight (lbs)",
+  //             "value": weightQty.toStringAsFixed(3),
+  //           },
+  //           {
+  //             "key": "Price per lb",
+  //             "value": "\$${unitPrice.toStringAsFixed(2)}",
+  //           },
+  //         ]);
+  //
+  //         debugPrint(" WEIGHT META ADDED: _weight_qty=${weightQty.toStringAsFixed(3)} | quantity=${quantityValue.toString()} | total=${total.toStringAsFixed(2)}");
+  //       }
+  //
+  //       lineItems.add(lineItem);
+  //     }
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ HANDLE PAYOUTS
+  //     // ---------------------------------------------------------
+  //     final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
+  //     for (final p in payouts) {
+  //       final double amount =
+  //           double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0;
+  //       final int? productId =
+  //       int.tryParse(p['payout_product_id']?.toString() ?? "");
+  //
+  //       if (productId != null && productId > 0) {
+  //         lineItems.add({
+  //           "product_id": productId,
+  //           "name": p["product_name"] ?? "Payout",
+  //           "quantity": 1,
+  //           "subtotal": amount.toStringAsFixed(2),
+  //           "total": amount.toStringAsFixed(2),
+  //         });
+  //       } else {
+  //         feeLines.add({
+  //           "name": p["product_name"] ?? "Payout",
+  //           "tax_status": "none",
+  //           "total": amount.toStringAsFixed(2),
+  //         });
+  //       }
+  //     }
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ RECALCULATE TAX AFTER COUPON/ORDER DISCOUNT
+  //     // ---------------------------------------------------------
+  //     double storedOrderTax = (offlineOrder['order_tax'] as num?)?.toDouble() ?? 0.0;
+  //     double storedOrderDiscount = (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+  //     double storedGrossTotal = (offlineOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
+  //
+  //     // Recalculate gross from line items (most accurate)
+  //     double computedGross = lineItems.fold<double>(
+  //       0.0,
+  //           (sum, li) {
+  //         final t = double.tryParse(li['total'].toString()) ?? 0.0;
+  //         return t > 0 ? sum + t : sum;
+  //       },
+  //     );
+  //     if (computedGross <= 0) computedGross = storedGrossTotal;
+  //
+  //     // Recalculate tax proportionally if coupon/order discount exists
+  //     double finalTax = storedOrderTax;
+  //     if (storedOrderDiscount > 0 && storedOrderTax > 0 && computedGross > 0) {
+  //       final double netAfterDiscount = computedGross - storedOrderDiscount;
+  //       if (netAfterDiscount > 0 && netAfterDiscount < computedGross) {
+  //         final double taxRatio = netAfterDiscount / computedGross;
+  //         finalTax = double.parse((storedOrderTax * taxRatio).toStringAsFixed(2));
+  //         debugPrint("🔁 TAX RECALCULATED FOR SYNC → gross:$computedGross "
+  //             "discount:$storedOrderDiscount netAfter:$netAfterDiscount "
+  //             "originalTax:$storedOrderTax finalTax:$finalTax");
+  //       }
+  //     }
+  //
+  //     final double hiveRecalcTax = (offlineOrder['tax_discount'] as num?)?.toDouble() ?? 0.0;
+  //     if (hiveRecalcTax > 0 && hiveRecalcTax < storedOrderTax) {
+  //       finalTax = hiveRecalcTax;
+  //       debugPrint("✅ TAX FROM HIVE tax_discount (post-coupon) → $finalTax");
+  //     }
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ HANDLE CASHBACK
+  //     // ---------------------------------------------------------
+  //     final cashbacks = (offlineOrder['cashbacks'] ?? []) as List? ?? [];
+  //     for (final c in cashbacks) {
+  //       final double amount =
+  //           double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
+  //       final dynamic cashbackPidRaw = c['cashback_product_id'] ??
+  //           c['product_id'] ??
+  //           c['id'] ??
+  //           c['cashbackProductId'];
+  //       final int? productId = cashbackPidRaw == null
+  //           ? null
+  //           : int.tryParse(cashbackPidRaw.toString());
+  //
+  //       if (productId != null && productId > 0) {
+  //         lineItems.add({
+  //           "product_id": productId,
+  //           "name": c["product_name"] ?? "Cashback",
+  //           "quantity": 1,
+  //           "subtotal": amount.toStringAsFixed(2),
+  //           "total": amount.toStringAsFixed(2),
+  //         });
+  //         debugPrint("🟢 Added Cashback as product line → $productId");
+  //       } else {
+  //         feeLines.add({
+  //           "name": c["product_name"] ?? "Cashback",
+  //           "tax_status": "none",
+  //           "total": amount.toStringAsFixed(2),
+  //         });
+  //         debugPrint("🟡 Cashback product_id missing → sending as fee line");
+  //       }
+  //     }
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ MERCHANT DISCOUNT
+  //     // ---------------------------------------------------------
+  //     final double lineItemsSubtotal = lineItems.fold<double>(
+  //       0.0,
+  //           (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+  //     );
+  //
+  //     final double merchantDiscount = resolveOfflineMerchantDiscountAmount(
+  //       offlineOrder,
+  //       lineItemsTotal: lineItemsSubtotal,
+  //     );
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ SEPARATE ISSUED vs REDEEMED COUPONS
+  //     // ---------------------------------------------------------
+  //     List<Map<String, dynamic>> issuedCoupons = [];
+  //     List<Map<String, dynamic>> redeemedCoupons = [];
+  //     final List<dynamic> allCoupons = couponResponse["coupons"] as List? ?? [];
+  //     for (final dynamic coupon in allCoupons) {
+  //       if (coupon is! Map) continue;
+  //       final Map<String, dynamic> couponMap = Map<String, dynamic>.from(coupon);
+  //       final gt = couponMap['generate_type'];
+  //       final bool isRedeemed;
+  //       if (gt == true) {
+  //         isRedeemed = true;
+  //       } else if (gt == false) {
+  //         isRedeemed = false;
+  //       } else {
+  //         final keys = couponMap.keys.toSet();
+  //         isRedeemed = keys.length == 1 && keys.contains('code');
+  //       }
+  //       if (isRedeemed) {
+  //         redeemedCoupons.add(couponMap);
+  //       } else {
+  //         issuedCoupons.add(couponMap);
+  //       }
+  //     }
+  //
+  //     debugPrint("📊 Issued coupons (generate_type false): ${issuedCoupons.length}");
+  //     debugPrint("📊 Redeemed coupons (generate_type true): ${redeemedCoupons.length}");
+  //
+  //     final shiftId = await UserDbHelper().getUserShiftId();
+  //     final userData = await UserDbHelper().getUserData();
+  //     final userId = userData?[AppDBConst.userId] ?? "admin";
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ DECLARE METADATA
+  //     // ---------------------------------------------------------
+  //     final List<Map<String, dynamic>> metaData = [
+  //       {"key": "pos_device_id", "value": "b31b723b92047f4b"},
+  //       {"key": "pos_placed_by", "value": "$userId"},
+  //       {"key": "shift_id", "value": "$shiftId"},
+  //       {"key": "pos_cash_paid", "value": "0.00"},
+  //       {"key": "_pos_client_order_id", "value": clientOrderId},
+  //     ];
+  //
+  //     // Add recalculated tax to meta_data
+  //     metaData.add({
+  //       "key": "_pos_order_tax",
+  //       "value": finalTax.toStringAsFixed(2),
+  //     });
+  //
+  //     debugPrint("📤 SYNC SENDING TAX → $finalTax (was stored: $storedOrderTax)");
+  //
+  //     if (merchantDiscount > 0) {
+  //       metaData.add({
+  //         "key": "_merchant_discount",
+  //         "value": merchantDiscount.toStringAsFixed(2),
+  //       });
+  //       print(
+  //         "🟢 Added Merchant Discount as META_DATA → ${merchantDiscount.toStringAsFixed(2)}",
+  //       );
+  //     }
+  //
+  //     if (issuedCoupons.isNotEmpty) {
+  //       metaData.add({
+  //         "key": "_pos_generated_coupon",
+  //         "value": {
+  //           "coupons": issuedCoupons,
+  //         },
+  //       });
+  //       debugPrint(" Generated coupon stored in meta only");
+  //     }
+  //
+  //     if (paymentsPayload.isNotEmpty) {
+  //       metaData.add({
+  //         "key": "_pos_payments",
+  //         "value": paymentsPayload,
+  //       });
+  //     }
+  //
+  //     if (isUpdate) {
+  //       metaData.add({"key": "pos_order_tag", "value": "updated_from_pos"});
+  //     }
+  //
+  //     // ---------------------------------------------------------
+  //     // COUPON LINES: only include redeemed coupons
+  //     // ---------------------------------------------------------
+  //     final List<Map<String, dynamic>> couponLines = [];
+  //     if (generatedCouponOnly && redeemedCoupons.isEmpty) {
+  //       debugPrint(" Generated coupon only → skipping coupon_lines");
+  //     } else {
+  //       for (final c in redeemedCoupons) {
+  //         final String code = c["code"]?.toString().trim() ?? "";
+  //         if (code.isNotEmpty) {
+  //           couponLines.add({"code": code});
+  //           debugPrint("✅ Passing redeemed coupon to Woo → $code");
+  //         }
+  //       }
+  //     }
+  //
+  //     debugPrint(
+  //       "🧾 Final coupon_lines → ${jsonEncode(couponLines)}",
+  //       wrapWidth: 1024,
+  //     );
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ FINAL TOTAL
+  //     // ---------------------------------------------------------
+  //     final totalAmount = lineItems.fold<double>(
+  //       0.0,
+  //           (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+  //     );
+  //
+  //     // Update the cash paid meta field with actual total
+  //     final cashPaidIndex =
+  //     metaData.indexWhere((m) => m['key'] == 'pos_cash_paid');
+  //     if (cashPaidIndex != -1) {
+  //       metaData[cashPaidIndex]['value'] = totalAmount.toStringAsFixed(2);
+  //     }
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ FINAL PAYLOAD
+  //     // ---------------------------------------------------------
+  //     final payload = {
+  //       "payment_method": "cash",
+  //       "payment_method_title": "POS-CASH",
+  //       "set_paid": true,
+  //       "status": "processing",
+  //       "meta_data": metaData,
+  //       "fee_lines": feeLines,
+  //       "line_items": lineItems,
+  //       "coupon_lines": couponLines,
+  //       "tax_lines": [],
+  //     };
+  //
+  //     printFullJson("woo payload", payload);
+  //
+  //     final prettyJson = const JsonEncoder.withIndent('  ').convert(payload);
+  //
+  //     const chunkSize = 800;
+  //     for (int i = 0; i < prettyJson.length; i += chunkSize) {
+  //       debugPrint(
+  //         prettyJson.substring(
+  //           i,
+  //           i + chunkSize > prettyJson.length
+  //               ? prettyJson.length
+  //               : i + chunkSize,
+  //         ),
+  //       );
+  //     }
+  //
+  //     final response = isUpdate
+  //         ? await _helper.put(url, payload, true)
+  //         : await _helper.post(url, payload, true);
+  //
+  //     String body = response.toString().trim();
+  //     if (body.startsWith('1{')) {
+  //       body = body.substring(1);
+  //     }
+  //     final decoded = jsonDecode(body);
+  //
+  //     final String wooStatus = decoded is Map<String, dynamic>
+  //         ? decoded['status']?.toString() ?? 'processing'
+  //         : 'processing';
+  //
+  //     debugPrint("woo Status from sync response → $wooStatus");
+  //     debugPrint(
+  //       "woo Response → ${jsonEncode(decoded)}",
+  //       wrapWidth: 1024,
+  //     );
+  //
+  //     if (decoded is Map<String, dynamic>) {
+  //       debugPrint(
+  //         " woo Response coupon_lines → ${jsonEncode(decoded['coupon_lines'] ?? [])}",
+  //         wrapWidth: 1024,
+  //       );
+  //     }
+  //
+  //     double cashbackFee = 0.0;
+  //     final wooFees = decoded["fee_lines"] as List? ?? [];
+  //     for (final fee in wooFees) {
+  //       final name = fee["name"]?.toString().toLowerCase() ?? "";
+  //       if (name.contains("cashback fee")) {
+  //         cashbackFee = double.tryParse(fee["total"]?.toString() ?? "0") ?? 0.0;
+  //       }
+  //     }
+  //
+  //     if (decoded is Map<String, dynamic> && decoded['id'] != null) {
+  //       final int serverOrderId = int.tryParse(decoded['id'].toString()) ?? 0;
+  //       final double wooTax =
+  //           double.tryParse(decoded['total_tax']?.toString() ?? "0") ?? 0.0;
+  //       final double wooTotal =
+  //           double.tryParse(decoded['total']?.toString() ?? "0") ?? 0.0;
+  //       final double wooDiscount =
+  //           double.tryParse(decoded['discount_total']?.toString() ?? "0") ?? 0.0;
+  //       final double wooDiscountTax =
+  //           double.tryParse(decoded['discount_tax']?.toString() ?? "0") ?? 0.0;
+  //
+  //       final box = StorageProvider.offlineOrders;
+  //       final localOrderId = offlineOrder['id']?.toString() ??
+  //           offlineOrder['order_id']?.toString() ??
+  //           serverOrderId.toString();
+  //
+  //       // ⭐ SAVE ALL UPDATED VALUES INTO HIVE
+  //       offlineOrder['wooOrderId'] = serverOrderId;
+  //       offlineOrder['wooTax'] = wooTax;
+  //       offlineOrder['wooTotal'] = wooTotal;
+  //       offlineOrder['wooStatus'] = wooStatus;
+  //       offlineOrder['orderDiscount'] = wooDiscount;
+  //       offlineOrder['tax_discount'] = wooDiscountTax;
+  //       offlineOrder['order_tax'] = wooTax;
+  //       offlineOrder['net_total'] = wooTotal;
+  //       offlineOrder['net_payable'] = wooTotal;
+  //       offlineOrder['remainingBalance'] = wooTotal;
+  //       offlineOrder['coupon_lines'] = decoded['coupon_lines'];
+  //
+  //       await box.put(localOrderId, offlineOrder);
+  //       await box.put(serverOrderId.toString(), {"map_to_local": localOrderId});
+  //
+  //       await CustomerDisplayHelper.updateCustomerDisplay(
+  //           int.tryParse(localOrderId) ?? serverOrderId);
+  //
+  //       return {
+  //         "id": serverOrderId,
+  //         "status": wooStatus,
+  //         "total": wooTotal,
+  //         "tax": wooTax,
+  //         "discount_total": wooDiscount,
+  //         "discount_tax": wooDiscountTax,
+  //         "cashback_fee": cashbackFee,
+  //         "line_items": decoded["line_items"],
+  //       };
+  //     }
+  //   } catch (e, s) {
+  //     print(" Failed to sync offline order: $e");
+  //     print("Stack: $s");
+  //   }
+  //   return null;
+  // }
+  Future<Map<String, dynamic>?> _loadActiveShift(int userId) async {
+    try {
+      // ShiftDbHelper is a singleton, you can call it directly.
+      final shift = await ShiftDbHelper().getActiveShift(userId);
+      return shift; // May be null if no open shift exists.
+    } catch (e) {
+      debugPrint('⚠️ Failed to load active shift: $e');
+      return null;
+    }
+  }
+  Future<Map<String, dynamic>?> syncSingleOfflineOrder(
+      Map<String, dynamic> offlineOrder) async {
+    // Helper to determine if a coupon is redeemed (generate_type == true)
+    bool _isRedeemedCoupon(Map<String, dynamic> coupon) {
+      final gt = coupon['generate_type'];
+      if (gt == true) return true;
+      if (gt == false) return false;
+      final keys = coupon.keys.toSet();
+      return keys.length == 1 && keys.contains('code');
+    }
+
+    try {
+      final int? localOrderIdInt = int.tryParse(
+        offlineOrder['id']?.toString() ??
+            offlineOrder['order_id']?.toString() ??
+            "",
+      );
+      if (localOrderIdInt == null) {
+        debugPrint("❌ Cannot load payments → local order id missing");
+      }
+
+      final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
+      final int? existingWooOrderId =
+      wooOrderIdRaw != null ? int.tryParse(wooOrderIdRaw.toString()) : null;
+
+      // ✅ EXTRACT PAY LATER USER DATA FROM OFFLINE ORDER
+      Map<String, dynamic>? selectedPayLaterUser;
+      try {
+        final rawPayLaterUser = offlineOrder['selectedPayLaterUser'];
+        if (rawPayLaterUser is Map) {
+          selectedPayLaterUser = Map<String, dynamic>.from(rawPayLaterUser);
+          debugPrint(
+              "✅ Pay Later user extracted from offlineOrder: ${selectedPayLaterUser['name']} (ID: ${selectedPayLaterUser['user_id']})");
+        } else {
+          debugPrint("⚠️ No Pay Later user found in offlineOrder");
+        }
+      } catch (e) {
+        debugPrint("❌ Error extracting Pay Later user: $e");
+      }
+
+      final Map<String, dynamic> couponResponse =
+          (offlineOrder["coupon_response"] as Map?)?.cast<String, dynamic>() ??
+              {};
+
+      final bool generatedCouponOnly =
+          offlineOrder["generated_coupon_only"] == true;
+
+      final Map<int, Map<String, dynamic>> discountLines = {};
+      final rawDiscountLines = offlineOrder['discount_lines'];
+      if (rawDiscountLines is Map) {
+        rawDiscountLines.forEach((key, value) {
+          final int? k = int.tryParse(key.toString());
+          if (k != null && value is Map) {
+            discountLines[k] = Map<String, dynamic>.from(value);
+          }
+        });
+      }
+
+      final bool isUpdate =
+          existingWooOrderId != null && existingWooOrderId > 0;
+
+      final String url = isUpdate
+          ? "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$existingWooOrderId"
+          : "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
+
+      List<Map<String, dynamic>> paymentsPayload = [];
+      if (localOrderIdInt != null) {
+        final dbPayments = await LocalPaymentDBHelper.instance
+            .getPaymentsByOrderId(localOrderIdInt);
+        debugPrint("\n📊 LIVE PAYMENTS FROM DB (${dbPayments.length})");
+        for (final p in dbPayments) {
+          final remaining = p.remainingBalance < 0 ? 0.0 : p.remainingBalance;
+          paymentsPayload.add({
+            "local_id": p.id,
+            "method": p.paymentMethod,
+            "amount": p.amount,
+            "remaining": remaining,
+            "status": p.status?.name ?? "pending",
+            "created_at": p.createdAt.toIso8601String(),
+          });
+          debugPrint(" → ID:${p.id} | ${p.paymentMethod} | "
+              "Amount:${p.amount} | Remaining:$remaining | ${p.status?.name}");
+        }
+      }
+
+      final String clientOrderId = offlineOrder['id']?.toString() ??
+          offlineOrder['order_id']?.toString() ??
+          offlineOrder['local_order_id']?.toString() ??
+          "";
+
+      // ---------------------------------------------------------
+      // ⭐ HANDLE PRODUCTS
+      // ---------------------------------------------------------
+      List productsRaw = [];
+      if ((offlineOrder['products'] as List?)?.isNotEmpty == true) {
+        productsRaw = List.from(offlineOrder['products']);
+        debugPrint("🟢 SYNC USING PRODUCTS (PERSISTED)");
+        debugPrint("🌐 sync URL: $url");
+
+        debugPrint("\n📦 RAW PRODUCTS FROM HIVE -------------------");
+        for (int i = 0; i < productsRaw.length; i++) {
+          debugPrint("INDEX $i → ${productsRaw[i]}");
+        }
+        debugPrint("📦 END RAW PRODUCTS -------------------\n");
+      }
+
+      final List<Map<String, dynamic>> lineItems = [];
+      final List<Map<String, dynamic>> feeLines = [];
+
+      // ---------------------------------------------------------
+      // ⭐ HANDLE PRODUCTS (Woo items + Custom items)
+      // ---------------------------------------------------------
+      for (var raw in productsRaw) {
+        debugPrint("\n🧾 RAW ITEM TYPE → ${raw.runtimeType}");
+        debugPrint("🧾 RAW ITEM DATA → $raw");
+        debugPrint("🧾 RAW discount_meta → ${raw['discount_meta']}");
+        debugPrint(
+            "🧾 discount_meta TYPE → ${raw['discount_meta']?.runtimeType}");
+
+        final item = Map<String, dynamic>.from(raw);
+        final String itemType = (item[AppDBConst.itemType] ?? item['type'] ?? '')
+            .toString()
+            .toLowerCase();
+
+        // 🔥 CHECK IF THIS IS A WEIGHTED ITEM
+        final bool isWeightedItem = itemType.contains('weighted') ||
+            (item['type']?.toString().toLowerCase() ?? '').contains('weighted');
+
+        // 🔥 EXTRACT WEIGHT FIELDS
+        double weightQty = 0.0;
+        double unitPrice = 0.0;
+        if (isWeightedItem) {
+          weightQty = double.tryParse(
+              item['weight_qty']?.toString() ??
+                  item['weightQty']?.toString() ??
+                  item['weight']?.toString() ??
+                  '0') ??
+              0.0;
+
+          unitPrice = double.tryParse(
+              item['unit_price']?.toString() ??
+                  item['regular_price']?.toString() ??
+                  item['sales_price']?.toString() ??
+                  item['item_price']?.toString() ??
+                  '0') ??
+              0.0;
+
+          debugPrint(
+              "⚖️ WEIGHTED ITEM DETECTED: ${item['name']} | weightQty=$weightQty | unitPrice=$unitPrice");
+        }
+
+        // ---------------------------------------------------------
+        // ⭐ CUSTOM ITEMS (including weighted custom items)
+        // ---------------------------------------------------------
+        if (itemType.contains('custom')) {
+          final String name =
+              item[AppDBConst.itemName] ?? item['name'] ?? "Custom Item";
+          final int qty =
+          (item['quantity'] ?? item[AppDBConst.itemCount] ?? 1) as int;
+          final double price =
+          (item['price'] ?? item[AppDBConst.itemPrice] ?? 0.0) as double;
+
+          // 🔥 For weighted custom items, calculate price based on weight
+          double finalPrice = price;
+          String displayName = name;
+          dynamic quantityValue = qty;
+
+          if (isWeightedItem && weightQty > 0 && unitPrice > 0) {
+            finalPrice = unitPrice * weightQty;
+            quantityValue = weightQty; // decimal weight as quantity
+            displayName = "$name";
+            debugPrint(
+                "⚖️ CUSTOM WEIGHTED: $displayName | weight=$weightQty | total=\$${finalPrice.toStringAsFixed(2)}");
+          }
+
+          final double total = finalPrice * (isWeightedItem ? 1 : qty);
+          final dynamic pidRaw = item['product_id'] ??
+              item['selectedProductId'] ??
+              item['server_item_id'] ??
+              item['id'];
+          final int? productId =
+          pidRaw != null ? int.tryParse(pidRaw.toString()) : null;
+          final int finalProductId = productId ?? 60303;
+          final String sku = item['sku']?.toString() ?? '';
+          final String taxClass = (item['pos_tax_class'] ?? '').toString();
+
+          final Map<String, dynamic> customLineItem = {
+            "product_id": finalProductId,
+            "name": isWeightedItem ? displayName : name,
+            "quantity": quantityValue,
+            "subtotal": total.toStringAsFixed(2),
+            "total": total.toStringAsFixed(2),
+            "tax_class": taxClass,
+            "type": "custom",
+          };
+
+          // 🔥 ADD WEIGHT META DATA FOR WEIGHTED CUSTOM ITEMS
+          if (isWeightedItem && weightQty > 0) {
+            customLineItem["meta_data"] = [
+              {
+                "key": "_weight_qty",
+                "value": weightQty.toStringAsFixed(3),
+              },
+              {
+                "key": "_weight_unit",
+                "value": "lb",
+              },
+              {
+                "key": "_unit_price",
+                "value": unitPrice.toStringAsFixed(2),
+              },
+              {
+                "key": "_weighted_item",
+                "value": "1",
+              },
+              {
+                "key": "Weight (lbs)",
+                "value": weightQty.toStringAsFixed(3),
+              },
+              {
+                "key": "Price per lb",
+                "value": "\$${unitPrice.toStringAsFixed(2)}",
+              },
+            ];
+            debugPrint(
+                "⚖️ CUSTOM WEIGHT META ADDED: _weight_qty=${weightQty.toStringAsFixed(3)} | quantity=${quantityValue.toString()}");
+          }
+
+          if (sku.isNotEmpty) {
+            customLineItem["sku"] = sku;
+          }
+          lineItems.add(customLineItem);
+          continue;
+        }
+
+        // ---------------------------------------------------------
+        // 🔍 DETECT PRODUCT ID FIRST (Normal Product Path)
+        // ---------------------------------------------------------
+        final dynamic pidRaw = item['product_id'] ??
+            item['id'] ??
+            item['productId'] ??
+            item['productID'] ??
+            item['product-id'] ??
+            item['meta']?['product_id'] ??
+            item['data']?['id'];
+
+        int? safeParseInt(dynamic v) {
+          if (v == null) return null;
+          if (v is int) return v;
+          if (v is double) return v.toInt();
+          return int.tryParse(v.toString().split('.').first);
+        }
+
+        final int? pid = safeParseInt(pidRaw);
+
+        // ---------------------------------------------------------
+        // 🔥 FETCH DISCOUNT (SOURCE OF TRUTH)
+        // ---------------------------------------------------------
+        final Map<String, dynamic> discountMeta = discountLines[pid] ?? {};
+        final double autoDiscount =
+            double.tryParse(discountMeta['amount']?.toString() ?? '0') ?? 0.0;
+        final String discountType = discountMeta['type']?.toString() ?? '';
+        final String discountSource = discountMeta['source']?.toString() ?? '';
+        final String ruleId = discountMeta['rule_id']?.toString() ?? '';
+
+        debugPrint("🎯 MATCH PID = $pid");
+        debugPrint("🎯 FOUND DISCOUNT = $discountMeta");
+
+        // ✅ NORMALIZE ITEM FIELDS (POS + API)
+        final String name = item['item_name'] ?? item['name'] ?? "Product";
+
+        bool isEbtEligible = item['is_ebt_eligible'] == true ||
+            item['is_ebt_eligible'] == 1 ||
+            item['is_ebt_eligible'] == "1";
+
+        final tags = item['tags'] ?? item['product_data']?['tags'];
+        if (tags is List) {
+          isEbtEligible = tags.any((t) {
+            if (t is Map) {
+              return (t['slug'] ?? '').toString().toLowerCase() ==
+                  'ebt-eligible';
+            }
+            if (t is String) {
+              return t.toLowerCase() == 'ebt-eligible';
+            }
+            return false;
+          });
+        }
+        debugPrint("🟢 EBT DETECTED response → $isEbtEligible for $name");
+
+        // 🔒 HARD BLOCK payout & cashback from products loop
+        final String lowerName =
+        (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
+        final String itemTypeNormal =
+            item['type']?.toString().toLowerCase() ?? '';
+        if (lowerName == 'payout' ||
+            lowerName == 'cashback' ||
+            itemTypeNormal == 'payout' ||
+            itemTypeNormal == 'cashback' ||
+            item['is_payout'] == true ||
+            item['is_cashback'] == true) {
+          debugPrint(
+              "⏭ Skipping special item from products loop → $lowerName / $itemTypeNormal");
+          continue;
+        }
+
+        // ---------------------------------------------------------
+        // ⭐ EXTRACT PRICE AND QUANTITY
+        // ---------------------------------------------------------
+        final double price = double.tryParse(
+          item['item_price']?.toString() ?? item['price']?.toString() ?? '0',
+        ) ??
+            0.0;
+        final int qty = int.tryParse(
+          item['items_count']?.toString() ??
+              item['quantity']?.toString() ??
+              '1',
+        ) ??
+            1;
+
+        // 🔥 For weighted items, use weight as quantity
+        String displayName = name;
+        double effectivePrice = price;
+        double effectiveTotal = price * qty;
+        dynamic quantityValue = qty;
+
+        if (isWeightedItem && weightQty > 0 && unitPrice > 0) {
+          effectivePrice = unitPrice;
+          effectiveTotal = unitPrice * weightQty;
+          quantityValue = weightQty;
+          displayName = "$name";
+          debugPrint(
+              "⚖️ WEIGHT AS QUANTITY: $displayName | weight=$weightQty | total=\$${effectiveTotal.toStringAsFixed(2)}");
+        }
+
+        final double subtotal = effectiveTotal;
+        final double total = subtotal - autoDiscount;
+
+        // ---------------------------------------------------------
+        // ⭐ HANDLE PRODUCT WITH NO PRODUCT ID (Custom)
+        // ---------------------------------------------------------
+        if (pid == null || pid == 0) {
+          final int qtyInt = qty.toInt();
+          final double taxRate = double.tryParse(
+            item['tax_rate']?.toString() ??
+                item['tax_Rate']?.toString() ??
+                '0',
+          ) ??
+              0.0;
+          final String taxClass = item['tax_class']?.toString() ??
+              item['tax_Class']?.toString() ??
+              "";
+
+          final double taxAmount = getCustomItemTax(
+            taxClass: taxClass,
+            price: effectivePrice,
+            qty: isWeightedItem ? 1 : qtyInt,
+            taxes: [],
+            taxRate: taxRate,
+          );
+
+          String resolveSku(Map<String, dynamic> item) {
+            return item['sku']?.toString().trim().isNotEmpty == true
+                ? item['sku'].toString()
+                : item['generated_sku']?.toString().trim().isNotEmpty == true
+                ? item['generated_sku'].toString()
+                : item['meta']?['sku']?.toString().trim().isNotEmpty == true
+                ? item['meta']['sku'].toString()
+                : "";
+          }
+
+          final String sku = resolveSku(item);
+          if (sku.isEmpty) {
+            debugPrint("⚠️ CUSTOM ITEM SKU MISSING → $name | raw: $item");
+          }
+
+          final Map<String, dynamic> customLineItem = {
+            "name": isWeightedItem ? displayName : name,
+            "quantity": quantityValue,
+            "sku": sku,
+            "price": effectivePrice.toStringAsFixed(2),
+            "tax_status": "taxable",
+            "tax_class": taxClass,
+            "subtotal": total.toStringAsFixed(2),
+            "total": total.toStringAsFixed(2),
+            "subtotal_tax": taxAmount.toStringAsFixed(2),
+            "total_tax": taxAmount.toStringAsFixed(2),
+            "taxes": taxAmount > 0
+                ? [
+              {
+                "rate_id": 0,
+                "total": taxAmount.toStringAsFixed(2),
+                "subtotal": taxAmount.toStringAsFixed(2),
+              }
+            ]
+                : [],
+            "meta_data": [
+              {
+                "key": "_custom_tax_rate",
+                "value": taxRate.toString(),
+              }
+            ],
+            "type": "custom",
+          };
+
+          // 🔥 ADD WEIGHT META DATA FOR WEIGHTED ITEMS
+          if (isWeightedItem && weightQty > 0) {
+            customLineItem["meta_data"].addAll([
+              {
+                "key": "_weight_qty",
+                "value": weightQty.toStringAsFixed(3),
+              },
+              {
+                "key": "_weight_unit",
+                "value": "lb",
+              },
+              {
+                "key": "_unit_price",
+                "value": unitPrice.toStringAsFixed(2),
+              },
+              {
+                "key": "_weighted_item",
+                "value": "1",
+              },
+              {
+                "key": "Weight (lbs)",
+                "value": weightQty.toStringAsFixed(3),
+              },
+              {
+                "key": "Price per lb",
+                "value": "\$${unitPrice.toStringAsFixed(2)}",
+              },
+            ]);
+            debugPrint(
+                "⚖️ CUSTOM WEIGHT META ADDED: _weight_qty=${weightQty.toStringAsFixed(3)} | quantity=${quantityValue.toString()}");
+          }
+
+          lineItems.add(customLineItem);
+          continue;
+        }
+
+        // ---------------------------------------------------------
+        // ⭐ WooCommerce normal product
+        // ---------------------------------------------------------
+        final int? variationId = int.tryParse(
+          item['item_variation_id']?.toString() ??
+              item['variation_id']?.toString() ??
+              item['variationId']?.toString() ??
+              item['itemVariationId']?.toString() ??
+              "0",
+        );
+
+        debugPrint("🟣 VARIANT ID → ${item['item_variation_id']}");
+        debugPrint("🟣 VARIANT NAME → ${item['item_variation_custom_name']}");
+        debugPrint("🟣 FINAL VARIANT ID SENT → $variationId");
+
+        final Map<String, dynamic> lineItem = {
+          "product_id": pid,
+          if (variationId != null && variationId > 0)
+            "variation_id": variationId,
+          "quantity": quantityValue,
+          "total": total.toStringAsFixed(2),
+          "subtotal": autoDiscount > 0
+              ? total.toStringAsFixed(2)
+              : subtotal.toStringAsFixed(2),
+          "name": isWeightedItem ? displayName : name,
+          "meta_data": [
+            {
+              "key": "_pos_auto_discount",
+              "value": autoDiscount.toStringAsFixed(2),
+            },
+            {
+              "key": "_pos_discount_type",
+              "value": discountType,
+            },
+            {
+              "key": "_pos_discount_source",
+              "value": discountSource,
+            },
+            {
+              "key": "_pos_discount_rule_id",
+              "value": ruleId,
+            },
+            {
+              "key": "_is_ebt_eligible",
+              "value": isEbtEligible ? "1" : "0",
+            },
+          ],
+        };
+
+        // 🔥 ADD WEIGHT META DATA IF WEIGHTED
+        if (isWeightedItem && weightQty > 0) {
+          lineItem["meta_data"].addAll([
+            {
+              "key": "_weight_qty",
+              "value": weightQty.toStringAsFixed(3),
+            },
+            {
+              "key": "_weight_unit",
+              "value": "lb",
+            },
+            {
+              "key": "_unit_price",
+              "value": unitPrice.toStringAsFixed(2),
+            },
+            {
+              "key": "_weighted_item",
+              "value": "1",
+            },
+            {
+              "key": "Weight (lbs)",
+              "value": weightQty.toStringAsFixed(3),
+            },
+            {
+              "key": "Price per lb",
+              "value": "\$${unitPrice.toStringAsFixed(2)}",
+            },
+          ]);
+
+          debugPrint(
+              "⚖️ WEIGHT META ADDED: _weight_qty=${weightQty.toStringAsFixed(3)} | quantity=${quantityValue.toString()} | total=${total.toStringAsFixed(2)}");
+        }
+
+        lineItems.add(lineItem);
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ HANDLE PAYOUTS
+      // ---------------------------------------------------------
+      final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
+      for (final p in payouts) {
+        final double amount =
+            double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0;
+        final int? productId =
+        int.tryParse(p['payout_product_id']?.toString() ?? "");
+
+        if (productId != null && productId > 0) {
+          lineItems.add({
+            "product_id": productId,
+            "name": p["product_name"] ?? "Payout",
+            "quantity": 1,
+            "subtotal": amount.toStringAsFixed(2),
+            "total": amount.toStringAsFixed(2),
+          });
+        } else {
+          feeLines.add({
+            "name": p["product_name"] ?? "Payout",
+            "tax_status": "none",
+            "total": amount.toStringAsFixed(2),
+          });
+        }
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ RECALCULATE TAX AFTER COUPON/ORDER DISCOUNT
+      // ---------------------------------------------------------
+      double storedOrderTax =
+          (offlineOrder['order_tax'] as num?)?.toDouble() ?? 0.0;
+      double storedOrderDiscount =
+          (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+      double storedGrossTotal =
+          (offlineOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
+
+      double computedGross = lineItems.fold<double>(
+        0.0,
+            (sum, li) {
+          final t = double.tryParse(li['total'].toString()) ?? 0.0;
+          return t > 0 ? sum + t : sum;
+        },
+      );
+      if (computedGross <= 0) computedGross = storedGrossTotal;
+
+      double finalTax = storedOrderTax;
+      if (storedOrderDiscount > 0 && storedOrderTax > 0 && computedGross > 0) {
+        final double netAfterDiscount = computedGross - storedOrderDiscount;
+        if (netAfterDiscount > 0 && netAfterDiscount < computedGross) {
+          final double taxRatio = netAfterDiscount / computedGross;
+          finalTax = double.parse((storedOrderTax * taxRatio).toStringAsFixed(2));
+          debugPrint("🔁 TAX RECALCULATED FOR SYNC → gross:$computedGross "
+              "discount:$storedOrderDiscount netAfter:$netAfterDiscount "
+              "originalTax:$storedOrderTax finalTax:$finalTax");
+        }
+      }
+
+      final double hiveRecalcTax =
+          (offlineOrder['tax_discount'] as num?)?.toDouble() ?? 0.0;
+      if (hiveRecalcTax > 0 && hiveRecalcTax < storedOrderTax) {
+        finalTax = hiveRecalcTax;
+        debugPrint("✅ TAX FROM HIVE tax_discount (post-coupon) → $finalTax");
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ HANDLE CASHBACK
+      // ---------------------------------------------------------
+      final cashbacks = (offlineOrder['cashbacks'] ?? []) as List? ?? [];
+      for (final c in cashbacks) {
+        final double amount =
+            double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
+        final dynamic cashbackPidRaw = c['cashback_product_id'] ??
+            c['product_id'] ??
+            c['id'] ??
+            c['cashbackProductId'];
+        final int? productId = cashbackPidRaw == null
+            ? null
+            : int.tryParse(cashbackPidRaw.toString());
+
+        if (productId != null && productId > 0) {
+          lineItems.add({
+            "product_id": productId,
+            "name": c["product_name"] ?? "Cashback",
+            "quantity": 1,
+            "subtotal": amount.toStringAsFixed(2),
+            "total": amount.toStringAsFixed(2),
+          });
+          debugPrint("🟢 Added Cashback as product line → $productId");
+        } else {
+          feeLines.add({
+            "name": c["product_name"] ?? "Cashback",
+            "tax_status": "none",
+            "total": amount.toStringAsFixed(2),
+          });
+          debugPrint("🟡 Cashback product_id missing → sending as fee line");
+        }
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ MERCHANT DISCOUNT
+      // ---------------------------------------------------------
+      final double lineItemsSubtotal = lineItems.fold<double>(
+        0.0,
+            (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+      );
+
+      final double merchantDiscount = resolveOfflineMerchantDiscountAmount(
+        offlineOrder,
+        lineItemsTotal: lineItemsSubtotal,
+      );
+
+      // ---------------------------------------------------------
+      // ⭐ SEPARATE ISSUED vs REDEEMED COUPONS
+      // ---------------------------------------------------------
+      List<Map<String, dynamic>> issuedCoupons = [];
+      List<Map<String, dynamic>> redeemedCoupons = [];
+      final List<dynamic> allCoupons =
+          couponResponse["coupons"] as List? ?? [];
+      for (final dynamic coupon in allCoupons) {
+        if (coupon is! Map) continue;
+        final Map<String, dynamic> couponMap =
+        Map<String, dynamic>.from(coupon);
+        final gt = couponMap['generate_type'];
+        final bool isRedeemed;
+        if (gt == true) {
+          isRedeemed = true;
+        } else if (gt == false) {
+          isRedeemed = false;
+        } else {
+          final keys = couponMap.keys.toSet();
+          isRedeemed = keys.length == 1 && keys.contains('code');
+        }
+        if (isRedeemed) {
+          redeemedCoupons.add(couponMap);
+        } else {
+          issuedCoupons.add(couponMap);
+        }
+      }
+
+      debugPrint("📊 Issued coupons (generate_type false): ${issuedCoupons.length}");
+      debugPrint("📊 Redeemed coupons (generate_type true): ${redeemedCoupons.length}");
+
+      // ---------------------------------------------------------
+      // 🔐 RESOLVE SHIFT ID, OFFLINE FLAG & USER LOGIN PIN
+      // ---------------------------------------------------------
+      final userData = await UserDbHelper().getUserData();
+      final userId = userData?[AppDBConst.userId] ?? "admin";
+
+      // 1. Resolve local shift ID
+      final int? resolvedLocalShiftId = int.tryParse(
+        offlineOrder['local_shift_id']?.toString() ??
+            offlineOrder['shift_id']?.toString() ??
+            offlineOrder['shiftLocalId']?.toString() ??
+            "",
+      ) ??
+          await UserDbHelper().getUserShiftId();
+
+      final int finalLocalShiftId = resolvedLocalShiftId ?? 0;
+
+      // 2. Query SQLite to check if this shift has already synced to PCH
+      int? serverShiftId;
+      if (finalLocalShiftId > 0) {
+        final shiftRecord =
+        await ShiftDbHelper().getShiftById(finalLocalShiftId);
+        if (shiftRecord != null &&
+            shiftRecord[AppDBConst.shiftServerId] != null) {
+          serverShiftId =
+              int.tryParse(shiftRecord[AppDBConst.shiftServerId].toString());
+        }
+      }
+
+      // 3. Determine offline flag:
+      // - true: Shift has not received a server ID yet (still local/pending sync)
+      // - false: Shift is already synced to PCH backend
+      final bool isOffline = (serverShiftId == null || serverShiftId == 0);
+
+      // 4. Determine shift_id based on offline flag:
+      // - If offline == true  -> send local_shift_id
+      // - If offline == false -> send authoritative serverShiftId
+      final dynamic finalShiftId =
+      isOffline ? finalLocalShiftId : serverShiftId;
+
+      // 5. Resolve user login PIN directly from FlutterSecureStorage (saved in LoginScreen)
+      final prefs = await SharedPreferences.getInstance();
+      String userLoginPin = "";
+      try {
+        var secureStorage = FlutterSecureStorage(
+          aOptions: AndroidOptions(encryptedSharedPreferences: true),
+          iOptions:
+          IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+        );
+        userLoginPin =
+            await secureStorage.read(key: 'encrypted_login_pin') ?? "";
+      } catch (e) {
+        debugPrint("⚠️ Failed to read encrypted_login_pin: $e");
+      }
+
+      // Safe fallbacks
+      if (userLoginPin.isEmpty) {
+        userLoginPin = offlineOrder['user_login_pin']?.toString() ??
+            offlineOrder['user_pin']?.toString() ??
+            offlineOrder['login_pin']?.toString() ??
+            userData?['pin']?.toString() ??
+            userData?['user_pin']?.toString() ??
+            prefs.getString('user_pin') ??
+            prefs.getString('login_pin') ??
+            prefs.getString('encrypted_login_pin') ??
+            "";
+      }
+
+      debugPrint("🔍 [Shift Sync Mapping]: "
+          "isOffline=$isOffline | "
+          "shift_id=$finalShiftId | "
+          "local_shift_id=$finalLocalShiftId | "
+          "serverShiftId=$serverShiftId | "
+          "user_login_pin=${userLoginPin.isNotEmpty ? '***' : '(empty)'}");
+
+      // ---------------------------------------------------------
+      // ⭐ DECLARE METADATA
+      // ---------------------------------------------------------
+      final String posDeviceId = await _currentPosDeviceId();
+      if (kDebugMode) {
+        print("📤 [Order meta] pos_device_id: $posDeviceId");
+      }
+
+      final List<Map<String, dynamic>> metaData = [
+        {"key": "pos_device_id", "value": posDeviceId},
+        {"key": "pos_placed_by", "value": "$userId"},
+        {"key": "shift_id", "value": "$finalShiftId"},
+        {"key": "local_shift_id", "value": "$finalLocalShiftId"},
+        {"key": "offline", "value": isOffline},
+        {"key": "is_offline", "value": isOffline},
+        {"key": "user_login_pin", "value": userLoginPin},
+        {"key": "pos_cash_paid", "value": "0.00"},
+        {"key": "_pos_client_order_id", "value": clientOrderId},
+      ];
+// ---------------------------------------------------------
+// 📦 LOAD OFFLINE SHIFT (if any) and merge its payloads
+// ---------------------------------------------------------
+      final Map<String, dynamic>? activeShift = await _loadActiveShift(userId);
+
+      if (activeShift != null) {
+        // 1️⃣  Add the whole shift row as a single meta entry (use a JSON map)
+        metaData.add({
+          "key": "_offline_shift",
+          "value": activeShift,   // the whole map will be JSON‑encoded automatically
+        });
+
+        // 2️⃣  Extract the raw request / close payloads you already stored
+        //     in the `request_payload` and `close_payload` columns.
+        //     They are stored as JSON‑encoded strings, so decode them first.
+        if (activeShift['request_payload'] != null) {
+          try {
+            final Map<String, dynamic> requestPayload =
+            jsonDecode(activeShift['request_payload'] as String);
+            metaData.add({
+              "key": "_offline_shift_request_payload",
+              "value": requestPayload,
+            });
+          } catch (_) {
+            // If for some reason the payload isn’t valid JSON, just store the raw string.
+            metaData.add({
+              "key": "_offline_shift_request_payload",
+              "value": activeShift['request_payload'],
+            });
+          }
+        }
+
+        if (activeShift['close_payload'] != null) {
+          try {
+            final Map<String, dynamic> closePayload =
+            jsonDecode(activeShift['close_payload'] as String);
+            metaData.add({
+              "key": "_offline_shift_close_payload",
+              "value": closePayload,
+            });
+          } catch (_) {
+            metaData.add({
+              "key": "_offline_shift_close_payload",
+              "value": activeShift['close_payload'],
+            });
+          }
+        }
+
+        // 3️⃣  (Optional) Pull any individual columns you want to expose
+        //     – opening balance, closing balance, over/short, etc.
+        //     These are helpful for debugging on the server side.
+        metaData.addAll([
+          {"key": "_shift_opening_balance", "value": activeShift[AppDBConst.shiftOpeningBalance]},
+          {"key": "_shift_closing_balance", "value": activeShift[AppDBConst.shiftClosingBalance]},
+          {"key": "_shift_over_short", "value": activeShift[AppDBConst.shiftOverShort]},
+          {"key": "_shift_total_sales", "value": activeShift[AppDBConst.shiftTotalSalesAmount]},
+          {"key": "_shift_status", "value": activeShift[AppDBConst.shiftStatus]},
+        ]);
+      } else {
+        debugPrint('⚡ No active offline shift found for user $userId – nothing to attach.');
+      }
+      // ✅ ADD PAY LATER META DATA
+      if (selectedPayLaterUser != null &&
+          selectedPayLaterUser['user_id'] != null) {
+        final int payLaterUserId =
+            int.tryParse(selectedPayLaterUser['user_id'].toString()) ?? 0;
+
+        if (payLaterUserId > 0) {
+          metaData.addAll([
+            {"key": "_pay_later", "value": true},
+            {"key": "_pay_later_user_id", "value": payLaterUserId},
+            {
+              "key": "_pay_later_user_name",
+              "value": selectedPayLaterUser['name']?.toString() ?? ''
+            },
+            {
+              "key": "_pay_later_user_email",
+              "value": selectedPayLaterUser['email']?.toString() ?? ''
+            },
+            {
+              "key": "_pay_later_store_name",
+              "value":
+              selectedPayLaterUser['pay_later_user_store_name']?.toString() ??
+                  ''
+            }
+          ]);
+
+          debugPrint(
+              "✅ PAY LATER USER ADDED TO META: User ID: $payLaterUserId, Name: ${selectedPayLaterUser['name']}");
+        } else {
+          debugPrint(
+              "⚠️ Pay Later user_id is invalid or 0: ${selectedPayLaterUser['user_id']}");
+        }
+      } else {
+        debugPrint("⚠️ No Pay Later user data available to add to meta");
+      }
+
+      // Add recalculated tax to meta_data
+      metaData.add({
+        "key": "_pos_order_tax",
+        "value": finalTax.toStringAsFixed(2),
+      });
+
+      debugPrint("📤 SYNC SENDING TAX → $finalTax (was stored: $storedOrderTax)");
+
+      if (merchantDiscount > 0) {
+        metaData.add({
+          "key": "_merchant_discount",
+          "value": merchantDiscount.toStringAsFixed(2),
+        });
+        print(
+          "🟢 Added Merchant Discount as META_DATA → ${merchantDiscount.toStringAsFixed(2)}",
+        );
+      }
+
+      if (issuedCoupons.isNotEmpty) {
+        metaData.add({
+          "key": "_pos_generated_coupon",
+          "value": {
+            "coupons": issuedCoupons,
+          },
+        });
+        debugPrint(" Generated coupon stored in meta only");
+      }
+
+      if (paymentsPayload.isNotEmpty) {
+        metaData.add({
+          "key": "_pos_payments",
+          "value": paymentsPayload,
+        });
+      }
+
+      if (isUpdate) {
+        metaData.add({"key": "pos_order_tag", "value": "updated_from_pos"});
+      }
+
+      // ---------------------------------------------------------
+      // COUPON LINES: only include redeemed coupons
+      // ---------------------------------------------------------
+      final List<Map<String, dynamic>> couponLines = [];
+      if (generatedCouponOnly && redeemedCoupons.isEmpty) {
+        debugPrint(" Generated coupon only → skipping coupon_lines");
+      } else {
+        for (final c in redeemedCoupons) {
+          final String code = c["code"]?.toString().trim() ?? "";
+          if (code.isNotEmpty) {
+            couponLines.add({"code": code});
+            debugPrint("✅ Passing redeemed coupon to Woo → $code");
+          }
+        }
+      }
+
+      debugPrint(
+        "🧾 Final coupon_lines → ${jsonEncode(couponLines)}",
+        wrapWidth: 1024,
+      );
+
+      // ---------------------------------------------------------
+      // ⭐ FINAL TOTAL
+      // ---------------------------------------------------------
+      final totalAmount = lineItems.fold<double>(
+        0.0,
+            (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+      );
+
+      // Update the cash paid meta field with actual total
+      final cashPaidIndex =
+      metaData.indexWhere((m) => m['key'] == 'pos_cash_paid');
+      if (cashPaidIndex != -1) {
+        metaData[cashPaidIndex]['value'] = totalAmount.toStringAsFixed(2);
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ DETERMINE ORDER STATUS
+      // ---------------------------------------------------------
+      final bool isPayLaterOrder = selectedPayLaterUser != null &&
+          selectedPayLaterUser['user_id'] != null &&
+          int.tryParse(selectedPayLaterUser['user_id'].toString()) != null &&
+          int.tryParse(selectedPayLaterUser['user_id'].toString())! > 0;
+
+      String orderStatus = isPayLaterOrder ? "completed" : "processing";
+      final String? storedStatus = offlineOrder['order_status']?.toString() ??
+          offlineOrder['status']?.toString() ??
+          offlineOrder['post_status']?.toString() ??
+          offlineOrder['orderStatus']?.toString();
+      if (storedStatus != null && storedStatus.isNotEmpty) {
+        String cleanStatus = storedStatus.toLowerCase().replaceAll('wc-', '').trim();
+        if (cleanStatus.isNotEmpty && cleanStatus != 'pending_offline') {
+          orderStatus = cleanStatus;
+        }
+      }
+
+      debugPrint(
+          "📊 ORDER STATUS: $orderStatus ${isPayLaterOrder ? '(Pay Later)' : '(Stored/Regular)'}");
+
+      // ---------------------------------------------------------
+      // ⭐ FINAL PAYLOAD
+      // ---------------------------------------------------------
+      final payload = {
+        "payment_method": "cash",
+        "payment_method_title": "POS-CASH",
+        "set_paid": true,
+        "status": orderStatus,
+        "offline": isOffline,                 // ✅ Backend offline flag (bool)
+        "shift_id": finalShiftId,              // ✅ localShiftId if offline==true, serverShiftId if offline==false
+        "local_shift_id": finalLocalShiftId,  // ✅ Local SQLite shift ID
+        "user_login_pin": userLoginPin,       // ✅ Cashier PIN from FlutterSecureStorage
+        "meta_data": metaData,
+        "fee_lines": feeLines,
+        "line_items": lineItems,
+        "coupon_lines": couponLines,
+        "tax_lines": [],
+      };
+
+      printFullJson("woo payload", payload);
+
+      final prettyJson = const JsonEncoder.withIndent('  ').convert(payload);
+
+      const chunkSize = 800;
+      for (int i = 0; i < prettyJson.length; i += chunkSize) {
+        debugPrint(
+          prettyJson.substring(
+            i,
+            i + chunkSize > prettyJson.length
+                ? prettyJson.length
+                : i + chunkSize,
+          ),
+        );
+      }
+
+      final response = isUpdate
+          ? await _helper.put(url, payload, true)
+          : await _helper.post(url, payload, true);
+
+      String body = response.toString().trim();
+      if (body.startsWith('1{')) {
+        body = body.substring(1);
+      }
+      final decoded = jsonDecode(body);
+
+      final String wooStatus = decoded is Map<String, dynamic>
+          ? decoded['status']?.toString() ?? 'processing'
+          : 'processing';
+
+      debugPrint("woo Status from sync response → $wooStatus");
+      debugPrint(
+        "woo Response → ${jsonEncode(decoded)}",
+        wrapWidth: 1024,
+      );
+
+      if (decoded is Map<String, dynamic>) {
+        debugPrint(
+          " woo Response coupon_lines → ${jsonEncode(decoded['coupon_lines'] ?? [])}",
+          wrapWidth: 1024,
+        );
+      }
+
+      double cashbackFee = 0.0;
+      final wooFees = decoded["fee_lines"] as List? ?? [];
+      for (final fee in wooFees) {
+        final name = fee["name"]?.toString().toLowerCase() ?? "";
+        if (name.contains("cashback fee")) {
+          cashbackFee = double.tryParse(fee["total"]?.toString() ?? "0") ?? 0.0;
+        }
+      }
+
+      if (decoded is Map<String, dynamic> && decoded['id'] != null) {
+        // Connector create-order returns UUID string `id` plus optional `number` / woo ids.
+        final int serverOrderId = int.tryParse(decoded['number']?.toString() ?? '') ??
+            int.tryParse(decoded['woo_order_id']?.toString() ?? '') ??
+            int.tryParse(decoded['id'].toString()) ??
+            (decoded['id'].toString().hashCode.abs() % 2000000000);
+        // Persist server UUID for future updates if present
+        try {
+          final String serverUuid = decoded['id']?.toString() ?? '';
+          if (serverUuid.isNotEmpty && localOrderIdInt != null) {
+            final box = StorageProvider.offlineOrders;
+            final key = localOrderIdInt.toString();
+            final existing = await box.get(key);
+            if (existing is Map) {
+              final updated = Map<String, dynamic>.from(existing);
+              updated['server_order_uuid'] = serverUuid;
+              updated['server_order_id'] = serverOrderId;
+              if (decoded['store_order_id'] != null) {
+                updated['store_order_id'] = decoded['store_order_id'].toString();
+              }
+              await box.put(key, updated);
+            }
+          }
+        } catch (_) {}
+        final double wooTax =
+            double.tryParse(decoded['total_tax']?.toString() ?? "0") ?? 0.0;
+        final double wooTotal =
+            double.tryParse(decoded['total']?.toString() ?? "0") ?? 0.0;
+        final double wooDiscount =
+            double.tryParse(decoded['discount_total']?.toString() ?? "0") ??
+                0.0;
+        final double wooDiscountTax =
+            double.tryParse(decoded['discount_tax']?.toString() ?? "0") ?? 0.0;
+
+        final box = StorageProvider.offlineOrders;
+        final localOrderId = offlineOrder['id']?.toString() ??
+            offlineOrder['order_id']?.toString() ??
+            serverOrderId.toString();
+
+        // ⭐ SAVE ALL UPDATED VALUES INTO HIVE
+        offlineOrder['wooOrderId'] = serverOrderId;
+        offlineOrder['wooTax'] = wooTax;
+        offlineOrder['wooTotal'] = wooTotal;
+        offlineOrder['wooStatus'] = wooStatus;
+        offlineOrder['orderDiscount'] = wooDiscount;
+        offlineOrder['tax_discount'] = wooDiscountTax;
+        offlineOrder['order_tax'] = wooTax;
+        offlineOrder['net_total'] = wooTotal;
+        offlineOrder['net_payable'] = wooTotal;
+        offlineOrder['remainingBalance'] = wooTotal;
+        offlineOrder['coupon_lines'] = decoded['coupon_lines'];
+
+        // ✅ Save Pay Later user data to Hive
+        if (selectedPayLaterUser != null) {
+          offlineOrder['selectedPayLaterUser'] = selectedPayLaterUser;
+          offlineOrder['is_pay_later_order'] = true;
+          offlineOrder['pay_later_user_id'] = selectedPayLaterUser['user_id'];
+          offlineOrder['pay_later_user_name'] = selectedPayLaterUser['name'];
+        }
+
+        await box.put(localOrderId, offlineOrder);
+        await box.put(
+            serverOrderId.toString(), {"map_to_local": localOrderId});
+
+        await CustomerDisplayHelper.updateCustomerDisplay(
+            int.tryParse(localOrderId) ?? serverOrderId);
+
+        return {
+          "id": serverOrderId,
+          "status": wooStatus,
+          "total": wooTotal,
+          "tax": wooTax,
+          "discount_total": wooDiscount,
+          "discount_tax": wooDiscountTax,
+          "cashback_fee": cashbackFee,
+          "line_items": decoded["line_items"],
+        };
+      }
+    } catch (e, s) {
+      print(" Failed to sync offline order: $e");
+      print("Stack: $s");
+    }
+    return null;
+  }
+
+
+  // Future<Map<String, dynamic>?> syncSingleOfflineOrder(
+  //     Map<String, dynamic> offlineOrder) async {
+  //   // Helper to determine if a coupon is redeemed (generate_type == true)
+  //   bool _isRedeemedCoupon(Map<String, dynamic> coupon) {
+  //     final gt = coupon['generate_type'];
+  //     if (gt == true) return true;
+  //     if (gt == false) return false;
+  //     final keys = coupon.keys.toSet();
+  //     return keys.length == 1 && keys.contains('code');
+  //   }
+  //
+  //   try {
+  //     final int? localOrderIdInt = int.tryParse(
+  //       offlineOrder['id']?.toString() ?? offlineOrder['order_id']?.toString() ?? "",
+  //     );
+  //     if (localOrderIdInt == null) {
+  //       debugPrint("❌ Cannot load payments → local order id missing");
+  //     }
+  //
+  //     final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
+  //     final int? existingWooOrderId =
+  //     wooOrderIdRaw != null ? int.tryParse(wooOrderIdRaw.toString()) : null;
+  //
+  //     // ✅ EXTRACT PAY LATER USER DATA FROM OFFLINE ORDER
+  //     Map<String, dynamic>? selectedPayLaterUser;
+  //     try {
+  //       final rawPayLaterUser = offlineOrder['selectedPayLaterUser'];
+  //       if (rawPayLaterUser is Map) {
+  //         selectedPayLaterUser = Map<String, dynamic>.from(rawPayLaterUser);
+  //         debugPrint("✅ Pay Later user extracted from offlineOrder: ${selectedPayLaterUser['name']} (ID: ${selectedPayLaterUser['user_id']})");
+  //       } else {
+  //         debugPrint("⚠️ No Pay Later user found in offlineOrder");
+  //       }
+  //     } catch (e) {
+  //       debugPrint("❌ Error extracting Pay Later user: $e");
+  //     }
+  //
+  //     final Map<String, dynamic> couponResponse =
+  //         (offlineOrder["coupon_response"] as Map?)?.cast<String, dynamic>() ?? {};
+  //
+  //     final bool generatedCouponOnly =
+  //         offlineOrder["generated_coupon_only"] == true;
+  //
+  //     final Map<int, Map<String, dynamic>> discountLines = {};
+  //     final rawDiscountLines = offlineOrder['discount_lines'];
+  //     if (rawDiscountLines is Map) {
+  //       rawDiscountLines.forEach((key, value) {
+  //         final int? k = int.tryParse(key.toString());
+  //         if (k != null && value is Map) {
+  //           discountLines[k] = Map<String, dynamic>.from(value);
+  //         }
+  //       });
+  //     }
+  //
+  //     final bool isUpdate =
+  //         existingWooOrderId != null && existingWooOrderId > 0;
+  //
+  //     final String url = isUpdate
+  //         ? "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$existingWooOrderId"
+  //         : "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
+  //
+  //     List<Map<String, dynamic>> paymentsPayload = [];
+  //     if (localOrderIdInt != null) {
+  //       final dbPayments = await LocalPaymentDBHelper.instance
+  //           .getPaymentsByOrderId(localOrderIdInt);
+  //       debugPrint("\n📊 LIVE PAYMENTS FROM DB (${dbPayments.length})");
+  //       for (final p in dbPayments) {
+  //         final remaining = p.remainingBalance < 0 ? 0.0 : p.remainingBalance;
+  //         paymentsPayload.add({
+  //           "local_id": p.id,
+  //           "method": p.paymentMethod,
+  //           "amount": p.amount,
+  //           "remaining": remaining,
+  //           "status": p.status?.name ?? "pending",
+  //           "created_at": p.createdAt.toIso8601String(),
+  //         });
+  //         debugPrint(" → ID:${p.id} | ${p.paymentMethod} | "
+  //             "Amount:${p.amount} | Remaining:$remaining | ${p.status?.name}");
+  //       }
+  //     }
+  //
+  //     final String clientOrderId = offlineOrder['id']?.toString() ??
+  //         offlineOrder['order_id']?.toString() ??
+  //         offlineOrder['local_order_id']?.toString() ??
+  //         "";
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ HANDLE PRODUCTS
+  //     // ---------------------------------------------------------
+  //     List productsRaw = [];
+  //     if ((offlineOrder['products'] as List?)?.isNotEmpty == true) {
+  //       productsRaw = List.from(offlineOrder['products']);
+  //       debugPrint("🟢 SYNC USING PRODUCTS (PERSISTED)");
+  //       debugPrint("🌐 sync URL: $url");
+  //
+  //       debugPrint("\n📦 RAW PRODUCTS FROM HIVE -------------------");
+  //       for (int i = 0; i < productsRaw.length; i++) {
+  //         debugPrint("INDEX $i → ${productsRaw[i]}");
+  //       }
+  //       debugPrint("📦 END RAW PRODUCTS -------------------\n");
+  //     }
+  //
+  //     final List<Map<String, dynamic>> lineItems = [];
+  //     final List<Map<String, dynamic>> feeLines = [];
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ HANDLE PRODUCTS (Woo items + Custom items)
+  //     // ---------------------------------------------------------
+  //     for (var raw in productsRaw) {
+  //       debugPrint("\n🧾 RAW ITEM TYPE → ${raw.runtimeType}");
+  //       debugPrint("🧾 RAW ITEM DATA → $raw");
+  //       debugPrint("🧾 RAW discount_meta → ${raw['discount_meta']}");
+  //       debugPrint(
+  //           "🧾 discount_meta TYPE → ${raw['discount_meta']?.runtimeType}");
+  //
+  //       final item = Map<String, dynamic>.from(raw);
+  //       final String itemType = (item[AppDBConst.itemType] ?? item['type'] ?? '')
+  //           .toString()
+  //           .toLowerCase();
+  //
+  //       // 🔥 CHECK IF THIS IS A WEIGHTED ITEM
+  //       final bool isWeightedItem = itemType.contains('weighted') ||
+  //           (item['type']?.toString().toLowerCase() ?? '').contains('weighted');
+  //
+  //       // 🔥 EXTRACT WEIGHT FIELDS
+  //       double weightQty = 0.0;
+  //       double unitPrice = 0.0;
+  //       if (isWeightedItem) {
+  //         weightQty = double.tryParse(
+  //             item['weight_qty']?.toString() ??
+  //                 item['weightQty']?.toString() ??
+  //                 item['weight']?.toString() ??
+  //                 '0'
+  //         ) ?? 0.0;
+  //
+  //         unitPrice = double.tryParse(
+  //             item['unit_price']?.toString() ??
+  //                 item['regular_price']?.toString() ??
+  //                 item['sales_price']?.toString() ??
+  //                 item['item_price']?.toString() ??
+  //                 '0'
+  //         ) ?? 0.0;
+  //
+  //         debugPrint("️ WEIGHTED ITEM DETECTED: ${item['name']} | weightQty=$weightQty | unitPrice=$unitPrice");
+  //       }
+  //
+  //       // ---------------------------------------------------------
+  //       // ⭐ CUSTOM ITEMS (including weighted custom items)
+  //       // ---------------------------------------------------------
+  //       if (itemType.contains('custom')) {
+  //         final String name = item[AppDBConst.itemName] ?? item['name'] ?? "Custom Item";
+  //         final int qty = (item['quantity'] ?? item[AppDBConst.itemCount] ?? 1) as int;
+  //         final double price = (item['price'] ?? item[AppDBConst.itemPrice] ?? 0.0) as double;
+  //
+  //         // 🔥 For weighted custom items, calculate price based on weight
+  //         double finalPrice = price;
+  //         String displayName = name;
+  //         dynamic quantityValue = qty;
+  //
+  //         if (isWeightedItem && weightQty > 0 && unitPrice > 0) {
+  //           finalPrice = unitPrice * weightQty;
+  //           // 🔥 USE WEIGHT AS QUANTITY
+  //           quantityValue = weightQty; // decimal weight as quantity
+  //           displayName = "$name";
+  //           debugPrint(" CUSTOM WEIGHTED: $displayName | weight=$weightQty | total=\$${finalPrice.toStringAsFixed(2)}");
+  //         }
+  //
+  //         final double total = finalPrice * (isWeightedItem ? 1 : qty);
+  //         final dynamic pidRaw = item['product_id'] ?? item['selectedProductId'] ??
+  //             item['server_item_id'] ?? item['id'];
+  //         final int? productId = pidRaw != null ? int.tryParse(pidRaw.toString()) : null;
+  //         final int finalProductId = productId ?? 60303;
+  //         final String sku = item['sku']?.toString() ?? '';
+  //         final String taxClass = (item['pos_tax_class'] ?? '').toString();
+  //
+  //         final Map<String, dynamic> customLineItem = {
+  //           "product_id": finalProductId,
+  //           "name": isWeightedItem ? displayName : name,
+  //           "quantity": quantityValue, // 🔥 Weight as quantity for weighted items
+  //           "subtotal": total.toStringAsFixed(2),
+  //           "total": total.toStringAsFixed(2),
+  //           "tax_class": taxClass,
+  //           "type": "custom",
+  //         };
+  //
+  //         // 🔥 ADD WEIGHT META DATA FOR WEIGHTED CUSTOM ITEMS
+  //         if (isWeightedItem && weightQty > 0) {
+  //           customLineItem["meta_data"] = [
+  //             {
+  //               "key": "_weight_qty",
+  //               "value": weightQty.toStringAsFixed(3),
+  //             },
+  //             {
+  //               "key": "_weight_unit",
+  //               "value": "lb",
+  //             },
+  //             {
+  //               "key": "_unit_price",
+  //               "value": unitPrice.toStringAsFixed(2),
+  //             },
+  //             {
+  //               "key": "_weighted_item",
+  //               "value": "1",
+  //             },
+  //             // Visible meta for WooCommerce admin
+  //             {
+  //               "key": "Weight (lbs)",
+  //               "value": weightQty.toStringAsFixed(3),
+  //             },
+  //             {
+  //               "key": "Price per lb",
+  //               "value": "\$${unitPrice.toStringAsFixed(2)}",
+  //             },
+  //           ];
+  //           debugPrint(" CUSTOM WEIGHT META ADDED: _weight_qty=${weightQty.toStringAsFixed(3)} | quantity=${quantityValue.toString()}");
+  //         }
+  //
+  //         if (sku.isNotEmpty) {
+  //           customLineItem["sku"] = sku;
+  //         }
+  //         lineItems.add(customLineItem);
+  //         continue;
+  //       }
+  //
+  //       // ---------------------------------------------------------
+  //       // 🔍 DETECT PRODUCT ID FIRST (Normal Product Path)
+  //       // ---------------------------------------------------------
+  //       final dynamic pidRaw = item['product_id'] ?? item['id'] ??
+  //           item['productId'] ?? item['productID'] ??
+  //           item['product-id'] ?? item['meta']?['product_id'] ??
+  //           item['data']?['id'];
+  //
+  //       int? safeParseInt(dynamic v) {
+  //         if (v == null) return null;
+  //         if (v is int) return v;
+  //         if (v is double) return v.toInt();
+  //         return int.tryParse(v.toString().split('.').first);
+  //       }
+  //       final int? pid = safeParseInt(pidRaw);
+  //
+  //       // ---------------------------------------------------------
+  //       // 🔥 FETCH DISCOUNT (SOURCE OF TRUTH)
+  //       // ---------------------------------------------------------
+  //       final Map<String, dynamic> discountMeta = discountLines[pid] ?? {};
+  //       final double autoDiscount =
+  //           double.tryParse(discountMeta['amount']?.toString() ?? '0') ?? 0.0;
+  //       final String discountType = discountMeta['type']?.toString() ?? '';
+  //       final String discountSource = discountMeta['source']?.toString() ?? '';
+  //       final String ruleId = discountMeta['rule_id']?.toString() ?? '';
+  //
+  //       debugPrint("🎯 MATCH PID = $pid");
+  //       debugPrint("🎯 FOUND DISCOUNT = $discountMeta");
+  //
+  //       // ✅ NORMALIZE ITEM FIELDS (POS + API)
+  //       final String name = item['item_name'] ?? item['name'] ?? "Product";
+  //
+  //       bool isEbtEligible = item['is_ebt_eligible'] == true ||
+  //           item['is_ebt_eligible'] == 1 ||
+  //           item['is_ebt_eligible'] == "1";
+  //
+  //       final tags = item['tags'] ?? item['product_data']?['tags'];
+  //       if (tags is List) {
+  //         isEbtEligible = tags.any((t) {
+  //           if (t is Map) {
+  //             return (t['slug'] ?? '').toString().toLowerCase() == 'ebt-eligible';
+  //           }
+  //           if (t is String) {
+  //             return t.toLowerCase() == 'ebt-eligible';
+  //           }
+  //           return false;
+  //         });
+  //       }
+  //       debugPrint("🟢 EBT DETECTED response → $isEbtEligible for $name");
+  //
+  //       // 🔒 HARD BLOCK payout & cashback from products loop
+  //       final String lowerName =
+  //       (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
+  //       final String itemTypeNormal = item['type']?.toString().toLowerCase() ?? '';
+  //       if (lowerName == 'payout' ||
+  //           lowerName == 'cashback' ||
+  //           itemTypeNormal == 'payout' ||
+  //           itemTypeNormal == 'cashback' ||
+  //           item['is_payout'] == true ||
+  //           item['is_cashback'] == true) {
+  //         debugPrint(
+  //             "⏭ Skipping special item from products loop → $lowerName / $itemTypeNormal");
+  //         continue;
+  //       }
+  //
+  //       // ---------------------------------------------------------
+  //       // ⭐ EXTRACT PRICE AND QUANTITY
+  //       // ---------------------------------------------------------
+  //       final double price = double.tryParse(
+  //         item['item_price']?.toString() ?? item['price']?.toString() ?? '0',
+  //       ) ??
+  //           0.0;
+  //       final int qty = int.tryParse(
+  //         item['items_count']?.toString() ??
+  //             item['quantity']?.toString() ??
+  //             '1',
+  //       ) ??
+  //           1;
+  //
+  //       // 🔥 For weighted items, use weight as quantity
+  //       String displayName = name;
+  //       double effectivePrice = price;
+  //       double effectiveTotal = price * qty;
+  //       dynamic quantityValue = qty;
+  //
+  //       if (isWeightedItem && weightQty > 0 && unitPrice > 0) {
+  //         effectivePrice = unitPrice;
+  //         effectiveTotal = unitPrice * weightQty;
+  //         // 🔥 USE WEIGHT AS QUANTITY (decimal value)
+  //         quantityValue = weightQty;
+  //         displayName = "$name";
+  //         debugPrint("️ WEIGHT AS QUANTITY: $displayName | weight=$weightQty | total=\$${effectiveTotal.toStringAsFixed(2)}");
+  //       }
+  //
+  //       final double subtotal = effectiveTotal;
+  //       final double total = subtotal - autoDiscount;
+  //
+  //       // ---------------------------------------------------------
+  //       // ⭐ HANDLE PRODUCT WITH NO PRODUCT ID (Custom)
+  //       // ---------------------------------------------------------
+  //       if (pid == null || pid == 0) {
+  //         final int qtyInt = qty.toInt();
+  //         final double taxRate = double.tryParse(
+  //           item['tax_rate']?.toString() ?? item['tax_Rate']?.toString() ?? '0',
+  //         ) ??
+  //             0.0;
+  //         final String taxClass =
+  //             item['tax_class']?.toString() ?? item['tax_Class']?.toString() ?? "";
+  //
+  //         final double taxAmount = getCustomItemTax(
+  //           taxClass: taxClass,
+  //           price: effectivePrice,
+  //           qty: isWeightedItem ? 1 : qtyInt,
+  //           taxes: [],
+  //           taxRate: taxRate,
+  //         );
+  //
+  //         String resolveSku(Map<String, dynamic> item) {
+  //           return item['sku']?.toString().trim().isNotEmpty == true
+  //               ? item['sku'].toString()
+  //               : item['generated_sku']?.toString().trim().isNotEmpty == true
+  //               ? item['generated_sku'].toString()
+  //               : item['meta']?['sku']?.toString().trim().isNotEmpty == true
+  //               ? item['meta']['sku'].toString()
+  //               : "";
+  //         }
+  //
+  //         final String sku = resolveSku(item);
+  //         if (sku.isEmpty) {
+  //           debugPrint("⚠️ CUSTOM ITEM SKU MISSING → $name | raw: $item");
+  //         }
+  //
+  //         final Map<String, dynamic> customLineItem = {
+  //           "name": isWeightedItem ? displayName : name,
+  //           "quantity": quantityValue, // 🔥 Weight as quantity for weighted items
+  //           "sku": sku,
+  //           "price": effectivePrice.toStringAsFixed(2),
+  //           "tax_status": "taxable",
+  //           "tax_class": taxClass,
+  //           "subtotal": total.toStringAsFixed(2),
+  //           "total": total.toStringAsFixed(2),
+  //           "subtotal_tax": taxAmount.toStringAsFixed(2),
+  //           "total_tax": taxAmount.toStringAsFixed(2),
+  //           "taxes": taxAmount > 0
+  //               ? [
+  //             {
+  //               "rate_id": 0,
+  //               "total": taxAmount.toStringAsFixed(2),
+  //               "subtotal": taxAmount.toStringAsFixed(2),
+  //             }
+  //           ]
+  //               : [],
+  //           "meta_data": [
+  //             {
+  //               "key": "_custom_tax_rate",
+  //               "value": taxRate.toString(),
+  //             }
+  //           ],
+  //           "type": "custom",
+  //         };
+  //
+  //         // 🔥 ADD WEIGHT META DATA FOR WEIGHTED ITEMS
+  //         if (isWeightedItem && weightQty > 0) {
+  //           customLineItem["meta_data"].addAll([
+  //             {
+  //               "key": "_weight_qty",
+  //               "value": weightQty.toStringAsFixed(3),
+  //             },
+  //             {
+  //               "key": "_weight_unit",
+  //               "value": "lb",
+  //             },
+  //             {
+  //               "key": "_unit_price",
+  //               "value": unitPrice.toStringAsFixed(2),
+  //             },
+  //             {
+  //               "key": "_weighted_item",
+  //               "value": "1",
+  //             },
+  //             // Visible meta for WooCommerce admin
+  //             {
+  //               "key": "Weight (lbs)",
+  //               "value": weightQty.toStringAsFixed(3),
+  //             },
+  //             {
+  //               "key": "Price per lb",
+  //               "value": "\$${unitPrice.toStringAsFixed(2)}",
+  //             },
+  //           ]);
+  //           debugPrint(" CUSTOM WEIGHT META ADDED: _weight_qty=${weightQty.toStringAsFixed(3)} | quantity=${quantityValue.toString()}");
+  //         }
+  //
+  //         lineItems.add(customLineItem);
+  //         continue;
+  //       }
+  //
+  //       // ---------------------------------------------------------
+  //       // ⭐ WooCommerce normal product
+  //       // ---------------------------------------------------------
+  //       final int? variationId = int.tryParse(
+  //         item['item_variation_id']?.toString() ??
+  //             item['variation_id']?.toString() ??
+  //             item['variationId']?.toString() ??
+  //             item['itemVariationId']?.toString() ??
+  //             "0",
+  //       );
+  //
+  //       debugPrint("🟣 VARIANT ID → ${item['item_variation_id']}");
+  //       debugPrint("🟣 VARIANT NAME → ${item['item_variation_custom_name']}");
+  //       debugPrint("🟣 FINAL VARIANT ID SENT → $variationId");
+  //
+  //       // Build the line item with weight as quantity
+  //       final Map<String, dynamic> lineItem = {
+  //         "product_id": pid,
+  //         if (variationId != null && variationId > 0) "variation_id": variationId,
+  //         "quantity": quantityValue, // 🔥 Weight as quantity for weighted items
+  //         "total": total.toStringAsFixed(2),
+  //         "subtotal": autoDiscount > 0
+  //             ? total.toStringAsFixed(2)
+  //             : subtotal.toStringAsFixed(2),
+  //         "name": isWeightedItem ? displayName : name,
+  //         "meta_data": [
+  //           {
+  //             "key": "_pos_auto_discount",
+  //             "value": autoDiscount.toStringAsFixed(2),
+  //           },
+  //           {
+  //             "key": "_pos_discount_type",
+  //             "value": discountType,
+  //           },
+  //           {
+  //             "key": "_pos_discount_source",
+  //             "value": discountSource,
+  //           },
+  //           {
+  //             "key": "_pos_discount_rule_id",
+  //             "value": ruleId,
+  //           },
+  //           {
+  //             "key": "_is_ebt_eligible",
+  //             "value": isEbtEligible ? "1" : "0",
+  //           },
+  //         ],
+  //       };
+  //
+  //       // 🔥 ADD WEIGHT META DATA IF WEIGHTED
+  //       if (isWeightedItem && weightQty > 0) {
+  //         lineItem["meta_data"].addAll([
+  //           {
+  //             "key": "_weight_qty",
+  //             "value": weightQty.toStringAsFixed(3),
+  //           },
+  //           {
+  //             "key": "_weight_unit",
+  //             "value": "lb",
+  //           },
+  //           {
+  //             "key": "_unit_price",
+  //             "value": unitPrice.toStringAsFixed(2),
+  //           },
+  //           {
+  //             "key": "_weighted_item",
+  //             "value": "1",
+  //           },
+  //           // Visible meta for WooCommerce admin
+  //           {
+  //             "key": "Weight (lbs)",
+  //             "value": weightQty.toStringAsFixed(3),
+  //           },
+  //           {
+  //             "key": "Price per lb",
+  //             "value": "\$${unitPrice.toStringAsFixed(2)}",
+  //           },
+  //         ]);
+  //
+  //         debugPrint(" WEIGHT META ADDED: _weight_qty=${weightQty.toStringAsFixed(3)} | quantity=${quantityValue.toString()} | total=${total.toStringAsFixed(2)}");
+  //       }
+  //
+  //       lineItems.add(lineItem);
+  //     }
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ HANDLE PAYOUTS
+  //     // ---------------------------------------------------------
+  //     final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
+  //     for (final p in payouts) {
+  //       final double amount =
+  //           double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0;
+  //       final int? productId =
+  //       int.tryParse(p['payout_product_id']?.toString() ?? "");
+  //
+  //       if (productId != null && productId > 0) {
+  //         lineItems.add({
+  //           "product_id": productId,
+  //           "name": p["product_name"] ?? "Payout",
+  //           "quantity": 1,
+  //           "subtotal": amount.toStringAsFixed(2),
+  //           "total": amount.toStringAsFixed(2),
+  //         });
+  //       } else {
+  //         feeLines.add({
+  //           "name": p["product_name"] ?? "Payout",
+  //           "tax_status": "none",
+  //           "total": amount.toStringAsFixed(2),
+  //         });
+  //       }
+  //     }
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ RECALCULATE TAX AFTER COUPON/ORDER DISCOUNT
+  //     // ---------------------------------------------------------
+  //     double storedOrderTax = (offlineOrder['order_tax'] as num?)?.toDouble() ?? 0.0;
+  //     double storedOrderDiscount = (offlineOrder['orderDiscount'] as num?)?.toDouble() ?? 0.0;
+  //     double storedGrossTotal = (offlineOrder['gross_total'] as num?)?.toDouble() ?? 0.0;
+  //
+  //     // Recalculate gross from line items (most accurate)
+  //     double computedGross = lineItems.fold<double>(
+  //       0.0,
+  //           (sum, li) {
+  //         final t = double.tryParse(li['total'].toString()) ?? 0.0;
+  //         return t > 0 ? sum + t : sum;
+  //       },
+  //     );
+  //     if (computedGross <= 0) computedGross = storedGrossTotal;
+  //
+  //     // Recalculate tax proportionally if coupon/order discount exists
+  //     double finalTax = storedOrderTax;
+  //     if (storedOrderDiscount > 0 && storedOrderTax > 0 && computedGross > 0) {
+  //       final double netAfterDiscount = computedGross - storedOrderDiscount;
+  //       if (netAfterDiscount > 0 && netAfterDiscount < computedGross) {
+  //         final double taxRatio = netAfterDiscount / computedGross;
+  //         finalTax = double.parse((storedOrderTax * taxRatio).toStringAsFixed(2));
+  //         debugPrint("🔁 TAX RECALCULATED FOR SYNC → gross:$computedGross "
+  //             "discount:$storedOrderDiscount netAfter:$netAfterDiscount "
+  //             "originalTax:$storedOrderTax finalTax:$finalTax");
+  //       }
+  //     }
+  //
+  //     final double hiveRecalcTax = (offlineOrder['tax_discount'] as num?)?.toDouble() ?? 0.0;
+  //     if (hiveRecalcTax > 0 && hiveRecalcTax < storedOrderTax) {
+  //       finalTax = hiveRecalcTax;
+  //       debugPrint("✅ TAX FROM HIVE tax_discount (post-coupon) → $finalTax");
+  //     }
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ HANDLE CASHBACK
+  //     // ---------------------------------------------------------
+  //     final cashbacks = (offlineOrder['cashbacks'] ?? []) as List? ?? [];
+  //     for (final c in cashbacks) {
+  //       final double amount =
+  //           double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
+  //       final dynamic cashbackPidRaw = c['cashback_product_id'] ??
+  //           c['product_id'] ??
+  //           c['id'] ??
+  //           c['cashbackProductId'];
+  //       final int? productId = cashbackPidRaw == null
+  //           ? null
+  //           : int.tryParse(cashbackPidRaw.toString());
+  //
+  //       if (productId != null && productId > 0) {
+  //         lineItems.add({
+  //           "product_id": productId,
+  //           "name": c["product_name"] ?? "Cashback",
+  //           "quantity": 1,
+  //           "subtotal": amount.toStringAsFixed(2),
+  //           "total": amount.toStringAsFixed(2),
+  //         });
+  //         debugPrint("🟢 Added Cashback as product line → $productId");
+  //       } else {
+  //         feeLines.add({
+  //           "name": c["product_name"] ?? "Cashback",
+  //           "tax_status": "none",
+  //           "total": amount.toStringAsFixed(2),
+  //         });
+  //         debugPrint("🟡 Cashback product_id missing → sending as fee line");
+  //       }
+  //     }
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ MERCHANT DISCOUNT
+  //     // ---------------------------------------------------------
+  //     final double lineItemsSubtotal = lineItems.fold<double>(
+  //       0.0,
+  //           (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+  //     );
+  //
+  //     final double merchantDiscount = resolveOfflineMerchantDiscountAmount(
+  //       offlineOrder,
+  //       lineItemsTotal: lineItemsSubtotal,
+  //     );
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ SEPARATE ISSUED vs REDEEMED COUPONS
+  //     // ---------------------------------------------------------
+  //     List<Map<String, dynamic>> issuedCoupons = [];
+  //     List<Map<String, dynamic>> redeemedCoupons = [];
+  //     final List<dynamic> allCoupons = couponResponse["coupons"] as List? ?? [];
+  //     for (final dynamic coupon in allCoupons) {
+  //       if (coupon is! Map) continue;
+  //       final Map<String, dynamic> couponMap = Map<String, dynamic>.from(coupon);
+  //       final gt = couponMap['generate_type'];
+  //       final bool isRedeemed;
+  //       if (gt == true) {
+  //         isRedeemed = true;
+  //       } else if (gt == false) {
+  //         isRedeemed = false;
+  //       } else {
+  //         final keys = couponMap.keys.toSet();
+  //         isRedeemed = keys.length == 1 && keys.contains('code');
+  //       }
+  //       if (isRedeemed) {
+  //         redeemedCoupons.add(couponMap);
+  //       } else {
+  //         issuedCoupons.add(couponMap);
+  //       }
+  //     }
+  //
+  //     debugPrint("📊 Issued coupons (generate_type false): ${issuedCoupons.length}");
+  //     debugPrint("📊 Redeemed coupons (generate_type true): ${redeemedCoupons.length}");
+  //
+  //     final shiftId = await UserDbHelper().getUserShiftId();
+  //     final userData = await UserDbHelper().getUserData();
+  //     final userId = userData?[AppDBConst.userId] ?? "admin";
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ DECLARE METADATA - CRITICAL FIX
+  //     // ---------------------------------------------------------
+  //     final List<Map<String, dynamic>> metaData = [
+  //       {"key": "pos_device_id", "value": "b31b723b92047f4b"},
+  //       {"key": "pos_placed_by", "value": "$userId"},
+  //       {"key": "shift_id", "value": "$shiftId"},
+  //       {"key": "pos_cash_paid", "value": "0.00"},
+  //       {"key": "_pos_client_order_id", "value": clientOrderId},
+  //     ];
+  //
+  //     // ✅ ADD PAY LATER META DATA - THIS IS THE CRITICAL FIX
+  //     if (selectedPayLaterUser != null && selectedPayLaterUser['user_id'] != null) {
+  //       final int payLaterUserId = int.tryParse(selectedPayLaterUser['user_id'].toString()) ?? 0;
+  //
+  //       if (payLaterUserId > 0) {
+  //         metaData.addAll([
+  //           {
+  //             "key": "_pay_later",
+  //             "value": true
+  //           },
+  //           {
+  //             "key": "_pay_later_user_id",
+  //             "value": payLaterUserId
+  //           },
+  //           {
+  //             "key": "_pay_later_user_name",
+  //             "value": selectedPayLaterUser['name']?.toString() ?? ''
+  //           },
+  //           {
+  //             "key": "_pay_later_user_email",
+  //             "value": selectedPayLaterUser['email']?.toString() ?? ''
+  //           },
+  //           {
+  //             "key": "_pay_later_store_name",
+  //             "value": selectedPayLaterUser['pay_later_user_store_name']?.toString() ?? ''
+  //           }
+  //         ]);
+  //
+  //         debugPrint("✅ PAY LATER USER ADDED TO META: User ID: $payLaterUserId, Name: ${selectedPayLaterUser['name']}");
+  //       } else {
+  //         debugPrint("⚠️ Pay Later user_id is invalid or 0: ${selectedPayLaterUser['user_id']}");
+  //       }
+  //     } else {
+  //       debugPrint("⚠️ No Pay Later user data available to add to meta");
+  //     }
+  //
+  //     // Add recalculated tax to meta_data
+  //     metaData.add({
+  //       "key": "_pos_order_tax",
+  //       "value": finalTax.toStringAsFixed(2),
+  //     });
+  //
+  //     debugPrint("📤 SYNC SENDING TAX → $finalTax (was stored: $storedOrderTax)");
+  //
+  //     if (merchantDiscount > 0) {
+  //       metaData.add({
+  //         "key": "_merchant_discount",
+  //         "value": merchantDiscount.toStringAsFixed(2),
+  //       });
+  //       print(
+  //         "🟢 Added Merchant Discount as META_DATA → ${merchantDiscount.toStringAsFixed(2)}",
+  //       );
+  //     }
+  //
+  //     if (issuedCoupons.isNotEmpty) {
+  //       metaData.add({
+  //         "key": "_pos_generated_coupon",
+  //         "value": {
+  //           "coupons": issuedCoupons,
+  //         },
+  //       });
+  //       debugPrint(" Generated coupon stored in meta only");
+  //     }
+  //
+  //     if (paymentsPayload.isNotEmpty) {
+  //       metaData.add({
+  //         "key": "_pos_payments",
+  //         "value": paymentsPayload,
+  //       });
+  //     }
+  //
+  //     if (isUpdate) {
+  //       metaData.add({"key": "pos_order_tag", "value": "updated_from_pos"});
+  //     }
+  //
+  //     // ---------------------------------------------------------
+  //     // COUPON LINES: only include redeemed coupons
+  //     // ---------------------------------------------------------
+  //     final List<Map<String, dynamic>> couponLines = [];
+  //     if (generatedCouponOnly && redeemedCoupons.isEmpty) {
+  //       debugPrint(" Generated coupon only → skipping coupon_lines");
+  //     } else {
+  //       for (final c in redeemedCoupons) {
+  //         final String code = c["code"]?.toString().trim() ?? "";
+  //         if (code.isNotEmpty) {
+  //           couponLines.add({"code": code});
+  //           debugPrint("✅ Passing redeemed coupon to Woo → $code");
+  //         }
+  //       }
+  //     }
+  //
+  //     debugPrint(
+  //       "🧾 Final coupon_lines → ${jsonEncode(couponLines)}",
+  //       wrapWidth: 1024,
+  //     );
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ FINAL TOTAL
+  //     // ---------------------------------------------------------
+  //     final totalAmount = lineItems.fold<double>(
+  //       0.0,
+  //           (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+  //     );
+  //
+  //     // Update the cash paid meta field with actual total
+  //     final cashPaidIndex =
+  //     metaData.indexWhere((m) => m['key'] == 'pos_cash_paid');
+  //     if (cashPaidIndex != -1) {
+  //       metaData[cashPaidIndex]['value'] = totalAmount.toStringAsFixed(2);
+  //     }
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ DETERMINE ORDER STATUS
+  //     // ---------------------------------------------------------
+  //     // If Pay Later user is selected, set status to "completed"
+  //     // Otherwise use "processing" as default
+  //     final bool isPayLaterOrder = selectedPayLaterUser != null &&
+  //         selectedPayLaterUser['user_id'] != null &&
+  //         int.tryParse(selectedPayLaterUser['user_id'].toString()) != null &&
+  //         int.tryParse(selectedPayLaterUser['user_id'].toString())! > 0;
+  //
+  //     final String orderStatus = isPayLaterOrder ? "completed" : "processing";
+  //
+  //     debugPrint("📊 ORDER STATUS: $orderStatus ${isPayLaterOrder ? '(Pay Later)' : '(Regular)'}");
+  //
+  //     // ---------------------------------------------------------
+  //     // ⭐ FINAL PAYLOAD
+  //     // ---------------------------------------------------------
+  //     final payload = {
+  //       "payment_method": "cash",
+  //       "payment_method_title": "POS-CASH",
+  //       "set_paid": true,
+  //       "status": orderStatus,  // ✅ Dynamic status based on Pay Later
+  //       "meta_data": metaData,
+  //       "fee_lines": feeLines,
+  //       "line_items": lineItems,
+  //       "coupon_lines": couponLines,
+  //       "tax_lines": [],
+  //     };
+  //
+  //     printFullJson("woo payload", payload);
+  //
+  //     final prettyJson = const JsonEncoder.withIndent('  ').convert(payload);
+  //
+  //     const chunkSize = 800;
+  //     for (int i = 0; i < prettyJson.length; i += chunkSize) {
+  //       debugPrint(
+  //         prettyJson.substring(
+  //           i,
+  //           i + chunkSize > prettyJson.length
+  //               ? prettyJson.length
+  //               : i + chunkSize,
+  //         ),
+  //       );
+  //     }
+  //
+  //     final response = isUpdate
+  //         ? await _helper.put(url, payload, true)
+  //         : await _helper.post(url, payload, true);
+  //
+  //     String body = response.toString().trim();
+  //     if (body.startsWith('1{')) {
+  //       body = body.substring(1);
+  //     }
+  //     final decoded = jsonDecode(body);
+  //
+  //     final String wooStatus = decoded is Map<String, dynamic>
+  //         ? decoded['status']?.toString() ?? 'processing'
+  //         : 'processing';
+  //
+  //     debugPrint("woo Status from sync response → $wooStatus");
+  //     debugPrint(
+  //       "woo Response → ${jsonEncode(decoded)}",
+  //       wrapWidth: 1024,
+  //     );
+  //
+  //     if (decoded is Map<String, dynamic>) {
+  //       debugPrint(
+  //         " woo Response coupon_lines → ${jsonEncode(decoded['coupon_lines'] ?? [])}",
+  //         wrapWidth: 1024,
+  //       );
+  //     }
+  //
+  //     double cashbackFee = 0.0;
+  //     final wooFees = decoded["fee_lines"] as List? ?? [];
+  //     for (final fee in wooFees) {
+  //       final name = fee["name"]?.toString().toLowerCase() ?? "";
+  //       if (name.contains("cashback fee")) {
+  //         cashbackFee = double.tryParse(fee["total"]?.toString() ?? "0") ?? 0.0;
+  //       }
+  //     }
+  //
+  //     if (decoded is Map<String, dynamic> && decoded['id'] != null) {
+  //       final int serverOrderId = int.tryParse(decoded['id'].toString()) ?? 0;
+  //       final double wooTax =
+  //           double.tryParse(decoded['total_tax']?.toString() ?? "0") ?? 0.0;
+  //       final double wooTotal =
+  //           double.tryParse(decoded['total']?.toString() ?? "0") ?? 0.0;
+  //       final double wooDiscount =
+  //           double.tryParse(decoded['discount_total']?.toString() ?? "0") ?? 0.0;
+  //       final double wooDiscountTax =
+  //           double.tryParse(decoded['discount_tax']?.toString() ?? "0") ?? 0.0;
+  //
+  //       final box = StorageProvider.offlineOrders;
+  //       final localOrderId = offlineOrder['id']?.toString() ??
+  //           offlineOrder['order_id']?.toString() ??
+  //           serverOrderId.toString();
+  //
+  //       // ⭐ SAVE ALL UPDATED VALUES INTO HIVE
+  //       offlineOrder['wooOrderId'] = serverOrderId;
+  //       offlineOrder['wooTax'] = wooTax;
+  //       offlineOrder['wooTotal'] = wooTotal;
+  //       offlineOrder['wooStatus'] = wooStatus;
+  //       offlineOrder['orderDiscount'] = wooDiscount;
+  //       offlineOrder['tax_discount'] = wooDiscountTax;
+  //       offlineOrder['order_tax'] = wooTax;
+  //       offlineOrder['net_total'] = wooTotal;
+  //       offlineOrder['net_payable'] = wooTotal;
+  //       offlineOrder['remainingBalance'] = wooTotal;
+  //       offlineOrder['coupon_lines'] = decoded['coupon_lines'];
+  //
+  //       // ✅ Save Pay Later user data to Hive
+  //       if (selectedPayLaterUser != null) {
+  //         offlineOrder['selectedPayLaterUser'] = selectedPayLaterUser;
+  //         offlineOrder['is_pay_later_order'] = true;
+  //         offlineOrder['pay_later_user_id'] = selectedPayLaterUser['user_id'];
+  //         offlineOrder['pay_later_user_name'] = selectedPayLaterUser['name'];
+  //       }
+  //
+  //       await box.put(localOrderId, offlineOrder);
+  //       await box.put(serverOrderId.toString(), {"map_to_local": localOrderId});
+  //
+  //       await CustomerDisplayHelper.updateCustomerDisplay(
+  //           int.tryParse(localOrderId) ?? serverOrderId);
+  //
+  //       return {
+  //         "id": serverOrderId,
+  //         "status": wooStatus,
+  //         "total": wooTotal,
+  //         "tax": wooTax,
+  //         "discount_total": wooDiscount,
+  //         "discount_tax": wooDiscountTax,
+  //         "cashback_fee": cashbackFee,
+  //         "line_items": decoded["line_items"],
+  //       };
+  //     }
+  //   } catch (e, s) {
+  //     print(" Failed to sync offline order: $e");
+  //     print("Stack: $s");
+  //   }
+  //   return null;
+  // }
+
+  bool _couponHiveEntryIsRedeem(Map<String, dynamic> c) {
+    final gt = c['generate_type'];
+    if (gt == true) return true;
+    if (gt == false) return false;
+    final keys = c.keys.toSet();
+    return keys.length == 1 && keys.contains('code');
+  }
+
+
+///// =====old is bellow
+
+//   Future<Map<String, dynamic>?> syncSingleOfflineOrder(
+//       Map<String, dynamic> offlineOrder) async {
+//     try {
+//       final int? localOrderIdInt = int.tryParse(
+//         offlineOrder['id']?.toString() ??
+//             offlineOrder['order_id']?.toString() ??
+//             "",
+//       );
+//
+//       if (localOrderIdInt == null) {
+//         debugPrint("❌ Cannot load payments → local order id missing");
+//       }
+//
+//       final dynamic wooOrderIdRaw = offlineOrder['wooOrderId'];
+//       final int? existingWooOrderId =
+//       wooOrderIdRaw != null ? int.tryParse(wooOrderIdRaw.toString()) : null;
+//       final Map<String, dynamic> couponResponse =
+//           (offlineOrder["coupon_response"] as Map?)?.cast<String, dynamic>() ??
+//               {};
+//       final bool generatedCouponOnly =
+//           offlineOrder["generated_coupon_only"] == true;
+//       final Map<int, Map<String, dynamic>> discountLines = {};
+//
+//       final rawDiscountLines = offlineOrder['discount_lines'];
+//       if (rawDiscountLines is Map) {
+//         rawDiscountLines.forEach((key, value) {
+//           final int? k = int.tryParse(key.toString());
+//           if (k != null && value is Map) {
+//             discountLines[k] = Map<String, dynamic>.from(value);
+//           }
+//         });
+//       }
+//
+//       final bool isUpdate =
+//           existingWooOrderId != null && existingWooOrderId > 0;
+//
+//       final String url = isUpdate
+//           ? "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$existingWooOrderId"
+//           : "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
+//
+//       List<Map<String, dynamic>> paymentsPayload = [];
+//
+//       if (localOrderIdInt != null) {
+//         final dbPayments = await LocalPaymentDBHelper.instance
+//             .getPaymentsByOrderId(localOrderIdInt);
+//
+//         debugPrint("\n📊 LIVE PAYMENTS FROM DB (${dbPayments.length})");
+//
+//         double runningBalance = 0;
+//
+//         for (final p in dbPayments) {
+//           final remaining = p.remainingBalance < 0 ? 0.0 : p.remainingBalance;
+//
+//           paymentsPayload.add({
+//             "local_id": p.id,
+//             "method": p.paymentMethod,
+//             "amount": p.amount,
+//             "remaining": remaining,
+//             "status": p.status?.name ?? "pending",
+//             "created_at": p.createdAt.toIso8601String(),
+//           });
+//
+//           debugPrint(" → ID:${p.id} | ${p.paymentMethod} | "
+//               "Amount:${p.amount} | Remaining:$remaining | ${p.status?.name}");
+//         }
+//       }
+//
+//       final String clientOrderId = offlineOrder['id']?.toString() ??
+//           offlineOrder['order_id']?.toString() ??
+//           offlineOrder['local_order_id']?.toString() ??
+//           "";
+//
+//       // ---------------------------------------------------------
+//       // ⭐ HANDLE PRODUCTS
+//       // ---------------------------------------------------------
+//       List productsRaw = [];
+//
+//       if ((offlineOrder['products'] as List?)?.isNotEmpty == true) {
+//         productsRaw = List.from(offlineOrder['products']);
+//         debugPrint("🟢 SYNC USING PRODUCTS (PERSISTED)");
+//         debugPrint("\n📦 RAW PRODUCTS FROM HIVE -------------------");
+//         for (int i = 0; i < productsRaw.length; i++) {
+//           debugPrint("INDEX $i → ${productsRaw[i]}");
+//         }
+//         debugPrint("📦 END RAW PRODUCTS -------------------\n");
+//       }
+//       final List<Map<String, dynamic>> lineItems = [];
+//       final List<Map<String, dynamic>> feeLines = [];
+//
+//       // ---------------------------------------------------------
+//       // ⭐ HANDLE PRODUCTS (Woo items + Custom items)
+//       // ---------------------------------------------------------
+//       for (var raw in productsRaw) {
+//         debugPrint("\n🧾 RAW ITEM TYPE → ${raw.runtimeType}");
+//         debugPrint("🧾 RAW ITEM DATA → $raw");
+//         debugPrint("🧾 RAW discount_meta → ${raw['discount_meta']}");
+//         debugPrint(
+//             "🧾 discount_meta TYPE → ${raw['discount_meta']?.runtimeType}");
+//
+//         final item = Map<String, dynamic>.from(raw);
+//
+//         // ---------------------------------------------------------
+// // 🔍 DETECT PRODUCT ID FIRST
+// // ---------------------------------------------------------
+//         final dynamic pidRaw = item['product_id'] ??
+//             item['id'] ??
+//             item['productId'] ??
+//             item['productID'] ??
+//             item['product-id'] ??
+//             item['meta']?['product_id'] ??
+//             item['data']?['id'];
+//
+//         int? safeParseInt(dynamic v) {
+//           if (v == null) return null;
+//           if (v is int) return v;
+//           if (v is double) return v.toInt();
+//           return int.tryParse(v.toString().split('.').first);
+//         }
+//
+//         final int? pid = safeParseInt(pidRaw);
+//
+// // ---------------------------------------------------------
+// // 🔥 FETCH DISCOUNT (SOURCE OF TRUTH)
+// // ---------------------------------------------------------
+//         final Map<String, dynamic> discountMeta = discountLines[pid] ?? {};
+//
+//         final double autoDiscount =
+//             double.tryParse(discountMeta['amount']?.toString() ?? '0') ?? 0.0;
+//
+//         final String discountType = discountMeta['type']?.toString() ?? '';
+//
+//         final String discountSource = discountMeta['source']?.toString() ?? '';
+//
+//         final String ruleId = discountMeta['rule_id']?.toString() ?? '';
+//         debugPrint("🎯 MATCH PID = $pid");
+//         debugPrint("🎯 FOUND DISCOUNT = $discountMeta");
+//
+//         // final double price =
+//         //     double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+//         // final double qty =
+//         //     double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
+//         // final double lineTotal = price * qty;
+//
+//         // ✅ NORMALIZE ITEM FIELDS (POS + API)
+//         final String name = item['item_name'] ?? item['name'] ?? "Product";
+//         bool isEbtEligible = item['is_ebt_eligible'] == true ||
+//             item['is_ebt_eligible'] == 1 ||
+//             item['is_ebt_eligible'] == "1";
+//
+//         final tags = item['tags'] ?? item['product_data']?['tags'];
+//
+//         if (tags is List) {
+//           isEbtEligible = tags.any((t) {
+//             if (t is Map) {
+//               return (t['slug'] ?? '').toString().toLowerCase() ==
+//                   'ebt-eligible';
+//             }
+//             if (t is String) {
+//               return t.toLowerCase() == 'ebt-eligible';
+//             }
+//             return false;
+//           });
+//         }
+//
+//         debugPrint("🟢 EBT DETECTED response → $isEbtEligible for $name");
+//
+//         // 🔒 HARD BLOCK payout & cashback from products loop
+//         final String lowerName =
+//         (item['item_name'] ?? item['name'] ?? '').toString().toLowerCase();
+//
+//         final String itemType = item['type']?.toString().toLowerCase() ?? '';
+//
+//         if (lowerName == 'payout' ||
+//             lowerName == 'cashback' ||
+//             itemType == 'payout' ||
+//             itemType == 'cashback' ||
+//             item['is_payout'] == true ||
+//             item['is_cashback'] == true) {
+//           debugPrint(
+//               "⏭ Skipping special item from products loop → $lowerName / $itemType");
+//           continue;
+//         }
+//
+//         final double price = double.tryParse(
+//           item['item_price']?.toString() ??
+//               item['price']?.toString() ??
+//               '0',
+//         ) ??
+//             0.0;
+//
+//         final int qty = int.tryParse(
+//           item['items_count']?.toString() ??
+//               item['quantity']?.toString() ??
+//               '1',
+//         ) ??
+//             1;
+//
+//         final double subtotal = price * qty;
+//         final double total = subtotal - autoDiscount;
+//
+//         if (pid == null || pid == 0) {
+//           final int qtyInt = qty.toInt();
+//
+//           // 🔹 READ rate stored from UI
+//           final double taxRate = double.tryParse(item['tax_rate']?.toString() ??
+//               item['tax_Rate']?.toString() ??
+//               '0') ??
+//               0.0;
+//
+//           // ✅ READ TAX CLASS
+//           final String taxClass = item['tax_class']?.toString() ??
+//               item['tax_Class']?.toString() ??
+//               "";
+//
+//           // 🔹 RECALCULATE tax HERE (new screen)
+//           final double taxAmount = getCustomItemTax(
+//             taxClass: taxClass,
+//             price: price,
+//             qty: qtyInt,
+//             taxes: [],
+//             taxRate: taxRate,
+//           );
+//
+//           String resolveSku(Map<String, dynamic> item) {
+//             return item['sku']?.toString().trim().isNotEmpty == true
+//                 ? item['sku'].toString()
+//                 : item['generated_sku']?.toString().trim().isNotEmpty == true
+//                 ? item['generated_sku'].toString()
+//                 : item['meta']?['sku']?.toString().trim().isNotEmpty == true
+//                 ? item['meta']['sku'].toString()
+//                 : "";
+//           }
+//
+//           final String sku = resolveSku(item);
+//
+//           if (sku.isEmpty) {
+//             debugPrint("⚠️ CUSTOM ITEM SKU MISSING → $name | raw: $item");
+//           }
+//
+//           lineItems.add({
+//             "name": name,
+//             "quantity": qtyInt,
+//             "sku": sku,
+//             //"sku": item["sku"] ?? item["generated_sku"] ?? "",
+//             "price": price.toStringAsFixed(2),
+//
+//             "tax_status": "taxable",
+//             "tax_class": taxClass,
+//
+//             "subtotal": (price * qtyInt).toStringAsFixed(2),
+//             "total": (price * qtyInt).toStringAsFixed(2),
+//
+//             // ✅ SEND TAX
+//             "subtotal_tax": taxAmount.toStringAsFixed(2),
+//             "total_tax": taxAmount.toStringAsFixed(2),
+//
+//             "taxes": taxAmount > 0
+//                 ? [
+//               {
+//                 "rate_id": 0,
+//                 "total": taxAmount.toStringAsFixed(2),
+//                 "subtotal": taxAmount.toStringAsFixed(2),
+//               }
+//             ]
+//                 : [],
+//
+//             // ✅ SEND RATE
+//             "meta_data": [
+//               {
+//                 "key": "_custom_tax_rate",
+//                 "value": taxRate.toString(),
+//               }
+//             ],
+//
+//             "type": "custom",
+//           });
+//
+//           continue;
+//         }
+//
+//         // ---------------------------------------------------------
+//         // ⭐ WooCommerce normal product
+//         // ---------------------------------------------------------
+//         final int? variationId = int.tryParse(
+//           item['item_variation_id']?.toString() ??
+//               item['variation_id']?.toString() ??
+//               item['variationId']?.toString() ??
+//               item['itemVariationId']?.toString() ??
+//               "0",
+//         );
+//         debugPrint("🟣 VARIANT ID → ${item['item_variation_id']}");
+//         debugPrint("🟣 VARIANT NAME → ${item['item_variation_custom_name']}");
+//         debugPrint("🟣 FINAL VARIANT ID SENT → $variationId");
+//         lineItems.add({
+//           "product_id": pid,
+//           if (variationId != null && variationId > 0)
+//             "variation_id": variationId,
+//           //"name": item['name'] ?? "",
+//           "quantity": qty,
+//           // "subtotal": subtotal.toStringAsFixed(2),
+//           "total": total.toStringAsFixed(2),
+//           "subtotal": autoDiscount > 0
+//               ? total.toStringAsFixed(2)
+//               : subtotal.toStringAsFixed(2),
+//
+//           // Optional (Woo may override name, but fine to send)
+//           "name": name,
+//
+//           "meta_data": [
+//             {
+//               "key": "_pos_auto_discount",
+//               "value": autoDiscount.toStringAsFixed(2),
+//             },
+//             {
+//               "key": "_pos_discount_type",
+//               "value": discountType,
+//             },
+//             {
+//               "key": "_pos_discount_source",
+//               "value": discountSource,
+//             },
+//             {
+//               "key": "_pos_discount_rule_id",
+//               "value": ruleId,
+//             },
+//             {
+//               "key": "_is_ebt_eligible",
+//               "value": isEbtEligible ? "1" : "0",
+//             }
+//           ],
+//         });
+//       }
+//
+//       // ---------------------------------------------------------
+//       // ⭐ HANDLE PAYOUTS
+//       // ---------------------------------------------------------
+//       final payouts = (offlineOrder['payouts'] ?? []) as List? ?? [];
+//       for (final p in payouts) {
+//         final double amount =
+//             double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0;
+//
+//         final int? productId =
+//         int.tryParse(p['payout_product_id']?.toString() ?? "");
+//
+//         if (productId != null && productId > 0) {
+//           lineItems.add({
+//             "product_id": productId,
+//             "name": p["product_name"] ?? "Payout",
+//             "quantity": 1,
+//             "subtotal": amount.toStringAsFixed(2),
+//             "total": amount.toStringAsFixed(2),
+//           });
+//         } else {
+//           feeLines.add({
+//             "name": p["product_name"] ?? "Payout",
+//             "tax_status": "none",
+//             "total": amount.toStringAsFixed(2),
+//           });
+//         }
+//       }
+//
+//       // ---------------------------------------------------------
+//       // ⭐ HANDLE CASHBACK
+//       // ---------------------------------------------------------
+//       // ---------------------------------------------------------
+// // ⭐ HANDLE CASHBACK
+// // ---------------------------------------------------------
+//       final cashbacks = (offlineOrder['cashbacks'] ?? []) as List? ?? [];
+//       for (final c in cashbacks) {
+//         final double amount =
+//             double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
+//
+//         // Try multiple key names to be safe
+//         final dynamic cashbackPidRaw = c['cashback_product_id'] ??
+//             c['product_id'] ??
+//             c['id'] ??
+//             c['cashbackProductId'];
+//
+//         final int? productId = cashbackPidRaw == null
+//             ? null
+//             : int.tryParse(cashbackPidRaw.toString());
+//
+//         if (productId != null && productId > 0) {
+//           lineItems.add({
+//             "product_id": productId,
+//             "name": c["product_name"] ?? "Cashback",
+//             "quantity": 1,
+//             "subtotal": amount.toStringAsFixed(2),
+//             "total": amount.toStringAsFixed(2),
+//           });
+//           debugPrint("🟢 Added Cashback as product line → $productId");
+//         } else {
+//           feeLines.add({
+//             "name": c["product_name"] ?? "Cashback",
+//             "tax_status": "none",
+//             "total": amount.toStringAsFixed(2),
+//           });
+//           debugPrint("🟡 Cashback product_id missing → sending as fee line");
+//         }
+//       }
+//
+//       // ---------------------------------------------------------
+// // ⭐ HANDLE MERCHANT DISCOUNT (AS LINE ITEM USING PRODUCT ID)
+// // ---------------------------------------------------------
+//       final dynamic discountRaw = offlineOrder['merchantDiscount'];
+//       double merchantDiscount =
+//           double.tryParse(discountRaw?.toString() ?? "0") ?? 0.0;
+//
+//       final discountProductIds =
+//       (offlineOrder['merchantDiscountIds'] as List? ?? [])
+//           .map((e) => int.tryParse(e.toString()) ?? 0)
+//           .where((id) => id > 0)
+//           .toList();
+//
+//       if (merchantDiscount > 0 && discountProductIds.isNotEmpty) {
+//         final int discountPid =
+//             discountProductIds.first; // ⭐ Woo Product ID (11827)
+//
+//         lineItems.add({
+//           "product_id": discountPid,
+//           "name": "Discount",
+//           "quantity": 1,
+//           "subtotal": (-merchantDiscount).toStringAsFixed(2),
+//           "total": (-merchantDiscount).toStringAsFixed(2),
+//           "tax_status": "none",
+//           "type": "discount"
+//         });
+//
+//         print("🟢 Added Merchant Discount Product → $discountPid");
+//       }
+//
+// // // ---------------------------------------------------------
+// // // ⭐ COUPON → PASS TO WOO
+// // // ---------------------------------------------------------
+// //       final List<Map<String, dynamic>> couponLines = [];
+// //
+// //       debugPrint("🎟 Checking coupon_response from offline order...");
+// //
+// //       if (couponResponse.isEmpty) {
+// //         debugPrint("ℹ️ No coupon_response found for this order");
+// //       } else {
+// //         debugPrint("🧾 coupon_response found → ${jsonEncode(couponResponse)}");
+// //
+// //         final coupons = couponResponse["coupons"] as List? ?? [];
+// //
+// //         for (final c in coupons) {
+// //           final String code = c["code"]?.toString() ?? "";
+// //
+// //           if (code.isNotEmpty) {
+// //             couponLines.add({
+// //               "code": code,
+// //             });
+// //
+// //             debugPrint("✅ Passing coupon to Woo → $code");
+// //           }
+// //         }
+// //       }
+// //
+// //       debugPrint("🎯 Final coupon_lines → ${jsonEncode(couponLines)}");
+//
+//       // ---------------------------------------------------------
+//       // ⭐ FINAL TOTAL
+//       // ---------------------------------------------------------
+//       final totalAmount = lineItems.fold<double>(
+//         0.0,
+//             (sum, li) => sum + (double.tryParse(li['total'].toString()) ?? 0.0),
+//       );
+//
+//       // ---------------------------------------------------------
+//       // ⭐ Meta
+//       // ---------------------------------------------------------
+//       final shiftId = await UserDbHelper().getUserShiftId();
+//       final userData = await UserDbHelper().getUserData();
+//       final userId = userData?[AppDBConst.userId] ?? "admin";
+//
+//       final List<Map<String, dynamic>> metaData = [
+//         {"key": "pos_device_id", "value": "b31b723b92047f4b"},
+//         {"key": "pos_placed_by", "value": "$userId"},
+//         {"key": "shift_id", "value": "$shiftId"},
+//         {"key": "pos_cash_paid", "value": totalAmount.toStringAsFixed(2)},
+//         {"key": "_pos_client_order_id", "value": clientOrderId},
+//       ];
+//
+//       Map<String, dynamic> normalizedCouponResponse = couponResponse;
+//       if (couponResponse.isNotEmpty) {
+//         final normalizedCoupons = ((couponResponse["coupons"] as List?) ?? [])
+//             .map((c) {
+//           if (c is! Map) return c;
+//           final couponMap = Map<String, dynamic>.from(c);
+//           if (couponMap["generate_type"] == null) {
+//             final keys = couponMap.keys.toSet();
+//             final bool codeOnlyRedeem =
+//                 keys.length == 1 && keys.contains("code");
+//             couponMap["generate_type"] = codeOnlyRedeem ? true : false;
+//           }
+//           return couponMap;
+//         }).toList();
+//
+//         normalizedCouponResponse = {
+//           ...couponResponse,
+//           "coupons": normalizedCoupons,
+//         };
+//
+//         metaData.add({
+//           "key": "_pos_generated_coupon",
+//           "value": normalizedCouponResponse,
+//         });
+//
+//         debugPrint("✅ Generated coupon stored in meta only");
+//       }
+//
+//       if (paymentsPayload.isNotEmpty) {
+//         metaData.add({
+//           "key": "_pos_payments",
+//           "value": paymentsPayload,
+//         });
+//       }
+//       if (isUpdate) {
+//         metaData.add({"key": "pos_order_tag", "value": "updated_from_pos"});
+//       }
+//
+//       // ---------------------------------------------------------
+// // ⭐ COUPON → PASS TO WOO
+// // ---------------------------------------------------------
+//       final List<Map<String, dynamic>> couponLines = [];
+//
+//       debugPrint("🎟 Checking coupon_response from offline order...");
+//       final coupons = normalizedCouponResponse["coupons"] as List? ?? [];
+//       final bool hasCouponResponseCodes = coupons.any(
+//             (c) => (c is Map) && ((c["code"]?.toString().trim().isNotEmpty) == true),
+//       );
+//
+//       if (generatedCouponOnly && !hasCouponResponseCodes) {
+//         debugPrint("ℹ️ Generated coupon only → skipping coupon_lines");
+//       } else if (coupons.isNotEmpty) {
+//         for (final c in coupons) {
+//           if (c is! Map) continue;
+//           final String code = c["code"]?.toString().trim() ?? "";
+//
+//           if (code.isNotEmpty) {
+//             couponLines.add({"code": code});
+//             debugPrint("✅ Passing coupon to Woo → $code");
+//           }
+//         }
+//       }
+//
+//       debugPrint(
+//         "🧾 coupon_response for sync → ${jsonEncode(normalizedCouponResponse)}",
+//         wrapWidth: 1024,
+//       );
+//       debugPrint("🎯 Final coupon_lines → ${jsonEncode(couponLines)}");
+//
+//       // ---------------------------------------------------------
+//       // ⭐ FINAL PAYLOAD
+//       // ---------------------------------------------------------
+//       final payload = {
+//         "payment_method": "cash",
+//         "payment_method_title": "POS-CASH",
+//         "set_paid": true,
+//         "status": "processing",
+//         "meta_data": metaData,
+//         "fee_lines": feeLines,
+//         "line_items": lineItems,
+//         "coupon_lines": couponLines,
+//         "tax_lines": [],
+//       };
+//
+//       printFullJson("SYNC Woo Payloadttttt", payload);
+//
+//       final response = isUpdate
+//           ? await _helper.put(url, payload, true)
+//           : await _helper.post(url, payload, true);
+//
+//       final decoded = (response is String) ? jsonDecode(response) : response;
+//
+//       final String wooStatus = decoded is Map<String, dynamic>
+//           ? decoded['status']?.toString() ?? 'processing'
+//           : 'processing';
+//
+//       debugPrint("🟣 Woo Status from sync response → $wooStatus");
+//
+//       debugPrint(
+//         "🟦 [SYNC] Woo Response → ${jsonEncode(decoded)}",
+//         wrapWidth: 1024,
+//       );
+//       if (decoded is Map<String, dynamic>) {
+//         debugPrint(
+//           "🟦 [SYNC] Woo Response coupon_lines → ${jsonEncode(decoded['coupon_lines'] ?? [])}",
+//           wrapWidth: 1024,
+//         );
+//       }
+//       double cashbackFee = 0.0;
+//       final wooFees = decoded["fee_lines"] as List? ?? [];
+//       for (final fee in wooFees) {
+//         final name = fee["name"]?.toString().toLowerCase() ?? "";
+//         if (name.contains("cashback fee")) {
+//           cashbackFee = double.tryParse(fee["total"]?.toString() ?? "0") ?? 0.0;
+//         }
+//       }
+//
+//       if (decoded is Map<String, dynamic> && decoded['id'] != null) {
+//         final int serverOrderId = int.tryParse(decoded['id'].toString()) ?? 0;
+//
+//         final double wooTax =
+//             double.tryParse(decoded['total_tax']?.toString() ?? "0") ?? 0.0;
+//
+//         final double wooTotal =
+//             double.tryParse(decoded['total']?.toString() ?? "0") ?? 0.0;
+//
+//         final double wooDiscount =
+//             double.tryParse(decoded['discount_total']?.toString() ?? "0") ??
+//                 0.0;
+//
+//         final double wooDiscountTax =
+//             double.tryParse(decoded['discount_tax']?.toString() ?? "0") ?? 0.0;
+//
+//         final box = StorageProvider.offlineOrders;
+//
+//         final localOrderId = offlineOrder['id']?.toString() ??
+//             offlineOrder['order_id']?.toString() ??
+//             serverOrderId.toString();
+//
+//         // ⭐ SAVE ALL UPDATED VALUES INTO HIVE
+//         offlineOrder['wooOrderId'] = serverOrderId;
+//         offlineOrder['wooTax'] = wooTax;
+//         offlineOrder['wooTotal'] = wooTotal;
+//         offlineOrder['wooStatus'] = wooStatus;
+//
+//         // 🔥 IMPORTANT FIX
+//         offlineOrder['orderDiscount'] = wooDiscount;
+//         offlineOrder['tax_discount'] = wooDiscountTax;
+//         offlineOrder['order_tax'] = wooTax;
+//         offlineOrder['net_total'] = wooTotal;
+//         offlineOrder['net_payable'] = wooTotal;
+//         offlineOrder['remainingBalance'] = wooTotal;
+//
+//         // Optional: store coupon lines also
+//         offlineOrder['coupon_lines'] = decoded['coupon_lines'];
+//
+//         await box.put(localOrderId, offlineOrder);
+//         await box.put(serverOrderId.toString(), {"map_to_local": localOrderId});
+//
+//         // Update Customer Display AFTER saving correct values
+//         await CustomerDisplayHelper.updateCustomerDisplay(
+//             int.tryParse(localOrderId) ?? serverOrderId);
+//
+//         // ⭐ RETURN VALUES TO UI
+//         return {
+//           "id": serverOrderId,
+//           "status": wooStatus,
+//           "total": wooTotal,
+//           "tax": wooTax,
+//           "discount_total": wooDiscount,
+//           "discount_tax": wooDiscountTax,
+//           "cashback_fee": cashbackFee,
+//           "line_items": decoded["line_items"],
+//         };
+//       }
+//     } catch (e, s) {
+//       print("❌ Failed to sync offline order: $e");
+//       print("Stack: $s");
+//     }
+//     return null;
+//   }
+
+  // 2. Update Order Products
+  Future<OrderModel> updateOrderProducts({
+    required int orderId,
+    required UpdateOrderRequestModel request,
+  }) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+
+    if (kDebugMode) {
+      print("OrderRepositoryyyyyy - POST URL: $url");
+>>>>>>> origin/Grocery_pch_api_integration
       print("OrderRepository - Request Body: ${request.toJson()}");
     }
 
@@ -87,7 +5256,12 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         final responseData = json.decode(response);
         return OrderModel.fromJson(responseData);
       } catch (e, s) {
+<<<<<<< HEAD
         if (kDebugMode) print("Error parsing update order response: $e, Stack: $s");
+=======
+        if (kDebugMode)
+          print("Error parsing update order response: $e, Stack: $s");
+>>>>>>> origin/Grocery_pch_api_integration
         throw Exception("Failed to parse update order response");
       }
     } else if (response is Map<String, dynamic>) {
@@ -96,6 +5270,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       throw Exception("Unexpected response type in update order PUT");
     }
   }
+<<<<<<< HEAD
   //Build #1.0.40: getOrders
   Future<OrdersListModel> getOrders({bool allStatuses = false, int pageNumber =1, int pageLimit = 30, String status = "", String orderType = "", String userId = ""}) async {
     //Build #1.0.54: added if allStatuses is true, include all statuses; otherwise, just "processing"
@@ -117,6 +5292,85 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
     if (kDebugMode) {
       print("OrderRepository - GET URL: $url");
+=======
+
+  Future<Map<String, List<FastKeyImageModel>>> getFastKeyImages() async {
+    // New API: GET https://pch.alektasolutions.com/api/v1/store/get-all-fastkeys-images
+    final String url =
+        "${UrlHelper.safeApiBaseUrl}/${UrlMethodConstants.fastkeyimages}";
+
+    try {
+      final raw = await _helper.get(url, true);
+      final response = raw is String ? jsonDecode(raw) : raw;
+
+      if (kDebugMode) {
+        print("FastKey Images Response: $response");
+      }
+
+      final data = response["data"];
+      if (data is! Map<String, dynamic>) {
+        if (kDebugMode) {
+          print("FastKey Images: unexpected data shape: ${data.runtimeType}");
+        }
+        return {};
+      }
+
+      Map<String, List<FastKeyImageModel>> result = {};
+
+      data.forEach((key, value) {
+        if (value is! List) return;
+        result[key] = value
+            .whereType<Map>()
+            .map((json) =>
+            FastKeyImageModel.fromJson(Map<String, dynamic>.from(json)))
+            .where((img) => img.url.isNotEmpty)
+            .toList();
+      });
+
+      return result;
+    } catch (e) {
+      print("❌ Error fetching FastKey images: $e");
+      return {};
+    }
+  }
+
+  //Build #1.0.40: getOrders
+  // Prefer connector total-orders list shape when available; still accept a raw list.
+  Future<OrdersListModel> getOrders(
+      {bool allStatuses = false,
+        int pageNumber = 1,
+        int pageLimit = 30,
+        String status = "",
+        String orderType = "",
+        String userId = ""}) async {
+    //Build #1.0.54: added if allStatuses is true, include all statuses; otherwise, just "processing"
+    final statusString = status != ""
+        ? status
+        : (allStatuses
+        ? TextConstants.orderScreenStatus
+        : TextConstants.processing);
+
+    final createdVia = orderType.trim().isNotEmpty ? orderType.trim() : 'rest-api';
+    final query = <String, String>{
+      'page': '$pageNumber',
+      'per_page': '$pageLimit',
+      'status': statusString,
+      'created_via': createdVia,
+    };
+    if (userId.trim().isNotEmpty) {
+      query['author'] = userId.trim();
+    }
+    final qs = query.entries
+        .map((e) =>
+    '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}')
+        .join('&');
+    // Connector order list endpoint used by Orders screen
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/${UrlMethodConstants.totalOrders}?$qs";
+
+    if (kDebugMode) {
+      print("OrderRepository - GET orders URL: $url");
+>>>>>>> origin/Grocery_pch_api_integration
     }
 
     try {
@@ -127,6 +5381,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         print("OrderRepository - Raw Response: ${response.toString()}");
       }
 
+<<<<<<< HEAD
       // Handle case where response is already a List<dynamic>
       if (response is List<dynamic>) {
         return OrdersListModel.fromJson(response);
@@ -144,15 +5399,54 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         throw Exception("Unexpected response type: ${response.runtimeType}");
       }
     } catch (e,s) {
+=======
+      dynamic parsed = response;
+      if (response is String) {
+        parsed = jsonDecode(response);
+      }
+
+      // Connector total-orders returns { order_total_count, orders_data: [...] }
+      if (parsed is Map<String, dynamic>) {
+        final list = parsed['orders_data'] ?? parsed['orders'] ?? parsed['data'];
+        if (list is List) {
+          return OrdersListModel.fromJson(list);
+        }
+        throw Exception(
+            "Unexpected orders map keys: ${parsed.keys.toList()}");
+      }
+
+      if (parsed is List<dynamic>) {
+        return OrdersListModel.fromJson(parsed);
+      }
+
+      throw Exception("Unexpected response type: ${parsed.runtimeType}");
+    } catch (e, s) {
+>>>>>>> origin/Grocery_pch_api_integration
       if (kDebugMode) {
         print("OrderRepository - Error in getOrders: $e");
         print("Stack trace: $s");
       }
+<<<<<<< HEAD
       throw Exception("Failed to fetch orders: $e");
+=======
+      // Build #offline: session-expired errors should propagate up for re-login handling.
+      // All other errors (network, timeout) fall back to local SQLite data.
+      if (OfflineHelper.isSessionError(e)) {
+        throw Exception('SESSION_EXPIRED: ${OfflineHelper.friendlyMessage(e)}');
+      }
+      if (kDebugMode) print('OrderRepository - Falling back to offline SQLite orders');
+      return OfflineHelper.buildOfflineOrdersListFromDb(
+        userId: userId,
+        status: status,
+        pageNumber: pageNumber,
+        pageLimit: pageLimit,
+      );
+>>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
   // Build #1.0.118: Fetch Total Orders Count API Call for Orders Screen
+<<<<<<< HEAD
   Future<TotalOrdersResponseModel> fetchTotalOrdersCount({bool allStatuses = false, int pageNumber =1, int pageLimit = 10, String status = "", String orderType = "", String userId = "", String startDate = "", String endDate = ""}) async {
 
     final statusString = status != "" ? status : (allStatuses
@@ -169,6 +5463,61 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
 
     if (kDebugMode) {
       print("OrderRepository - GET URL: $url");
+=======
+  // Connector API:
+  // GET /orders/total-orders?page=1&per_page=10&status=pending,%20processing,...&created_via=rest-api
+  // Headers: Authorization Bearer (+ x-merchant-id / x-store-id via APIHelper)
+  Future<TotalOrdersResponseModel> fetchTotalOrdersCount(
+      {bool allStatuses = false,
+        int pageNumber = 1,
+        int pageLimit = 10,
+        String status = "",
+        String orderType = "",
+        String userId = "",
+        String startDate = "",
+        String endDate = "",required String search}) async {
+    final statusString = status != ""
+        ? status
+        : (allStatuses
+        ? TextConstants.orderScreenStatus
+        : TextConstants.processing);
+
+    // New connector total-orders uses created_via=rest-api for POS orders.
+    final createdVia = orderType.trim().isNotEmpty ? orderType.trim() : 'rest-api';
+    final encodedStatus = Uri.encodeQueryComponent(statusString);
+
+    final query = <String, String>{
+      'page': '$pageNumber',
+      'per_page': '$pageLimit',
+      'status': statusString,
+      'created_via': createdVia,
+    };
+    if (search.trim().isNotEmpty) {
+      query['search'] = search.trim();
+    }
+    if (startDate.trim().isNotEmpty) {
+      query['after'] = startDate.trim();
+    }
+    if (endDate.trim().isNotEmpty) {
+      query['before'] = endDate.trim();
+    }
+    // Optional author filter when provided by UI
+    if (userId.trim().isNotEmpty) {
+      query['author'] = userId.trim();
+    }
+
+    final qs = query.entries
+        .map((e) =>
+    '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}')
+        .join('&');
+    // Keep status as server expects (spaces encoded as %20 via encodeQueryComponent)
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/${UrlMethodConstants.totalOrders}?$qs";
+
+    if (kDebugMode) {
+      print("OrderRepository - GET total-orders URL: $url");
+      print("OrderRepository - status (raw): $statusString encoded: $encodedStatus");
+>>>>>>> origin/Grocery_pch_api_integration
     }
 
     try {
@@ -178,16 +5527,26 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         print("OrderRepository - Raw Response Type: ${response.runtimeType}");
         print("OrderRepository - Raw Response: ${response.toString()}");
       }
+<<<<<<< HEAD
       /// Build #1.0.149
       /// The issue was passing a `String` (raw JSON) to `TotalOrdersResponseModel.fromJson` instead of a `Map<String, dynamic>` due to improper response handling.
       /// Updated code ensuring the `String` response is decoded with `json.decode` before processing in `fetchTotalOrdersCount`.
       /// Ensure response is decoded if it's a String
+=======
+
+      /// Build #1.0.149: ensure the response is decoded
+>>>>>>> origin/Grocery_pch_api_integration
       dynamic responseData;
       if (response is String) {
         try {
           responseData = json.decode(response);
           if (responseData is! Map<String, dynamic>) {
+<<<<<<< HEAD
             throw Exception("Decoded response is not a Map<String, dynamic>: ${responseData.runtimeType}");
+=======
+            throw Exception(
+                "Decoded response is not a Map<String, dynamic>: ${responseData.runtimeType}");
+>>>>>>> origin/Grocery_pch_api_integration
           }
         } catch (e, s) {
           if (kDebugMode) {
@@ -206,6 +5565,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       if (kDebugMode) {
         print("OrderRepository - Error in fetchTotalOrders: $e, Stack: $s");
       }
+<<<<<<< HEAD
       throw Exception("Failed to fetch total orders: $e");
     }
   }
@@ -213,6 +5573,63 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   Future<OrderModel> getOrder({required String orderId}) async {
 
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}$orderId";
+=======
+      // Build #offline: on network failure return local count from SQLite
+      if (OfflineHelper.isSessionError(e)) {
+        throw Exception('SESSION_EXPIRED: ${OfflineHelper.friendlyMessage(e)}');
+      }
+      try {
+        final offlineOrders = await OfflineHelper.buildOfflineOrdersListFromDb(
+          userId: userId,
+          status: status,
+          pageNumber: pageNumber,
+          pageLimit: pageLimit,
+        );
+
+        final db = await DBHelper.instance.database;
+        final List<String> whereClauses = [];
+        final List<dynamic> whereArgs = [];
+        if (userId.isNotEmpty && userId != '0') {
+          whereClauses.add('${AppDBConst.userId} = ?');
+          whereArgs.add(int.tryParse(userId) ?? 0);
+        }
+        if (status.isNotEmpty) {
+          final statuses = status.split(',').map((s) => s.trim()).toList();
+          final ph = List.filled(statuses.length, '?').join(',');
+          whereClauses.add('${AppDBConst.orderStatus} IN ($ph)');
+          whereArgs.addAll(statuses);
+        }
+        final countResult = await db.rawQuery(
+          'SELECT COUNT(*) as cnt FROM ${AppDBConst.orderTable}'
+              '${whereClauses.isNotEmpty ? ' WHERE ${whereClauses.join(' AND ')}' : ''}',
+          whereArgs.isNotEmpty ? whereArgs : null,
+        );
+        final count = countResult.isNotEmpty
+            ? (int.tryParse(countResult.first['cnt']?.toString() ?? '0') ?? 0)
+            : offlineOrders.orders.length;
+
+        final totalCount = count > 0 ? count : offlineOrders.orders.length;
+        if (kDebugMode) {
+          print('OrderRepository - Offline total orders count: $totalCount, orders count: ${offlineOrders.orders.length}');
+        }
+        return TotalOrdersResponseModel(
+          orderTotalCount: totalCount,
+          ordersData: offlineOrders.orders,
+        );
+      } catch (dbErr) {
+        if (kDebugMode) print('OrderRepository - Offline count fallback error: $dbErr');
+        return TotalOrdersResponseModel(orderTotalCount: 0, ordersData: []);
+      }
+    }
+  }
+
+  // Connector: GET /orders/{id}
+  // List API `id` is client order id (e.g. 262859017). Detail may return UUID in `id`.
+  Future<OrderModel> getOrder({required String orderId}) async {
+    final pathId = orderId.trim();
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$pathId";
+>>>>>>> origin/Grocery_pch_api_integration
 
     if (kDebugMode) {
       print("OrderRepository.getOrder - GET URL: $url");
@@ -225,6 +5642,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         print("OrderRepository - Raw Response Type: ${response.runtimeType}");
         print("OrderRepository - Raw Response: ${response.toString()}");
       }
+<<<<<<< HEAD
       if (response is String) {
           return OrderModel.fromJson(jsonDecode(response));
       }
@@ -244,12 +5662,523 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   // 3. Apply Coupon to Order
   Future<OrderModel> applyCouponToOrder({required int orderId, required ApplyCouponRequestModel request,}) async {
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+=======
+
+      dynamic decoded;
+      if (response is String) {
+        decoded = jsonDecode(response);
+      } else {
+        decoded = response;
+      }
+
+      if (decoded is Map) {
+        return OrderModel.fromJson(Map<String, dynamic>.from(decoded));
+      }
+      if (decoded is List && decoded.isNotEmpty) {
+        return OrderModel.fromJson(
+            Map<String, dynamic>.from(decoded.first as Map));
+      }
+      throw Exception("Unexpected response type: ${decoded.runtimeType}");
+    } catch (e, s) {
+      if (kDebugMode) {
+        print("OrderRepository - Error in getOrder: $e");
+        print("Stack trace: $s");
+      }
+      throw Exception("Failed to fetch order");
+    }
+  }
+
+  // Connector: GET /orders/{id} (same path as getOrder — client order id from list)
+  Future<OrderModel> getOrderdata({required String orderId}) async {
+    final pathId = orderId.trim();
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$pathId";
+
+    if (kDebugMode) {
+      print("OrderRepository.getOrderdata - GET URL: $url");
+    }
+
+    try {
+      final response = await _helper.get(url, true);
+
+      if (kDebugMode) {
+        printFullJson(
+          "OrderRepository Raw Response",
+          response,
+        );
+      }
+
+      dynamic decoded;
+
+      // Step 1: Decode
+      if (response is String) {
+        decoded = jsonDecode(response);
+      } else {
+        decoded = response;
+      }
+
+      // Step 2: Handle LIST response (legacy Woo format)
+      if (decoded is List) {
+        if (decoded.isEmpty) {
+          throw Exception("Order not found");
+        }
+
+        return OrderModel.fromJson(Map<String, dynamic>.from(decoded.first));
+      }
+
+      // Step 3: Handle direct MAP response (connector detail)
+      if (decoded is Map) {
+        return OrderModel.fromJson(Map<String, dynamic>.from(decoded));
+      }
+
+      throw Exception("Unexpected response format: ${decoded.runtimeType}");
+    } catch (e, s) {
+      if (kDebugMode) {
+        print("OrderRepository - Error in getOrderdata: $e");
+        print("Stack trace: $s");
+      }
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> syncOfflineDeletedOrders(
+      List<Map<String, dynamic>> orders) async {
+    final String url =
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.deleteofflineorders}";
+    print("Sync Offline Deleted Orders URL: $url");
+
+    final List<Map<String, dynamic>> formattedOrders = [];
+
+    for (final order in orders) {
+      final List<Map<String, dynamic>> lineItems = [];
+      final List<Map<String, dynamic>> feeLines = [];
+
+      final products = (order["products"] ?? []) as List;
+
+      final String clientOrderId = (order["order_id"] ??
+          order["client_order_id"] ??
+          order["local_order_id"] ??
+          "")
+          .toString();
+
+      if (clientOrderId.isEmpty) {
+        throw Exception("❌ client_order_id is missing");
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ PRODUCTS (NORMAL + CUSTOM)
+      // ---------------------------------------------------------
+      for (final raw in products) {
+        final item = Map<String, dynamic>.from(raw);
+
+        final double price =
+            double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+
+        final double qty =
+            double.tryParse(item['quantity']?.toString() ?? '1') ?? 1.0;
+
+        final double total = price * qty;
+
+        // ✅ EXTRACT SKU SAFELY
+        final String sku =
+        (item["sku"] ?? item["product_sku"] ?? item["SKU"] ?? "")
+            .toString();
+
+        final dynamic pidRaw = item["product_id"] ??
+            item["id"] ??
+            item["productId"] ??
+            item["productID"] ??
+            item["meta"]?["product_id"];
+
+        final int? pid =
+        pidRaw == null ? null : int.tryParse(pidRaw.toString());
+
+        if (pid == null || pid == 0) {
+          // 🔹 CUSTOM ITEM
+          lineItems.add({
+            item["id"] ??
+                "name": item["name"] ?? "Custom Item",
+            "quantity": qty,
+            "price": price.toStringAsFixed(2),
+            "tax_status": "taxable",
+            "type": "custom",
+            "sku": sku,
+          });
+          continue;
+        }
+
+        // 🔹 NORMAL PRODUCT
+        lineItems.add({
+          "product_id": pid,
+          "name": item["name"] ?? "",
+          "sku": sku, // ✅ NOW SKU SENT
+          "quantity": qty,
+          "subtotal": total.toStringAsFixed(2),
+          "total": total.toStringAsFixed(2),
+        });
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ PAYOUTS
+      // ---------------------------------------------------------
+      for (final p in (order["payouts"] ?? [])) {
+        final double amount =
+            double.tryParse(p["amount"]?.toString() ?? "0") ?? 0.0;
+        final int? pid = int.tryParse(p["payout_product_id"]?.toString() ?? "");
+
+        if (pid != null && pid > 0) {
+          lineItems.add({
+            "product_id": pid,
+            "name": p["product_name"] ?? "Payout",
+            "quantity": 1,
+            "subtotal": amount.toStringAsFixed(2),
+            "total": amount.toStringAsFixed(2),
+          });
+        } else {
+          feeLines.add({
+            "name": p["product_name"] ?? "Payout",
+            "tax_status": "none",
+            "total": amount.toStringAsFixed(2),
+          });
+        }
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ CASHBACKS (ALWAYS LINE ITEM IF PID EXISTS)
+      // ---------------------------------------------------------
+      for (final c in (order["cashbacks"] ?? [])) {
+        final double amount =
+            double.tryParse(c["amount"]?.toString() ?? "0") ?? 0.0;
+
+        final dynamic pidRaw = c["cashback_product_id"] ??
+            c["product_id"] ??
+            c["id"] ??
+            c["cashbackProductId"];
+
+        final int? pid =
+        pidRaw == null ? null : int.tryParse(pidRaw.toString());
+
+        final String name = c["product_name"] ?? "Cashback";
+
+        if (pid != null && pid > 0) {
+          lineItems.add({
+            "product_id": pid,
+            "name": name,
+            "quantity": 1,
+            "subtotal": amount.toStringAsFixed(2),
+            "total": amount.toStringAsFixed(2),
+          });
+        } else {
+          feeLines.add({
+            "name": name,
+            "tax_status": "none",
+            "total": amount.toStringAsFixed(2),
+          });
+        }
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ MERCHANT DISCOUNT
+      // ---------------------------------------------------------
+      final discount =
+          double.tryParse(order["merchantDiscount"]?.toString() ?? "0") ?? 0.0;
+      final ids = (order["merchantDiscountIds"] ?? []).cast<int>();
+
+      if (discount > 0 && ids.isNotEmpty) {
+        lineItems.add({
+          "product_id": ids.first,
+          "name": "Discount",
+          "quantity": 1,
+          "subtotal": (-discount).toStringAsFixed(2),
+          "total": (-discount).toStringAsFixed(2),
+          "tax_status": "none",
+          "type": "discount"
+        });
+      }
+
+      // ---------------------------------------------------------
+      // ⭐ META + PAYMENT
+      // ---------------------------------------------------------
+      formattedOrders.add({
+        "client_order_id": clientOrderId,
+        "status": "canceled",
+        "set_paid": false,
+        "payment_method": "cash",
+        "payment_method_title": "POS-CASH",
+        "line_items": lineItems,
+        "fee_lines": feeLines,
+        "tax_lines": [],
+        "meta_data": [
+          {"key": "pos_device_id", "value": order["device_id"] ?? ""},
+          {"key": "pos_placed_by", "value": order["user_name"] ?? ""},
+          {"key": "shift_id", "value": order["shift_id"]?.toString() ?? ""},
+          // {
+          //   "key": "offline_woo_order_id",
+          //   "value": order["woo_order_id"] ??
+          //       order["wooOrderId"] ??
+          //       ""
+          // },
+        ],
+        "payment": {
+          "method": "cash",
+          "paid": false,
+          "transaction_id": "deleted_${order["order_id"]}"
+        }
+      });
+    }
+
+    final body = {"orders": formattedOrders};
+    final List<String> deletedSkus = [];
+
+    debugPrint(
+      " DELETE SYNC PAYLOAD:\n${JsonEncoder.withIndent('  ').convert(body)}",
+      wrapWidth: 9000,
+    );
+
+    try {
+      final response =
+      await _helper.post(url, body, true, validateMarchentUrl: true);
+
+      final decoded = jsonDecode(response);
+      final result = decoded["results"]?.first;
+
+      final int? wooOrderId = result?["order_id"];
+
+      if (wooOrderId != null) {
+        //  CLEAN LOCAL PRODUCT CACHE
+        for (final sku in deletedSkus) {
+          await _deleteProductLocally(sku);
+        }
+
+        print(" All deleted products removed from local cache");
+      }
+
+      return {
+        "success": true,
+        "wooOrderId": wooOrderId,
+      };
+    } catch (e) {
+      print("Delete Sync Error: $e");
+      return {
+        "success": false,
+        "wooOrderId": null,
+      };
+    }
+  }
+
+  Future<List<TaxModel>> getAllTaxes() async {
+    final String url = UrlMethodConstants.taxes;
+
+    try {
+      final raw = await _helper.get(url, true);
+      final response = raw is String ? jsonDecode(raw) : raw;
+
+      if (kDebugMode) {
+        print(" Tax API Response: $response");
+      }
+
+      if (response["success"] == true) {
+        final List list = response["taxes"];
+        return list.map((e) => TaxModel.fromJson(e)).toList();
+      }
+
+      return [];
+    } catch (e) {
+      print(" Error fetching taxes: $e");
+      return [];
+    }
+  }
+
+  Future<String> validateLoginPin(String pin) async {
+    final String url =
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}token/validate-login-pin";
+
+    if (kDebugMode) {
+      print("OrderRepository - Validate PIN URL: $url");
+      print("OrderRepository - PIN: $pin");
+    }
+
+    final response = await _helper.postForm(
+      url,
+      {
+        "emp_login_pin": pin,
+      },
+      true,
+      validateMarchentUrl: true,
+    );
+
+    return response;
+  }
+
+  Future<dynamic> redeemLoyaltyPoints({
+    required int orderId,
+    required String contact,
+    required double redeemAmount,
+    required int redeemPoints,
+  }) async {
+    final String url =
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.loyaltyRedeem}";
+
+    final body = {
+      "redeem_points": redeemPoints,
+      "redeem_amount": redeemAmount,
+      "contact": contact,
+      "order_id": orderId
+    };
+
+    try {
+      final response = await _helper.post(
+        url,
+        body,
+        true,
+        validateMarchentUrl: true,
+      );
+
+      return response;
+    } catch (e) {
+      if (OfflineHelper.isSessionError(e)) rethrow;
+
+      // Build #offline: queue redemption locally when offline
+      if (kDebugMode) print('[Offline Loyalty] Queuing redemption locally: $redeemPoints pts, \$$redeemAmount');
+      final userData = await UserDbHelper().getUserData();
+      if (userData != null) {
+        final currentPoints = (userData[AppDBConst.loyaltyPoints] as int?) ?? 0;
+        final newPoints = (currentPoints - redeemPoints).clamp(0, currentPoints);
+        await UserDbHelper().updateLoyaltyPoints(newPoints);
+      }
+      // Return a synthetic success response that matches the online API
+      return {
+        'success': true,
+        'message': 'Loyalty points queued for redemption (offline mode)',
+        'offline': true,
+        'redeemed_points': redeemPoints,
+        'redeemed_amount': redeemAmount,
+      };
+    }
+  }
+
+  String _extractRedeemError(dynamic e) {
+    try {
+      if (e is String) {
+        return e;
+      }
+
+      if (e is Map<String, dynamic>) {
+        if (e.containsKey("message")) return e["message"];
+        if (e.containsKey("error")) return e["error"];
+        if (e.containsKey("msg")) return e["msg"];
+      }
+    } catch (_) {}
+
+    return "Unable to redeem loyalty points";
+  }
+
+  Future<dynamic> addLoyaltyPoints({
+    required int orderId,
+    required String contact,
+  }) async {
+    final String url =
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.loyaltyCreateCustomer}";
+
+    final body = {
+      "order_id": orderId.toString(),
+      "contact": contact,
+    };
+
+    if (kDebugMode) {
+      print("🔵 Add Loyalty Points URL: $url");
+      print("🔵 Add Loyalty Points Body: $body");
+    }
+
+    try {
+      final response = await _helper.post(
+        url,
+        body,
+        true,
+        validateMarchentUrl: true,
+      );
+
+      if (kDebugMode) {
+        print("🔵 Add Loyalty Points Response: $response");
+      }
+
+      return response;
+    } catch (e) {
+      if (OfflineHelper.isSessionError(e)) rethrow;
+      // Build #offline: silently queue adding points — they will sync later
+      if (kDebugMode) print('[Offline Loyalty] addLoyaltyPoints queued for sync (order $orderId)');
+      return {'success': true, 'message': 'Loyalty points will be added when online.', 'offline': true};
+    }
+  }
+
+  Future<dynamic> removeLoyaltyPoints({
+    required int orderId,
+    required String contact,
+  }) async {
+    final String url =
+        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.loyaltyRemove}";
+
+    final body = {
+      "order_id": orderId,
+      "contact": contact,
+    };
+
+    try {
+      final response = await _helper.post(
+        url,
+        body,
+        true,
+        validateMarchentUrl: true,
+      );
+      return response;
+    } catch (e) {
+      if (OfflineHelper.isSessionError(e)) rethrow;
+      if (kDebugMode) print('[Offline Loyalty] removeLoyaltyPoints queued for sync (order $orderId)');
+      return {'success': true, 'message': 'Loyalty points removal queued for sync.', 'offline': true};
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchDiscountRules() async {
+    final String url = UrlMethodConstants.discountRules;
+
+    print("🌐 DISCOUNT API REQUEST");
+    print("➡️ Relative URL: $url");
+
+    final response = await _helper.get(url, true);
+
+    print("🌐 DISCOUNT API RAW RESPONSE ↓↓↓");
+    print(response);
+
+    if (response is String) {
+      final decoded = jsonDecode(response);
+
+      if (decoded is List) {
+        return decoded.cast<Map<String, dynamic>>();
+      }
+    }
+
+    if (response is List) {
+      return response.cast<Map<String, dynamic>>();
+    }
+
+    return [];
+  }
+
+  // 3. Apply Coupon to Order
+  Future<OrderModel> applyCouponToOrder({
+    required int orderId,
+    required ApplyCouponRequestModel request,
+  }) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+>>>>>>> origin/Grocery_pch_api_integration
 
     if (kDebugMode) {
       print("OrderRepository - POST URL: $url");
       print("OrderRepository - Request Body: ${request.toJson()}");
     }
 
+<<<<<<< HEAD
     final response = await _helper.post(url, request.toJson(), true);
 
     if (kDebugMode) {
@@ -334,6 +6263,248 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   // Build #1.0.49: Added applyDiscount api call code
   Future<ApplyDiscountResponse> applyDiscount(int orderId, String discountCode) async {
     String url = "${UrlHelper.baseUrl}${UrlParameterConstants.applyDiscount}$orderId";
+=======
+    try {
+      final response = await _helper.post(url, request.toJson(), true);
+
+      if (kDebugMode) {
+        print("OrderRepository - Raw Response: $response");
+      }
+
+      if (response is String) {
+        try {
+          final responseData = json.decode(response);
+          return OrderModel.fromJson(responseData);
+        } catch (e) {
+          if (kDebugMode) print("Error parsing apply coupon response: $e");
+          throw Exception("Failed to parse apply coupon response");
+        }
+      } else if (response is Map<String, dynamic>) {
+        return OrderModel.fromJson(response);
+      } else {
+        throw Exception("Unexpected response type in apply coupon POST");
+      }
+    } catch (e) {
+      if (kDebugMode) print("OrderRepository - applyCouponToOrder error: $e");
+
+      if (OfflineHelper.isSessionError(e)) {
+        throw Exception('SESSION_EXPIRED: ${OfflineHelper.friendlyMessage(e)}');
+      }
+
+      // Build #offline: coupon fallback — look up the code in local coupon_table
+      try {
+        final couponCode = (request.toJson()['coupon_lines'] as List?)?.first?['code']?.toString() ?? '';
+        if (couponCode.isEmpty) rethrow;
+
+        final db = await DBHelper.instance.database;
+        final couponRows = await db.query(
+          AppDBConst.couponTable,
+          where: 'coupon_code = ?',
+          whereArgs: [couponCode.toLowerCase()],
+          limit: 1,
+        );
+
+        if (couponRows.isEmpty) {
+          throw Exception('Coupon "$couponCode" not found in offline cache.');
+        }
+
+        final coupon = couponRows.first;
+        final expiryStr = coupon['expiry_date']?.toString() ?? '';
+        if (expiryStr.isNotEmpty) {
+          final expiry = DateTime.tryParse(expiryStr);
+          if (expiry != null && expiry.isBefore(DateTime.now())) {
+            throw Exception('Coupon "$couponCode" has expired.');
+          }
+        }
+
+        // Build a synthetic OrderModel showing discount applied
+        final discountAmount = double.tryParse(coupon['coupon_amount']?.toString() ?? '0') ?? 0.0;
+        if (kDebugMode) print('[Offline Coupon] Applied "$couponCode" discount: $discountAmount');
+
+        // Return minimal OrderModel with coupon data — caller applies to UI
+        return OrderModel(
+          id: orderId,
+          parentId: 0,
+          status: 'pending_offline',
+          currency: 'INR',
+          version: '',
+          pricesIncludeTax: false,
+          dateCreated: DateTime.now().toIso8601String(),
+          dateModified: DateTime.now().toIso8601String(),
+          discountTotal: discountAmount.toStringAsFixed(2),
+          discountTax: '0.00',
+          shippingTotal: '0.00',
+          shippingTax: '0.00',
+          cartTax: '0.00',
+          total: '0.00',
+          totalTax: '0.00',
+          customerId: 0,
+          orderKey: '',
+          lineItems: [],
+          feeLines: [],
+          couponLines: [
+            CouponLine(
+              id: 0,
+              code: couponCode,
+              discount: discountAmount.toStringAsFixed(2),
+              discountTax: '0.00',
+              metaData: [],
+            ),
+          ],
+          metaData: [],
+          datePaid: null,
+          dateCompleted: null,
+          paymentMethod: '',
+          createdVia: 'offline_pos',
+          orderType: null,
+          number: orderId.toString(),
+          currencySymbol: TextConstants.currencySymbol,
+          multipackDiscountTotal: null,
+          autoDiscountTotal: null,
+          getTime: null,
+          autoDiscountMeta: null,
+          orderLevelAutoDiscountAmount: 0.0,
+          refundTotal: 0.0,
+          refundOrderTotal: 0.0,
+          netPayment: 0.0,
+        );
+      } catch (offlineErr) {
+        if (kDebugMode) print('[Offline Coupon] Fallback failed: $offlineErr');
+        rethrow;
+      }
+    }
+  }
+
+  Future<UpdateOrderResponseModel> deleteOrderItem({
+    required int orderId,
+    required UpdateOrderRequestModel request,
+  }) async {
+    final box = StorageProvider.offlineOrders;
+    final order = await box.get(orderId.toString());
+
+    if (order == null) {
+      throw Exception("Offline order $orderId not found for deletion");
+    }
+
+    // Convert product list to mutable list of maps
+    List<Map<String, dynamic>> products = (order['products'] ?? [])
+        .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
+        .toList();
+
+    final deleteList = request.lineItems ?? [];
+
+    if (deleteList.isEmpty) {
+      if (kDebugMode) print("⚠️ deleteOrderItem called with empty lineItems.");
+      return UpdateOrderResponseModel(
+        id: orderId,
+        status: "pending_offline",
+        parentId: 0,
+        currency: "INR",
+        discountTotal: "0",
+        total: "0",
+        totalTax: "0",
+        metaData: [],
+        lineItems: [],
+        taxLines: [],
+        shippingLines: [],
+        feeLines: [],
+        couponLines: [],
+      );
+    }
+
+    int initialCount = products.length;
+
+    for (var deleteItem in deleteList) {
+      final deleteProductId = deleteItem.productId ?? -1;
+      final deleteVariationId = deleteItem.variationId ?? 0;
+
+      products.removeWhere((p) {
+        final storedProductId = p['product_id'] ?? -1;
+        final storedVariationId = p['variation_id'] ?? 0;
+        return storedProductId == deleteProductId &&
+            storedVariationId == deleteVariationId;
+      });
+    }
+
+    await box.put(orderId.toString(), {
+      ...order,
+      'products': products,
+      'synced': false, // Mark as needing sync later
+    });
+
+    if (kDebugMode) {
+      print("🗑️ Offline delete for order #$orderId");
+      print("   Items before: $initialCount → after: ${products.length}");
+    }
+
+    // ✅ Return consistent model for UI
+    return UpdateOrderResponseModel(
+      id: orderId,
+      parentId: 0,
+      status: "pending_offline",
+      currency: "INR",
+      discountTotal: "0",
+      total: "0",
+      totalTax: "0",
+      metaData: [],
+      lineItems: [],
+      taxLines: [],
+      shippingLines: [],
+      feeLines: [],
+      couponLines: [],
+    );
+  }
+
+  // Build #1.0.49: Added changeOrderStatus api call code
+  Future<UpdateOrderResponseModel> changeOrderStatus({
+    required int orderId,
+    required OrderStatusRequest request,
+  }) async {
+    final box = StorageProvider.offlineOrders;
+    final order = await box.get(orderId.toString());
+
+    if (order == null) {
+      throw Exception("Offline order $orderId not found for status update");
+    }
+
+    final newStatus = request.status ?? 'unknown_status';
+
+    // ✅ Update local Hive record
+    await box.put(orderId.toString(), {
+      ...order,
+      'status': newStatus,
+      'synced': false, // Mark to sync later
+      'updated_at': DateTime.now().toIso8601String(),
+    });
+
+    if (kDebugMode) {
+      print("🔄 Offline order #$orderId status changed → $newStatus");
+    }
+
+    // ✅ Return a consistent response for UI
+    return UpdateOrderResponseModel(
+      id: orderId,
+      parentId: 0,
+      status: newStatus,
+      currency: "INR",
+      discountTotal: "0",
+      total: "0",
+      totalTax: "0",
+      metaData: [],
+      lineItems: [],
+      taxLines: [],
+      shippingLines: [],
+      feeLines: [],
+      couponLines: [],
+    );
+  }
+
+  // Build #1.0.49: Added applyDiscount api call code
+  Future<ApplyDiscountResponse> applyDiscount(
+      int orderId, String discountCode) async {
+    String url =
+        "${UrlHelper.baseUrl}${UrlParameterConstants.applyDiscount}$orderId";
+>>>>>>> origin/Grocery_pch_api_integration
 
     if (kDebugMode) {
       print("ProductRepository - ApplyDiscount URL: $url");
@@ -355,7 +6526,12 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
         return ApplyDiscountResponse.fromJson(responseData);
       } catch (e) {
         if (kDebugMode) {
+<<<<<<< HEAD
           print("ProductRepository - Error parsing apply discount response: $e");
+=======
+          print(
+              "ProductRepository - Error parsing apply discount response: $e");
+>>>>>>> origin/Grocery_pch_api_integration
         }
         throw Exception("Failed to parse apply discount response");
       }
@@ -366,10 +6542,53 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
   }
 
+<<<<<<< HEAD
   // Build #1.0.53 : Add Payout to Order
   @Deprecated("This API is deprecated, please use 'addPayoutAsProduct'")
   Future<OrderModel> addPayout({required int orderId, required AddPayoutRequestModel request}) async {
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+=======
+  // Build #1.0.274 : Added new function for add merchant discount
+  Future<OrderModel> addMerchantDiscount(
+      {required int orderId,
+        required AddMerchantDiscountRequestModel request}) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}${EndUrlConstants.addDiscountEndUrl}";
+
+    if (kDebugMode) {
+      print("OrderRepository - POST URL for add merchant discount: $url");
+      print("OrderRepository - Request Body: ${request.toJson()}");
+    }
+
+    final response = await _helper.post(url, request.toJson(), true);
+
+    if (kDebugMode) {
+      print("OrderRepository - Add Merchant Discount Raw Response: $response");
+    }
+
+    if (response is String) {
+      try {
+        final responseData = json.decode(response);
+        return OrderModel.fromJson(responseData);
+      } catch (e) {
+        if (kDebugMode)
+          print("Error parsing add merchant discount response: $e");
+        throw Exception("Failed to parse add merchant discount response");
+      }
+    } else if (response is Map<String, dynamic>) {
+      return OrderModel.fromJson(response);
+    } else {
+      throw Exception("Unexpected response type in add merchant discount POST");
+    }
+  }
+
+  // Build #1.0.53 : Add Payout to Order
+  @Deprecated("This API is deprecated, please use 'addPayoutAsProduct'")
+  Future<OrderModel> addPayout(
+      {required int orderId, required AddPayoutRequestModel request}) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+>>>>>>> origin/Grocery_pch_api_integration
 
     if (kDebugMode) {
       print("OrderRepository - POST URL for add payout: $url");
@@ -397,6 +6616,7 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
     }
   }
 
+<<<<<<< HEAD
   // Build #1.0.198 : Add Payout as a product to Order
   Future<OrderModel> addPayoutAsProduct({required int orderId, required AddPayoutAsProductRequestModel request}) async {
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}${EndUrlConstants.addPayoutEndUrl}";
@@ -424,12 +6644,79 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
       return OrderModel.fromJson(response);
     } else {
       throw Exception("Unexpected response type in add payout POST");
+=======
+// Build #1.0.199 : Add Payout as Product (Hive-Only Permanent Offline)
+  Future<OrderModel> addPayoutAsProduct({
+    required int orderId,
+    required AddPayoutAsProductRequestModel request,
+  }) async {
+    try {
+      final box = StorageProvider.offlineOrders;
+      final key = orderId.toString();
+
+      // 🟡 Fetch existing offline order
+      final existingOrder = await box.get(key);
+      if (existingOrder == null || existingOrder is! Map) {
+        throw Exception("Offline order not found for ID $orderId");
+      }
+
+      // 🧾 Create payout entry (stored as negative amount for clarity)
+      final payoutEntry = {
+        "order_id": orderId,
+        "amount": request.amount,
+        "type": "payout",
+        "timestamp": DateTime.now().toIso8601String(),
+      };
+
+      // 🧩 Update existing order map
+      final updatedOrder = Map<String, dynamic>.from(existingOrder);
+      final payouts =
+      List<Map<String, dynamic>>.from(updatedOrder["payouts"] ?? []);
+      payouts.add(payoutEntry);
+      updatedOrder["payouts"] = payouts;
+
+      // 🔄 Recalculate totals
+      double productsTotal = 0.0;
+      for (var item in (updatedOrder["products"] ?? [])) {
+        final price = (item["price"] ?? 0).toDouble();
+        final qty = (item["quantity"] ?? 1).toDouble();
+        productsTotal += price * qty;
+      }
+
+      double payoutsTotal =
+      payouts.fold(0.0, (sum, p) => sum + (p["amount"] ?? 0.0));
+      updatedOrder["gross_total"] = productsTotal + payoutsTotal;
+
+      // 💾 Save updated order back to Hive
+      await box.put(key, updatedOrder);
+
+      if (kDebugMode) {
+        print("✅ [Hive] Payout added to offline order #$orderId");
+        print("🧾 Payout Entry → $payoutEntry");
+        print("🧾 Updated Gross Total: ${updatedOrder["gross_total"]}");
+      }
+
+      // Return updated order model
+      return OrderModel.fromJson(updatedOrder);
+    } catch (e, s) {
+      print("❌ [Hive] Failed to add payout offline: $e");
+      print(s);
+      rethrow;
+>>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
   // Build #1.0.53 : Remove Payout from Order
+<<<<<<< HEAD
   Future<OrderModel> removeFeeLine({required int orderId, required RemoveFeeLinesRequestModel request}) async {
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+=======
+  Future<OrderModel> removeFeeLine(
+      {required int orderId,
+        required RemoveFeeLinesRequestModel request}) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+>>>>>>> origin/Grocery_pch_api_integration
 
     if (kDebugMode) {
       print("OrderRepository - PUT URL for remove fee line: $url");
@@ -458,8 +6745,15 @@ class OrderRepository {  // Build #1.0.25 - added by naveen
   }
 
   // Build #1.0.64: removeCoupon API call
+<<<<<<< HEAD
   Future<OrderModel> removeCoupon({required int orderId, required RemoveCouponRequestModel request}) async {
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+=======
+  Future<OrderModel> removeCoupon(
+      {required int orderId, required RemoveCouponRequestModel request}) async {
+    final url =
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}/$orderId";
+>>>>>>> origin/Grocery_pch_api_integration
 
     if (kDebugMode) {
       print("OrderRepository - PUT URL for remove coupon: $url");

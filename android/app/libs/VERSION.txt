@@ -1,0 +1,4 @@
+Name: Payment Device SDK for Android
+Release Date: 28/11/2025
+Version Name: Starfish
+Version Number: 4.0.6.205236832

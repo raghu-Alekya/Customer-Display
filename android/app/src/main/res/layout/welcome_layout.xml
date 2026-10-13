@@ -4,11 +4,15 @@
     android:layout_height="match_parent"
     android:background="#3D506E">
 
+<<<<<<< HEAD
     <!-- Foreground Content -->
+=======
+>>>>>>> origin/Grocery_pch_api_integration
     <LinearLayout
         android:id="@+id/welcome_root"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+<<<<<<< HEAD
         android:gravity="center_horizontal"
         android:orientation="vertical"
         android:padding="16dp"
@@ -40,6 +44,62 @@
             android:letterSpacing="0.02"
             android:singleLine="false"
             android:breakStrategy="simple" />
+=======
+        android:orientation="horizontal">
+
+        <!-- Left half: Logo + Welcome Text -->
+        <LinearLayout
+            android:id="@+id/welcome_info"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <ImageView
+                android:id="@+id/welcome_logo"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:src="@drawable/pinaka_logo"
+                android:contentDescription="Store Logo"
+                android:adjustViewBounds="true"
+                android:layout_marginBottom="24dp" />
+
+            <TextView
+                android:id="@+id/welcome_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Welcome to"
+                android:textSize="42sp"
+                android:textStyle="bold"
+                android:textColor="#FFFFFF"
+                android:gravity="center"
+                android:fontFamily="serif"
+                android:lineSpacingExtra="4dp"
+                android:letterSpacing="0.01"
+                android:breakStrategy="simple"
+                android:maxLines="2"
+                android:ellipsize="end" />
+
+        </LinearLayout>
+
+        <!-- Right half: Slideshow -->
+        <FrameLayout
+            android:id="@+id/slideshow_container"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:padding="16dp">
+
+            <ImageView
+                android:id="@+id/slideshow_image"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"/>
+        </FrameLayout>
+>>>>>>> origin/Grocery_pch_api_integration
 
     </LinearLayout>
 
@@ -49,6 +109,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Powered by Pinaka"
+<<<<<<< HEAD
         android:textSize="12sp"
         android:textColor="#FFFFFF"
         android:gravity="center"
@@ -57,3 +118,13 @@
         android:visibility="gone" />
 
 </FrameLayout>
+=======
+        android:textSize="20sp"
+        android:textColor="#FFFFFF"
+        android:gravity="center"
+        android:layout_gravity="bottom|center_horizontal"
+        android:padding="12dp"
+        android:visibility="gone" />
+
+</FrameLayout>
+>>>>>>> origin/Grocery_pch_api_integration

@@ -1,9 +1,39 @@
+<<<<<<< HEAD
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="Pinaka POS"
         android:name="${applicationName}"
         android:icon="@mipmap/logo">
+=======
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-feature android:name="android.hardware.usb.host" />
+    <!-- NOTE: android.permission.USB_PERMISSION is NOT a real Android platform
+         permission (there is no such manifest permission for USB host access).
+         It was a harmless no-op left over from a tutorial and has been removed.
+         Runtime USB access is granted per-device via UsbManager.requestPermission()
+         / the user consent dialog, not via a manifest <uses-permission>. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Bluetooth permissions -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+
+    <application
+        android:label="Grocery Pinaka"
+        android:name=".DevApplication"
+        android:icon="@mipmap/logo"
+        tools:replace="android:label">
+
+>>>>>>> origin/Grocery_pch_api_integration
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -13,6 +43,7 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
+<<<<<<< HEAD
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user
                  while the Flutter UI initializes. After that, this theme continues
@@ -21,11 +52,21 @@
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme"
                 />
+=======
+
+            <!-- Normal Theme -->
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+
+            <!-- Main launcher intent -->
+>>>>>>> origin/Grocery_pch_api_integration
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
+<<<<<<< HEAD
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED" />
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
@@ -34,10 +75,27 @@
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+=======
+            <!-- USB Device attached intent filter -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+
+            <!-- USB Device filter metadata — scoped to scanner/scale/serial
+                 peripherals ONLY. Printer VID/PID is intentionally NOT in
+                 this file; see device_filter_printer.xml below. -->
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter_peripherals" />
+        </activity>
+
+        <!-- Flutter embedding version -->
+>>>>>>> origin/Grocery_pch_api_integration
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
 
+<<<<<<< HEAD
         <receiver
             android:name="com.codingdevs.thermal_printer.usb.UsbReceiver"
             android:exported="false">
@@ -55,10 +113,42 @@
          https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+=======
+        <!-- USB Receiver for handling USB events — thermal printer plugin.
+             Scoped to device_filter_printer.xml ONLY, so it no longer fires
+             for the scanner/scale/display and no longer races MainActivity
+             for the permission dialog on those devices. -->
+        <receiver
+            android:name="com.codingdevs.thermal_printer.usb.UsbReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+                <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED" />
+                <action android:name="com.flutter_pos_printer.USB_PERMISSION" />
+            </intent-filter>
+
+            <!-- USB Device filter for receiver — printer-only, see note above -->
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter_printer" />
+        </receiver>
+
+    </application>
+
+    <!-- Queries for package visibility -->
+>>>>>>> origin/Grocery_pch_api_integration
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+<<<<<<< HEAD
     </queries>
+=======
+        <intent>
+            <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+        </intent>
+    </queries>
+
+>>>>>>> origin/Grocery_pch_api_integration
 </manifest>

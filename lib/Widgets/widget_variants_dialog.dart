@@ -49,6 +49,12 @@ class _VariantsDialogState extends State<VariantsDialog> with SingleTickerProvid
       print("VariantsDialog - Initialized with ${widget.variations.length} variations");
     }
   }
+<<<<<<< HEAD
+=======
+  bool get isAnyVariantSelected {
+    return variantQuantities.values.any((qty) => qty > 0);
+  }
+>>>>>>> origin/Grocery_pch_api_integration
 
   @override
   void dispose() {
@@ -195,14 +201,24 @@ class _VariantsDialogState extends State<VariantsDialog> with SingleTickerProvid
                                         height: 140,
                                         width: double.infinity,
                                         child: Image.network(
+<<<<<<< HEAD
                                           variant["image"],
+=======
+                                          variant["image"] ?? "",
+>>>>>>> origin/Grocery_pch_api_integration
                                           height: 140,
                                           width: double.infinity,
                                           fit: BoxFit.cover,
                                           errorBuilder: (context, error, stackTrace) {
                                             return Container(
                                               height: 140,
+<<<<<<< HEAD
                                               color: themeHelper.themeMode == ThemeMode.dark ? Colors.white70 : Colors.grey.shade300,
+=======
+                                              color: themeHelper.themeMode == ThemeMode.dark
+                                                  ? Colors.white70
+                                                  : Colors.grey.shade300,
+>>>>>>> origin/Grocery_pch_api_integration
                                               child: const Icon(Icons.broken_image, color: Colors.grey),
                                             );
                                           },
@@ -306,32 +322,58 @@ class _VariantsDialogState extends State<VariantsDialog> with SingleTickerProvid
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: ElevatedButton(
+<<<<<<< HEAD
                           onPressed: _isLoading // Build #1.0.80: loader added when tap on variant dialog add button
+=======
+                          onPressed: (_isLoading || !isAnyVariantSelected)
+>>>>>>> origin/Grocery_pch_api_integration
                               ? null
                               : () async {
                             setState(() {
                               _isLoading = true;
                             });
+<<<<<<< HEAD
                             // Ensure only one variant is selected
                             int? selectedIndex;
                             //Build 1.1.36: Add all variants with quantities greater than 0
                             variantQuantities.forEach((index, qty) { //Build #1.0.74: fixed - multiple products adding
+=======
+
+                            int? selectedIndex;
+
+                            variantQuantities.forEach((index, qty) {
+>>>>>>> origin/Grocery_pch_api_integration
                               if (qty > 0) {
                                 selectedIndex = index;
                               }
                             });
+<<<<<<< HEAD
                             if (selectedIndex != null) {
                               await widget.onAddVariant?.call(widget.variations[selectedIndex!], variantQuantities[selectedIndex!]!);
                               if (kDebugMode) {
                                 print("VariantsDialog - Added variant: ${widget.variations[selectedIndex!]['name']}, Quantity: ${variantQuantities[selectedIndex!]}");
                               }
                             }
+=======
+
+                            if (selectedIndex != null) {
+                              await widget.onAddVariant?.call(
+                                widget.variations[selectedIndex!],
+                                variantQuantities[selectedIndex!]!,
+                              );
+                              await closeDialog();
+                            }
+
+>>>>>>> origin/Grocery_pch_api_integration
                             if (mounted) {
                               setState(() {
                                 _isLoading = false;
                               });
                             }
+<<<<<<< HEAD
                            // closeDialog();
+=======
+>>>>>>> origin/Grocery_pch_api_integration
                           },
                           style: ElevatedButton.styleFrom(
                             minimumSize: const Size.fromHeight(50),
@@ -357,7 +399,11 @@ class _VariantsDialogState extends State<VariantsDialog> with SingleTickerProvid
                               color: Colors.white,
                             ),
                           ),
+<<<<<<< HEAD
                         ),
+=======
+                        )
+>>>>>>> origin/Grocery_pch_api_integration
                       ),
                     ],
                   ),
@@ -369,4 +415,8 @@ class _VariantsDialogState extends State<VariantsDialog> with SingleTickerProvid
       ],
     );
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/Grocery_pch_api_integration

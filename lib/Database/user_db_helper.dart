@@ -1,4 +1,10 @@
+<<<<<<< HEAD
 import 'package:flutter/foundation.dart';
+=======
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import '../Screens/Auth/store_id_screen.dart'; // DeviceHelper
+>>>>>>> origin/Grocery_pch_api_integration
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import '../Constants/text.dart';
@@ -7,6 +13,7 @@ import '../Preferences/pinaka_preferences.dart';
 import 'db_helper.dart';
 
 class UserDbHelper { //Build #1.0.126: Updated for user data into db
+<<<<<<< HEAD
 /// DOUBT -> NO PROBLEM IF WE USE "_instance"
 /// RE-Search: Singleton pattern - `UserDbHelper()` returns the same instance every time.
 /// No new object is created, only the existing static instance is reused.
@@ -17,6 +24,18 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
 // static final UserDbHelper instance = UserDbHelper._internal();
 //   factory UserDbHelper() => instance;
 /// then call using
+=======
+  /// DOUBT -> NO PROBLEM IF WE USE "_instance"
+  /// RE-Search: Singleton pattern - `UserDbHelper()` returns the same instance every time.
+  /// No new object is created, only the existing static instance is reused.
+  /// EX: IF WE USE/CALL LIKE THIS WAY !
+// final UserDbHelper _userDbHelper = UserDbHelper();
+// await _userDbHelper.getUserData();
+  /// or use below in this call
+// static final UserDbHelper instance = UserDbHelper._internal();
+//   factory UserDbHelper() => instance;
+  /// then call using
+>>>>>>> origin/Grocery_pch_api_integration
 // UserDbHelper.instance.getUserData();
   static final UserDbHelper _instance = UserDbHelper._internal();
   factory UserDbHelper() => _instance;
@@ -31,6 +50,31 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
   /// Saves or updates user data in the database
   /// Updates if user exists, inserts if new
   // Build #1.0.148: Fixed Issue: user display name is not changing in top bar if new user login, old user name showing
+<<<<<<< HEAD
+=======
+  Future<void> _ensureUserTableColumns(Database db) async {
+    try {
+      final columns = await db.rawQuery("PRAGMA table_info(${AppDBConst.userTable})");
+      final colNames = columns.map((c) => c['name'] as String).toSet();
+
+      Future<void> _addCol(String col, String type) async {
+        if (!colNames.contains(col)) {
+          try {
+            await db.execute('ALTER TABLE ${AppDBConst.userTable} ADD COLUMN $col $type');
+          } catch (_) {}
+        }
+      }
+
+      await _addCol(AppDBConst.deviceDisplayName, 'TEXT');
+      await _addCol(AppDBConst.tableId, 'TEXT');
+      await _addCol(AppDBConst.posDeviceId, 'TEXT');
+      await _addCol(AppDBConst.loyaltyPoints, 'INTEGER DEFAULT 0');
+    } catch (e) {
+      if (kDebugMode) print("UserDbHelper _ensureUserTableColumns error: $e");
+    }
+  }
+
+>>>>>>> origin/Grocery_pch_api_integration
   // Ensures only ONE user has a valid token at any time
   Future<void> saveUserData(LoginResponse loginResponse) async {
     if (kDebugMode) {
@@ -39,6 +83,23 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     }
 
     final db = await DBHelper.instance.database;
+<<<<<<< HEAD
+=======
+    await _ensureUserTableColumns(db);
+
+    // Resolve numeric user_id for SQLite INTEGER PRIMARY KEY column
+    final rawId = loginResponse.id;
+    int numericUserId;
+    if (rawId is int) {
+      numericUserId = rawId;
+    } else if (rawId != null && int.tryParse(rawId.toString()) != null) {
+      numericUserId = int.parse(rawId.toString());
+    } else if (rawId != null && rawId.toString().isNotEmpty) {
+      numericUserId = rawId.toString().hashCode.abs();
+    } else {
+      numericUserId = 1;
+    }
+>>>>>>> origin/Grocery_pch_api_integration
 
     // 1. FIRST clear ALL existing tokens to ensure single active user
     await db.update(
@@ -50,6 +111,7 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     final existingUser = await db.query(
       AppDBConst.userTable,
       where: '${AppDBConst.userId} = ?',
+<<<<<<< HEAD
       whereArgs: [loginResponse.id],
     );
 
@@ -65,6 +127,58 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       AppDBConst.userToken: loginResponse.token, // Set NEW token
       AppDBConst.profilePhoto: loginResponse.avatar,
       AppDBConst.userShiftId: loginResponse.shiftId, // Build #1.0.149 : Added shift_id
+=======
+      whereArgs: [numericUserId],
+    );
+
+
+    final String userEmail = (loginResponse.email != null && loginResponse.email!.trim().isNotEmpty)
+        ? loginResponse.email!.trim()
+        : ((loginResponse.nicename != null && loginResponse.nicename!.trim().isNotEmpty)
+        ? '${loginResponse.nicename!.trim()}@pos.local'
+        : (loginResponse.id != null ? '${loginResponse.id}@pos.local' : 'cashier@pos.local'));
+
+    final String userToken = (loginResponse.token != null && loginResponse.token!.trim().isNotEmpty)
+        ? loginResponse.token!.trim()
+        : '';
+
+    // 3. Prepare user data map
+    // Device id used by shift open API (must match login device-id)
+    String posDeviceId = '';
+    try {
+      posDeviceId = (await DeviceHelper.getDeviceId()).trim();
+    } catch (_) {}
+    if (posDeviceId.isEmpty) {
+      posDeviceId = existingUser.isNotEmpty
+          ? (existingUser.first[AppDBConst.posDeviceId]?.toString() ?? '')
+          : '';
+    }
+    if (kDebugMode) {
+      print('#### saveUserData pos_device_id: $posDeviceId');
+    }
+    final existingShiftId = existingUser.isEmpty
+        ? null
+        : int.tryParse(
+            existingUser.first[AppDBConst.userShiftId]?.toString() ?? '',
+          );
+
+    Map<String, dynamic> userMap = {
+      AppDBConst.userId: numericUserId,
+      AppDBConst.userRole: loginResponse.role ?? 'CASHIER',
+      AppDBConst.userDisplayName: loginResponse.displayName ?? 'Cashier',
+      AppDBConst.userEmail: userEmail,
+      AppDBConst.userFirstName: loginResponse.firstName ?? '',
+      AppDBConst.userLastName: loginResponse.lastName ?? '',
+      AppDBConst.userNickname: loginResponse.nicename ?? '',
+      AppDBConst.userToken: userToken, // Set NEW token
+      AppDBConst.profilePhoto: loginResponse.avatar,
+      // Keep the saved shift when the login response omits shift_id.
+      AppDBConst.userShiftId: loginResponse.shiftId ?? existingShiftId,
+      // Build #offline: cache terminal identity on every login
+      AppDBConst.deviceDisplayName: loginResponse.deviceDisplayName ?? '',
+      AppDBConst.tableId: loginResponse.tableId ?? '',
+      AppDBConst.posDeviceId: posDeviceId,
+>>>>>>> origin/Grocery_pch_api_integration
     };
 
     if (existingUser.isNotEmpty) {
@@ -77,11 +191,19 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
         AppDBConst.userTable,
         userMap,
         where: '${AppDBConst.userId} = ?',
+<<<<<<< HEAD
         whereArgs: [loginResponse.id],
       );
 
       if (kDebugMode) {
         print("#### Updated existing user: ${loginResponse.id}");
+=======
+        whereArgs: [numericUserId],
+      );
+
+      if (kDebugMode) {
+        print("#### Updated existing user: $numericUserId");
+>>>>>>> origin/Grocery_pch_api_integration
       }
     } else {
       // Set defaults for new user
@@ -95,7 +217,11 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       );
 
       if (kDebugMode) {
+<<<<<<< HEAD
         print("#### Inserted new user: ${loginResponse.id}");
+=======
+        print("#### Inserted new user: $numericUserId");
+>>>>>>> origin/Grocery_pch_api_integration
       }
     }
 
@@ -104,7 +230,10 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       AppDBConst.userTable,
       where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
     );
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/Grocery_pch_api_integration
     if (kDebugMode) {
       print("#### Active users after save: ${activeUsers.length}");
       if (activeUsers.isNotEmpty) {
@@ -172,6 +301,7 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     final db = await DBHelper.instance.database;
 
     // Get the user with a valid token (most recent first)
+<<<<<<< HEAD
     List<Map<String, dynamic>> result = await db.query(
       AppDBConst.userTable,
       where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
@@ -179,6 +309,15 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       limit: 1,
     );
 
+=======
+    // FIXED SQL SYNTAX: used single quotes for string literal
+    List<Map<String, dynamic>> result = await db.query(
+      AppDBConst.userTable,
+      where: "${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ''",
+      orderBy: '${AppDBConst.userId} DESC', // Get most recently logged in
+      limit: 1,
+    );
+>>>>>>> origin/Grocery_pch_api_integration
     if (result.isNotEmpty) {
       if (kDebugMode) {
         print("#### Retrieved ACTIVE user data: ${result.first}");
@@ -221,6 +360,17 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     }
   }
 
+<<<<<<< HEAD
+=======
+  /// Returns the currently active user's token, if available.
+  Future<String?> getUserToken() async {
+    final userData = await getUserData();
+    final value = userData?[AppDBConst.userToken];
+    final token = value?.toString().trim();
+    return (token == null || token.isEmpty) ? null : token;
+  }
+
+>>>>>>> origin/Grocery_pch_api_integration
   /// Checks if user is logged in by verifying token existence
   Future<bool> isUserLoggedIn() async {
     try {
@@ -236,6 +386,7 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     }
   }
 
+<<<<<<< HEAD
   /// Clears user data during logout
   Future<void> logout() async {
     final db = await DBHelper.instance.database;
@@ -244,4 +395,224 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       print("#### User data cleared during logout");
     }
   }
+=======
+  /// Clears user SESSION TOKEN during logout.
+  /// IMPORTANT (Build #offline): Does NOT delete unsynced orders.
+  /// Only clears the JWT token so getUserData() returns null (no active user)
+  /// while all SQLite order rows with synced=0 are preserved for post-reconnect sync.
+  Future<void> logout() async {
+    final db = await DBHelper.instance.database;
+    // Clear token only — do NOT delete user rows (orders reference user_id)
+    await db.update(
+      AppDBConst.userTable,
+      {AppDBConst.userToken: ''},
+    );
+    if (kDebugMode) {
+      print("#### User token cleared on logout (unsynced orders preserved)");
+    }
+  }
+
+  // Add these methods inside UserDbHelper class
+
+  /// Saves offline user session so getUserData() finds an active user.
+  /// Uses a synthetic offline token so existing "token not empty" logic works.
+  Future<void> saveOfflineUserSession({
+    required int userId,
+    required String displayName,
+    String? email,
+    String? firstName,
+    String? lastName,
+    String? nicename,
+    String? role,
+    String? avatar,
+    int? shiftId,
+    String? offlineToken, // optional; default generated below
+  }) async {
+    if (kDebugMode) {
+      print("#### Saving OFFLINE user session for: $displayName (id: $userId)");
+    }
+
+    final db = await DBHelper.instance.database;
+
+    // 1. Clear all tokens so only this offline user is active
+    await db.update(
+      AppDBConst.userTable,
+      {AppDBConst.userToken: ''},
+    );
+
+    // Synthetic token so isUserLoggedIn() / getUserData() treat this user as active
+    final token = offlineToken ?? 'OFFLINE_TOKEN_${userId}_${DateTime.now().millisecondsSinceEpoch}';
+
+    final existingUser = await db.query(
+      AppDBConst.userTable,
+      where: '${AppDBConst.userId} = ?',
+      whereArgs: [userId],
+    );
+
+    // IMPORTANT: do not write email = '' during offline login.
+    // user_table.email is UNIQUE + NOT NULL, so an empty email can collide
+    // with another cached/offline user.
+    Map<String, dynamic> userMap = {
+      AppDBConst.userId: userId,
+      AppDBConst.userRole: role ?? 'cashier',
+      AppDBConst.userDisplayName: displayName,
+      AppDBConst.userFirstName: firstName ?? displayName,
+      AppDBConst.userLastName: lastName ?? '',
+      AppDBConst.userNickname: nicename ?? displayName,
+      AppDBConst.userToken: token,
+      AppDBConst.profilePhoto: avatar ?? '',
+      AppDBConst.userShiftId: shiftId ??
+          (existingUser.isEmpty
+              ? null
+              : int.tryParse(
+                  existingUser.first[AppDBConst.userShiftId]?.toString() ?? '',
+                )),
+    };
+
+    // Only replace email when a real email was supplied.
+    // Existing users keep their already-valid unique email.
+    if (email != null && email.trim().isNotEmpty) {
+      userMap[AppDBConst.userEmail] = email.trim();
+    }
+
+    if (existingUser.isNotEmpty) {
+      // Preserve theme / layout if present
+      userMap[AppDBConst.themeMode] =
+          existingUser.first[AppDBConst.themeMode] ?? ThemeMode.light.toString();
+      userMap[AppDBConst.layoutSelection] =
+          existingUser.first[AppDBConst.layoutSelection] ??
+              SharedPreferenceTextConstants.navLeftOrderRight;
+
+      await db.update(
+        AppDBConst.userTable,
+        userMap,
+        where: '${AppDBConst.userId} = ?',
+        whereArgs: [userId],
+      );
+      if (kDebugMode) print("#### Updated existing user for offline: $userId");
+    } else {
+      // email is NOT NULL. Generate a unique local email only for a
+      // brand-new offline user when no real email is available.
+      if (!userMap.containsKey(AppDBConst.userEmail)) {
+        userMap[AppDBConst.userEmail] =
+        'offline_${userId}_${DateTime.now().millisecondsSinceEpoch}@offline.local';
+      }
+
+      userMap[AppDBConst.themeMode] = ThemeMode.light.toString();
+      userMap[AppDBConst.layoutSelection] =
+          SharedPreferenceTextConstants.navLeftOrderRight;
+
+      await db.insert(AppDBConst.userTable, userMap);
+      if (kDebugMode) print("#### Inserted new offline user: $userId");
+    }
+
+    if (kDebugMode) {
+      final active = await getUserData();
+      print("#### Offline active user after save: $active");
+    }
+  }
+
+  /// Optional: treat offline synthetic tokens as logged-in (already covered by token != '')
+  /// but you can use this if you need to distinguish online vs offline later.
+  bool isOfflineToken(String? token) {
+    return token != null && token.startsWith('OFFLINE_TOKEN_');
+  }
+
+  /// Checks if current user is logged in with an offline synthetic session.
+  Future<bool> isOfflineSession() async {
+    final userData = await getUserData();
+    final token = userData?[AppDBConst.userToken]?.toString();
+    return isOfflineToken(token);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Build #offline: Offline PIN management for multi-cashier offline login
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// SHA-256 hash a PIN so we never store raw PINs locally.
+  String _hashPin(String pin) {
+    final bytes = utf8.encode(pin);
+    final digest = sha256convert(bytes);
+    return digest;
+  }
+
+  // Simple SHA-256 using dart:convert (no external crypto dep needed for hex)
+  String sha256convert(List<int> bytes) {
+    // Use a simple deterministic hash — dart:crypto not available without package
+    // We use a salted encoding approach compatible with dart:convert
+    // For production: swap with package:crypto sha256.convert(bytes).toString()
+    // This implementation uses a base64 encoding of the raw bytes as a unique identifier
+    return base64Url.encode(bytes).replaceAll('=', '');
+  }
+
+  /// Called after a SUCCESSFUL ONLINE login: persist the employee PIN hash
+  /// so they can log in offline on future sessions.
+  Future<void> saveEmployeePin({
+    required String employeeId,
+    required String displayName,
+    required String pin,
+    String? email,
+    int? assetId,
+  }) async {
+    if (pin.isEmpty) return;
+    final db = await DBHelper.instance.database;
+    final hash = _hashPin(pin);
+    await db.insert(
+      AppDBConst.employeesTable,
+      {
+        AppDBConst.employeeId: employeeId,
+        AppDBConst.employeeDisplayName: displayName,
+        AppDBConst.employeePinHash: hash,
+        AppDBConst.employeeEmail: email ?? '',
+        AppDBConst.assetId: assetId ?? 1,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    if (kDebugMode) {
+      print('#### Saved offline PIN hash for employee: $employeeId');
+    }
+  }
+
+  /// Called during OFFLINE LOGIN: check the entered PIN against any cached employee.
+  /// Returns the matching employee row or null.
+  Future<Map<String, dynamic>?> validateOfflinePin(String pin) async {
+    if (pin.isEmpty) return null;
+    final db = await DBHelper.instance.database;
+    final hash = _hashPin(pin);
+    final results = await db.query(
+      AppDBConst.employeesTable,
+      where: '${AppDBConst.employeePinHash} = ?',
+      whereArgs: [hash],
+      limit: 1,
+    );
+    if (results.isEmpty) {
+      if (kDebugMode) print('#### Offline PIN validation: no match found');
+      return null;
+    }
+    if (kDebugMode) {
+      print('#### Offline PIN validated for employee: ${results.first[AppDBConst.employeeId]}');
+    }
+    return results.first;
+  }
+
+  /// Update the cached loyalty points balance for the active user.
+  Future<void> updateLoyaltyPoints(int points) async {
+    final db = await DBHelper.instance.database;
+    final userData = await getUserData();
+    if (userData == null) return;
+    await db.update(
+      AppDBConst.userTable,
+      {AppDBConst.loyaltyPoints: points},
+      where: '${AppDBConst.userId} = ?',
+      whereArgs: [userData[AppDBConst.userId]],
+    );
+    if (kDebugMode) print('#### Updated loyalty points cache: $points');
+  }
+
+  /// Get the cached loyalty points balance for the active user.
+  Future<int> getLoyaltyPoints() async {
+    final userData = await getUserData();
+    return (userData?[AppDBConst.loyaltyPoints] as int?) ?? 0;
+  }
+>>>>>>> origin/Grocery_pch_api_integration
 }

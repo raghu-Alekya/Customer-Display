@@ -8,6 +8,36 @@ import 'package:flutter/material.dart';
 
 class GlobalUtility { //Build #1.0.126: Added for re-Use code at global level
 
+<<<<<<< HEAD
+=======
+  static Future<ByteData?> fileToByteData(File file) async {
+    try {
+      // 1. Read the file as a list of bytes (Uint8List)
+      Uint8List uint8List = await file.readAsBytes();
+
+      // 2. Create ByteData from the Uint8List
+      // ByteData.view creates a ByteData view on the existing buffer of the Uint8List
+      // without copying the data, which is efficient.
+      ByteData byteData = ByteData.view(uint8List.buffer);
+
+      // Alternatively, if you need a ByteData object that owns its own data
+      // (e.g., if the original Uint8List might change and you need an independent snapshot),
+      // you could copy it, though this is less common for simple conversions:
+      // ByteData byteData = ByteData(uint8List.lengthInBytes);
+      // for (int i = 0; i < uint8List.lengthInBytes; i++) {
+      //   byteData.setUint8(i, uint8List[i]);
+      // }
+
+      return byteData;
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error converting file to ByteData: $e");
+      }
+      return null;
+    }
+  }
+
+>>>>>>> origin/Grocery_pch_api_integration
   static Future<Map<String, String>> getDeviceDetails() async {
     final deviceInfo = DeviceInfoPlugin();
     String deviceId = '';
@@ -209,5 +239,10 @@ class GlobalUtility { //Build #1.0.126: Added for re-Use code at global level
     } catch (_) {
       return "Operation failed";
     }
+<<<<<<< HEAD
    }
   }
+=======
+  }
+}
+>>>>>>> origin/Grocery_pch_api_integration

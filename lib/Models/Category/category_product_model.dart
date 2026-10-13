@@ -1,4 +1,5 @@
 import 'category_model.dart';
+<<<<<<< HEAD
 
 class CategoryProduct { // Build #1.0.157: Updated model with extra values
   final int id;
@@ -32,20 +33,44 @@ class CategoryProduct { // Build #1.0.157: Updated model with extra values
   final String permalink;
   final List<int> variations;
   final String type;
+=======
+import 'category_model.dart';
+
+class CategoryProduct {
+  final int id;
+  final String name;
+  final String sku;
+  final double price;
+  final String regularPrice;
+  final String salePrice;
+
+  final List<CategoryModel> categories;
+  final List<Tags> tags;
+  final List<String> images;
+  final List<Attribute> attributes;
+  final List<Map<String, dynamic>> metaData;
+  final List<int> variations;
+  final String type;
+  final ProductTax? tax;
+>>>>>>> origin/Grocery_pch_api_integration
 
   CategoryProduct({
     required this.id,
     required this.name,
+<<<<<<< HEAD
     required this.slug,
     required this.dateCreated,
     required this.dateModified,
     required this.status,
     required this.description,
     required this.shortDescription,
+=======
+>>>>>>> origin/Grocery_pch_api_integration
     required this.sku,
     required this.price,
     required this.regularPrice,
     required this.salePrice,
+<<<<<<< HEAD
     this.dateOnSaleFrom,
     this.dateOnSaleTo,
     required this.onSale,
@@ -114,6 +139,109 @@ class CategoryProduct { // Build #1.0.157: Updated model with extra values
     );
   }
 }
+=======
+    required this.categories,
+    required this.tags,
+    required this.images,
+    required this.attributes,
+    required this.metaData,
+    required this.variations,
+    required this.type,
+    this.tax,
+  });
+
+  static double _parsePrice(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String && value.isNotEmpty) {
+      return double.tryParse(value) ?? 0.0;
+    }
+    return 0.0;
+  }
+
+  factory CategoryProduct.fromJson(Map<String, dynamic> json) {
+    return CategoryProduct(
+      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
+      name: json['name'] ?? '',
+      sku: json['sku'] ?? '',
+      price: _parsePrice(json['price']),
+      regularPrice: json['regular_price'] ?? '',
+      salePrice: json['sale_price'] ?? '',
+      categories: (json['categories'] as List? ?? [])
+          .map((e) => CategoryModel.fromJson(e))
+          .toList(),
+      tags: (json['tags'] as List? ?? [])
+          .map((e) => Tags.fromJson(e))
+          .toList(),
+      attributes: (json['attributes'] as List? ?? [])
+          .map((e) => Attribute.fromJson(e))
+          .toList(),
+      metaData: (json['meta_data'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(),
+      images: (json['images'] as List? ?? [])
+          .map((e) {
+        if (e is Map<String, dynamic>) {
+          return e['src']?.toString() ?? '';
+        } else if (e is String) {
+          return e;
+        }
+        return '';
+      })
+          .where((e) => e.isNotEmpty)
+          .toList(),
+      variations: (json['variations'] as List? ?? [])
+          .map((e) => int.tryParse(e.toString()) ?? 0)
+          .where((e) => e != 0)
+          .toList(),
+      type: json['type'] ?? 'simple',
+      tax: json['tax'] != null ? ProductTax.fromJson(json['tax']) : null,
+    );
+  }
+}
+class ProductTax {
+  final bool taxable;
+  final String taxClass;
+  final String taxStatus;
+  final List<TaxRate> taxRates;
+
+  ProductTax({
+    required this.taxable,
+    required this.taxClass,
+    required this.taxStatus,
+    required this.taxRates,
+  });
+
+  factory ProductTax.fromJson(Map<String, dynamic> json) {
+    return ProductTax(
+      taxable: json['taxable'] ?? false,
+      taxClass: json['tax_class'] ?? '',
+      taxStatus: json['tax_status'] ?? '',
+      taxRates: (json['tax_rates'] as List? ?? [])
+          .map((e) => TaxRate.fromJson(e))
+          .toList(),
+    );
+  }
+}
+
+class TaxRate {
+  final double rate;
+  final String label;
+
+  TaxRate({
+    required this.rate,
+    required this.label,
+  });
+
+  factory TaxRate.fromJson(Map<String, dynamic> json) {
+    return TaxRate(
+      rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
+      label: json['label'] ?? '',
+    );
+  }
+}
+
+>>>>>>> origin/Grocery_pch_api_integration
 
 class Dimensions {
   final String length;
@@ -169,7 +297,11 @@ class Tags {
 
   factory Tags.fromJson(Map<String, dynamic> json) {
     return Tags(
+<<<<<<< HEAD
       id: json['id'] as int?,
+=======
+      id: int.tryParse(json['id']?.toString() ?? ''),
+>>>>>>> origin/Grocery_pch_api_integration
       name: json['name'] as String?,
       slug: json['slug'] as String?,
     );

@@ -1,0 +1,255 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+
+import '../Helper/offline_helper.dart';
+
+import '../Database/db_helper.dart';
+import '../Database/storage/storage_provider.dart';
+import '../Repositories/Orders/order_repository.dart';
+import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
+import '../services/refund_sync_services.dart';
+
+class OfflineOrderSyncService {
+  static Timer? _timer;
+  static StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  static Timer? _reconnectDebounce;
+  static bool _isSyncing = false;
+  static bool _started = false;
+  static void start() {
+    if (_started) return;
+    _started = true;
+
+    // Keep the existing periodic retry, but also react immediately when the
+    // device changes from offline to an actual network connection.
+    // _timer ??= Timer.periodic(
+    //   const Duration(minutes: 30),
+    //       (_) => syncPendingOrders(),
+    // );
+
+    _connectivitySubscription ??= Connectivity()
+        .onConnectivityChanged
+        .listen((result) {
+      if (result == ConnectivityResult.none) return;
+
+      // Connectivity events can fire several times while Wi-Fi is joining.
+      // Wait briefly, then verify the server is reachable before syncing.
+      _reconnectDebounce?.cancel();
+      _reconnectDebounce = Timer(const Duration(milliseconds: 700), () async {
+        OfflineHelper.invalidateNetworkCache();
+        if (await OfflineHelper.isNetworkAvailable()) {
+          await syncPendingOrders();
+        }
+      });
+    });
+
+    // Also handle the case where the app starts while the internet is already
+    // available and there are pending offline orders.
+    Future<void>(() async {
+      if (await OfflineHelper.isNetworkAvailable()) {
+        await syncPendingOrders();
+      }
+    });
+
+
+    if (kDebugMode) {
+      print("🔁 Offline order background sync started (1 min)");
+    }
+  }
+
+  static void stop() {
+    _timer?.cancel();
+    _timer = null;
+    _connectivitySubscription?.cancel();
+    _connectivitySubscription = null;
+    _reconnectDebounce?.cancel();
+    _reconnectDebounce = null;
+    _started = false;
+    if (kDebugMode) {
+      print("🛑 Offline order background sync stopped");
+    }
+  }
+
+  static Future<void> syncPendingOrders() async {
+    if (_isSyncing) return;
+
+    // Never attempt server synchronization while offline. This also prevents
+    // a reconnect event from racing with a still-unavailable DNS/server.
+    if (!await OfflineHelper.isNetworkAvailable()) return;
+    _isSyncing = true;
+
+    try {
+      final box = StorageProvider.offlineOrders;
+      final keys = await box.getKeys();
+
+      if (kDebugMode) {
+        print("🔍 Checking offline orders → ${keys.length}");
+      }
+
+      for (final key in keys) {
+        final raw = await box.get(key);
+        if (raw is! Map) continue;
+
+        final order = Map<String, dynamic>.from(raw);
+
+        // 🚫 Skip Woo → Local mapping rows
+        if (order.containsKey('map_to_local')) {
+          if (kDebugMode) {
+            print("🔁 Skipping mapping record → key:$key");
+          }
+          continue;
+        }
+
+        // ✅ Parse local orderId safely
+        final int? orderId = int.tryParse(key.toString());
+
+        if (orderId == null) {
+          if (kDebugMode) print("⛔ Invalid order key → $key");
+          continue;
+        }
+
+        // ✅ Normalize products (migration-safe)
+        List products = [];
+
+        if (order['products'] is List &&
+            (order['products'] as List).isNotEmpty) {
+          products = order['products'];
+        } else if (order['items'] is List &&
+            (order['items'] as List).isNotEmpty) {
+          products = order['items'];
+
+          // 🔥 Auto-migrate legacy orders
+          order['products'] = products;
+          await box.put(key.toString(), order);
+        }
+
+        if (products.isEmpty) {
+          if (kDebugMode) {
+            print("⛔ Skipping order $orderId → no products");
+          }
+          continue;
+        }
+
+        // ✅ Fetch ONLY unsynced payments
+        final payments =
+        (await LocalPaymentDBHelper.instance
+            .getPaymentsByOrderId(orderId))
+            .where((p) => !p.isSynced)
+            .toList();
+
+        order['payments'] = payments.map((p) => {
+          'local_id': p.id,
+          'orderId': p.orderId,
+          'paymentMethod': p.paymentMethod,
+          'amount': p.amount,
+          'remainingBalance':
+          p.remainingBalance < 0 ? 0 : p.remainingBalance,
+          'status': p.status?.name ?? 'pending',
+          'createdAt': p.createdAt.toIso8601String(),
+        }).toList();
+
+        if (kDebugMode) {
+          print("\n📦 Syncing order → local:$orderId");
+          print("💰 Unsynced payments → ${payments.length}");
+        }
+
+        // 🚀 SYNC ONCE
+        final result =
+        await OrderRepository().syncSingleOfflineOrder(order);
+
+        if (result == null || result is! Map) {
+          if (kDebugMode) {
+            print("❌ Invalid Woo response for order → $orderId");
+          }
+          continue;
+        }
+
+        final Map<String, dynamic> woo =
+        Map<String, dynamic>.from(result);
+
+        final int wooOrderId = woo['id'] ?? 0;
+
+        final String wooStatus =
+            woo['status']?.toString().toLowerCase() ?? '';
+
+        if (kDebugMode) {
+          print("🟣 Woo response → order:$wooOrderId status:$wooStatus");
+        }
+
+
+        // ✅ Mark payments as synced
+        for (final p in payments) {
+          await LocalPaymentDBHelper.instance
+              .markAsSynced(p.id, wooOrderId);
+        }
+
+        // 🗑️ REMOVE FROM LOCAL DB ONCE SYNCED
+        if (wooOrderId > 0) {
+          await box.delete(key.toString());
+          await box.delete(wooOrderId.toString());
+
+          try {
+            final db = await DBHelper.instance.database;
+            await db.delete(
+              AppDBConst.orderTable,
+              where: '${AppDBConst.orderId} = ? OR ${AppDBConst.orderServerId} = ?',
+              whereArgs: [orderId, wooOrderId],
+            );
+            await db.delete(
+              AppDBConst.purchasedItemsTable,
+              where: '${AppDBConst.orderIdForeignKey} = ? OR ${AppDBConst.itemServerId} = ?',
+              whereArgs: [orderId, wooOrderId],
+            );
+          } catch (e) {
+            if (kDebugMode) {
+              print("⚠️ Error removing synced order from SQLite: $e");
+            }
+          }
+
+          if (kDebugMode) {
+            print(
+              "🗑️ Synced offline order deleted from local DB → local:$orderId woo:$wooOrderId status:$wooStatus",
+            );
+          }
+
+          continue;
+        }
+
+        // 🔁 Otherwise keep order for retry
+        order['wooOrderId'] = wooOrderId;
+        order['wooStatus'] = wooStatus;
+        order['synced'] = true;
+        order['sync_at'] = DateTime.now().toIso8601String();
+
+        await box.put(key.toString(), order);
+
+        if (kDebugMode) {
+          print(
+            "✅ Order saved for retry → local:$orderId woo:$wooOrderId status:$wooStatus",
+          );
+        }
+      }
+      // ============================================================
+      // REFUND SYNC
+      // ============================================================
+
+      if (kDebugMode) {
+        print("🔄 Starting pending refund sync...");
+      }
+
+      await RefundSyncService().syncPendingRefunds();
+
+      if (kDebugMode) {
+        print("✅ Pending refund sync completed");
+      }
+
+    } catch (e, s) {
+      print("❌ Offline sync failed: $e");
+      print(s);
+    } finally {
+      _isSyncing = false;
+    }
+  }
+
+}

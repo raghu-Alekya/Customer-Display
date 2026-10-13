@@ -7,6 +7,18 @@
 
 # The following line activates a set of recommended lints for Flutter apps,
 # packages, and plugins designed to encourage good coding practices.
+<<<<<<< HEAD
+=======
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
+>>>>>>> origin/Grocery_pch_api_integration
 include: package:flutter_lints/flutter.yaml
 
 linter:

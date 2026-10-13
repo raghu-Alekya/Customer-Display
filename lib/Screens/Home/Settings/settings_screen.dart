@@ -11,16 +11,32 @@ import 'package:provider/provider.dart';
 import 'package:thermal_printer/thermal_printer.dart';
 
 import '../../../Constants/text.dart';
+<<<<<<< HEAD
+=======
+import '../../../Database/assets_db_helper.dart';
+>>>>>>> origin/Grocery_pch_api_integration
 import '../../../Database/db_helper.dart';
 import '../../../Database/printer_db_helper.dart';
 import '../../../Database/store_db_helper.dart';
 import '../../../Database/user_db_helper.dart';
 import '../../../Helper/Extentions/theme_notifier.dart';
+<<<<<<< HEAD
+=======
+import '../../../Helper/native_usb_scan_bridge.dart';
+>>>>>>> origin/Grocery_pch_api_integration
 import '../../../Utilities/global_utility.dart';
 import '../../../Preferences/pinaka_preferences.dart';
 import '../../../Repositories/Auth/store_validation_repository.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+<<<<<<< HEAD
+=======
+import '../../../Widgets/scanner_guard.dart';
+import 'package:qr_flutter/qr_flutter.dart'; // NEW — for generating the pairing QR code
+import '../../../mqtt_server/qr_connect_widgets.dart';
+import '../../../mqtt_server/store_messaging_service.dart'; // NEW — adjust path to your project
+
+>>>>>>> origin/Grocery_pch_api_integration
 class SettingsScreen extends StatefulWidget { // Build #1.0.6 - Added Settings Screen
   const SettingsScreen({super.key});
 
@@ -59,6 +75,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+<<<<<<< HEAD
+=======
+    ScannerGuard.isCouponPopupOpen = true;
+>>>>>>> origin/Grocery_pch_api_integration
     _themeHelper = Provider.of<ThemeNotifier>(context, listen: false); // Build #1.0.207: Initialize here
     _loadUserDataFromDB();
     _loadPrinterData(); //Build #1.0.122: Updated code: data loading from db
@@ -66,7 +86,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPrinterSettings();
     });
+<<<<<<< HEAD
      _addThemeListener();   // Build #1.0.207: Fixed -> theme options is not updating in settings screen when updated from other screen top bar
+=======
+    _addThemeListener();   // Build #1.0.207: Fixed -> theme options is not updating in settings screen when updated from other screen top bar
+>>>>>>> origin/Grocery_pch_api_integration
   }
 
   // Build #1.0.226: Added this method to load printer settings
@@ -110,6 +134,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }  // # Build 1.0.182(option automatically change when tapped in top bar)
 
+<<<<<<< HEAD
   Future<void> _loadUserDataFromDB() async { // Build #1.0.13 : now user data loads from user table DB
     try {
       final userData = await UserDbHelper().getUserData();
@@ -139,12 +164,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
           layoutSelection = userData[AppDBConst.layoutSelection] ?? SharedPreferenceTextConstants.navLeftOrderRight;
           profilePhotoPath = userData[AppDBConst.profilePhoto];
           userRole = userData[AppDBConst.userRole] ?? "Unknown Role"; //Build #1.0.170: Fixed: User role not updating
+=======
+  Future<void> _loadUserDataFromDB() async {
+    try {
+      final userData = await UserDbHelper().getUserData();
+
+      // NEW: Load store details from Asset Table (Recommended)
+      final storeDetails = await AssetDBHelper.instance.getStoreDetails();
+
+      final deviceDetails = await GlobalUtility.getDeviceDetails();
+
+      if (kDebugMode) {
+        print("#### Loading user data: $userData");
+        print("#### Loading store details from Asset: ${storeDetails?.name}");
+      }
+
+      if (userData != null) {
+        setState(() {
+          nameController.text = userData[AppDBConst.userDisplayName] ?? "Unknown Name";
+          emailController.text = userData[AppDBConst.userEmail] ?? "test@pinaka.com";
+          deviceIdController.text = deviceDetails['device_id'] ?? "unknown";
+
+          // Theme
+          appearance = _themeHelper.themeMode == ThemeMode.dark
+              ? TextConstants.darkText
+              : TextConstants.lightText;
+
+          layoutSelection = userData[AppDBConst.layoutSelection] ?? SharedPreferenceTextConstants.navLeftOrderRight;
+          profilePhotoPath = userData[AppDBConst.profilePhoto];
+          userRole = userData[AppDBConst.userRole] ?? "Unknown Role";
+
+>>>>>>> origin/Grocery_pch_api_integration
           if (profilePhotoPath != null) {
             _selectedIcon = File(profilePhotoPath!);
           }
         });
       }
 
+<<<<<<< HEAD
       if (storeData != null) { //Build #1.0.54: added
         if (kDebugMode) {
           print("### TEST storeName : ${storeData[AppDBConst.storeName] ?? ""}");
@@ -165,6 +222,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       if (kDebugMode) {
         print("Error loading user data: $e");
+=======
+      // ==================== UPDATED STORE DETAILS ====================
+      if (storeDetails != null) {
+        if (kDebugMode) {
+          print("### Loaded Store Details from AssetDB: ${storeDetails.name}");
+        }
+
+        setState(() {
+          companyNameController.text = storeDetails.name;
+          contactNoController.text = storeDetails.phoneNumber ?? "";
+          // gstInController.text = storeData[AppDBConst.licenseKey] ?? ""; // Keep if needed from validation
+          // You can add more fields from StoreDetails model if required
+        });
+      }
+      // Fallback: Keep old Store Validation logic (for backward compatibility)
+      else {
+        final storeData = await StoreDbHelper.instance.getStoreValidationData();
+        if (storeData != null) {
+          if (kDebugMode) print("### Fallback: Using old Store Validation data");
+          setState(() {
+            contactNoController.text = storeData[AppDBConst.storePhone] ?? "";
+            companyNameController.text = storeData[AppDBConst.storeName] ?? "";
+            gstInController.text = storeData[AppDBConst.licenseKey] ?? "";
+          });
+        }
+      }
+
+      if (kDebugMode) {
+        print("#### User & Store data loading completed");
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error loading user/store data: $e");
+>>>>>>> origin/Grocery_pch_api_integration
       }
     }
   }
@@ -305,6 +396,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+<<<<<<< HEAD
+=======
+    ScannerGuard.isCouponPopupOpen = false;
+>>>>>>> origin/Grocery_pch_api_integration
     _themeHelper.removeListener(_onThemeChanged);  // # Build 1.0.182(option automatically change when tapped in top bar)
     nameController.dispose();
     contactNoController.dispose();
@@ -368,8 +463,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+<<<<<<< HEAD
 ///  Build #1.0.226: TESTING FUNCTION - REMOVE IN PRODUCTION
 /// This bypasses actual printer connection for testing
+=======
+  ///  Build #1.0.226: TESTING FUNCTION - REMOVE IN PRODUCTION
+  /// This bypasses actual printer connection for testing
+>>>>>>> origin/Grocery_pch_api_integration
 //   Future<void> _addTestPrinter() async {
 //     if (kDebugMode) {
 //       print("#### [TEST] Adding test printer for development...");
@@ -409,9 +509,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
 //     }
 //   }
 
+<<<<<<< HEAD
   @override
   Widget build(BuildContext context) {
  //   final themeHelper = Provider.of<ThemeNotifier>(context);  // Build #1.0.207
+=======
+  // ==========================================================================
+  // NEW — Customer Display pairing QR (does not touch any existing method)
+  // ==========================================================================
+
+  Future<CfdConnectionPayload?> _buildConnectionPayload() async {
+    try {
+      // TODO: adjust field names below to match whatever StoreMessagingService
+      // (or wherever you keep broker/merchant/store/terminal info) exposes.
+      final messagingService =
+      Provider.of<StoreMessagingService>(context, listen: false);
+      final ip = await messagingService.getDeviceLocalIp();
+      if (ip == null) return null;
+
+      return CfdConnectionPayload(
+        brokerIp: ip,
+        brokerPort: 1883,
+        merchantId: 'M1001',   // TODO: pull from messagingService if available
+        storeId: 'S001',       // TODO: pull from messagingService if available
+        terminalId: 'POS01',   // TODO: pull from messagingService if available
+        brokerUsername: 'pinaka_cfd',          // TODO
+        brokerToken: 'generated-device-token', // TODO
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('#### [ERROR] Failed building connection QR payload: $e');
+      }
+      return null;
+    }
+  }
+
+  Widget _buildPosConnectQrSection() {
+    return FutureBuilder<CfdConnectionPayload?>(
+      future: _buildConnectionPayload(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (!snapshot.hasData || snapshot.data == null) {
+          return const SizedBox.shrink();
+        }
+
+        final payload = snapshot.data!;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Customer Display Pairing',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Scan this QR code from the Customer Display to connect it to this POS',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: QrImageView(
+                  data: payload.toQrData(),
+                  version: QrVersions.auto,
+                  size: 180,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    //   final themeHelper = Provider.of<ThemeNotifier>(context);  // Build #1.0.207
+>>>>>>> origin/Grocery_pch_api_integration
 
     return Scaffold(
       backgroundColor: _themeHelper.getTheme(context).scaffoldBackgroundColor,
@@ -419,6 +604,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: _themeHelper.getTheme(context).textTheme.bodyLarge?.color),
           onPressed: () {
+<<<<<<< HEAD
+=======
+            // NativeUsbScanBridge.dispatchFromRaw('/dev/bus/usb/001/003: 2721933233');
+            print("pppppppppppppppp");
+>>>>>>> origin/Grocery_pch_api_integration
             Navigator.pop(context); // Return true to indicate a refresh
           },
         ),
@@ -504,6 +694,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // Divider(color: Colors.grey[800], thickness: 1),
                 _buildPrinterSettingsSection(),
                 Divider(color: Colors.grey[800], thickness: 1),
+<<<<<<< HEAD
+=======
+                _buildPosConnectQrSection(), // NEW
+>>>>>>> origin/Grocery_pch_api_integration
               ],
             ),
           ),
@@ -794,6 +988,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildLayoutOption(TextConstants.layoutNavLeftOrderRight, SharedPreferenceTextConstants.navLeftOrderRight),
             _buildLayoutOption(TextConstants.layoutNavRightOrderLeft, SharedPreferenceTextConstants.navRightOrderLeft),
             _buildLayoutOption(TextConstants.layoutNavBottomOrderLeft, SharedPreferenceTextConstants.navBottomOrderLeft),
+<<<<<<< HEAD
           ],
         ),
         // Text(TextConstants.selectKeyboardText, // Build #1.0.15 : removed Keyboard type UI
@@ -811,6 +1006,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // _buildSwitchOption(TextConstants.outOfStockMngText, outOfStockManage, (value) {
         //   setState(() => outOfStockManage = value);
         // }),
+=======
+            _buildLayoutOption(TextConstants.layoutNavBottomOrderRight, SharedPreferenceTextConstants.navBottomOrderRight),
+          ],
+        ),
+>>>>>>> origin/Grocery_pch_api_integration
       ],
     );
   }
@@ -872,7 +1072,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           groupValue: layoutSelection,
           onChanged: (value) {
             setState(() => layoutSelection = value.toString());
+<<<<<<< HEAD
           //  _preferences.saveLayoutSelection(value.toString()); // This updates the notifier
+=======
+            //  _preferences.saveLayoutSelection(value.toString()); // This updates the notifier
+>>>>>>> origin/Grocery_pch_api_integration
             if (PinakaPreferences.layoutSelectionNotifier.value != layoutSelection) {
               PinakaPreferences.layoutSelectionNotifier.value = layoutSelection;
             }
@@ -1058,6 +1262,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Text(TextConstants.cacheDurationText, style: TextStyle(fontSize: 14, color: Colors.white)),
             DropdownButton<String>(
+<<<<<<< HEAD
               value: cacheDuration,
               dropdownColor: Colors.grey[800], // Dropdown background color
               onChanged: (String? newValue) {
@@ -1073,6 +1278,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 );
               }).toList(),
+=======
+                value: cacheDuration,
+                dropdownColor: Colors.grey[800], // Dropdown background color
+                onChanged: (String? newValue) {
+                  setState(() => cacheDuration = newValue!);
+                },
+                items:
+                ["Never", "1 Day", "1 Week", "1 Month"].map((String value) {
+                  return DropdownMenuItem(
+                    value: value,
+                    child: Text(
+                      value,
+                      style: TextStyle(color: Colors.white), // Dropdown item text color
+                    ),
+                  );
+                }).toList(),
+>>>>>>> origin/Grocery_pch_api_integration
                 icon: Icon(Icons.arrow_drop_down, color: Colors.white)
             ),
           ],
@@ -1214,6 +1436,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onChanged: (value) {
             setState(() {
               appearance = value.toString();
+<<<<<<< HEAD
               // themeManager.setThemeMode( //Build #1.0.54: updated
               //     appearance == TextConstants.lightText ? ThemeMode.light : ThemeMode.dark
               // );
@@ -1222,6 +1445,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               themeManager.setThemeMode(newTheme);
 
              // _preferences.saveAppThemeMode(themeManager.themeMode);
+=======
+              // Build #1.0.207: Fixed -> theme options is not updating in settings screen when updated from other screen top bar
+              final newTheme = appearance == TextConstants.lightText ? ThemeMode.light : ThemeMode.dark; // # Build 1.0.182(option automatically change when tapped in top bar)
+              themeManager.setThemeMode(newTheme);
+>>>>>>> origin/Grocery_pch_api_integration
             });
           },
           fillColor: WidgetStateProperty.resolveWith<Color>((states) {
@@ -1235,4 +1463,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ],
     );
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/Grocery_pch_api_integration

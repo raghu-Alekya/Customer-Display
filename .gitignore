@@ -1,5 +1,9 @@
 # Miscellaneous
 *.class
+<<<<<<< HEAD
+=======
+*.dll
+>>>>>>> origin/Grocery_pch_api_integration
 *.log
 *.pyc
 *.swp

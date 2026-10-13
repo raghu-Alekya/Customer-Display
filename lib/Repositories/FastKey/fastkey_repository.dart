@@ -49,6 +49,11 @@ class FastKeyRepository {  // Build #1.0.15
 
     if (kDebugMode) {
       print("FastKeyRepository - GET Raw Response: $response");
+<<<<<<< HEAD
+=======
+      print("fast keysttttt------------------");
+
+>>>>>>> origin/Grocery_pch_api_integration
     }
 
     if (response is String) {
@@ -67,7 +72,11 @@ class FastKeyRepository {  // Build #1.0.15
   }
 
   // // Build #1.0.19: POST: Delete FastKey
+<<<<<<< HEAD
   Future<FastKeyResponse> deleteFastKey(int fastkeyServerId) async {
+=======
+  Future<FastKeyResponse> deleteFastKey(dynamic fastkeyServerId) async {
+>>>>>>> origin/Grocery_pch_api_integration
     final url = "${UrlHelper.componentVersionUrl}${UrlMethodConstants.fastKeys}${EndUrlConstants.deleteFastKeyEndUrl}/$fastkeyServerId";
 
     if (kDebugMode) {
@@ -108,6 +117,11 @@ class FastKeyRepository {  // Build #1.0.15
 
     if (kDebugMode) {
       print("FastKeyRepository - UPDATE Raw Response: $response");
+<<<<<<< HEAD
+=======
+      print("fast keysuuuuuuu------------------");
+
+>>>>>>> origin/Grocery_pch_api_integration
     }
 
     if (response is String) {

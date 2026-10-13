@@ -7,7 +7,10 @@ import '../Constants/text.dart';
 import '../Database/db_helper.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Widgets/widget_custom_num_pad.dart';
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/Grocery_pch_api_integration
 class EditProduct extends StatefulWidget {
   final Map<String, dynamic> orderItem;
   final Function(int) onQuantityUpdated;
@@ -32,6 +35,7 @@ class _EditProductState extends State<EditProduct> {
   @override
   void initState() {
     super.initState();
+<<<<<<< HEAD
     quantity = widget.orderItem[AppDBConst.itemCount] ?? 1;
     var orderItem = widget.orderItem;
 
@@ -39,11 +43,31 @@ class _EditProductState extends State<EditProduct> {
         (orderItem[AppDBConst.itemRegularPrice]?.toDouble() ?? 0.0) == 0.0)
         ? orderItem[AppDBConst.itemUnitPrice]?.toDouble() ?? 0.0
         : orderItem[AppDBConst.itemRegularPrice]!.toDouble();
+=======
+
+    quantity = widget.orderItem[AppDBConst.itemCount] ?? 1;
+
+    var item = widget.orderItem;
+
+    _regularPrice =
+    (item[AppDBConst.itemRegularPrice] == null ||
+        (item[AppDBConst.itemRegularPrice]?.toDouble() ?? 0.0) == 0.0)
+        ? item[AppDBConst.itemUnitPrice]?.toDouble() ?? 0.0
+        : item[AppDBConst.itemRegularPrice]!.toDouble();
+>>>>>>> origin/Grocery_pch_api_integration
 
     controller = TextEditingController(text: quantity.toString());
   }
 
+<<<<<<< HEAD
   void updateQuantity(int newQuantity) {
+=======
+  // ✅ FIXED update quantity logic
+  void updateQuantity(int newQuantity) {
+    if (newQuantity < 0) newQuantity = 0;
+    if (newQuantity > 99) newQuantity = 99;
+
+>>>>>>> origin/Grocery_pch_api_integration
     setState(() {
       quantity = newQuantity;
       controller.text = quantity.toString();
@@ -55,10 +79,17 @@ class _EditProductState extends State<EditProduct> {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final isDark = themeHelper.themeMode == ThemeMode.dark;
 
+<<<<<<< HEAD
     // Determine width/height based on dialog or full screen
     final width = widget.isDialog
         ? MediaQuery.of(context).size.width * 0.28
         : MediaQuery.of(context).size.width * 0.65;
+=======
+    final width = widget.isDialog
+        ? MediaQuery.of(context).size.width * 0.28
+        : MediaQuery.of(context).size.width * 0.65;
+
+>>>>>>> origin/Grocery_pch_api_integration
     final height = widget.isDialog
         ? MediaQuery.of(context).size.height * 0.68
         : MediaQuery.of(context).size.height * 0.9;
@@ -89,7 +120,10 @@ class _EditProductState extends State<EditProduct> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+<<<<<<< HEAD
                   // Product card
+=======
+>>>>>>> origin/Grocery_pch_api_integration
                   Expanded(
                     child: Container(
                       padding: const EdgeInsets.all(12),
@@ -150,7 +184,10 @@ class _EditProductState extends State<EditProduct> {
                     ),
                   ),
                   const SizedBox(width: 6),
+<<<<<<< HEAD
                   // Close button
+=======
+>>>>>>> origin/Grocery_pch_api_integration
                   InkWell(
                     onTap: () => Navigator.of(context).pop(),
                     child: Container(
@@ -167,6 +204,7 @@ class _EditProductState extends State<EditProduct> {
                 ],
               ),
               const SizedBox(height: 20),
+<<<<<<< HEAD
               QuantityControl(
                 controller: controller,
                 quantity: quantity,
@@ -190,6 +228,49 @@ class _EditProductState extends State<EditProduct> {
                     widget.onQuantityUpdated(quantity);
                     Navigator.pop(context);
                   },
+=======
+
+              QuantityControl(
+                controller: controller,
+                quantity: quantity,
+                onDecrement: (q) => updateQuantity(q),
+                onIncrement: (q) => updateQuantity(q),
+              ),
+
+              const SizedBox(height: 20),
+
+              Expanded(
+                child: CustomNumPad(
+                  isDarkTheme: isDark,
+
+                  // ✅ FIXED NUMPAD LOGIC
+                  onDigitPressed: (digit) {
+                    String current = controller.text;
+
+                    // If current = 0 → replace value
+                    if (current == "0") {
+                      updateQuantity(int.parse(digit));
+                      return;
+                    }
+
+                    // Append digit but limit to 2 digits (0–99)
+                    String newValue = current + digit;
+
+                    int newQty = int.tryParse(newValue) ?? quantity;
+
+                    updateQuantity(newQty);
+                  },
+
+                  onClearPressed: () => updateQuantity(0),
+
+                  onAddPressed: quantity > 0
+                      ? () {
+                    widget.onQuantityUpdated(quantity);
+                    Navigator.pop(context);
+                  }
+                      : null,
+
+>>>>>>> origin/Grocery_pch_api_integration
                   actionButtonType: ActionButtonType.add,
                   gridPadding: EdgeInsets.zero,
                 ),
@@ -203,6 +284,7 @@ class _EditProductState extends State<EditProduct> {
 
   Widget _buildProductImage() {
     final img = widget.orderItem[AppDBConst.itemImage]?.toString() ?? "";
+<<<<<<< HEAD
     if (img.startsWith('http')) {
       return Image.network(img, width: 65, height: 65, fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) {
@@ -218,4 +300,47 @@ class _EditProductState extends State<EditProduct> {
           width: 65, height: 65, fit: BoxFit.cover);
     }
   }
+=======
+
+    if (img.isEmpty) {
+      return Image.asset(
+        'assets/custom.png',
+        width: 65,
+        height: 65,
+        fit: BoxFit.cover,
+      );
+    }
+
+    // HTTP IMAGE
+    if (img.startsWith('http')) {
+      return Image.network(
+        img,
+        width: 65,
+        height: 65,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Image.asset('assets/custom.png', width: 65, height: 65);
+        },
+      );
+    }
+
+    // ASSETS IMAGE: PNG / JPG / SVG
+    if (img.startsWith('assets/')) {
+      if (img.endsWith('.svg')) {
+        return SvgPicture.asset(img, width: 65, height: 65, fit: BoxFit.cover);
+      } else {
+        return Image.asset(img, width: 65, height: 65, fit: BoxFit.cover);
+      }
+    }
+
+    // LOCAL FILE PATH
+    if (File(img).existsSync()) {
+      return Image.file(File(img), width: 65, height: 65, fit: BoxFit.cover);
+    }
+
+    // FALLBACK
+    return Image.asset('assets/custom.png', width: 65, height: 65);
+  }
+
+>>>>>>> origin/Grocery_pch_api_integration
 }

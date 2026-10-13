@@ -4,6 +4,11 @@ import 'package:pinaka_pos/Screens/Auth/store_id_screen.dart';
 import '../../Database/store_db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import 'login_screen.dart';
+<<<<<<< HEAD
+=======
+import '../../Repositories/Auth/AuthIdsStore.dart';
+import '../../Repositories/Auth/startup_recovery_service.dart';
+>>>>>>> origin/Grocery_pch_api_integration
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -40,8 +45,42 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkValidationAndNavigate() async {
+<<<<<<< HEAD
     await Future.delayed(const Duration(seconds: 1)); // Keep splash delay
     bool isValid = await StoreDbHelper.instance.isStoreValidationValid(); //Build #1.0.126: updated to StoreDbHelper
+=======
+    // Keep the branded splash visible briefly, but never allow startup
+    // recovery/network work to hold the app on the splash indefinitely.
+    await Future.delayed(const Duration(seconds: 1));
+
+    try {
+      await StartupRecoveryService.recover().timeout(
+        const Duration(seconds: 3),
+      );
+    } catch (e) {
+      debugPrint('[Splash] Startup recovery skipped: $e');
+    }
+
+    // Merchant login gate:
+    // - Merchant login completed in THIS build → employee PIN
+    // - flutter clean removes build marker → merchant login again
+    // - Clear data / logout → merchant login
+    bool isValid = false;
+    try {
+      isValid = await AuthIdsStore.isMerchantLoginDone()
+          .timeout(const Duration(seconds: 2));
+      final storeId = (await AuthIdsStore.getStoreId()).trim();
+      if (isValid) {
+        debugPrint('[Splash] → Employee PIN (storeId=$storeId)');
+      } else {
+        debugPrint('[Splash] → Merchant login (no session for this build)');
+      }
+    } catch (e) {
+      debugPrint('[Splash] Store login check failed: $e');
+      isValid = false;
+    }
+
+>>>>>>> origin/Grocery_pch_api_integration
     if (isValid && mounted) {
       Navigator.pushReplacement(
         context,
@@ -81,6 +120,7 @@ class _SplashScreenState extends State<SplashScreen> {
     }
   }
 
+<<<<<<< HEAD
     @override
     Widget build(BuildContext context) {
       return Scaffold(
@@ -110,3 +150,34 @@ class _SplashScreenState extends State<SplashScreen> {
       );
     }
   }
+=======
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1E2745),
+      // Splash screen background color
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Logo with fade-in animation
+            TweenAnimationBuilder(
+              tween: Tween<double>(begin: 0.0, end: 1.0), // Opacity animation
+              duration: const Duration(seconds: 2),
+              builder: (context, opacity, child) {
+                return Opacity(
+                  opacity: opacity, // Fade in the logo
+                  child: SvgPicture.asset(
+                    'assets/svg/app_logo.svg', // Path to your SVG logo
+                    height: 150, // Adjust the size of the logo
+                  ),
+                );
+              },
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+>>>>>>> origin/Grocery_pch_api_integration

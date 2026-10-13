@@ -32,6 +32,12 @@ class ProductResponse { // Build #1.0.13 : Added product search model
   String? dateOnSaleTo;
   List<int>? variations;
 
+<<<<<<< HEAD
+=======
+  // ✅ NEW: Cached loyalty points for quick access
+  int? _cachedLoyaltyPoints;
+
+>>>>>>> origin/Grocery_pch_api_integration
   ProductResponse({
     this.id,
     this.name,
@@ -162,6 +168,69 @@ class ProductResponse { // Build #1.0.13 : Added product search model
       'variations': variations,
     };
   }
+<<<<<<< HEAD
+=======
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ✅ NEW: Helper methods for loyalty points (no breaking changes)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Get loyalty points from meta_data
+  /// Checks both '_product_loyalty_points' and '_csv_loyalty_points' keys
+  int getLoyaltyPoints() {
+    // Return cached value if available
+    if (_cachedLoyaltyPoints != null) return _cachedLoyaltyPoints!;
+
+    if (metaData == null || metaData!.isEmpty) return 0;
+
+    // Check for both possible keys
+    final loyaltyEntry = metaData!.firstWhere(
+          (m) => m.key == '_product_loyalty_points' || m.key == '_csv_loyalty_points',
+      orElse: () => MetaData(),
+    );
+
+    if (loyaltyEntry.value != null) {
+      _cachedLoyaltyPoints = int.tryParse(loyaltyEntry.value.toString()) ?? 0;
+      return _cachedLoyaltyPoints!;
+    }
+
+    return 0;
+  }
+
+  /// Get all meta data as List of Maps for easy consumption
+  List<Map<String, dynamic>> getMetaDataAsMap() {
+    if (metaData == null || metaData!.isEmpty) return [];
+
+    return metaData!.map((m) => {
+      'id': m.id,
+      'key': m.key ?? '',
+      'value': m.value,
+    }).toList();
+  }
+
+  /// Get specific meta data value by key
+  dynamic getMetaValue(String key) {
+    if (metaData == null || metaData!.isEmpty) return null;
+
+    final entry = metaData!.firstWhere(
+          (m) => m.key == key,
+      orElse: () => MetaData(),
+    );
+
+    return entry.value;
+  }
+
+  /// Check if product has loyalty points
+  bool hasLoyaltyPoints() {
+    return getLoyaltyPoints() > 0;
+  }
+
+  /// Get loyalty points as String (useful for display)
+  String getLoyaltyPointsAsString() {
+    final points = getLoyaltyPoints();
+    return points > 0 ? points.toString() : '';
+  }
+>>>>>>> origin/Grocery_pch_api_integration
 }
 
 class Dimensions {
@@ -241,6 +310,10 @@ class MetaData {
   }
 }
 
+<<<<<<< HEAD
+=======
+// Uncomment if Tags class is needed
+>>>>>>> origin/Grocery_pch_api_integration
 // class Tags {
 //   int? id;
 //   String? name;
@@ -268,7 +341,11 @@ class MetaData {
 class ProductRequest { // Build #1.0.13 : Added product search model
   int page;
   int limit;
+<<<<<<< HEAD
    String? search;
+=======
+  String? search;
+>>>>>>> origin/Grocery_pch_api_integration
 
   ProductRequest({
     required this.page,

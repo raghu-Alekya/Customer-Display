@@ -145,6 +145,32 @@ class ProductBySkuResponse { // Build #1.0.43: Added by naveen
     required this.links,
   });
 
+<<<<<<< HEAD
+=======
+  // ✅ DETECT CUSTOM ITEM (MUST BE INSIDE CLASS)
+  bool get isCustomItem {
+    try {
+      return type.toLowerCase() == "custom" ||
+          metaData.any((m) =>
+          m.key == "is_custom_item" &&
+              (m.value == true || m.value == "true"));
+    } catch (_) {
+      return false;
+    }
+  }
+// ✅ SAFE PRODUCT IMAGE GETTER
+  String get productImage {
+    try {
+      if (images.isNotEmpty && images.first.src.isNotEmpty) {
+        return images.first.src;
+      }
+    } catch (_) {}
+
+    // fallback for custom items
+    return "assets/custom.png";
+  }
+
+>>>>>>> origin/Grocery_pch_api_integration
   factory ProductBySkuResponse.fromJson(Map<String, dynamic> json) {
     return ProductBySkuResponse(
       id: json['id'] ?? 0,
@@ -206,12 +232,47 @@ class ProductBySkuResponse { // Build #1.0.43: Added by naveen
           .toList() ??
           [],
       tags: json['tags'] != null
+<<<<<<< HEAD
           ? List<Tags>.from(json['tags'].map((x) => Tags.fromJson(x)))
           : null,
       images: (json['images'] as List<dynamic>?)
           ?.map((e) => Image.fromJson(e))
           .toList() ??
           [],
+=======
+          ? List<Tags>.from(json['tags'].map((x) => Tags.fromJson(x is Map
+          ? Map<String, dynamic>.from(x)
+          : <String, dynamic>{})))
+          : null,
+      // Support connector `image` string as well as Woo `images` array
+      images: () {
+        if (json['images'] is List && (json['images'] as List).isNotEmpty) {
+          return (json['images'] as List)
+              .map((e) => Image.fromJson(
+              e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{}))
+              .toList();
+        }
+        final img = json['image'];
+        if (img is String && img.trim().isNotEmpty) {
+          return [
+            Image(
+              id: 0,
+              dateCreated: '',
+              dateCreatedGmt: '',
+              dateModified: '',
+              dateModifiedGmt: '',
+              src: img.trim(),
+              name: '',
+              alt: '',
+            )
+          ];
+        }
+        if (img is Map) {
+          return [Image.fromJson(Map<String, dynamic>.from(img))];
+        }
+        return <Image>[];
+      }(),
+>>>>>>> origin/Grocery_pch_api_integration
       attributes: List<dynamic>.from(json['attributes'] ?? []),
       defaultAttributes: List<dynamic>.from(json['default_attributes'] ?? []),
       variations: List<dynamic>.from(json['variations'] ?? []),

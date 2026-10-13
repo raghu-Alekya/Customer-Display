@@ -8,8 +8,16 @@
 
 #include <connectivity_plus/connectivity_plus_windows_plugin.h>
 #include <file_selector_windows/file_selector_windows.h>
+<<<<<<< HEAD
 #include <firebase_core/firebase_core_plugin_c_api.h>
 #include <flutter_udid/flutter_udid_plugin_c_api.h>
+=======
+#include <flutter_secure_storage_windows/flutter_secure_storage_windows_plugin.h>
+#include <flutter_udid/flutter_udid_plugin_c_api.h>
+#include <isar_community_flutter_libs/isar_flutter_libs_plugin.h>
+#include <nsd_windows/nsd_windows_plugin_c_api.h>
+#include <permission_handler_windows/permission_handler_windows_plugin.h>
+>>>>>>> origin/Grocery_pch_api_integration
 #include <thermal_printer/thermal_printer_plugin.h>
 #include <url_launcher_windows/url_launcher_windows.h>
 
@@ -18,10 +26,23 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("ConnectivityPlusWindowsPlugin"));
   FileSelectorWindowsRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FileSelectorWindows"));
+<<<<<<< HEAD
   FirebaseCorePluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FirebaseCorePluginCApi"));
   FlutterUdidPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FlutterUdidPluginCApi"));
+=======
+  FlutterSecureStorageWindowsPluginRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("FlutterSecureStorageWindowsPlugin"));
+  FlutterUdidPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("FlutterUdidPluginCApi"));
+  IsarFlutterLibsPluginRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("IsarFlutterLibsPlugin"));
+  NsdWindowsPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("NsdWindowsPluginCApi"));
+  PermissionHandlerWindowsPluginRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("PermissionHandlerWindowsPlugin"));
+>>>>>>> origin/Grocery_pch_api_integration
   ThermalPrinterPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("ThermalPrinterPlugin"));
   UrlLauncherWindowsRegisterWithRegistrar(

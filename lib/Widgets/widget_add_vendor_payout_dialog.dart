@@ -10,6 +10,33 @@ import '../Models/Assets/asset_model.dart';
 import '../Models/Auth/shift_summary_model.dart';
 import '../Models/Auth/vendor_payment_model.dart';
 import '../Repositories/Auth/vendor_payment_repository.dart';
+<<<<<<< HEAD
+=======
+import 'package:flutter/services.dart';
+
+
+
+class AmountInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    // Keep only digits
+    String digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (digits.isEmpty) digits = '0';
+
+    // Convert last digits into decimal format
+    double value = double.parse(digits) / 100;
+
+    final newText = value.toStringAsFixed(2);
+
+    return TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newText.length),
+    );
+  }
+}
+>>>>>>> origin/Grocery_pch_api_integration
 
 class AddVendorPayoutDialog extends StatefulWidget {
   final VendorPaymentBloc vendorPaymentBloc;
@@ -77,6 +104,10 @@ class _AddVendorPayoutDialogState extends State<AddVendorPayoutDialog> {
     }
   }
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/Grocery_pch_api_integration
   @override
   void dispose() {
     _amountController.dispose();
@@ -352,18 +383,36 @@ class _AddVendorPayoutDialogState extends State<AddVendorPayoutDialog> {
       ),
       child: TextField(
         controller: _amountController,
+<<<<<<< HEAD
         keyboardType: TextInputType.numberWithOptions(decimal: true),
+=======
+        keyboardType: TextInputType.number,
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly,
+          AmountInputFormatter(),
+        ],
+>>>>>>> origin/Grocery_pch_api_integration
         decoration: InputDecoration(
           hintText: '0.00',
           hintStyle: TextStyle(
             color: themeHelper.themeMode == ThemeMode.dark
+<<<<<<< HEAD
                 ? Colors.white70 : Colors.grey.shade400,
+=======
+                ? Colors.white70
+                : Colors.grey.shade400,
+>>>>>>> origin/Grocery_pch_api_integration
             fontSize: MediaQuery.of(context).size.width * 0.011,
           ),
           prefixText: '${TextConstants.currencySymbol} ',
           prefixStyle: TextStyle(
             color: themeHelper.themeMode == ThemeMode.dark
+<<<<<<< HEAD
                 ? ThemeNotifier.textDark : Colors.black87,
+=======
+                ? ThemeNotifier.textDark
+                : Colors.black87,
+>>>>>>> origin/Grocery_pch_api_integration
             fontSize: MediaQuery.of(context).size.width * 0.011,
             fontWeight: FontWeight.w500,
           ),
@@ -378,11 +427,20 @@ class _AddVendorPayoutDialogState extends State<AddVendorPayoutDialog> {
         ),
         style: TextStyle(
           color: themeHelper.themeMode == ThemeMode.dark
+<<<<<<< HEAD
               ? ThemeNotifier.textDark : Colors.black87,
+=======
+              ? ThemeNotifier.textDark
+              : Colors.black87,
+>>>>>>> origin/Grocery_pch_api_integration
           fontSize: MediaQuery.of(context).size.width * 0.011,
           fontWeight: FontWeight.w500,
         ),
       ),
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/Grocery_pch_api_integration
     );
   }
 

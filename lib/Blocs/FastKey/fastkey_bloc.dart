@@ -10,6 +10,7 @@ import '../../Database/fast_key_db_helper.dart';
 import '../../Database/db_helper.dart';
 import '../../Utilities/global_utility.dart';
 
+<<<<<<< HEAD
 class FastKeyBloc { // Build #1.0.15
   final FastKeyRepository _fastKeyRepository;
 
@@ -40,6 +41,51 @@ class FastKeyBloc { // Build #1.0.15
 
   StreamSink<APIResponse<FastKeyResponse>> get updateFastKeySink => _updateFastKeyController.sink;
   Stream<APIResponse<FastKeyResponse>> get updateFastKeyStream => _updateFastKeyController.stream;
+=======
+class FastKeyBloc {
+  // Build #1.0.15
+  final FastKeyRepository _fastKeyRepository;
+
+  // Stream Controllers
+  final StreamController<APIResponse<FastKeyResponse>>
+  _createFastKeyController =
+  StreamController<APIResponse<FastKeyResponse>>.broadcast();
+
+  final StreamController<APIResponse<FastKeyListResponse>>
+  _getFastKeysController =
+  StreamController<APIResponse<FastKeyListResponse>>.broadcast();
+
+  // Getters for Streams
+  StreamSink<APIResponse<FastKeyResponse>> get createFastKeySink =>
+      _createFastKeyController.sink;
+  Stream<APIResponse<FastKeyResponse>> get createFastKeyStream =>
+      _createFastKeyController.stream;
+
+  StreamSink<APIResponse<FastKeyListResponse>> get getFastKeysSink =>
+      _getFastKeysController.sink;
+  Stream<APIResponse<FastKeyListResponse>> get getFastKeysStream =>
+      _getFastKeysController.stream;
+
+  // Build #1.0.19: Fast Key Delete API Code
+  final StreamController<APIResponse<FastKeyResponse>>
+  _deleteFastKeyController =
+  StreamController<APIResponse<FastKeyResponse>>.broadcast();
+
+  StreamSink<APIResponse<FastKeyResponse>> get deleteFastKeySink =>
+      _deleteFastKeyController.sink;
+  Stream<APIResponse<FastKeyResponse>> get deleteFastKeyStream =>
+      _deleteFastKeyController.stream;
+
+  // Build #1.0.89: Added StreamController for updateFastKey
+  final StreamController<APIResponse<FastKeyResponse>>
+  _updateFastKeyController =
+  StreamController<APIResponse<FastKeyResponse>>.broadcast();
+
+  StreamSink<APIResponse<FastKeyResponse>> get updateFastKeySink =>
+      _updateFastKeyController.sink;
+  Stream<APIResponse<FastKeyResponse>> get updateFastKeyStream =>
+      _updateFastKeyController.stream;
+>>>>>>> origin/Grocery_pch_api_integration
 
   FastKeyBloc(this._fastKeyRepository) {
     if (kDebugMode) {
@@ -48,7 +94,15 @@ class FastKeyBloc { // Build #1.0.15
   }
 
   // POST: Create FastKey
+<<<<<<< HEAD
   Future<void> createFastKey({required String title, required int index, required String imageUrl, required int userId}) async {
+=======
+  Future<void> createFastKey(
+      {required String title,
+        required int index,
+        required String imageUrl,
+        required int userId}) async {
+>>>>>>> origin/Grocery_pch_api_integration
     if (_createFastKeyController.isClosed) return;
 
     createFastKeySink.add(APIResponse.loading(TextConstants.loading));
@@ -76,7 +130,12 @@ class FastKeyBloc { // Build #1.0.15
         response.fastkeyId,
       );
       if (kDebugMode) {
+<<<<<<< HEAD
         print("### FastKeyBloc: Added tab to DB with local ID: $newTabId, server ID: ${response.fastkeyId}");
+=======
+        print(
+            "### FastKeyBloc: Added tab to DB with local ID: $newTabId, server ID: ${response.fastkeyId}");
+>>>>>>> origin/Grocery_pch_api_integration
       }
       await fastKeyDBHelper.saveActiveFastKeyTab(response.fastkeyId);
       if (kDebugMode) {
@@ -85,12 +144,21 @@ class FastKeyBloc { // Build #1.0.15
       createFastKeySink.add(APIResponse.completed(response));
     } catch (e) {
       if (e.toString().contains('Unauthorised')) {
+<<<<<<< HEAD
         createFastKeySink.add(APIResponse.error("Unauthorised. Session is expired."));
       }
       else {
         createFastKeySink.add(
             APIResponse.error(GlobalUtility.extractErrorMessage(e)));
       }//Build #1.0.189: Proper error not showing while getting error in create fast key
+=======
+        createFastKeySink
+            .add(APIResponse.error("Unauthorised. Session is expired."));
+      } else {
+        createFastKeySink
+            .add(APIResponse.error(GlobalUtility.extractErrorMessage(e)));
+      } //Build #1.0.189: Proper error not showing while getting error in create fast key
+>>>>>>> origin/Grocery_pch_api_integration
       if (kDebugMode) print("Exception in createFastKey: $e");
     }
   }
@@ -111,21 +179,35 @@ class FastKeyBloc { // Build #1.0.15
       ///insert into DB
 
       final FastKeyDBHelper fastKeyDBHelper = FastKeyDBHelper();
+<<<<<<< HEAD
       final fastKeyTabs = await fastKeyDBHelper.getFastKeyTabsByUserId(userId ?? 0);
+=======
+      final fastKeyTabs =
+      await fastKeyDBHelper.getFastKeyTabsByUserId(userId ?? 0);
+>>>>>>> origin/Grocery_pch_api_integration
       if (kDebugMode) {
         print("#### fastKeyTabs : $fastKeyTabs");
       }
       // if(fastKeyTabs.length != response.fastkeys.length){
+<<<<<<< HEAD
         ///if all the data mismatches then delete all db contents and replace with API response
       // Build #1.0.200: Clear existing data "await" added, everywhere we have added await while deleting data!
       // Code Updated : Empty fastkey folders show at first logon to multiple fastkeys loaded on created by the user
        await fastKeyDBHelper.deleteAllFastKeyTab(userId);
+=======
+      ///if all the data mismatches then delete all db contents and replace with API response
+      // Build #1.0.200: Clear existing data "await" added, everywhere we have added await while deleting data!
+      // Code Updated : Empty fastkey folders show at first logon to multiple fastkeys loaded on created by the user
+      await fastKeyDBHelper.deleteAllFastKeyTab(userId);
+
+>>>>>>> origin/Grocery_pch_api_integration
       /// TESTED : We have to delete all products of each exiting tab, otherwise creating duplicate items
       // Build #1.0.204: Fixed -> Getting Duplicate Items After Login selecting new fastKey tab
       for (var tab in fastKeyTabs) {
         final tabServerId = tab[AppDBConst.fastKeyServerId];
         if (tabServerId != null) {
           await fastKeyDBHelper.deleteAllFastKeyProductItems(tabServerId);
+<<<<<<< HEAD
          }
        }
         for(var fastkey in response.fastkeys){ // Build #1.0.207: updated fastKey itemCount value from api response
@@ -154,6 +236,55 @@ class FastKeyBloc { // Build #1.0.15
             );
           }
         }
+=======
+        }
+      }
+      for (var fastkey in response.fastkeys) {
+        // Build #1.0.207: updated fastKey itemCount value from api response
+        await fastKeyDBHelper.addFastKeyTab(
+            userId,
+            fastkey.fastkeyTitle,
+            fastkey.fastkeyImage,
+            fastkey.itemCount,
+            int.tryParse(fastkey.fastkeyIndex) ?? 0,
+            fastkey.fastkeyServerId);
+
+        // Build #1.0.197: Fixed [SCRUM - 328] -> At first logon Empty items shows in fast keys for the selected folder
+        /// Added FastKey items for this tab from API response
+        if (kDebugMode) {
+          print(
+              "#### Processing ${fastkey.products?.length} products for FastKey serverId: ${fastkey.fastkeyServerId}");
+        }
+        for (var product in fastkey.products ?? []) {
+          var tagg = product.tags?.firstWhere(
+                  (element) => element.name == TextConstants.age_restricted,
+              orElse: () => Tags());
+          var hasAgeRestriction =
+              tagg?.name?.contains(TextConstants.age_restricted) ?? false;
+          if (kDebugMode) {
+            print(
+                "#### Adding FastKey item: ${product.name}, productId: ${product.productId}, hasAgeRestriction: $hasAgeRestriction");
+          }
+          await fastKeyDBHelper.addFastKeyItem(
+            fastkey.fastkeyServerId,
+            product.name,
+            product.image,
+            product.price,
+            product.productId,
+            minAge: int.tryParse(tagg?.slug ?? "0") ?? 0,
+            slNumber: product.slNumber,
+            hasVariant: product.hasVariant ?? false,
+            // 🔥 FIX: these were missing here — same pattern already used correctly
+            // in fetchProductsByFastKeyId. This is why every item written at
+            // login/startup landed in SQLite with fast_key_item_tags = '[]',
+            // even though the raw API response (e.g. Jamun → "Produce" tag) had
+            // the data. Nothing else in this method is touched.
+            tagsJson: jsonEncode(product.tags?.map((tag) => tag.toJson()).toList() ?? []),
+            metaDataJson: jsonEncode(product.metaData ?? []),
+          );
+        }
+      }
+>>>>>>> origin/Grocery_pch_api_integration
       // } else {
       //   ///else just update the data for each fast key
       // //  var i = 0; ///@Naveen please correct this logic use tabid instead of i
@@ -185,19 +316,34 @@ class FastKeyBloc { // Build #1.0.15
       getFastKeysSink.add(APIResponse.completed(response));
     } catch (e, s) {
       if (e.toString().contains('Unauthorised')) {
+<<<<<<< HEAD
         getFastKeysSink.add(APIResponse.error("Unauthorised. Session is expired."));
       }
       else if (e.toString().contains('SocketException')) {
         getFastKeysSink.add(APIResponse.error("Network error. Please check your connection."));
       } else {
         getFastKeysSink.add(APIResponse.error("Failed to fetch FastKeys: ${e.toString()}"));
+=======
+        getFastKeysSink
+            .add(APIResponse.error("Unauthorised. Session is expired."));
+      } else if (e.toString().contains('SocketException')) {
+        getFastKeysSink.add(
+            APIResponse.error("Network error. Please check your connection."));
+      } else {
+        getFastKeysSink.add(
+            APIResponse.error("Failed to fetch FastKeys: ${e.toString()}"));
+>>>>>>> origin/Grocery_pch_api_integration
       }
       if (kDebugMode) print("Exception in fetchFastKeysByUser: $e , Stack: $s");
     }
   }
 
   // Build #1.0.19: Add this method to your FastKeyBloc class
+<<<<<<< HEAD
   Future<void> deleteFastKey(int fastkeyServerId, int userId) async {
+=======
+  Future<void> deleteFastKey(dynamic fastkeyServerId, int userId) async {
+>>>>>>> origin/Grocery_pch_api_integration
     if (_deleteFastKeyController.isClosed) return;
 
     deleteFastKeySink.add(APIResponse.loading(TextConstants.loading));
@@ -210,12 +356,23 @@ class FastKeyBloc { // Build #1.0.15
       }
       // Update active tab if the deleted tab was active
       final activeTabId = await FastKeyDBHelper().getActiveFastKeyTab();
+<<<<<<< HEAD
       if (activeTabId == fastkeyServerId) {
         final tabs = await FastKeyDBHelper().getFastKeyTabsByUserId(userId);
         if (tabs.isNotEmpty) {
           await FastKeyDBHelper().saveActiveFastKeyTab(tabs.first[AppDBConst.fastKeyServerId]);
           if (kDebugMode) {
             print("FastKeyBloc - Updated active tab to: ${tabs.first[AppDBConst.fastKeyServerId]}");
+=======
+      if (activeTabId?.toString() == fastkeyServerId?.toString()) {
+        final tabs = await FastKeyDBHelper().getFastKeyTabsByUserId(userId);
+        if (tabs.isNotEmpty) {
+          await FastKeyDBHelper()
+              .saveActiveFastKeyTab(tabs.first[AppDBConst.fastKeyServerId]);
+          if (kDebugMode) {
+            print(
+                "FastKeyBloc - Updated active tab to: ${tabs.first[AppDBConst.fastKeyServerId]}");
+>>>>>>> origin/Grocery_pch_api_integration
           }
         } else {
           await FastKeyDBHelper().saveActiveFastKeyTab(null);
@@ -227,18 +384,30 @@ class FastKeyBloc { // Build #1.0.15
       deleteFastKeySink.add(APIResponse.completed(response));
     } catch (e) {
       if (e.toString().contains('Unauthorised')) {
+<<<<<<< HEAD
         deleteFastKeySink.add(APIResponse.error("Unauthorised. Session is expired."));
       }
       else if (e.toString().contains('SocketException')) {
         deleteFastKeySink.add(APIResponse.error("Network error. Please check your connection."));
       } else {
         deleteFastKeySink.add(APIResponse.error("Failed to delete FastKey: ${e.toString()}"));
+=======
+        deleteFastKeySink
+            .add(APIResponse.error("Unauthorised. Session is expired."));
+      } else if (e.toString().contains('SocketException')) {
+        deleteFastKeySink.add(
+            APIResponse.error("Network error. Please check your connection."));
+      } else {
+        deleteFastKeySink.add(
+            APIResponse.error("Failed to delete FastKey: ${e.toString()}"));
+>>>>>>> origin/Grocery_pch_api_integration
       }
       if (kDebugMode) print("Exception in deleteFastKey: $e");
     }
   }
 
   // Build #1.0.89: Added updateFastKey API method
+<<<<<<< HEAD
   Future<void> updateFastKey({
     required String title,
     required int index,
@@ -246,6 +415,14 @@ class FastKeyBloc { // Build #1.0.15
     required int fastKeyServerId,
     required int userId
   }) async {
+=======
+  Future<void> updateFastKey(
+      {required String title,
+        required int index,
+        required String imageUrl,
+        required dynamic fastKeyServerId,
+        required int userId}) async {
+>>>>>>> origin/Grocery_pch_api_integration
     if (_updateFastKeyController.isClosed) return;
 
     updateFastKeySink.add(APIResponse.loading(TextConstants.loading));
@@ -272,11 +449,17 @@ class FastKeyBloc { // Build #1.0.15
       //   AppDBConst.fastKeyTabIndex: response.fastkeyIndex.toString(),
       // });
       if (kDebugMode) {
+<<<<<<< HEAD
         print("### FastKeyBloc: Updated tab in DB with server ID: ${response.fastkeyId}");
+=======
+        print(
+            "### FastKeyBloc: Updated tab in DB with server ID: ${response.fastkeyId}");
+>>>>>>> origin/Grocery_pch_api_integration
       }
 
       await fetchFastKeysByUser(userId);
       updateFastKeySink.add(APIResponse.completed(response)); // Build #1.0.184
+<<<<<<< HEAD
        //no need of user id to pass
     } catch (e, s) {
       if (e.toString().contains('Unauthorised')) {
@@ -286,6 +469,17 @@ class FastKeyBloc { // Build #1.0.15
         updateFastKeySink.add(
             APIResponse.error(GlobalUtility.extractErrorMessage(e)));
       }//Build #1.0.189: Proper error not showing while getting error in update fast key
+=======
+      //no need of user id to pass
+    } catch (e, s) {
+      if (e.toString().contains('Unauthorised')) {
+        updateFastKeySink
+            .add(APIResponse.error("Unauthorised. Session is expired."));
+      } else {
+        updateFastKeySink
+            .add(APIResponse.error(GlobalUtility.extractErrorMessage(e)));
+      } //Build #1.0.189: Proper error not showing while getting error in update fast key
+>>>>>>> origin/Grocery_pch_api_integration
       if (kDebugMode) print("Exception in updateFastKey: $e, Stack: $s");
     }
   }
@@ -298,12 +492,25 @@ class FastKeyBloc { // Build #1.0.15
     if (!_getFastKeysController.isClosed) {
       _getFastKeysController.close();
     }
+<<<<<<< HEAD
     if (!_deleteFastKeyController.isClosed) { // Build #1.0.19
       _deleteFastKeyController.close();
     }
     if (!_updateFastKeyController.isClosed) { // Build #1.0.89
+=======
+    if (!_deleteFastKeyController.isClosed) {
+      // Build #1.0.19
+      _deleteFastKeyController.close();
+    }
+    if (!_updateFastKeyController.isClosed) {
+      // Build #1.0.89
+>>>>>>> origin/Grocery_pch_api_integration
       _updateFastKeyController.close();
     }
     if (kDebugMode) print("FastKeyBloc disposed");
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/Grocery_pch_api_integration

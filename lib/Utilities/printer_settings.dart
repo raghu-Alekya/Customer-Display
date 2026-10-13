@@ -10,6 +10,10 @@ import 'package:pinaka_pos/Database/printer_db_helper.dart';
 import 'package:pinaka_pos/Preferences/pinaka_preferences.dart';
 import 'package:pinaka_pos/Utilities/result_utility.dart';
 import 'package:sunmi_printer_plus/core/sunmi/sunmi_drawer.dart';
+<<<<<<< HEAD
+=======
+import 'package:sunmi_printer_plus/sunmi_printer_plus.dart';
+>>>>>>> origin/Grocery_pch_api_integration
 import 'package:sunmi_printer_plus/sunmi_printer_plus_platform_interface.dart';
 import 'package:thermal_printer/esc_pos_utils_platform/src/capability_profile.dart';
 import 'package:thermal_printer/esc_pos_utils_platform/src/enums.dart';
@@ -33,6 +37,7 @@ class PrinterSettings {
   final PrinterDBHelper _printerDBHelper = PrinterDBHelper();
 
   static Future<void> openDrawer({BuildContext? context}) async {
+<<<<<<< HEAD
     //Old code
     // final profile = await CapabilityProfile.load(name: 'default');
     // var bytes = Generator(PaperSize.mm80, profile).drawer(pin: PosDrawer.pin5); /// open drawer
@@ -46,10 +51,19 @@ class PrinterSettings {
       // sunmi.openDrawer();
       // bool isOpen = await sunmi.isDrawerOpen();
       // SunmiDrawer.openDrawer();
+=======
+    print("cash drawer was open through printer");
+
+    try {
+      var sunmi = SunmiPrinterPlus();
+      sunmi.openDrawer();
+      SunmiDrawer.openDrawer();
+>>>>>>> origin/Grocery_pch_api_integration
       var result = await SunmiPrinterPlusPlatform.instance.openDrawer();
       if (kDebugMode) {
         print("Drawer is open $result");
       }
+<<<<<<< HEAD
     } catch(e,s){
       if (kDebugMode) {
         print("Exception at PrinterSetting.openDrawer as :: $e :: Stack :: $s");
@@ -63,6 +77,70 @@ class PrinterSettings {
           duration: Duration(seconds: 2),
         ),
       );
+=======
+    } catch (e, s) {
+      if (kDebugMode) {
+        print("Exception at Sunmi openDrawer as :: $e :: Stack :: $s");
+      }
+    }
+
+    try {
+      final settings = PrinterSettings();
+      await settings.setSelectedPrinterFromDB();
+      final printer = settings.selectedPrinter;
+
+      if (printer != null &&
+          printer.deviceName != null &&
+          printer.deviceName!.isNotEmpty) {
+        final profile = await CapabilityProfile.load(name: 'XP-N160I');
+        final generator = Generator(PaperSize.mm80, profile);
+
+        List<int> bytes = [];
+        bytes += generator.drawer(pin: PosDrawer.pin2);
+        bytes += generator.drawer(pin: PosDrawer.pin5);
+        bytes += const [27, 112, 0, 25, 250];
+        bytes += const [27, 112, 1, 25, 250];
+
+        switch (printer.typePrinter) {
+          case PrinterType.usb:
+            await settings.printerManager.connect(
+              type: printer.typePrinter,
+              model: UsbPrinterInput(
+                name: printer.deviceName,
+                productId: printer.productId,
+                vendorId: printer.vendorId,
+              ),
+            );
+            break;
+          case PrinterType.bluetooth:
+            await settings.printerManager.connect(
+              type: printer.typePrinter,
+              model: BluetoothPrinterInput(
+                name: printer.deviceName,
+                address: printer.address ?? "",
+                isBle: printer.isBle ?? false,
+              ),
+            );
+            break;
+          case PrinterType.network:
+            await settings.printerManager.connect(
+              type: printer.typePrinter,
+              model: TcpPrinterInput(ipAddress: printer.address ?? ""),
+            );
+            break;
+        }
+
+        settings.printerManager.send(type: printer.typePrinter, bytes: bytes);
+        if (kDebugMode) {
+          print(
+              "✅ Sent ESC/POS drawer open command to external printer: ${printer.deviceName}");
+        }
+      }
+    } catch (e, s) {
+      if (kDebugMode) {
+        print("Exception opening cash drawer through connected printer :: $e :: Stack :: $s");
+      }
+>>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
@@ -108,6 +186,11 @@ class PrinterSettings {
         print(">>>>> PrinterSettings : printerDB is empty");
       }
       return;
+<<<<<<< HEAD
+=======
+    } else if (printerDB.first[AppDBConst.printerDeviceName].toString().isEmpty){
+      return;
+>>>>>>> origin/Grocery_pch_api_integration
     }
     BluetoothPrinter printer = BluetoothPrinter();
 
@@ -125,7 +208,11 @@ class PrinterSettings {
       print(">>>>> PrinterSettings printer from db is ${printerDB.length}");
       if(printerDB.isNotEmpty){
 
+<<<<<<< HEAD
           print(">>>>> PrinterSettings Retrieved printerDevice '${printerDB.first[AppDBConst.printerDeviceName]}' from DB");
+=======
+        print(">>>>> PrinterSettings Retrieved printerDevice '${printerDB.first[AppDBConst.printerDeviceName]}' from DB");
+>>>>>>> origin/Grocery_pch_api_integration
       }
       print(">>>>> PrinterSettings after setSelectedPrinterFromDB: ${selectedPrinter?.deviceName}, ${selectedPrinter?.productId}, ${selectedPrinter?.vendorId}, ${selectedPrinter?.typePrinter}");
     }
@@ -150,7 +237,11 @@ class PrinterSettings {
       print(">>>>> PrinterSettings setSelectedPrinter: ${selectedPrinter?.deviceName}, ${selectedPrinter?.productId}, ${selectedPrinter?.vendorId}, ${selectedPrinter?.typePrinter}");
     }
   }
+<<<<<<< HEAD
 ///end: custom methods
+=======
+  ///end: custom methods
+>>>>>>> origin/Grocery_pch_api_integration
 
   Future<void> selectDevice(BluetoothPrinter device) async {
     if (selectedPrinter != null) {
@@ -186,7 +277,11 @@ class PrinterSettings {
         await printerManager.connect(type: selectedPrinter!.typePrinter, model: TcpPrinterInput(ipAddress: selectedPrinter!.address!));
         isConnected = true;
         break;
+<<<<<<< HEAD
       }
+=======
+    }
+>>>>>>> origin/Grocery_pch_api_integration
     await saveSelectedPrinterToDB();
     return isConnected;
   }
@@ -207,18 +302,42 @@ class PrinterSettings {
     }
     var bluetoothPrinter = selectedPrinter!;
 
+<<<<<<< HEAD
     switch (bluetoothPrinter.typePrinter) {
       case PrinterType.usb:
         bytes += generator.feed(2);
         bytes += generator.cut();
+=======
+    // Build drawer kick commands to open cash drawer through the connected printer (Wi-Fi/Network/USB/Bluetooth)
+    List<int> drawerBytes = [];
+    try {
+      drawerBytes += generator.drawer(pin: PosDrawer.pin2);
+      drawerBytes += generator.drawer(pin: PosDrawer.pin5);
+    } catch (_) {}
+    drawerBytes += const [27, 112, 0, 25, 250];
+    drawerBytes += const [27, 112, 1, 25, 250];
+
+    final finalBytes = <int>[
+      ...drawerBytes,
+      ...bytes,
+      ...generator.feed(2),
+      ...generator.cut(),
+    ];
+
+    switch (bluetoothPrinter.typePrinter) {
+      case PrinterType.usb:
+>>>>>>> origin/Grocery_pch_api_integration
         await printerManager.connect(
             type: bluetoothPrinter.typePrinter,
             model: UsbPrinterInput(name: bluetoothPrinter.deviceName, productId: bluetoothPrinter.productId, vendorId: bluetoothPrinter.vendorId));
         pendingTask = null;
         break;
       case PrinterType.bluetooth:
+<<<<<<< HEAD
         bytes += generator.feed(2);
         bytes += generator.cut();
+=======
+>>>>>>> origin/Grocery_pch_api_integration
         await printerManager.connect(
             type: bluetoothPrinter.typePrinter,
             model: BluetoothPrinterInput(
@@ -227,14 +346,21 @@ class PrinterSettings {
                 isBle: bluetoothPrinter.isBle ?? false,
                 autoConnect: _reconnect));
         pendingTask = null;
+<<<<<<< HEAD
         if (Platform.isAndroid) pendingTask = bytes;
+=======
+        if (Platform.isAndroid) pendingTask = finalBytes;
+>>>>>>> origin/Grocery_pch_api_integration
         if (kDebugMode) {
           print(' --- bluetooth connection is ok ---');
         }
         break;
       case PrinterType.network:
+<<<<<<< HEAD
         bytes += generator.feed(2);
         bytes += generator.cut();
+=======
+>>>>>>> origin/Grocery_pch_api_integration
         connectedTCP = await printerManager.connect(type: bluetoothPrinter.typePrinter, model: TcpPrinterInput(ipAddress: bluetoothPrinter.address!));
         if (!connectedTCP) print(' --- please review your connection ---');
         break;
@@ -248,15 +374,25 @@ class PrinterSettings {
         if (kDebugMode) {
           print(' --- PrinterSettings printing in if condition ---');
         }
+<<<<<<< HEAD
         printerManager.send(type: bluetoothPrinter.typePrinter, bytes: bytes);
+=======
+        printerManager.send(type: bluetoothPrinter.typePrinter, bytes: finalBytes);
+>>>>>>> origin/Grocery_pch_api_integration
         pendingTask = null;
       }
     } else {
       if (kDebugMode) {
         print(' --- PrinterSettings  printing in else condition ---');
       }
+<<<<<<< HEAD
       printerManager.send(type: bluetoothPrinter.typePrinter, bytes: bytes);
     }
+=======
+      printerManager.send(type: bluetoothPrinter.typePrinter, bytes: finalBytes);
+    }
+    print("cash drawer was open through printer");
+>>>>>>> origin/Grocery_pch_api_integration
     openDrawer();
     return Result.ok(bluetoothPrinter);
   }
@@ -292,4 +428,7 @@ class BluetoothPrinter {
         this.receiptFooterText,
       });
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/Grocery_pch_api_integration

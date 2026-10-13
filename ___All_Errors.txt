@@ -1,0 +1,10 @@
+CorrelationId: a4b41581-944c-4ad1-b83c-febe4a8f277e
+UTC DateTime: 02/16/2026 05:39:45
+
+The following files/folders have not been downloaded
+0. lib/Helper/logger_helper.dart
+1. lib/Helper/temporaryFile.dart
+2. lib/Providers/Auth/login_provider.dart
+3. lib/Screens/Home/dashboard_screen.dart
+4. lib/Widgets/alert_list_widget.dart
+5. lib/Widgets/widget_denomination_input.dart

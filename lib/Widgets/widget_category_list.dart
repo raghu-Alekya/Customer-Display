@@ -908,6 +908,12 @@ class CategoryList extends StatelessWidget {
   final Function(int)? onEditButtonPressed; //Build 1.1.36
   final Function(int)? onReorderStarted;
   final Function()? onDismissEditMode;
+<<<<<<< HEAD
+=======
+  final ScrollController scrollController;
+
+
+>>>>>>> origin/Grocery_pch_api_integration
 
   const CategoryList({
     super.key,
@@ -923,6 +929,10 @@ class CategoryList extends StatelessWidget {
     this.onEditButtonPressed,
     this.onDismissEditMode,
     this.onReorderStarted,
+<<<<<<< HEAD
+=======
+    required this.scrollController,
+>>>>>>> origin/Grocery_pch_api_integration
   });
 
   Widget _buildImage(String imagePath, BuildContext context) {
@@ -944,12 +954,21 @@ class CategoryList extends StatelessWidget {
         width: 40,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) =>
+<<<<<<< HEAD
             const Icon(Icons.image, size: 40),
       );
     } else if (imagePath.startsWith("http")) {
       return SizedBox(
         width: 40,
         height: 40,
+=======
+        const Icon(Icons.image, size: 40),
+      );
+    } else if (imagePath.startsWith("http")) {
+      return SizedBox(
+        width: 36,
+        height: 36,
+>>>>>>> origin/Grocery_pch_api_integration
         child: Image.network(
           imagePath,
           width: 40,
@@ -964,6 +983,7 @@ class CategoryList extends StatelessWidget {
               // :Colors.white,
               child: themeHelper.themeMode == ThemeMode.dark
                   ? Image.asset(
+<<<<<<< HEAD
                       "assets/dark_mode_image.png",
                       fit: BoxFit.contain,
                       color: Colors.white,
@@ -973,6 +993,17 @@ class CategoryList extends StatelessWidget {
                       fit: BoxFit.contain,
                       color: Colors.black,
                     ),
+=======
+                "assets/dark_mode_image.png",
+                fit: BoxFit.contain,
+                color: Colors.white,
+              )
+                  : Image.asset(
+                "assets/lite_mode_image.png",
+                fit: BoxFit.contain,
+                color: Colors.black,
+              ),
+>>>>>>> origin/Grocery_pch_api_integration
               //Icon(Icons.broken_image, color: Colors.grey),
             );
           },
@@ -981,6 +1012,7 @@ class CategoryList extends StatelessWidget {
     } else {
       return Platform.isWindows
           ? Image.asset(
+<<<<<<< HEAD
               // Use Image.asset for PNG
               'assets/default.png',
               width: 40,
@@ -1004,6 +1036,31 @@ class CategoryList extends StatelessWidget {
                           color: Colors.black,
                         ),
             );
+=======
+        // Use Image.asset for PNG
+        'assets/default.png',
+        width: 40,
+        height: 40,
+      )
+          : Image.file(
+        File(imagePath),
+        height: 40,
+        width: 40,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+        themeHelper.themeMode == ThemeMode.dark
+            ? Image.asset(
+          "assets/dark_mode_image.png",
+          fit: BoxFit.contain,
+          color: Colors.white,
+        )
+            : Image.asset(
+          "assets/lite_mode_image.png",
+          fit: BoxFit.contain,
+          color: Colors.black,
+        ),
+      );
+>>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
@@ -1087,13 +1144,21 @@ class CategoryList extends StatelessWidget {
                 // Only show left padding if arrows are visible
                 SizedBox(
                     width:
+<<<<<<< HEAD
                         contentOverflows ? ResponsiveLayout.getWidth(35) : 0),
+=======
+                    contentOverflows ? ResponsiveLayout.getWidth(35) : 0),
+>>>>>>> origin/Grocery_pch_api_integration
                 Expanded(
                   child: SizedBox(
                     height: ResponsiveLayout.getHeight(100),
                     child: ReorderableListView(
                       buildDefaultDragHandles:
+<<<<<<< HEAD
                           Platform.isWindows ? false : true,
+=======
+                      Platform.isWindows ? false : true,
+>>>>>>> origin/Grocery_pch_api_integration
 
                       /// to remove drag icons in windows
                       scrollController: scrollController,
@@ -1129,6 +1194,7 @@ class CategoryList extends StatelessWidget {
 
                         return Platform.isWindows
                             ? ReorderableDelayedDragStartListener(
+<<<<<<< HEAD
                                 /// to remove drag icons in windows
                                 key: ValueKey('${category['title']}_$index'),
                                 index: index,
@@ -1137,6 +1203,16 @@ class CategoryList extends StatelessWidget {
                               )
                             : _fastKeyTabGesture(
                                 context, index, isSelected, showEditButton);
+=======
+                          /// to remove drag icons in windows
+                          key: ValueKey('${category['title']}_$index'),
+                          index: index,
+                          child: _fastKeyTabGesture(
+                              context, index, isSelected, showEditButton),
+                        )
+                            : _fastKeyTabGesture(
+                            context, index, isSelected, showEditButton);
+>>>>>>> origin/Grocery_pch_api_integration
                       }),
                     ),
                   ),
@@ -1144,7 +1220,11 @@ class CategoryList extends StatelessWidget {
                 // Only show right padding if arrows are visible, otherwise just space for add button
                 SizedBox(
                     width:
+<<<<<<< HEAD
                         contentOverflows ? 30 : (isAddButtonEnabled ? 0 : 10)),
+=======
+                    contentOverflows ? 30 : (isAddButtonEnabled ? 0 : 10)),
+>>>>>>> origin/Grocery_pch_api_integration
                 if (isAddButtonEnabled)
                   _buildAddButton(context, onAddButtonPressed ?? () {}),
               ],
@@ -1154,7 +1234,11 @@ class CategoryList extends StatelessWidget {
               Positioned(
                 left: 0,
                 child:
+<<<<<<< HEAD
                     _buildCircularNavButton(context, Icons.arrow_back_ios, () {
+=======
+                _buildCircularNavButton(context, Icons.arrow_back_ios, () {
+>>>>>>> origin/Grocery_pch_api_integration
                   if (kDebugMode) {
                     print("### CategoryList: Left navigation button pressed");
                   }
@@ -1170,6 +1254,7 @@ class CategoryList extends StatelessWidget {
               Positioned(
                 right: isAddButtonEnabled ? 75 : 5,
                 child: _buildCircularNavButton(context, Icons.arrow_forward_ios,
+<<<<<<< HEAD
                     () {
                   if (kDebugMode) {
                     print("### CategoryList: Right navigation button pressed");
@@ -1180,6 +1265,18 @@ class CategoryList extends StatelessWidget {
                     curve: Curves.easeInOut,
                   );
                 }),
+=======
+                        () {
+                      if (kDebugMode) {
+                        print("### CategoryList: Right navigation button pressed");
+                      }
+                      scrollController.animateTo(
+                        scrollController.offset + size.width * 0.5,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    }),
+>>>>>>> origin/Grocery_pch_api_integration
               ),
           ],
         ),
@@ -1212,20 +1309,33 @@ class CategoryList extends StatelessWidget {
         child: AnimatedContainer(
           width: ResponsiveLayout.getHeight(80),
           duration: const Duration(milliseconds: 300),
+<<<<<<< HEAD
           //padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+=======
+>>>>>>> origin/Grocery_pch_api_integration
           decoration: BoxDecoration(
             color: isSelected
                 ? ThemeNotifier.tabSelection
                 : themeHelper.themeMode == ThemeMode.dark
+<<<<<<< HEAD
                     ? ThemeNotifier.secondaryBackground
                     : Colors.white,
+=======
+                ? ThemeNotifier.secondaryBackground
+                : Colors.white,
+>>>>>>> origin/Grocery_pch_api_integration
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: showEditButton
                   ? Colors.blueAccent
                   : isSelected
+<<<<<<< HEAD
                       ? Colors.red
                       : Colors.black12,
+=======
+                  ? Colors.red
+                  : Colors.black12,
+>>>>>>> origin/Grocery_pch_api_integration
               width: showEditButton ? 2 : 1.2,
             ),
             boxShadow: [
@@ -1239,6 +1349,7 @@ class CategoryList extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
+<<<<<<< HEAD
               Positioned(
                 top: 0,
                 right: -6,
@@ -1265,10 +1376,15 @@ class CategoryList extends StatelessWidget {
                   ),
                 ),
               ),
+=======
+
+              // ⭐ CATEGORY UI (Image + Text) → always FIRST so it stays behind
+>>>>>>> origin/Grocery_pch_api_integration
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+<<<<<<< HEAD
                   _buildImage(category['image'], context),
                   Text(
                     category['title'],
@@ -1285,14 +1401,114 @@ class CategoryList extends StatelessWidget {
                           : themeHelper.themeMode == ThemeMode.dark
                               ? ThemeNotifier.textDark
                               : Colors.black87,
+=======
+
+                  // Image dull effect
+                  AnimatedOpacity(
+                      duration: const Duration(milliseconds: 300),
+                      opacity: showEditButton ? 0.25 : 1.0,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6), // ⭐ Add your radius here
+                        child: _buildImage(category['image'], context),
+                      ),
+                      ),
+                  const SizedBox(height: 4),
+
+                  // Text dull effect
+                  AnimatedOpacity(
+                    duration: const Duration(milliseconds: 300),
+                    opacity: showEditButton ? 0.25 : 1.0,
+                    child: Text(
+                      category['title'],
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 12,
+                        overflow: TextOverflow.ellipsis,
+                        fontVariations: const [FontVariation('wght', 900)],
+                        color: isSelected
+                            ? Colors.black87
+                            : themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.textDark
+                            : Colors.black87,
+                      ),
+>>>>>>> origin/Grocery_pch_api_integration
                     ),
                   ),
                 ],
               ),
+<<<<<<< HEAD
             ],
           ),
         ),
       ),
+=======
+
+              // ⭐ EDIT UI (RECTANGLE + WHITE CIRCLE + ICON) → always ON TOP
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 300),
+                opacity: showEditButton ? 1.0 : 0.0,
+                child: IgnorePointer(
+                  ignoring: !showEditButton,
+                  child: GestureDetector(
+                    onTap: () => onEditButtonPressed!(index),
+
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+
+                        // Grey rectangle background
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: Color(0xFFD9D9D9).withOpacity(0.40), //
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 1,
+                                offset: Offset(0, 0),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // ⭐ White high-opacity circle on top
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: Color(0xFFCEE5FF).withOpacity(1.0), // FULL WHITE
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 3,
+                                offset: Offset(0, 0),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Edit icon
+                        const Icon(
+                          Icons.edit,
+                          size: 24,
+                          color: Color(0xFF007BFF),
+                        ),
+                      ],
+                    ),
+
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+        ),
+      ),
+
+>>>>>>> origin/Grocery_pch_api_integration
     );
   }
 
@@ -1426,9 +1642,15 @@ class CategoryList extends StatelessWidget {
                                       color: isSelected
                                           ? Colors.black87
                                           : themeHelper.themeMode ==
+<<<<<<< HEAD
                                                   ThemeMode.dark
                                               ? ThemeNotifier.textDark
                                               : Colors.black87,
+=======
+                                          ThemeMode.dark
+                                          ? ThemeNotifier.textDark
+                                          : Colors.black87,
+>>>>>>> origin/Grocery_pch_api_integration
                                     ),
                                   ),
                                   Text(
@@ -1437,9 +1659,15 @@ class CategoryList extends StatelessWidget {
                                       color: isSelected
                                           ? Colors.grey
                                           : themeHelper.themeMode ==
+<<<<<<< HEAD
                                                   ThemeMode.dark
                                               ? ThemeNotifier.textDark
                                               : Colors.grey,
+=======
+                                          ThemeMode.dark
+                                          ? ThemeNotifier.textDark
+                                          : Colors.grey,
+>>>>>>> origin/Grocery_pch_api_integration
                                     ),
                                   ),
                                 ],
@@ -1482,7 +1710,10 @@ class CategoryList extends StatelessWidget {
       ),
     );
   }
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/Grocery_pch_api_integration
   Widget _buildCircularNavButton(
       BuildContext context, IconData icon, VoidCallback onPressed) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
@@ -1502,6 +1733,7 @@ class CategoryList extends StatelessWidget {
           ),
         ],
       ),
+<<<<<<< HEAD
       child: IconButton(
         icon: Icon(icon, size: 24),
         color: themeHelper.themeMode == ThemeMode.dark
@@ -1510,6 +1742,20 @@ class CategoryList extends StatelessWidget {
         onPressed: onPressed,
         padding: EdgeInsets.zero,
       ),
+=======
+      child: Padding(
+        padding: const EdgeInsets.all(8), // ⬅ inner padding
+        child: IconButton(
+          icon: Icon(icon, size: 24),
+          color: themeHelper.themeMode == ThemeMode.dark
+              ? Colors.white
+              : Colors.black45,
+          onPressed: onPressed,
+          padding: EdgeInsets.all(0),
+        ),
+      ),
+
+>>>>>>> origin/Grocery_pch_api_integration
     );
   }
 
@@ -1573,7 +1819,11 @@ class CategoryList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+<<<<<<< HEAD
     final ScrollController scrollController = ScrollController();
+=======
+    //final ScrollController scrollController = ScrollController();
+>>>>>>> origin/Grocery_pch_api_integration
     // bool showLeftArrow = false;
     // bool showRightArrow = true;
 
@@ -1588,11 +1838,19 @@ class CategoryList extends StatelessWidget {
         padding: const EdgeInsets.all(8.0),
         child: isLoading
             ? ShimmerEffect.rectangular(
+<<<<<<< HEAD
                 height: isHorizontal ? 100 : 800,
               )
             : isHorizontal
                 ? _buildHorizontalList(context, scrollController)
                 : _buildVerticalList(context),
+=======
+          height: isHorizontal ? 100 : 800,
+        )
+            : isHorizontal
+            ? _buildHorizontalList(context, scrollController)
+            : _buildVerticalList(context),
+>>>>>>> origin/Grocery_pch_api_integration
       ),
     );
   }

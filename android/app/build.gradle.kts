@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
+<<<<<<< HEAD
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -9,36 +10,143 @@ android {
     namespace = "com.example.flutter_sunmi_customer_display"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+=======
+    id("dev.flutter.flutter-gradle-plugin")
+}
+
+import java.util.Properties
+        import java.io.FileInputStream
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
+configurations.all {
+    resolutionStrategy {
+        force("com.google.mlkit:barcode-scanning:17.3.0")
+        force("androidx.camera:camera-core:1.4.1")
+        force("androidx.camera:camera-camera2:1.4.1")
+        force("androidx.camera:camera-lifecycle:1.4.1")
+        force("androidx.camera:camera-view:1.4.1")
+    }
+}
+
+android {
+    namespace = "com.alekta.pinakapos"
+    compileSdk = 36
+    ndkVersion = "27.0.12077973"
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+>>>>>>> origin/Grocery_pch_api_integration
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
 
+<<<<<<< HEAD
     kotlinOptions  {
+=======
+    kotlinOptions {
+>>>>>>> origin/Grocery_pch_api_integration
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
     defaultConfig {
+<<<<<<< HEAD
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.flutter_sunmi_customer_display"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
+=======
+        applicationId = "com.alekta.pinakapos"
+        minSdk = 30
+        targetSdk = 36
+>>>>>>> origin/Grocery_pch_api_integration
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+<<<<<<< HEAD
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
+=======
+    signingConfigs {
+        create("release") {
+            keyAlias = keystoreProperties["keyAlias"] as? String
+            keyPassword = keystoreProperties["keyPassword"] as? String
+            val storeFileProp = keystoreProperties["storeFile"] as? String
+            storeFile = if (storeFileProp != null) file(storeFileProp) else null
+            storePassword = keystoreProperties["storePassword"] as? String
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+        debug {
+>>>>>>> origin/Grocery_pch_api_integration
             signingConfig = signingConfigs.getByName("debug")
         }
     }
 }
 
+<<<<<<< HEAD
 flutter {
     source = "../.."
 }
+=======
+dependencies {
+
+    implementation(fileTree("libs") {
+        include("*.jar")
+    })
+
+    implementation(files("libs/cloud-commerce-sdk-mtf-5.3.1.aar"))
+
+    implementation("com.jakewharton.timber:timber:5.0.1")
+
+    implementation("org.slf4j:slf4j-api:1.7.36")
+    implementation("org.slf4j:slf4j-android:1.7.36")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    implementation("net.zetetic:sqlcipher-android:4.9.0")
+    implementation("androidx.sqlite:sqlite:2.3.1")
+
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("com.google.android.material:material:1.13.0")
+
+    implementation("com.google.code.gson:gson:2.10.1")
+
+    implementation("com.github.mik3y:usb-serial-for-android:3.8.1")
+
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.retrofit2:converter-scalars:2.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.9.3")
+    implementation("io.reactivex.rxjava3:rxjava:3.1.5")
+    implementation("com.squareup.retrofit2:adapter-rxjava3:2.9.0")
+    implementation("com.squareup.okhttp3:okhttp-urlconnection:4.9.3")
+
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("com.google.android.play:integrity:1.6.0")
+}
+
+flutter {
+    source = "../.."
+}
+>>>>>>> origin/Grocery_pch_api_integration

@@ -4,7 +4,13 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   file_selector_linux
+<<<<<<< HEAD
   flutter_udid
+=======
+  flutter_secure_storage_linux
+  flutter_udid
+  isar_community_flutter_libs
+>>>>>>> origin/Grocery_pch_api_integration
   url_launcher_linux
 )
 

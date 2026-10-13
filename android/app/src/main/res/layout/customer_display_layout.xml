@@ -3,6 +3,7 @@
     android:id="@+id/customer_display_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+<<<<<<< HEAD
     android:background="#F5F5F5"
     android:orientation="vertical"
     android:padding="12dp">
@@ -27,11 +28,42 @@
         android:src="@drawable/pinaka_logo" />
 
         <!-- Store Name -->
+=======
+    android:orientation="vertical"
+    android:background="#E9EEF6"
+    android:padding="8dp">
+
+    <!-- ========================================================= -->
+    <!-- TOP HEADER BAR -->
+    <!-- ========================================================= -->
+    <LinearLayout
+        android:id="@+id/header_container"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:background="#1F3A68"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp">
+
+        <!-- LEFT: LOGO (INCREASED SIZE) -->
+
+        <!-- CENTER: STORE NAME -->
+
+        <ImageView
+            android:id="@+id/store_logo"
+            android:layout_width="143dp"
+            android:layout_height="120dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/pinaka_logo" />
+
+>>>>>>> origin/Grocery_pch_api_integration
         <TextView
             android:id="@+id/store_info_text"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+<<<<<<< HEAD
             android:fontFamily="serif"
             android:gravity="center"
             android:text="PINAKA"
@@ -52,11 +84,79 @@
     </LinearLayout>
 
     <!-- Main Content Row -->
+=======
+            android:gravity="center"
+            android:text="BUBBA STORE"
+            android:textColor="#FFFFFF"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <!-- DATE + SEPARATOR -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <!-- CALENDAR ICON -->
+            <ImageView
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:scaleType="fitCenter"
+                android:tint="@null" />
+
+
+
+            <!-- DATE TEXT (BIGGER FONT) -->
+            <TextView
+                android:id="@+id/payment_date"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="6dp"
+                android:text="18 November, 2025"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <!-- SMALLER GAP + VERTICAL LINE -->
+            <View
+                android:layout_width="2dp"
+                android:layout_height="18dp"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="10dp"
+                android:background="#FFFFFF"
+                android:paddingStart="60dp" />
+        </LinearLayout>
+
+        <!-- TIME SECTION (LESS SPACE, BIGGER FONT) -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/payment_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="12:00 PM"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- ========================================================= -->
+    <!-- MAIN CONTENT (LEFT) + SLIDESHOW (RIGHT) -->
+    <!-- ========================================================= -->
+>>>>>>> origin/Grocery_pch_api_integration
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:orientation="horizontal"
+<<<<<<< HEAD
         android:padding="6dp">
 
         <!-- Left: Items List -->
@@ -76,12 +176,20 @@
         </ScrollView>
 
         <!-- Right Panel: Date/Time + Payment Summary -->
+=======
+        android:layout_marginTop="10dp">   <!-- GAP ADDED -->
+
+
+        <!-- ================= RIGHT PANEL (ITEMS + SUMMARY) ================= -->
+
+>>>>>>> origin/Grocery_pch_api_integration
         <LinearLayout
             android:id="@+id/right_panel"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="2"
             android:orientation="vertical"
+<<<<<<< HEAD
             android:padding="14dp">
 
 
@@ -238,10 +346,408 @@
                 android:layout_marginTop="3dp">
 
                 <TextView
+=======
+            android:layout_marginEnd="10dp"
+            android:padding="0dp">
+            <!-- ================= CUSTOMER INFO (ADDED HERE) ================= -->
+            <!-- ================= CUSTOMER INFO ================= -->
+            <!-- ================= CUSTOMER INFO ================= -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="#FFFFFF"
+                android:padding="12dp"
+                android:orientation="vertical"
+                android:elevation="2dp"
+                android:layout_marginBottom="10dp">
+
+                <!-- Top Row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <!-- Customer Label -->
+                    <TextView
+                        android:id="@+id/email_label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Customer:"
+                        android:textColor="#003A82"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:layout_marginEnd="8dp" />
+
+                    <!-- Input -->
+                    <EditText
+                        android:id="@+id/email_input"
+                        android:layout_width="180dp"
+                        android:layout_height="40dp"
+                        android:hint="Enter phone or email"
+                        android:textColor="#353535"
+                        android:textSize="18sp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:background="@drawable/edittext_bg"
+                        android:inputType="textEmailAddress|phone"
+                        android:maxLines="1"
+                        android:imeOptions="actionDone" />
+                    <!-- Add Button -->
+                    <Button
+                        android:id="@+id/btn_add_customer"
+                        android:layout_width="wrap_content"
+                        android:layout_height="48dp"
+                        android:layout_marginStart="10dp"
+                        android:text="Add"
+                        android:textAllCaps="false"
+                        android:textSize="16sp"
+                        android:textColor="@android:color/white"
+                        android:backgroundTint="#003A82" />
+
+                    <TextView
+                        android:id="@+id/points_label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="100dp"
+                        android:text="Points:"
+                        android:textColor="#E20000"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/customer_points"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:text="0"
+                        android:textColor="#353535"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Order ID below customer -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="8dp">
+
+                    <TextView
+                        android:id="@+id/order_id_label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Order ID:"
+                        android:textColor="#003A82"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/customer_order_id"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text=""
+                        android:textColor="#353535"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+            </LinearLayout>
+            <!-- ================= CUSTOM KEYPAD ================= -->
+            <!--            <GridLayout-->
+            <!--                android:id="@+id/custom_keypad"-->
+            <!--                android:layout_width="match_parent"-->
+            <!--                android:layout_height="wrap_content"-->
+            <!--                android:layout_marginTop="10dp"-->
+            <!--                android:columnCount="3"-->
+            <!--                android:rowCount="4"-->
+            <!--                android:alignmentMode="alignMargins"-->
+            <!--                android:useDefaultMargins="true">-->
+
+            <!--                &lt;!&ndash; Row 1 &ndash;&gt;-->
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_1"-->
+            <!--                    android:text="1"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_2"-->
+            <!--                    android:text="2"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_3"-->
+            <!--                    android:text="3"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                &lt;!&ndash; Row 2 &ndash;&gt;-->
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_4"-->
+            <!--                    android:text="4"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_5"-->
+            <!--                    android:text="5"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_6"-->
+            <!--                    android:text="6"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                &lt;!&ndash; Row 3 &ndash;&gt;-->
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_7"-->
+            <!--                    android:text="7"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_8"-->
+            <!--                    android:text="8"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_9"-->
+            <!--                    android:text="9"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                &lt;!&ndash; Row 4 &ndash;&gt;-->
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_clear"-->
+            <!--                    android:text="⌫"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_0"-->
+            <!--                    android:text="0"-->
+            <!--                    android:textSize="24sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+
+            <!--                <Button-->
+            <!--                    android:id="@+id/key_done"-->
+            <!--                    android:text="Done"-->
+            <!--                    android:textSize="20sp"-->
+            <!--                    android:layout_width="0dp"-->
+            <!--                    android:layout_height="70dp"-->
+            <!--                    android:layout_columnWeight="1"/>-->
+            <!--            </GridLayout>-->
+            <!-- =============================================================== -->
+            <!-- ITEM LIST HEADER -->
+            <LinearLayout
+                android:id="@+id/items_header"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:background="#1F3A68"
+                android:visibility="gone">
+
+                <!-- Item -->
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1.5"
+                    android:text="Item Name"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:textColor="#FFFFFFFF" />
+
+                <!-- Qty × Price -->
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="Qty × Price"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:textColor="#FFFFFFFF" />
+
+                <!-- Total -->
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="0.8"
+                    android:gravity="end"
+                    android:text="Total"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:textColor="#FFFFFFFF" />
+            </LinearLayout>
+
+
+
+
+
+            <!-- SCROLLING ITEMS LIST -->
+            <ScrollView
+                android:id="@+id/items_scroll"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:fillViewport="true"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/customer_items_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </ScrollView>
+            <!-- ================= EMPTY STATE BOX ================= -->
+            <LinearLayout
+                android:id="@+id/empty_state_box"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/empty_state_frame"
+                    android:layout_width="320dp"
+                    android:layout_height="240dp"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:padding="24dp">
+
+                    <ImageView
+                        android:layout_width="140dp"
+                        android:layout_height="140dp"
+                        android:src="@drawable/empty_cart"
+                        android:layout_marginBottom="16dp"
+                        android:scaleType="centerInside" />
+
+                    <TextView
+                        android:id="@+id/empty_message"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="No items in the Order panel"
+                        android:textSize="22sp"
+                        android:textColor="#000000"
+                        android:gravity="center" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+
+
+            <!-- ================= SUMMARY PANEL ================= -->
+            <LinearLayout
+                android:id="@+id/summary_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/card_bg"
+                android:orientation="vertical"
+                android:padding="8dp"
+                android:visibility="gone">
+
+                <!-- Gross Total -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/label_gross_total"
+                        android:layout_width="0dp"
+                        android:paddingStart="8dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Gross Total"
+                        android:textColor="#212121"
+                        android:textSize="24sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/value_gross_total"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingEnd="8dp"
+                        android:text="$0.00"
+                        android:textColor="#212121"
+                        android:textSize="24sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Discount -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/label_discount"
+                        android:layout_width="0dp"
+                        android:paddingStart="8dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Coupon"
+                        android:textColor="#036A07"
+                        android:textSize="20sp" />
+
+                    <TextView
+                        android:id="@+id/value_discount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingEnd="8dp"
+                        android:text="-$0.00"
+                        android:textColor="#036A07"
+                        android:textSize="20sp" />
+                </LinearLayout>
+                <!-- Merchant Discount -->
+                <!-- Net Total -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="3dp"> <TextView
+>>>>>>> origin/Grocery_pch_api_integration
                     android:id="@+id/label_net_total"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
+<<<<<<< HEAD
                     android:text="Net Total"
                     android:textColor="#212121"
                     android:textSize="16sp"
@@ -315,3 +821,225 @@
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>
+=======
+                    android:paddingEnd="8dp"
+                    android:text="Net Total"
+                    android:textColor="#353535"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/value_net_total"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingEnd="8dp"
+                        android:text="$0.00"
+                        android:textColor="#353535"
+                        android:textSize="22sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+                <!-- Tax -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="3dp"> <TextView
+                    android:id="@+id/label_tax"
+                    android:layout_width="0dp"
+                    android:paddingStart="4dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Tax"
+                    android:textColor="#808080"
+                    android:textSize="18sp" /> <TextView
+                    android:id="@+id/value_tax"
+                    android:layout_width="wrap_content"
+                    android:paddingEnd="8dp"
+                    android:layout_height="wrap_content"
+                    android:text="$0.00"
+                    android:textColor="#808080"
+                    android:textSize="18sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="3dp"> <TextView
+                    android:id="@+id/label_merchant_discount"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="4dp"
+                    android:layout_weight="1"
+                    android:text="Merchant Discount"
+                    android:textColor="#007BFF"
+                    android:textSize="18sp" />
+                    <TextView
+                        android:id="@+id/value_merchant_discount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingEnd="8dp"
+                        android:text="-$0.00"
+                        android:textColor="#007BFF"
+                        android:textSize="18sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/redeem_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="3dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/label_redeem_amount"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:paddingStart="4dp"
+                        android:text="Redeemed Amount"
+                        android:textColor="#9C27B0"
+                        android:textSize="18sp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/value_redeem_amount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingEnd="8dp"
+                        android:text="$0.00"
+                        android:textColor="#9C27B0"
+                        android:textSize="18sp"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- Cashback Fee -->
+                <LinearLayout
+                    android:id="@+id/row_cashback_fee"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="3dp">
+
+                    <TextView
+                        android:id="@+id/label_cashback_fee"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Cashback Fee"
+                        android:textColor="#55CBCD"
+                        android:textSize="18sp" />
+
+                    <TextView
+                        android:id="@+id/value_cashback_fee"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingEnd="8dp"
+                        android:text="$0.00"
+                        android:textColor="#55CBCD"
+                        android:textSize="18sp" />
+                </LinearLayout>
+
+
+                <!-- Total Items & Net Payable -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="#FFA9A9"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:padding="6dp">
+
+                    <TextView
+                        android:id="@+id/label_total_items"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Total Items : 0"
+                        android:textColor="#212121"
+                        android:textSize="26sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/value_net_payable"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Total : $0.00"
+                        android:textColor="#000000"
+                        android:textSize="26sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+            </LinearLayout>
+            <!-- ================= CUSTOM KEYPAD ================= -->
+            <!-- ================= CUSTOM KEYPAD ================= -->
+            <GridLayout
+                android:id="@+id/custom_keypad"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone"
+                android:columnCount="6"
+                android:background="#FFFFFF"
+                android:padding="4dp">
+
+                <!-- Numbers -->
+                <Button android:id="@+id/key_1" android:text="1"/>
+                <Button android:id="@+id/key_2" android:text="2"/>
+                <Button android:id="@+id/key_3" android:text="3"/>
+                <Button android:id="@+id/key_4" android:text="4"/>
+                <Button android:id="@+id/key_5" android:text="5"/>
+                <Button android:id="@+id/key_6" android:text="6"/>
+
+                <Button android:id="@+id/key_7" android:text="7"/>
+                <Button android:id="@+id/key_8" android:text="8"/>
+                <Button android:id="@+id/key_9" android:text="9"/>
+                <Button android:id="@+id/key_0" android:text="0"/>
+                <Button android:id="@+id/key_at" android:text="@"/>
+                <Button android:id="@+id/key_dot" android:text="."/>
+
+
+                <!-- Actions -->
+                <Button
+                    android:id="@+id/key_space"
+                    android:text="Space"/>
+
+                <Button
+                    android:id="@+id/key_clear"
+                    android:text="⌫"/>
+
+                <Button
+                    android:id="@+id/key_done"
+                    android:text="Done"/>
+
+            </GridLayout>
+        </LinearLayout>
+
+        <!-- ================= LEFT PANEL (SLIDESHOW) ================= -->
+        <!-- Left Panel: Slideshow -->
+        <!-- Left Panel: Slideshow -->
+        <FrameLayout
+            android:id="@+id/left_slideshow_panel"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="2"
+            android:background="#3D506E">
+
+            <ImageView
+                android:id="@+id/slideshow_image"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:contentDescription="Slideshow" />
+        </FrameLayout>
+
+
+
+    </LinearLayout>
+
+</LinearLayout>
+>>>>>>> origin/Grocery_pch_api_integration
