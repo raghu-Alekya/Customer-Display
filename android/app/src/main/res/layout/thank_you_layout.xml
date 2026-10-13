@@ -1,27 +1,3 @@
-<<<<<<< HEAD
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/thank_you_root"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#3D506E">
-
-    <!-- Store Logo at Top -->
-    <ImageView
-        android:id="@+id/thank_you_store_logo"
-        android:layout_width="150dp"
-        android:layout_height="150dp"
-        android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="32dp"
-        android:scaleType="centerInside"
-        android:contentDescription="Store Logo"
-        android:src="@drawable/pinaka_logo" />
-
-    <!-- Centered Content -->
-    <LinearLayout
-        android:id="@+id/thank_you_content"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-=======
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/thank_you_root"
@@ -36,13 +12,10 @@
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="2"
->>>>>>> origin/Grocery_pch_api_integration
         android:orientation="vertical"
         android:gravity="center"
         android:padding="32dp">
 
-<<<<<<< HEAD
-=======
         <!-- Store Logo -->
         <!--        <ImageView-->
         <!--            android:id="@+id/thank_you_store_logo"-->
@@ -54,18 +27,13 @@
         <!--            android:contentDescription="Store Logo"-->
         <!--            android:src="@drawable/pinaka_logo" />-->
 
->>>>>>> origin/Grocery_pch_api_integration
         <!-- Emoji -->
         <TextView
             android:id="@+id/thank_you_emoji"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="😊"
-<<<<<<< HEAD
-            android:textSize="64sp"
-=======
             android:textSize="84sp"
->>>>>>> origin/Grocery_pch_api_integration
             android:layout_marginBottom="24dp"
             android:gravity="center"
             android:fontFamily="serif"
@@ -81,11 +49,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Thank You!"
-<<<<<<< HEAD
-            android:textSize="36sp"
-=======
             android:textSize="40sp"
->>>>>>> origin/Grocery_pch_api_integration
             android:textColor="#FFFFFF"
             android:textAlignment="center"
             android:layout_marginBottom="16dp"
@@ -98,19 +62,12 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Please Visit Again"
-<<<<<<< HEAD
-            android:textSize="50dp"
-=======
             android:textSize="30sp"
->>>>>>> origin/Grocery_pch_api_integration
             android:textColor="#FFFFFF"
             android:textAlignment="center"
             android:fontFamily="serif" />
 
     </LinearLayout>
-<<<<<<< HEAD
-</FrameLayout>
-=======
 
     <!-- Right Panel: Thank You Content -->
     <FrameLayout
@@ -128,4 +85,3 @@
             android:contentDescription="Slideshow" />
     </FrameLayout>
 </LinearLayout>
->>>>>>> origin/Grocery_pch_api_integration

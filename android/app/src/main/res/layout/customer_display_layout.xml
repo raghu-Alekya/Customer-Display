@@ -3,32 +3,6 @@
     android:id="@+id/customer_display_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-<<<<<<< HEAD
-    android:background="#F5F5F5"
-    android:orientation="vertical"
-    android:padding="12dp">
-    <!-- Header Row -->
-    <LinearLayout
-        android:id="@+id/header_container"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="#3D506E"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="8dp">
-
-    <!-- Store Logo -->
-        <ImageView
-            android:id="@+id/store_logo"
-            android:layout_width="55dp"
-        android:layout_height="50dp"
-        android:adjustViewBounds="true"
-        android:contentDescription="Store Logo"
-        android:scaleType="fitCenter"
-        android:src="@drawable/pinaka_logo" />
-
-        <!-- Store Name -->
-=======
     android:orientation="vertical"
     android:background="#E9EEF6"
     android:padding="8dp">
@@ -57,34 +31,11 @@
             android:scaleType="fitCenter"
             android:src="@drawable/pinaka_logo" />
 
->>>>>>> origin/Grocery_pch_api_integration
         <TextView
             android:id="@+id/store_info_text"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-<<<<<<< HEAD
-            android:fontFamily="serif"
-            android:gravity="center"
-            android:text="PINAKA"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
-        android:textStyle="bold" />
-
-        <!-- Order ID -->
-        <TextView
-            android:id="@+id/customer_order_id"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="serif"
-            android:text="Order ID #--"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-        android:textStyle="bold" />
-    </LinearLayout>
-
-    <!-- Main Content Row -->
-=======
             android:gravity="center"
             android:text="BUBBA STORE"
             android:textColor="#FFFFFF"
@@ -150,203 +101,22 @@
     <!-- ========================================================= -->
     <!-- MAIN CONTENT (LEFT) + SLIDESHOW (RIGHT) -->
     <!-- ========================================================= -->
->>>>>>> origin/Grocery_pch_api_integration
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:orientation="horizontal"
-<<<<<<< HEAD
-        android:padding="6dp">
-
-        <!-- Left: Items List -->
-        <ScrollView
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="3"
-            android:padding="6dp">
-
-            <LinearLayout
-                android:id="@+id/customer_items_container"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:divider="?android:dividerHorizontal"
-                android:orientation="vertical"
-                android:showDividers="middle" />
-        </ScrollView>
-
-        <!-- Right Panel: Date/Time + Payment Summary -->
-=======
         android:layout_marginTop="10dp">   <!-- GAP ADDED -->
 
 
         <!-- ================= RIGHT PANEL (ITEMS + SUMMARY) ================= -->
 
->>>>>>> origin/Grocery_pch_api_integration
         <LinearLayout
             android:id="@+id/right_panel"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="2"
             android:orientation="vertical"
-<<<<<<< HEAD
-            android:padding="14dp">
-
-
-        <!-- Date + Time Row (Compact) -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/card_bg"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:padding="6dp">
-
-                <ImageView
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
-                    android:src="@android:drawable/ic_menu_my_calendar"
-                    android:tint="#616161" />
-
-                <TextView
-                    android:id="@+id/payment_date"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:fontFamily="serif"
-                    android:paddingStart="4dp"
-                    android:text="16 March 2025"
-                    android:textColor="#212121"
-                    android:textSize="12sp" />
-
-                <ImageView
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
-                    android:src="@android:drawable/ic_menu_recent_history"
-                    android:tint="#616161" />
-
-                <TextView
-                    android:id="@+id/payment_time"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="serif"
-                    android:paddingStart="3dp"
-                    android:text="11.41 A.M"
-                    android:textColor="#212121"
-                    android:textSize="12sp" />
-            </LinearLayout>
-
-            <!-- Summary Container -->
-            <LinearLayout
-                android:id="@+id/summary_container"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_marginTop="6dp"
-            android:layout_weight="1"
-            android:background="@drawable/card_bg"
-            android:orientation="vertical"
-            android:padding="8dp">
-
-            <!-- Gross Total -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="6dp">
-
-                <TextView
-                    android:id="@+id/label_gross_total"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Gross Total"
-                    android:textColor="#212121"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/value_gross_total"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="$0.0"
-                    android:textColor="#212121"
-                    android:textSize="16sp"
-                android:textStyle="bold" />
-            </LinearLayout>
-
-            <!-- Dotted Line -->
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="7dp"
-                    android:layout_marginVertical="7dp"
-                    android:background="@drawable/dotted_line" />
-
-
-                <!-- Discount -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/label_discount"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Discount"
-                    android:textColor="#388E3C"
-                    android:textSize="14sp" />
-
-                <TextView
-                    android:id="@+id/value_discount"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="-$0.0"
-                    android:textColor="#388E3C"
-                    android:textSize="14sp" />
-            </LinearLayout>
-
-            <!-- Merchant Discount -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="3dp">
-
-                <TextView
-                    android:id="@+id/label_merchant_discount"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Merchant Discount"
-                    android:textColor="#1976D2"
-                    android:textSize="14sp" />
-
-                <TextView
-                    android:id="@+id/value_merchant_discount"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="-$0.0"
-                    android:textColor="#1976D2"
-                    android:textSize="14sp" />
-            </LinearLayout>
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="7dp"
-                    android:layout_marginVertical="7dp"
-                    android:background="@drawable/dotted_line" />
-
-
-                <!-- Net Total -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="3dp">
-
-                <TextView
-=======
             android:layout_marginEnd="10dp"
             android:padding="0dp">
             <!-- ================= CUSTOMER INFO (ADDED HERE) ================= -->
@@ -742,86 +512,10 @@
                     android:paddingStart="8dp"
                     android:orientation="horizontal"
                     android:layout_marginTop="3dp"> <TextView
->>>>>>> origin/Grocery_pch_api_integration
                     android:id="@+id/label_net_total"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-<<<<<<< HEAD
-                    android:text="Net Total"
-                    android:textColor="#212121"
-                    android:textSize="16sp"
-                android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/value_net_total"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="$0.0"
-                    android:textColor="#212121"
-                    android:textSize="16sp"
-                android:textStyle="bold" />
-            </LinearLayout>
-
-            <!-- Tax -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="3dp">
-
-                <TextView
-                    android:id="@+id/label_tax"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Tax"
-                    android:textColor="#212121"
-                    android:textSize="14sp" />
-
-                <TextView
-                    android:id="@+id/value_tax"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="$0.0"
-                    android:textColor="#212121"
-                    android:textSize="14sp" />
-            </LinearLayout>
-
-            <!-- Bottom Highlight -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="fill_horizontal"
-                android:background="#FFEBEE"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:padding="6dp">
-
-                <TextView
-                    android:id="@+id/label_total_items"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Total Items : 0"
-                    android:textColor="#212121"
-                    android:textSize="14sp"
-                android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/value_net_payable"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Total : $0.0"
-                    android:textColor="#D32F2F"
-                    android:textSize="18sp"
-                android:textStyle="bold" />
-            </LinearLayout>
-        </LinearLayout>
-        </LinearLayout>
-    </LinearLayout>
-</LinearLayout>
-=======
                     android:paddingEnd="8dp"
                     android:text="Net Total"
                     android:textColor="#353535"
@@ -1042,4 +736,3 @@
     </LinearLayout>
 
 </LinearLayout>
->>>>>>> origin/Grocery_pch_api_integration

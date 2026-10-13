@@ -5,16 +5,11 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   connectivity_plus
   file_selector_windows
-<<<<<<< HEAD
-  firebase_core
-  flutter_udid
-=======
   flutter_secure_storage_windows
   flutter_udid
   isar_community_flutter_libs
   nsd_windows
   permission_handler_windows
->>>>>>> origin/Grocery_pch_api_integration
   thermal_printer
   url_launcher_windows
 )

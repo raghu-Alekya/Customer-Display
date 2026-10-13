@@ -27,11 +27,8 @@ class CustomNumPad extends StatelessWidget {
   final bool isDarkTheme;
   final bool showAddInsteadOfPay;
   final EdgeInsetsGeometry? gridPadding;
-<<<<<<< HEAD
-=======
   final double ?orderTotal;
   final double ?redeemedValue;
->>>>>>> origin/Grocery_pch_api_integration
 
   const CustomNumPad({
     super.key,
@@ -51,11 +48,8 @@ class CustomNumPad extends StatelessWidget {
     this.isDarkTheme = false,
     this.showAddInsteadOfPay = false,
     this.gridPadding,
-<<<<<<< HEAD
-=======
     this.orderTotal,
     this.redeemedValue,
->>>>>>> origin/Grocery_pch_api_integration
   });
 
   @override
@@ -112,11 +106,7 @@ class CustomNumPad extends StatelessWidget {
                         _buildKey(isDarkTheme :darkTheme, "3"),
                         _buildKey(isDarkTheme :darkTheme, "00"),
                         _buildKey(isDarkTheme :darkTheme,"0"),
-<<<<<<< HEAD
-                        _buildKey(isDarkTheme :darkTheme, "."),
-=======
                         _buildClearKey(isDarkTheme: darkTheme)
->>>>>>> origin/Grocery_pch_api_integration
                       ],
                     ),
                   );
@@ -129,17 +119,10 @@ class CustomNumPad extends StatelessWidget {
               children: [
                 Expanded(child: _buildBackspaceKey(isDarkTheme : darkTheme)),
                 SizedBox(height: 8),
-<<<<<<< HEAD
-                Expanded(child: _buildClearKey(isDarkTheme : darkTheme)),
-                SizedBox(height: 8),
-                Expanded(
-                  flex: 2,
-=======
                 // Expanded(child: _buildClearKey(isDarkTheme : darkTheme)),
                 //SizedBox(height: 8),
                 Expanded(
                   flex: 3,
->>>>>>> origin/Grocery_pch_api_integration
                   child: showAddInsteadOfPay
                       ? _buildAddButton(context)
                       :_buildPayButton(context),
@@ -308,14 +291,6 @@ class CustomNumPad extends StatelessWidget {
   // New method for ADD button (similar styling to PAY button but different color and callback)
   Widget _buildAddButton(BuildContext context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
-<<<<<<< HEAD
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: (themeHelper.themeMode == ThemeMode.dark && isDarkTheme
-            ? Colors.white70
-            : const Color(0xFF1E2745)), // Same as login pad ADD button color
-=======
     final isDark = themeHelper.themeMode == ThemeMode.dark;
 
     bool isEnabled = onAddPressed != null;
@@ -338,7 +313,6 @@ class CustomNumPad extends StatelessWidget {
       width: double.infinity,
       decoration: BoxDecoration(
         color: bgColor,
->>>>>>> origin/Grocery_pch_api_integration
         borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
@@ -349,11 +323,7 @@ class CustomNumPad extends StatelessWidget {
         ],
       ),
       child: TextButton(
-<<<<<<< HEAD
-        onPressed: onAddPressed,
-=======
         onPressed: isEnabled ? onAddPressed : null,
->>>>>>> origin/Grocery_pch_api_integration
         style: TextButton.styleFrom(
           padding: EdgeInsets.zero,
           backgroundColor: Colors.transparent,
@@ -361,41 +331,19 @@ class CustomNumPad extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
         ),
-<<<<<<< HEAD
-        child: (isLoading ?? false) // Show loader when loading
-            ? const SizedBox(
-          height: 40,
-          width: 40,
-          child: CircularProgressIndicator(
-            color: Colors.white,
-            strokeWidth: 2,
-          ),
-        )
-            : Text(
-=======
         child: Text(
->>>>>>> origin/Grocery_pch_api_integration
           'ADD',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w600,
-<<<<<<< HEAD
-            color: themeHelper.themeMode == ThemeMode.dark && isDarkTheme
-                ? ThemeNotifier.primaryBackground
-                : Colors.white,
-=======
             color: textColor,
->>>>>>> origin/Grocery_pch_api_integration
           ),
         ),
       ),
     );
   }
 
-<<<<<<< HEAD
-=======
 
->>>>>>> origin/Grocery_pch_api_integration
   // // New method for Manual Verify button
   // Widget _buildManualVerifyButton() {
   //   return Container(
@@ -475,11 +423,7 @@ class CustomNumPad extends StatelessWidget {
     final themeHelper = Provider.of<ThemeNotifier>(context);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 0), // ✅ Outside spacing
-<<<<<<< HEAD
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6), // ✅ Inside spacing
-=======
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 0), // ✅ Inside spacing
->>>>>>> origin/Grocery_pch_api_integration
       width: double.infinity,
       decoration: BoxDecoration(
         color: themeHelper.themeMode == ThemeMode.dark
@@ -547,11 +491,6 @@ class CustomNumPad extends StatelessWidget {
   // Get Action Button Color
   Color _getActionButtonColor(context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
-<<<<<<< HEAD
-    return (actionButtonType == ActionButtonType.ok || actionButtonType == ActionButtonType.add)
-        ? themeHelper.themeMode == ThemeMode.dark ? Colors.white70 : Color(0xFF1E2745) // OK & Add use same color
-        : Colors.white;
-=======
     final isDark = themeHelper.themeMode == ThemeMode.dark;
 
     bool isAdd = actionButtonType == ActionButtonType.add;
@@ -570,19 +509,11 @@ class CustomNumPad extends StatelessWidget {
 
     // Delete button
     return Colors.white;
->>>>>>> origin/Grocery_pch_api_integration
   }
 
   // Get Action Button Text Color
   Color _getActionButtonTextColor(context) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
-<<<<<<< HEAD
-    return (actionButtonType == ActionButtonType.ok || actionButtonType == ActionButtonType.add)
-        ? themeHelper.themeMode == ThemeMode.dark ? ThemeNotifier.primaryBackground : Colors.white
-        : Colors.black;
-  }
-
-=======
     final isDark = themeHelper.themeMode == ThemeMode.dark;
 
     bool isAdd = actionButtonType == ActionButtonType.add;
@@ -604,17 +535,12 @@ class CustomNumPad extends StatelessWidget {
   }
 
 
->>>>>>> origin/Grocery_pch_api_integration
   // Build Numeric Key
   Widget _buildKey(String value, {bool isDarkTheme = false}) {
     //final themeHelper = Provider.of<ThemeNotifier>(context);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 0), // ✅ Outside spacing
-<<<<<<< HEAD
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8), // ✅ Inside spacing
-=======
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), // ✅ Inside spacing
->>>>>>> origin/Grocery_pch_api_integration
       width: double.infinity,
       decoration: BoxDecoration(
         color:  isDarkTheme
@@ -751,9 +677,6 @@ class CustomNumPad extends StatelessWidget {
       ),
     );
   }
-<<<<<<< HEAD
-}
-=======
 }
 
 // import 'package:flutter/foundation.dart';
@@ -1395,4 +1318,3 @@ class CustomNumPad extends StatelessWidget {
 //     );
 //   }
 // }
->>>>>>> origin/Grocery_pch_api_integration

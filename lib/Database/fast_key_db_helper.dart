@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite/sqflite.dart';
-import 'db_helper.dart';
-=======
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
@@ -13,7 +6,6 @@ import 'package:http/http.dart' as http;
 import '../Widgets/widget_topbar.dart';
 import 'db_helper.dart';
 import '../Helper/url_helper.dart';
->>>>>>> origin/Grocery_pch_api_integration
 
 class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key related methods
   static final FastKeyDBHelper _instance = FastKeyDBHelper._internal();
@@ -26,11 +18,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-<<<<<<< HEAD
-  Future<int> addFastKeyTab(int userId, String title, String image, int count, int? index, int? fastKeyServerId) async {
-=======
   Future<int> addFastKeyTab(int userId, String title, String image, int count, int? index, dynamic fastKeyServerId) async {
->>>>>>> origin/Grocery_pch_api_integration
     final db = await DBHelper.instance.database;
     final tabId = await db.insert(AppDBConst.fastKeyTable, {
       AppDBConst.userIdForeignKey: userId,
@@ -76,11 +64,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   }
 
   // Build #1.0.87
-<<<<<<< HEAD
-  Future<List<Map<String, dynamic>>> getFastKeyByServerTabId(int serverTabId) async {///tab id is fastServerId from server
-=======
   Future<List<Map<String, dynamic>>> getFastKeyByServerTabId(dynamic serverTabId) async {///tab id is fastServerId from server
->>>>>>> origin/Grocery_pch_api_integration
     final db = await DBHelper.instance.database;
     final tabs = await db.query(
       AppDBConst.fastKeyTable,
@@ -94,11 +78,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     return tabs;
   }
 
-<<<<<<< HEAD
-  Future<void> updateFastKeyTab(int fastKeyServerId, Map<String, dynamic> updatedData) async { // Build #1.0.89: name changed for understanding
-=======
   Future<void> updateFastKeyTab(dynamic fastKeyServerId, Map<String, dynamic> updatedData) async { // Build #1.0.89: name changed for understanding
->>>>>>> origin/Grocery_pch_api_integration
     final db = await DBHelper.instance.database;
     await db.update(
       AppDBConst.fastKeyTable,
@@ -129,11 +109,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-<<<<<<< HEAD
-  Future<void> updateFastKeyTabCount(int tabId, int newCount) async {
-=======
   Future<void> updateFastKeyTabCount(dynamic tabId, int newCount) async {
->>>>>>> origin/Grocery_pch_api_integration
     final db = await DBHelper.instance.database;
     await db.update(
       AppDBConst.fastKeyTable,
@@ -147,16 +123,11 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-<<<<<<< HEAD
-  Future<void> deleteFastKeyTab(int tabId) async {
-    final db = await DBHelper.instance.database;
-=======
   Future<void> deleteFastKeyTab(dynamic tabId) async {
     final db = await DBHelper.instance.database;
     //Build #1.0.279: Fixed Issue - Delete all products of the deleted fastKey first then delete fastKey tab!
     await deleteAllFastKeyProductItems(tabId);
 
->>>>>>> origin/Grocery_pch_api_integration
     await db.delete(
       AppDBConst.fastKeyTable,
       where: '${AppDBConst.fastKeyServerId} = ?',
@@ -171,15 +142,9 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   Future<void> deleteAllFastKeyTab(int userId) async {
     final db = await DBHelper.instance.database;
     await db.delete(
-<<<<<<< HEAD
-      AppDBConst.fastKeyTable,
-      where: '${AppDBConst.userIdForeignKey} = ?',
-      whereArgs: [userId]
-=======
         AppDBConst.fastKeyTable,
         where: '${AppDBConst.userIdForeignKey} = ?',
         whereArgs: [userId]
->>>>>>> origin/Grocery_pch_api_integration
     );
 
     if (kDebugMode) {
@@ -187,13 +152,8 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-<<<<<<< HEAD
-  Future<int> addFastKeyItem(int tabId, String name, String image,  String price, int productId,
-      {String? sku, String? variantId, int? slNumber, int? minAge, bool? hasVariant}) async {
-=======
   Future<int> addFastKeyItem(dynamic tabId, String name, String image,  String price, int productId,
       {String? sku, String? variantId, int? slNumber, int? minAge, bool? hasVariant, String? tagsJson, String? metaDataJson, int? loyaltyPoints}) async {
->>>>>>> origin/Grocery_pch_api_integration
     final db = await DBHelper.instance.database;
     final itemId = await db.insert(AppDBConst.fastKeyItemsTable, {
       AppDBConst.fastKeyIdForeignKey: tabId,
@@ -206,13 +166,10 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
       AppDBConst.fastKeySlNumber: slNumber,
       AppDBConst.fastKeyItemMinAge: minAge, // Build #1.0.19: Updated req elements
       AppDBConst.fastKeyItemHasVariant: hasVariant ?? false ? 1 : 0, // Build #1.0.157: save hasVariant into DB
-<<<<<<< HEAD
-=======
       AppDBConst.fastKeyItemTags: tagsJson ?? '[]',
       // ✅ NEW: Store meta_data and loyalty_points
       'meta_data': metaDataJson ?? '[]',
       'loyalty_points': loyaltyPoints ?? 0,
->>>>>>> origin/Grocery_pch_api_integration
     },
       conflictAlgorithm: ConflictAlgorithm.ignore, // Build #1.0.80: Ignore duplicates
     );
@@ -223,11 +180,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     return itemId;
   }
 
-<<<<<<< HEAD
-  Future<List<Map<String, dynamic>>> getFastKeyItems(int tabId) async {
-=======
   Future<List<Map<String, dynamic>>> getFastKeyItems(dynamic tabId) async {
->>>>>>> origin/Grocery_pch_api_integration
     final db = await DBHelper.instance.database;
     final items = await db.query(
       AppDBConst.fastKeyItemsTable,
@@ -235,12 +188,6 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
       whereArgs: [tabId],
     );
 
-<<<<<<< HEAD
-    if (kDebugMode) {
-      print("#### Retrieved ${items.length} FastKey Items for Tab ID: $tabId");
-    }
-    return items;
-=======
     // ✅ FIX: Create a new list with mutable maps
     final List<Map<String, dynamic>> result = [];
 
@@ -339,7 +286,6 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
       print("#### Retrieved ${result.length} FastKey Items with tags for Tab ID: $tabId");
     }
     return result;
->>>>>>> origin/Grocery_pch_api_integration
   }
 
   Future<void> updateFastKeyProductItem(
@@ -384,11 +330,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-<<<<<<< HEAD
-  Future<void> deleteAllFastKeyProductItems(int tabId) async {
-=======
   Future<void> deleteAllFastKeyProductItems(dynamic tabId) async {
->>>>>>> origin/Grocery_pch_api_integration
     final db = await DBHelper.instance.database;
 
     await db.delete(
@@ -403,11 +345,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   }
 
   // Build #1.0.89: Added
-<<<<<<< HEAD
-  Future<void> deleteFastKeyItemByProductId(int fastKeyId, int productId) async {
-=======
   Future<void> deleteFastKeyItemByProductId(dynamic fastKeyId, int productId) async {
->>>>>>> origin/Grocery_pch_api_integration
     final db = await DBHelper.instance.database;
     await db.delete(
       AppDBConst.fastKeyItemsTable,
@@ -445,13 +383,6 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-<<<<<<< HEAD
-  ///@Naveen: why do we have these function here in db helper instead of pref file, and they have hard coded values as well
-  Future<void> saveActiveFastKeyTab(int? tabId) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (tabId != null) {
-      await prefs.setInt('activeFastKeyTabId', tabId);
-=======
   // ============================================================
   // NEW METHODS FOR SYNCING FASTKEYS FROM API
   // ============================================================
@@ -963,19 +894,11 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
       } else {
         await prefs.setString('activeFastKeyTabId', tabId.toString());
       }
->>>>>>> origin/Grocery_pch_api_integration
     } else {
       await prefs.remove('activeFastKeyTabId');
     }
   }
 
-<<<<<<< HEAD
-  Future<int?> getActiveFastKeyTab() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt('activeFastKeyTabId');
-  }
-}
-=======
   Future<dynamic> getActiveFastKeyTab() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.get('activeFastKeyTabId');
@@ -1309,4 +1232,3 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   }
 
 }
->>>>>>> origin/Grocery_pch_api_integration

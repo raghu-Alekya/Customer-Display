@@ -1,16 +1,6 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-<<<<<<< HEAD
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
-    id("dev.flutter.flutter-gradle-plugin")
-}
-
-android {
-    namespace = "com.example.flutter_sunmi_customer_display"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
-=======
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -44,44 +34,24 @@ android {
             useLegacyPackaging = false
         }
     }
->>>>>>> origin/Grocery_pch_api_integration
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-<<<<<<< HEAD
-    kotlinOptions  {
-=======
     kotlinOptions {
->>>>>>> origin/Grocery_pch_api_integration
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
     defaultConfig {
-<<<<<<< HEAD
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.flutter_sunmi_customer_display"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-=======
         applicationId = "com.alekta.pinakapos"
         minSdk = 30
         targetSdk = 36
->>>>>>> origin/Grocery_pch_api_integration
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
-<<<<<<< HEAD
-    buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-=======
     signingConfigs {
         create("release") {
             keyAlias = keystoreProperties["keyAlias"] as? String
@@ -99,17 +69,11 @@ android {
             isShrinkResources = false
         }
         debug {
->>>>>>> origin/Grocery_pch_api_integration
             signingConfig = signingConfigs.getByName("debug")
         }
     }
 }
 
-<<<<<<< HEAD
-flutter {
-    source = "../.."
-}
-=======
 dependencies {
 
     implementation(fileTree("libs") {
@@ -149,4 +113,3 @@ dependencies {
 flutter {
     source = "../.."
 }
->>>>>>> origin/Grocery_pch_api_integration

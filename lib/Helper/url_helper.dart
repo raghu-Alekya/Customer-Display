@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-import 'dart:io';
-import 'package:flutter/foundation.dart';
-=======
 // import 'dart:io';
 // import '../Database/assets_db_helper.dart';
 // import '../Database/store_db_helper.dart';
@@ -199,7 +195,6 @@ import 'package:flutter/foundation.dart';
 
 
 import 'dart:io';
->>>>>>> origin/Grocery_pch_api_integration
 import '../Database/assets_db_helper.dart';
 import '../Database/store_db_helper.dart';
 
@@ -212,15 +207,10 @@ class UrlHelper {
   };
 //Hosts
   static const String _dev = 'https://mg.techkumard.com';//"https://pinakapos.techkumard.com"; // Build #1.1.36: Base URL without /wp-json/
-<<<<<<< HEAD
-  static const  String _uat = "https://test.alekyatechsolutions.com";
-  static const  String _prod = "http://api.pinaka.com/";
-=======
   // New connector API base (no more /wp-json/ prefix)
   static const  String _uat = "https://pch.alektasolutions.com/connector/api/v1";
   static const  String _prod = "http://api.pinaka.com/";
   static const String safeApiBaseUrl = "https://pch.alektasolutions.com/api/v1";
->>>>>>> origin/Grocery_pch_api_integration
 
   ///Update the environment URL in below API
   ///PROD = use for production release
@@ -228,10 +218,6 @@ class UrlHelper {
   ///DEV = dev testing
   ///
   /// Note: change _uat to _prod in release build
-<<<<<<< HEAD
-  static const String pinakaBaseUrl = kDebugMode ? _dev : _uat ;
-  static const String validateMerchant =  "$pinakaBaseUrl/wp-json/custom/v1/validate-marchent";  //Build #1.0.42
-=======
   static const String pinakaBaseUrl =  _uat ;
 
   //Build #1.0.42 : Merchant + store login (new API)
@@ -239,44 +225,12 @@ class UrlHelper {
   // body: { "merchantIdentifier": "...", "password": "...", "storeId": "..." }
   static const String merchantStoreLogin = "pos/auth/merchant-store-login";
   static const String validateMerchant =  "$pinakaBaseUrl/$merchantStoreLogin";
->>>>>>> origin/Grocery_pch_api_integration
 
   //API keys
   static const  String _AndroidApiKey = "?apikey=987654321";
   static const  String _iOSApiKey = "?apikey=123456789";
 
   // API path components
-<<<<<<< HEAD
-  static const String pinakaPosV1 = "pinaka-pos/v1/"; // New variable for pinaka-pos/v1
-  static const String wooCommerceV3 = "wc/v3/"; // New variable for wc/v3
-  static const String wpJson = "wp-json/"; // WP JSON API base path
-
-  //Build #1.0.54: added Dynamic base URL initialized from database
-  static String? _baseUrl;
-  // Initialize base URL from database
-  static Future<void> initializeBaseUrl() async {
-    if (kDebugMode) {
-      print("#### UrlHelper: Initializing base URL from database");
-    }
-    _baseUrl = await AssetDBHelper.instance.getAppBaseUrl();
-    if (_baseUrl == null) {
-      if (kDebugMode) {
-        print("#### UrlHelper: No base URL in database, falling back to DEV: $_dev");
-      }
-      _baseUrl = await StoreDbHelper.instance.getStoreBaseUrl(); //Build #1.0.126: Fallback to dev URL if database is empty
-    }
-    if (kDebugMode) {
-      print("#### UrlHelper: Base URL set to: $_baseUrl");
-    }
-  }
-
-  //Build #1.0.54: Getter for base URL with /wp-json/ appended
-  static String get baseUrl {
-    final url = '$_baseUrl/$wpJson';
-    if (kDebugMode) {
-      print("#### UrlHelper: Providing base URL: $url");
-    }
-=======
   static const String pinakaPosV1 = "pinaka-pos/v1/"; // Legacy prefix, kept for endpoints not yet migrated
   static const String wooCommerceV3 = "wc/v3/"; // Legacy, not used by the new connector API
   static const String wpJson = "wp-json/"; // Legacy, no longer part of baseUrl
@@ -303,17 +257,12 @@ class UrlHelper {
       _baseUrl = _uat;
     }
     final url = '$_baseUrl/';
->>>>>>> origin/Grocery_pch_api_integration
     return url;
   }
 /////START: make changes here to switch environment
 //   static const  String host = _dev ;
 //   static const  String baseUrl = host;
-<<<<<<< HEAD
-  static const String componentVersionUrl = pinakaPosV1; // Default to pinaka-pos/v1 for existing APIs
-=======
   static const String componentVersionUrl = ""; // New API has no pinaka-pos/v1/ component prefix
->>>>>>> origin/Grocery_pch_api_integration
   // static const  String apiKey = _devApiKey ;
   static final String apiKey = Platform.isIOS ? _iOSApiKey : _AndroidApiKey; // Build #1.0.8, Naveen updated this line
 
@@ -329,18 +278,11 @@ class UrlHelper {
   /////END: make changes here to switch environment
 
   static const  String clientID = "IOS";
-<<<<<<< HEAD
-  static String confirmSuccessUrl = baseUrl;
-  static String markerUrl =  baseUrl;
-
-  static const  String login = "${pinakaPosV1}token"; // Build #1.0.8
-=======
   // Getters (not static finals) so they always follow initializeBaseUrl()
   static String get confirmSuccessUrl => baseUrl;
   static String get markerUrl => baseUrl;
 
   static const  String login = "pos/auth/login"; // Employee login (new API)
->>>>>>> origin/Grocery_pch_api_integration
   static const  String refresh = "auth/refresh_token";
   static const  String signup = "auth/signup";
   static const  String forgotPassword = "auth/reestpassword";
@@ -353,26 +295,6 @@ class UrlHelper {
 
 }
 
-<<<<<<< HEAD
-class UrlMethodConstants { // Build #1.0.13
-  static const String token          = "token";
-  static const String products       = "products";
-  static const String fastKeys       = "fastkeys";  // Build #1.0.15
-  static const String categories           = "categories";
-  static const String productByCategories  = "products-by-category"; // Build #1.0.21
-  static const String payments             = "payments";
-  static const String orders               = "orders";
-  static const String variations           = "products"; // Used for variations endpoint
-  static const String assets               = "assets"; //Build #1.0.40
-  static const String shifts               = "shifts"; // Build #1.0.70
-  static const String safes                = "safes";
-  static const String vendorPayments       = "vendor_payments";
-  static const String totalOrders          = "total-orders"; // Build #1.0.118
-}
-
-class UrlParameterConstants { // Build #1.0.13
-  static const  String productSearchParameter = "?search=";
-=======
 class UrlMethodConstants {
   // Build #1.0.13
   static const String token = "pos/auth/login"; // Employee login (was "token")
@@ -404,7 +326,6 @@ class UrlParameterConstants { // Build #1.0.13
   static const  String
 
   productSearchParameter = "?search=";
->>>>>>> origin/Grocery_pch_api_integration
   static const  String getOrdersParameter     = "?page=1&per_page=10&search=&status="; //Build #1.0.40
   static const  String getOrdersEndParameter  = "&show_un_paid_only=false";
 
@@ -415,23 +336,15 @@ class UrlParameterConstants { // Build #1.0.13
 
 class EndUrlConstants { // Build #1.0.13
   static const  String productSearchEndUrl = "&page=1&limit=100&per_page=100";
-<<<<<<< HEAD
-  static const  String createFastKeyEndUrl        = "/create";  // Build #1.0.15
-=======
   static const  String createFastKeyEndUrl        = "/create";  // Build #1.0.15 (multipart: fastkey_title, fastkey_index, fastkey_image)
->>>>>>> origin/Grocery_pch_api_integration
   static const  String getFastKeyEndUrl           = "/get-by-user";
   static const  String addFastKeyProductEndUrl    = "/add-products";
   static const  String getFastKeyProductsEndUrl   = "/get-by-fastkey-id/";
   static const String deleteFastKeyEndUrl         = "/delete-fastkey"; // Build #1.0.19
   static const String allCategoriesEndUrl         = "?page=1&per_page=100&hide_empty=true&parent="; // Build #1.0.21
-<<<<<<< HEAD
-  static const String createPaymentEndUrl         = "/create-payment";  // Build #1.0.25
-=======
   // static const String createPaymentEndUrl         = "/create-payment";  // Build #1.0.25
   static const String paymentmeta         = "/update-payment-meta";  // Build #1.0.25
 
->>>>>>> origin/Grocery_pch_api_integration
   static const String paymentByIdEndUrl           = "/get-payment-by-id?payment_id=";
   static const String paymentByOrderIdEndUrl      = "/get-payments-by-order-id?order_id=";
   static const String variationsEndUrl            = "/variations"; //Build 1.1.36
@@ -445,10 +358,7 @@ class EndUrlConstants { // Build #1.0.13
   static const String vendorPaymentById           = "?vendor_payment_id=";
   static const String updateVendorPayment         = "/update-vendor-payment";
   static const String updateFastKeyEndUrl         = "/update-fastkey"; // Build #1.0.89
-<<<<<<< HEAD
-=======
   static const String updateFastKeyProductsEndUrl = "/update-fastkey-products";
->>>>>>> origin/Grocery_pch_api_integration
   static const String deleteProductFromFastKeyEndUrl = "/delete-product";
   static const String sendEmailOrderDetailsEndUrl = "/actions/send_order_details"; // Build #1.0.159
   static const String logout                      = "/logout"; // Build #1.0.163
@@ -456,10 +366,6 @@ class EndUrlConstants { // Build #1.0.13
   static const String logoutById                  = "/logout-by-id";
   static const String voidOrderEndUrl             = "/void-order";  // Build #1.0.175
   static const String addPayoutEndUrl             = "/add-payout";  // Build #1.0.175
-<<<<<<< HEAD
-}
-
-=======
   static const String addDiscountEndUrl           = "/add-discount"; // Build #1.0.274 : Added for merchant discount API
 
 
@@ -475,4 +381,3 @@ class EndUrlConstants { // Build #1.0.13
 
 
 }
->>>>>>> origin/Grocery_pch_api_integration

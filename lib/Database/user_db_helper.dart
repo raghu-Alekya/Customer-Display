@@ -1,10 +1,6 @@
-<<<<<<< HEAD
-import 'package:flutter/foundation.dart';
-=======
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../Screens/Auth/store_id_screen.dart'; // DeviceHelper
->>>>>>> origin/Grocery_pch_api_integration
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import '../Constants/text.dart';
@@ -13,18 +9,6 @@ import '../Preferences/pinaka_preferences.dart';
 import 'db_helper.dart';
 
 class UserDbHelper { //Build #1.0.126: Updated for user data into db
-<<<<<<< HEAD
-/// DOUBT -> NO PROBLEM IF WE USE "_instance"
-/// RE-Search: Singleton pattern - `UserDbHelper()` returns the same instance every time.
-/// No new object is created, only the existing static instance is reused.
-/// EX: IF WE USE/CALL LIKE THIS WAY !
-// final UserDbHelper _userDbHelper = UserDbHelper();
-// await _userDbHelper.getUserData();
-/// or use below in this call
-// static final UserDbHelper instance = UserDbHelper._internal();
-//   factory UserDbHelper() => instance;
-/// then call using
-=======
   /// DOUBT -> NO PROBLEM IF WE USE "_instance"
   /// RE-Search: Singleton pattern - `UserDbHelper()` returns the same instance every time.
   /// No new object is created, only the existing static instance is reused.
@@ -35,7 +19,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
 // static final UserDbHelper instance = UserDbHelper._internal();
 //   factory UserDbHelper() => instance;
   /// then call using
->>>>>>> origin/Grocery_pch_api_integration
 // UserDbHelper.instance.getUserData();
   static final UserDbHelper _instance = UserDbHelper._internal();
   factory UserDbHelper() => _instance;
@@ -50,8 +33,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
   /// Saves or updates user data in the database
   /// Updates if user exists, inserts if new
   // Build #1.0.148: Fixed Issue: user display name is not changing in top bar if new user login, old user name showing
-<<<<<<< HEAD
-=======
   Future<void> _ensureUserTableColumns(Database db) async {
     try {
       final columns = await db.rawQuery("PRAGMA table_info(${AppDBConst.userTable})");
@@ -74,7 +55,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     }
   }
 
->>>>>>> origin/Grocery_pch_api_integration
   // Ensures only ONE user has a valid token at any time
   Future<void> saveUserData(LoginResponse loginResponse) async {
     if (kDebugMode) {
@@ -83,8 +63,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     }
 
     final db = await DBHelper.instance.database;
-<<<<<<< HEAD
-=======
     await _ensureUserTableColumns(db);
 
     // Resolve numeric user_id for SQLite INTEGER PRIMARY KEY column
@@ -99,7 +77,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     } else {
       numericUserId = 1;
     }
->>>>>>> origin/Grocery_pch_api_integration
 
     // 1. FIRST clear ALL existing tokens to ensure single active user
     await db.update(
@@ -111,23 +88,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     final existingUser = await db.query(
       AppDBConst.userTable,
       where: '${AppDBConst.userId} = ?',
-<<<<<<< HEAD
-      whereArgs: [loginResponse.id],
-    );
-
-    // 3. Prepare user data map
-    Map<String, dynamic> userMap = {
-      AppDBConst.userId: loginResponse.id,
-      AppDBConst.userRole: loginResponse.role,
-      AppDBConst.userDisplayName: loginResponse.displayName,
-      AppDBConst.userEmail: loginResponse.email,
-      AppDBConst.userFirstName: loginResponse.firstName,
-      AppDBConst.userLastName: loginResponse.lastName,
-      AppDBConst.userNickname: loginResponse.nicename,
-      AppDBConst.userToken: loginResponse.token, // Set NEW token
-      AppDBConst.profilePhoto: loginResponse.avatar,
-      AppDBConst.userShiftId: loginResponse.shiftId, // Build #1.0.149 : Added shift_id
-=======
       whereArgs: [numericUserId],
     );
 
@@ -178,7 +138,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       AppDBConst.deviceDisplayName: loginResponse.deviceDisplayName ?? '',
       AppDBConst.tableId: loginResponse.tableId ?? '',
       AppDBConst.posDeviceId: posDeviceId,
->>>>>>> origin/Grocery_pch_api_integration
     };
 
     if (existingUser.isNotEmpty) {
@@ -191,19 +150,11 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
         AppDBConst.userTable,
         userMap,
         where: '${AppDBConst.userId} = ?',
-<<<<<<< HEAD
-        whereArgs: [loginResponse.id],
-      );
-
-      if (kDebugMode) {
-        print("#### Updated existing user: ${loginResponse.id}");
-=======
         whereArgs: [numericUserId],
       );
 
       if (kDebugMode) {
         print("#### Updated existing user: $numericUserId");
->>>>>>> origin/Grocery_pch_api_integration
       }
     } else {
       // Set defaults for new user
@@ -217,11 +168,7 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       );
 
       if (kDebugMode) {
-<<<<<<< HEAD
-        print("#### Inserted new user: ${loginResponse.id}");
-=======
         print("#### Inserted new user: $numericUserId");
->>>>>>> origin/Grocery_pch_api_integration
       }
     }
 
@@ -230,10 +177,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       AppDBConst.userTable,
       where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
     );
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/Grocery_pch_api_integration
     if (kDebugMode) {
       print("#### Active users after save: ${activeUsers.length}");
       if (activeUsers.isNotEmpty) {
@@ -301,15 +244,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     final db = await DBHelper.instance.database;
 
     // Get the user with a valid token (most recent first)
-<<<<<<< HEAD
-    List<Map<String, dynamic>> result = await db.query(
-      AppDBConst.userTable,
-      where: '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
-      orderBy: '${AppDBConst.userId} DESC', // Get most recently logged in
-      limit: 1,
-    );
-
-=======
     // FIXED SQL SYNTAX: used single quotes for string literal
     List<Map<String, dynamic>> result = await db.query(
       AppDBConst.userTable,
@@ -317,7 +251,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       orderBy: '${AppDBConst.userId} DESC', // Get most recently logged in
       limit: 1,
     );
->>>>>>> origin/Grocery_pch_api_integration
     if (result.isNotEmpty) {
       if (kDebugMode) {
         print("#### Retrieved ACTIVE user data: ${result.first}");
@@ -360,8 +293,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     }
   }
 
-<<<<<<< HEAD
-=======
   /// Returns the currently active user's token, if available.
   Future<String?> getUserToken() async {
     final userData = await getUserData();
@@ -370,7 +301,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     return (token == null || token.isEmpty) ? null : token;
   }
 
->>>>>>> origin/Grocery_pch_api_integration
   /// Checks if user is logged in by verifying token existence
   Future<bool> isUserLoggedIn() async {
     try {
@@ -386,16 +316,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     }
   }
 
-<<<<<<< HEAD
-  /// Clears user data during logout
-  Future<void> logout() async {
-    final db = await DBHelper.instance.database;
-    await db.delete(AppDBConst.userTable);
-    if (kDebugMode) {
-      print("#### User data cleared during logout");
-    }
-  }
-=======
   /// Clears user SESSION TOKEN during logout.
   /// IMPORTANT (Build #offline): Does NOT delete unsynced orders.
   /// Only clears the JWT token so getUserData() returns null (no active user)
@@ -614,5 +534,4 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
     final userData = await getUserData();
     return (userData?[AppDBConst.loyaltyPoints] as int?) ?? 0;
   }
->>>>>>> origin/Grocery_pch_api_integration
 }

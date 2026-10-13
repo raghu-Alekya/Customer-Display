@@ -943,11 +943,8 @@ class _OrdersScreenState extends State<OrdersScreen> with LayoutSelectionMixin {
   bool _isAscending = true;
   StreamSubscription? _fetchOrdersSubscription;
   late OrderScreenPanel _orderScreenPanel;
-<<<<<<< HEAD
-=======
   bool _fetchInProgress = false;
   Timer? _loadingDelayTimer;
->>>>>>> origin/Grocery_pch_api_integration
 
   ///Filters
   // List<String> _availableStatuses = ["All"];
@@ -1003,24 +1000,18 @@ class _OrdersScreenState extends State<OrdersScreen> with LayoutSelectionMixin {
   //Build #1.0.54: added Fetch orders from API
   void _fetchOrders() {
     debugPrint("OrdersScreen: Initiating fetch orders");
-<<<<<<< HEAD
-=======
     _fetchOrdersSubscription?.cancel();
     _loadingDelayTimer?.cancel();
     _loadingDelayTimer = null;
     _fetchInProgress = false;
->>>>>>> origin/Grocery_pch_api_integration
     _fetchOrdersSubscription = _orderBloc.fetchOrdersStream.listen((response) {
       if (!mounted) return;
 
       if (response.status == Status.COMPLETED) {
-<<<<<<< HEAD
-=======
         _fetchInProgress = false;
         _loadingDelayTimer?.cancel();
         _loadingDelayTimer = null;
 
->>>>>>> origin/Grocery_pch_api_integration
         debugPrint("OrdersScreen: Successfully fetched ${response.data!.orders.length} orders");
         setState(() {
           _orders = response.data!.orders;
@@ -1051,13 +1042,10 @@ class _OrdersScreenState extends State<OrdersScreen> with LayoutSelectionMixin {
           // }
         });
       } else if (response.status == Status.ERROR) {
-<<<<<<< HEAD
-=======
         _fetchInProgress = false;
         _loadingDelayTimer?.cancel();
         _loadingDelayTimer = null;
 
->>>>>>> origin/Grocery_pch_api_integration
         debugPrint("OrdersScreen: Error fetching orders - ${response.message}");
         setState(() {
           isLoading = false;
@@ -1068,10 +1056,6 @@ class _OrdersScreenState extends State<OrdersScreen> with LayoutSelectionMixin {
             duration: const Duration(seconds: 2)
           ),
         );
-<<<<<<< HEAD
-      } else if (response.status == Status.LOADING){
-        setState(() => isLoading = true); // Build #1.0.104
-=======
       } else if (response.status == Status.LOADING) {
         _fetchInProgress = true;
         _loadingDelayTimer?.cancel();
@@ -1080,7 +1064,6 @@ class _OrdersScreenState extends State<OrdersScreen> with LayoutSelectionMixin {
             setState(() => isLoading = true);
           }
         });
->>>>>>> origin/Grocery_pch_api_integration
       }
     });
 
@@ -1255,10 +1238,7 @@ class _OrdersScreenState extends State<OrdersScreen> with LayoutSelectionMixin {
   @override
   void dispose() {
     _fetchOrdersSubscription?.cancel();
-<<<<<<< HEAD
-=======
     _loadingDelayTimer?.cancel();
->>>>>>> origin/Grocery_pch_api_integration
     _orderBloc.dispose();
     debugPrint("OrdersScreen: Disposed");
     super.dispose();
@@ -1322,13 +1302,9 @@ class _OrdersScreenState extends State<OrdersScreen> with LayoutSelectionMixin {
                 } else if (sidebarPosition == SidebarPosition.right) {
                   newLayout = SharedPreferenceTextConstants.navBottomOrderLeft;
                 } else {
-<<<<<<< HEAD
-                  newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
-=======
                   newLayout = orderPanelPosition == OrderPanelPosition.left
                       ? SharedPreferenceTextConstants.navBottomOrderRight
                       : SharedPreferenceTextConstants.navLeftOrderRight;
->>>>>>> origin/Grocery_pch_api_integration
                 }
 
                 // Update the notifier which will trigger _onLayoutChanged

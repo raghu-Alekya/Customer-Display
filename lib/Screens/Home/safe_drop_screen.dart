@@ -1,9 +1,6 @@
 import 'dart:async';
 
-<<<<<<< HEAD
-=======
 import 'dart:io';
->>>>>>> origin/Grocery_pch_api_integration
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
@@ -17,10 +14,7 @@ import '../../Constants/text.dart';
 import '../../Database/assets_db_helper.dart';
 import '../../Database/db_helper.dart';
 import '../../Database/printer_db_helper.dart';
-<<<<<<< HEAD
-=======
 import '../../Database/store_db_helper.dart';
->>>>>>> origin/Grocery_pch_api_integration
 import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
@@ -29,10 +23,7 @@ import '../../Models/Assets/asset_model.dart';
 import '../../Models/Auth/safe_drop_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
 import '../../Repositories/Auth/safe_drop_repository.dart';
-<<<<<<< HEAD
-=======
 import '../../Utilities/global_utility.dart';
->>>>>>> origin/Grocery_pch_api_integration
 import '../../Utilities/printer_settings.dart';
 import '../../Utilities/result_utility.dart';
 import '../../Widgets/widget_alert_popup_dialogs.dart';
@@ -49,23 +40,14 @@ import 'apps_dashboard_screen.dart';
 
 class SafeDropScreen extends StatefulWidget {
   final int? lastSelectedIndex;
-<<<<<<< HEAD
-  const SafeDropScreen(
-      {super.key, this.lastSelectedIndex});
-=======
   const SafeDropScreen({super.key, this.lastSelectedIndex});
->>>>>>> origin/Grocery_pch_api_integration
 
   @override
   State<SafeDropScreen> createState() => _SafeDropScreenState();
 }
 
-<<<<<<< HEAD
-class _SafeDropScreenState extends State<SafeDropScreen> with LayoutSelectionMixin {
-=======
 class _SafeDropScreenState extends State<SafeDropScreen>
     with LayoutSelectionMixin {
->>>>>>> origin/Grocery_pch_api_integration
   bool isLoading = true;
   int _selectedSidebarIndex = 4;
 
@@ -90,46 +72,25 @@ class _SafeDropScreenState extends State<SafeDropScreen>
   late SafeDropBloc _safeDropBloc;
   final PinakaPreferences _preferences = PinakaPreferences(); // Add this
   ///printer
-<<<<<<< HEAD
-  var _printerSettings =  PrinterSettings();
-=======
   var _printerSettings = PrinterSettings();
->>>>>>> origin/Grocery_pch_api_integration
   List<int> bytes = [];
   StreamSubscription? _safeDropSubscription; // Build #1.0.240
   @override
   void initState() {
     super.initState();
-<<<<<<< HEAD
-    _selectedSidebarIndex = widget.lastSelectedIndex ?? 4; // Build #1.0.7: Restore previous selection
-=======
     _selectedSidebarIndex = widget.lastSelectedIndex ??
         4; // Build #1.0.7: Restore previous selection
->>>>>>> origin/Grocery_pch_api_integration
 
     // Initialize SafeDropBloc
     _safeDropBloc = SafeDropBloc(SafeDropRepository());
     // Added: Listen to safe drop stream for API responses
     // Build #1.0.240 Store the subscription and manage it properly
-<<<<<<< HEAD
-    _safeDropSubscription = _safeDropBloc.safeDropStream.listen((response) {  //Build #1.0.74
-=======
     _safeDropSubscription = _safeDropBloc.safeDropStream.listen((response) {
       //Build #1.0.74
->>>>>>> origin/Grocery_pch_api_integration
       if (response.status == Status.COMPLETED) {
         setState(() {
           _isApiLoading = false;
         });
-<<<<<<< HEAD
-        if (kDebugMode) print("#### SafeDropScreen: Safe drop created successfully: ${response.data!.message}");
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(response.data!.message),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-=======
         if (kDebugMode)
           print(
               "#### SafeDropScreen: Safe drop created successfully: ${response.data!.message}");
@@ -143,20 +104,14 @@ class _SafeDropScreenState extends State<SafeDropScreen>
             ),
           );
         }
->>>>>>> origin/Grocery_pch_api_integration
         // Clear all fields after successful save
         _denomControllers.forEach((key, controller) {
           controller.text = "0";
         });
         _calculateTotals();
-<<<<<<< HEAD
-        /// 1. print receipt
-        if(!Misc.disablePrinter) {
-=======
 
         /// 1. print receipt
         if (!Misc.disablePrinter) {
->>>>>>> origin/Grocery_pch_api_integration
           _printTicket();
         }
 
@@ -175,15 +130,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
           }
         });
         _safeDropSubscription?.cancel();
-<<<<<<< HEAD
-      }
-      else if (response.status == Status.ERROR) {
-        setState(() {
-          _isApiLoading = false; // Build #1.0.240 : dismiss loader on add button
-        });
-        if (kDebugMode) {
-          print("safe drop screen --- Unauthorised : ${response.message ?? " "}");
-=======
       } else if (response.status == Status.ERROR) {
         setState(() {
           _isApiLoading =
@@ -192,7 +138,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
         if (kDebugMode) {
           print(
               "safe drop screen --- Unauthorised : ${response.message ?? " "}");
->>>>>>> origin/Grocery_pch_api_integration
         }
         if (response.message!.contains('Unauthorised')) {
           if (kDebugMode) {
@@ -200,14 +145,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
           }
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
-<<<<<<< HEAD
-              Navigator.pushReplacement(context, MaterialPageRoute(
-                  builder: (context) => LoginScreen()));
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Unauthorised. Session is expired on this device."),
-=======
               Navigator.pushReplacement(context,
                   MaterialPageRoute(builder: (context) => LoginScreen()));
 
@@ -215,7 +152,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                 const SnackBar(
                   content:
                       Text("Unauthorised. Session is expired on this device."),
->>>>>>> origin/Grocery_pch_api_integration
                   backgroundColor: Colors.red,
                   duration: Duration(seconds: 2),
                 ),
@@ -223,12 +159,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
             }
           });
         } else {
-<<<<<<< HEAD
-          if (kDebugMode) print("#### SafeDropScreen: Error creating safe drop: ${response.message}");
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(
-                response.message ?? 'Failed to create safe drop')),
-=======
           if (kDebugMode)
             print(
                 "#### SafeDropScreen: Error creating safe drop: ${response.message}");
@@ -236,28 +166,17 @@ class _SafeDropScreenState extends State<SafeDropScreen>
             SnackBar(
                 content:
                     Text(response.message ?? 'Failed to create safe drop')),
->>>>>>> origin/Grocery_pch_api_integration
           );
 
           // Build #1.0.240
           /// 3. Show failure popup with dismiss button
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
-<<<<<<< HEAD
-              CustomDialog.showCustomItemAlert(
-                  context,
-                  title: TextConstants.tranFailed,
-                  description: TextConstants.wantRetry,
-                  buttonText: TextConstants.dismiss,
-                  showCloseIcon: false
-              );
-=======
               CustomDialog.showCustomItemAlert(context,
                   title: TextConstants.tranFailed,
                   description: TextConstants.wantRetry,
                   buttonText: TextConstants.dismiss,
                   showCloseIcon: false);
->>>>>>> origin/Grocery_pch_api_integration
             }
           });
         }
@@ -291,14 +210,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
         _safeDenominations = denoms;
         // Initialize controllers for each denomination
         for (var denom in _safeDenominations) {
-<<<<<<< HEAD
-          _denomControllers[denom.denom.toString()] = TextEditingController(text: "0");
-        }
-      });
-      if (kDebugMode) print("#### SafeDropScreen: Loaded ${_safeDenominations.length} denominations");
-    } catch (e) {
-      if (kDebugMode) print("#### SafeDropScreen: Error fetching denominations: $e");
-=======
           _denomControllers[denom.denom.toString()] =
               TextEditingController(text: "0");
         }
@@ -309,7 +220,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
     } catch (e) {
       if (kDebugMode)
         print("#### SafeDropScreen: Error fetching denominations: $e");
->>>>>>> origin/Grocery_pch_api_integration
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to load denominations')),
       );
@@ -329,8 +239,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
     super.dispose();
   }
 
-<<<<<<< HEAD
-=======
   bool _hasEnteredValues() {
     return _denomControllers.values.any((controller) {
       final value = double.tryParse(controller.text) ?? 0;
@@ -365,7 +273,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
     }
   }
 
->>>>>>> origin/Grocery_pch_api_integration
   // Modified: Calculate totals based on dynamic denominations
   void _calculateTotals() {
     int notes = 0;
@@ -383,12 +290,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
       totalNotes = notes;
       totalCash = cash;
       _totalNotesController.text = totalNotes.toString();
-<<<<<<< HEAD
-      _totalCashController.text = "${TextConstants.currencySymbol}${totalCash.toStringAsFixed(2)}";
-    });
-
-    if (kDebugMode) print("#### SafeDropScreen: Updated totals - Notes: $totalNotes, Cash: $totalCash");
-=======
       _totalCashController.text =
           "${TextConstants.currencySymbol}${totalCash.toStringAsFixed(2)}";
     });
@@ -396,7 +297,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
     if (kDebugMode)
       print(
           "#### SafeDropScreen: Updated totals - Notes: $totalNotes, Cash: $totalCash");
->>>>>>> origin/Grocery_pch_api_integration
   }
 
   // Handle numeric input
@@ -435,39 +335,24 @@ class _SafeDropScreenState extends State<SafeDropScreen>
 
   //Build #1.0.74, Modified: Handle add button press with API call
   Future<void> _handleAdd() async {
-<<<<<<< HEAD
-    if(totalCash == 0 || totalNotes == 0) {  // prevent empty values
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(TextConstants.notesError),
-=======
     if (totalCash == 0 || totalNotes == 0) {
       // prevent empty values
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(TextConstants.notesError),
->>>>>>> origin/Grocery_pch_api_integration
           backgroundColor: Colors.orange,
           duration: const Duration(seconds: 5),
         ),
       );
       return;
     }
-<<<<<<< HEAD
-    if(_isApiLoading) return; // Prevent multiple clicks
-=======
     if (_isApiLoading) return; // Prevent multiple clicks
->>>>>>> origin/Grocery_pch_api_integration
 
     if (kDebugMode) print("#### SafeDropScreen: Add button pressed");
     setState(() {
       _isApiLoading = true;
     });
 
-<<<<<<< HEAD
-    int? shiftId = await UserDbHelper().getUserShiftId(); // Build #1.0.149 : using from db
-    if (shiftId == null) {
-      if (kDebugMode) print("####### _handleAdd() : shiftId -> $shiftId");
-=======
     final int? shiftId =
         await UserDbHelper().getUserShiftId(); // Build #1.0.149 : using from db
     if (shiftId == null) {
@@ -480,38 +365,20 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                 'No active shift found. Please open a shift and try again.')),
       );
       return;
->>>>>>> origin/Grocery_pch_api_integration
     }
     // Prepare SafeDropRequest
     final denominations = _denomControllers.entries.map((entry) {
       final denom = num.parse(entry.key);
       final count = int.tryParse(entry.value.text) ?? 0;
       return SafeDropDenomination(
-<<<<<<< HEAD
-        denomination: denom,
-        denominationCount: count,
-=======
         denom: denom,
         tubeCount: count,
         cellCount: 0,
->>>>>>> origin/Grocery_pch_api_integration
         total: denom * count,
       );
     }).toList();
 
     final request = SafeDropRequest(
-<<<<<<< HEAD
-      safeDropDenominations: denominations,
-      totalCash: totalCash,
-      totalNotes: totalNotes,
-      shiftId: shiftId ?? 0,
-    );
-
-    if (kDebugMode) print("#### SafeDropScreen: Sending safe drop request: ${request.toJson()}");
-    _safeDropBloc.createSafeDrop(request);
-    ///1. prepare printer and receipt
-    if(!Misc.disablePrinter) {
-=======
       safeDenominations: denominations,
       coinsTotal: 0,
       totalAmount: totalCash,
@@ -525,40 +392,19 @@ class _SafeDropScreenState extends State<SafeDropScreen>
 
     ///1. prepare printer and receipt
     if (!Misc.disablePrinter) {
->>>>>>> origin/Grocery_pch_api_integration
       _preparePrintTicket();
     }
   }
 
   Future<Map<String, dynamic>?> loadPrinterData() async {
     var printerDB = await PrinterDBHelper().getPrinterFromDB();
-<<<<<<< HEAD
-    if(printerDB.isEmpty){
-=======
     if (printerDB.isEmpty) {
->>>>>>> origin/Grocery_pch_api_integration
       if (kDebugMode) {
         print(">>>>> OrderSummaryScreen : printerDB is empty");
       }
       return null;
     }
     return printerDB.first;
-<<<<<<< HEAD
-
-  }
-
-  Future _preparePrintTicket() async{
-    if (kDebugMode) {
-      print("OrderSummaryScreen _preparePrintTicket call print receipt");
-    }
-    ///load header and footer
-    var printerData  = await loadPrinterData();
-    var header = printerData?[AppDBConst.receiptHeaderText] ?? "";
-    var footer = printerData?[AppDBConst.receiptFooterText] ?? "";
-
-    bytes = [];
-    final ticket =  await _printerSettings.getTicket();
-=======
   }
 
   Future _preparePrintTicket() async {
@@ -579,7 +425,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
 
     bytes = [];
     final ticket = await _printerSettings.getTicket();
->>>>>>> origin/Grocery_pch_api_integration
 
     ///Header
     ///   Pinaka Logo
@@ -590,11 +435,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
     ///Footer
     ///   Thank You, Visit Again
 
-<<<<<<< HEAD
-
-    //Pinaka Logo
-    final ByteData data = await rootBundle.load('assets/ic_logo.png');
-=======
     //Pinaka Logo
     final ByteData data;
     if (logo != "") {
@@ -607,23 +447,16 @@ class _SafeDropScreenState extends State<SafeDropScreen>
       print(
           "OrderSummaryScreen _preparePrintTicket data.lengthInBytes : ${data.lengthInBytes}");
     }
->>>>>>> origin/Grocery_pch_api_integration
     if (data.lengthInBytes > 0) {
       final Uint8List imageBytes = data.buffer.asUint8List();
       // decode the bytes into an image
       final decodedImage = img.decodeImage(imageBytes)!;
       // Create a black bottom layer
       // Resize the image to a 130x? thumbnail (maintaining the aspect ratio).
-<<<<<<< HEAD
-      img.Image thumbnail = img.copyResize(decodedImage, height: 130);
-      // creates a copy of the original image with set dimensions
-      img.Image originalImg = img.copyResize(decodedImage, width: 380, height: 130);
-=======
       img.Image thumbnail = img.copyResize(decodedImage, height: 280);
       // creates a copy of the original image with set dimensions
       img.Image originalImg =
           img.copyResize(decodedImage, width: 470, height: 280);
->>>>>>> origin/Grocery_pch_api_integration
       // fills the original image with a white background
       img.fill(originalImg, color: img.ColorRgb8(255, 255, 255));
       var padding = (originalImg.width - thumbnail.width) / 2;
@@ -633,28 +466,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
 
       // convert image to grayscale
       var grayscaleImage = img.grayscale(originalImg);
-<<<<<<< HEAD
-
-      bytes += ticket.feed(1);
-      // bytes += generator.imageRaster(img.decodeImage(imageBytes)!, align: PosAlign.center);
-      bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
-      bytes += ticket.feed(1);
-    }
-
-    //Header
-    bytes += ticket.row([
-      PosColumn(text: "$header", width: 12),
-    ]);
-
-    bytes += ticket.feed(1);
-
-    //Item header
-    bytes += ticket.row([
-      PosColumn(text: "#", width: 2),
-      PosColumn(text: "Denomination", width:5),
-      PosColumn(text: "Qty", width: 2),
-      PosColumn(text: "Amt", width: 3),
-=======
       // bytes += generator.imageRaster(img.decodeImage(imageBytes)!, align: PosAlign.center);
       // bytes += ticket.imageRaster(grayscaleImage, align: PosAlign.center);
     }
@@ -826,7 +637,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
           text: "Amt",
           width: 3,
           styles: PosStyles(align: PosAlign.right, bold: true)),
->>>>>>> origin/Grocery_pch_api_integration
     ]);
     bytes += ticket.feed(1);
 
@@ -841,11 +651,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
 
       bytes += ticket.row([
         PosColumn(text: "$denomIndex", width: 2),
-<<<<<<< HEAD
-        PosColumn(text: "$denomValue", width:5),
-        PosColumn(text: "$notes", width:2),
-        PosColumn(text: "$cash", width: 3),
-=======
         PosColumn(
             text:
                 "${TextConstants.currencySymbol}${denomValue.toStringAsFixed(2)}",
@@ -859,7 +664,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
             text: "${TextConstants.currencySymbol}${cash.toStringAsFixed(2)}",
             width: 3,
             styles: PosStyles(align: PosAlign.right)),
->>>>>>> origin/Grocery_pch_api_integration
       ]);
     });
 
@@ -873,21 +677,13 @@ class _SafeDropScreenState extends State<SafeDropScreen>
 
     //line
     bytes += ticket.row([
-<<<<<<< HEAD
-      PosColumn(text: "-----------------------------------------------", width: 12),
-=======
       PosColumn(
           text: "-----------------------------------------------", width: 12),
->>>>>>> origin/Grocery_pch_api_integration
     ]);
 
     // bytes += ticket.feed(1);
     bytes += ticket.row([
       PosColumn(text: TextConstants.total, width: 7),
-<<<<<<< HEAD
-      PosColumn(text: totalNotes.toString(), width:2),
-      PosColumn(text: totalCash.toStringAsFixed(2), width:3),
-=======
       PosColumn(
           text: totalNotes.toString(),
           width: 2,
@@ -897,26 +693,12 @@ class _SafeDropScreenState extends State<SafeDropScreen>
               "${TextConstants.currencySymbol}${totalCash.toStringAsFixed(2)}",
           width: 3,
           styles: PosStyles(align: PosAlign.right)),
->>>>>>> origin/Grocery_pch_api_integration
     ]);
 
     // bytes += ticket.row([
     //   PosColumn(text: TextConstants.cash, width: 10),
     //   PosColumn(text: totalCash.toStringAsFixed(2), width:2),
     // ]);
-<<<<<<< HEAD
-
-    bytes += ticket.feed(1);
-    //Footer
-    bytes += ticket.row([
-      PosColumn(text: "---End---", width: 12),
-    ]);
-    bytes += ticket.feed(1);
-  }
-
-  Future _printTicket() async{
-    final ticket =  await _printerSettings.getTicket();
-=======
     bytes += ticket.row([
       PosColumn(
           text: "-----------------------------------------------", width: 12),
@@ -931,7 +713,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
 
   Future _printTicket() async {
     final ticket = await _printerSettings.getTicket();
->>>>>>> origin/Grocery_pch_api_integration
     final result = await _printerSettings.printTicket(bytes, ticket);
 
     if (kDebugMode) {
@@ -939,18 +720,11 @@ class _SafeDropScreenState extends State<SafeDropScreen>
     }
     switch (result) {
       case Ok<BluetoothPrinter>():
-<<<<<<< HEAD
-      // BluetoothPrinter printer = result.value;
-        break;
-      case Error<BluetoothPrinter>():
-        WidgetsBinding.instance.addPostFrameCallback((_) { // Build #1.0.16
-=======
         // BluetoothPrinter printer = result.value;
         break;
       case Error<BluetoothPrinter>():
         WidgetsBinding.instance.addPostFrameCallback((_) {
           // Build #1.0.16
->>>>>>> origin/Grocery_pch_api_integration
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -961,20 +735,11 @@ class _SafeDropScreenState extends State<SafeDropScreen>
               duration: const Duration(seconds: 3),
             ),
           );
-<<<<<<< HEAD
-=======
 
->>>>>>> origin/Grocery_pch_api_integration
           /// call printer setup screen
           if (kDebugMode) {
             print("call printer setup screen");
           }
-<<<<<<< HEAD
-          Navigator.push(context, MaterialPageRoute(
-            builder: (context) => PrinterSetup(),
-          )).then((result) {
-            if (result == TextConstants.refresh) { // Build #1.0.175: Added refresh constant string into TextConstants
-=======
           Navigator.push(
               context,
               MaterialPageRoute(
@@ -982,21 +747,14 @@ class _SafeDropScreenState extends State<SafeDropScreen>
               )).then((result) {
             if (result == TextConstants.refresh) {
               // Build #1.0.175: Added refresh constant string into TextConstants
->>>>>>> origin/Grocery_pch_api_integration
               _printerSettings.loadPrinter();
               setState(() {
                 // Update state to refresh the UI
                 if (kDebugMode) {
-<<<<<<< HEAD
-                  print("SettingScreen - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
-                }
-                if(!Misc.disablePrinter) {
-=======
                   print(
                       "SettingScreen - printer setup is done, connected printer is ${_printerSettings.selectedPrinter?.deviceName}");
                 }
                 if (!Misc.disablePrinter) {
->>>>>>> origin/Grocery_pch_api_integration
                   _printTicket();
                 }
               });
@@ -1028,31 +786,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
         child: _safeDenominations.isEmpty
             ? const Center(child: CircularProgressIndicator())
             : Column(
-<<<<<<< HEAD
-          children: [
-            const SizedBox(height: 20),
-            Expanded(
-              child: ListView.builder(
-                itemCount: _safeDenominations.length,
-                itemBuilder: (context, index) {
-                  final denom = _safeDenominations[index];
-                  final controller =
-                  _denomControllers[denom.denom.toString()]!;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: _buildDenominationField(
-                      denom.image ?? 'assets/svg/1.svg',
-                      denom.denom.toString(),
-                      controller,
-                      isLast: index == _safeDenominations.length - 1,
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-=======
                 children: [
                   const SizedBox(height: 20),
                   Expanded(
@@ -1076,7 +809,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                   ),
                 ],
               ),
->>>>>>> origin/Grocery_pch_api_integration
       );
     }
 
@@ -1127,11 +859,7 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                   borderRadius: BorderRadius.circular(5),
                 ),
                 padding:
-<<<<<<< HEAD
-                const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-=======
                     const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
->>>>>>> origin/Grocery_pch_api_integration
                 child: Text(
                   _totalNotesController.text,
                   textAlign: TextAlign.right,
@@ -1174,11 +902,7 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                   borderRadius: BorderRadius.circular(5),
                 ),
                 padding:
-<<<<<<< HEAD
-                const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-=======
                     const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
->>>>>>> origin/Grocery_pch_api_integration
                 child: Text(
                   _totalCashController.text,
                   textAlign: TextAlign.right,
@@ -1197,12 +921,8 @@ class _SafeDropScreenState extends State<SafeDropScreen>
               /// NumPad
               Expanded(
                 child: Container(
-<<<<<<< HEAD
-                  padding: const EdgeInsets.all(8),
-=======
                   padding:
                       const EdgeInsets.symmetric(vertical: 40, horizontal: 12),
->>>>>>> origin/Grocery_pch_api_integration
                   decoration: BoxDecoration(
                     color: themeHelper.themeMode == ThemeMode.dark
                         ? const Color(0xFF1F1D2B)
@@ -1232,11 +952,7 @@ class _SafeDropScreenState extends State<SafeDropScreen>
             children: [
               /// TopBar
               TopBar(
-<<<<<<< HEAD
-                screen: Screen.SAFE,
-=======
                 screen: Screen.ORDERS,
->>>>>>> origin/Grocery_pch_api_integration
                 onModeChanged: () async {
                   String newLayout;
                   if (sidebarPosition == SidebarPosition.left) {
@@ -1245,13 +961,9 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                     newLayout =
                         SharedPreferenceTextConstants.navBottomOrderLeft;
                   } else {
-<<<<<<< HEAD
-                    newLayout = SharedPreferenceTextConstants.navLeftOrderRight;
-=======
                     newLayout = orderPanelPosition == OrderPanelPosition.left
                         ? SharedPreferenceTextConstants.navBottomOrderRight
                         : SharedPreferenceTextConstants.navLeftOrderRight;
->>>>>>> origin/Grocery_pch_api_integration
                   }
 
                   PinakaPreferences.layoutSelectionNotifier.value = newLayout;
@@ -1271,10 +983,7 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                     if (sidebarPosition == SidebarPosition.left)
                       custom_widgets.NavigationBar(
                         selectedSidebarIndex: _selectedSidebarIndex,
-<<<<<<< HEAD
-=======
                         onWillNavigate: (_) => _handleBack(),
->>>>>>> origin/Grocery_pch_api_integration
                         onSidebarItemSelected: (index) {
                           setState(() {
                             _selectedSidebarIndex = index;
@@ -1309,21 +1018,13 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                                   SidebarPosition.bottom) ...[
                                 /// Back Button Row (inside parent container)
                                 InkWell(
-<<<<<<< HEAD
-                                  onTap: () => Navigator.of(context).pop(),
-=======
                                   onTap: _handleBack,
->>>>>>> origin/Grocery_pch_api_integration
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 16, vertical: 8),
                                     decoration: BoxDecoration(
                                       color: themeHelper.themeMode ==
-<<<<<<< HEAD
-                                          ThemeMode.dark
-=======
                                               ThemeMode.dark
->>>>>>> origin/Grocery_pch_api_integration
                                           ? const Color(0xFF252837)
                                           : const Color(0xFF37415E),
                                       borderRadius: BorderRadius.circular(10),
@@ -1353,75 +1054,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                               Expanded(
                                 child: sidebarPosition == SidebarPosition.bottom
                                     ? Row(
-<<<<<<< HEAD
-                                  crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                                  children: [
-                                    /// Back button on top-left
-                                    InkWell(
-                                      onTap: () =>
-                                          Navigator.of(context).pop(),
-                                      child: Container(
-                                        padding:
-                                        const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 8),
-                                        decoration: BoxDecoration(
-                                          color: themeHelper.themeMode ==
-                                              ThemeMode.dark
-                                              ? const Color(0xFF252837)
-                                              : const Color(0xFF37415E),
-                                          borderRadius:
-                                          BorderRadius.circular(10),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: const [
-                                            Icon(Icons.arrow_back,
-                                                size: 10,
-                                                color: Colors.white),
-                                            SizedBox(width: 8),
-                                            Text(
-                                              "Back",
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight:
-                                                FontWeight.w600,
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 15),
-
-                                    /// LEFT container
-                                    Expanded(
-                                        flex: 5,
-                                        child: _buildLeftContainer()),
-                                    const SizedBox(width: 20),
-
-                                    /// RIGHT container
-                                    Expanded(
-                                        flex: 4,
-                                        child: _buildRightContainer()),
-                                  ],
-                                )
-                                    : Row(
-                                  crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                        flex: 5,
-                                        child: _buildLeftContainer()),
-                                    const SizedBox(width: 20),
-                                    Expanded(
-                                        flex: 4,
-                                        child: _buildRightContainer()),
-                                  ],
-                                ),
-=======
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
@@ -1489,7 +1121,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                                               child: _buildRightContainer()),
                                         ],
                                       ),
->>>>>>> origin/Grocery_pch_api_integration
                               ),
                             ],
                           ),
@@ -1500,10 +1131,7 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                     if (sidebarPosition == SidebarPosition.right)
                       custom_widgets.NavigationBar(
                         selectedSidebarIndex: _selectedSidebarIndex,
-<<<<<<< HEAD
-=======
                         onWillNavigate: (_) => _handleBack(),
->>>>>>> origin/Grocery_pch_api_integration
                         onSidebarItemSelected: (index) {
                           setState(() {
                             _selectedSidebarIndex = index;
@@ -1518,10 +1146,7 @@ class _SafeDropScreenState extends State<SafeDropScreen>
               if (sidebarPosition == SidebarPosition.bottom)
                 custom_widgets.NavigationBar(
                   selectedSidebarIndex: _selectedSidebarIndex,
-<<<<<<< HEAD
-=======
                   onWillNavigate: (_) => _handleBack(),
->>>>>>> origin/Grocery_pch_api_integration
                   onSidebarItemSelected: (index) {
                     setState(() {
                       _selectedSidebarIndex = index;
@@ -1576,21 +1201,12 @@ class _SafeDropScreenState extends State<SafeDropScreen>
   }
 
   Widget _buildDenominationField(
-<<<<<<< HEAD
-      String assetPath,
-      String denomination,
-      TextEditingController controller, {
-        bool isResult = false,
-        bool isLast = false,
-      }) {
-=======
     String assetPath,
     String denomination,
     TextEditingController controller, {
     bool isResult = false,
     bool isLast = false,
   }) {
->>>>>>> origin/Grocery_pch_api_integration
     final themeHelper = Provider.of<ThemeNotifier>(context);
     final isDark = themeHelper.themeMode == ThemeMode.dark;
 
@@ -1634,15 +1250,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                     onTap: isResult
                         ? null
                         : () {
-<<<<<<< HEAD
-                      setState(() {
-                        _activeController = controller;
-                      });
-                    },
-                    decoration: InputDecoration(
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 7),
-=======
                             setState(() {
                               _activeController = controller;
                             });
@@ -1650,20 +1257,12 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                     decoration: InputDecoration(
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 12),
->>>>>>> origin/Grocery_pch_api_integration
                       filled: true,
                       fillColor: isDark
                           ? const Color(0xFF4D505F)
                           : const Color(0xFFF3F2F2),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-<<<<<<< HEAD
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-=======
                         borderSide: _activeController == controller
                             ? const BorderSide(color: Colors.grey, width: 2)
                             : BorderSide.none,
@@ -1673,7 +1272,6 @@ class _SafeDropScreenState extends State<SafeDropScreen>
                         borderSide: _activeController == controller
                             ? const BorderSide(color: Colors.grey, width: 2)
                             : BorderSide.none,
->>>>>>> origin/Grocery_pch_api_integration
                       ),
                     ),
                     style: const TextStyle(
@@ -1727,8 +1325,4 @@ class _SafeDropScreenState extends State<SafeDropScreen>
       ],
     );
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/Grocery_pch_api_integration

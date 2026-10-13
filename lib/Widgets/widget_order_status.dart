@@ -29,11 +29,8 @@ class StatusWidget extends StatelessWidget {
         return Colors.red.shade600;
       case 'failed':
         return Colors.red.shade600;
-<<<<<<< HEAD
-=======
       case 'partial-refund':
         return Colors.orange.shade600;
->>>>>>> origin/Grocery_pch_api_integration
       default:
         return Colors.grey.shade600;
     }
@@ -56,12 +53,9 @@ class StatusWidget extends StatelessWidget {
         return Colors.red.shade700;
       case 'failed':
         return Colors.red.shade800;
-<<<<<<< HEAD
-=======
       case 'partial-refund':
         return Colors.orange.shade600;
 
->>>>>>> origin/Grocery_pch_api_integration
       default:
         return Colors.grey.shade700;
     }
@@ -84,11 +78,8 @@ class StatusWidget extends StatelessWidget {
         return Colors.red.shade50;
       case 'failed':
         return Colors.red.shade50;
-<<<<<<< HEAD
-=======
       case 'partial-refund':
         return Colors.orange.shade100;
->>>>>>> origin/Grocery_pch_api_integration
       default:
         return Colors.grey.shade50;
     }

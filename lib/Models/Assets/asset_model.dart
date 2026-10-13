@@ -121,10 +121,6 @@ class AssetResponse {
     );
   }
 }
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/Grocery_pch_api_integration
 class Media {
   final int id;
   final String title;
@@ -140,8 +136,6 @@ class Media {
     );
   }
 
-<<<<<<< HEAD
-=======
   // Add this to convert DB rows to Media
   factory Media.fromMap(Map<String, dynamic> map) {
     return Media(
@@ -151,7 +145,6 @@ class Media {
     );
   }
 
->>>>>>> origin/Grocery_pch_api_integration
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -160,8 +153,6 @@ class Media {
     };
   }
 }
-<<<<<<< HEAD
-=======
 // class Media {
 //   final int id;
 //   final String title;
@@ -185,7 +176,6 @@ class Media {
 //     };
 //   }
 // }
->>>>>>> origin/Grocery_pch_api_integration
 
 class Tax {  //Build #1.0.68: updated
   final String slug;

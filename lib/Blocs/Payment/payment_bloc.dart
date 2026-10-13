@@ -62,14 +62,6 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
 
     createPaymentSink.add(APIResponse.loading(TextConstants.loading));
     try {
-<<<<<<< HEAD
-      final response = await _paymentRepository.createPayment(request);
-
-      if (kDebugMode) {
-        //  print("PaymentBloc - Payment created with ID: ${response.postId}");
-        print("PaymentBloc - Payment Message: ${response.message}");
-      }
-=======
 
       // final response = await _paymentRepository.createPayment(request);
 
@@ -77,20 +69,14 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
       //   //  print("PaymentBloc - Payment created with ID: ${response.postId}");
       //   print("PaymentBloc - Payment Message: ${response.message}");
       // }
->>>>>>> origin/Grocery_pch_api_integration
 
       ///Response is coming as below:
       //{
       //     "payment_id": 3592,
       //     "message": "Payment Created Successfully"
       // }
-<<<<<<< HEAD
-      await CustomerDisplayService.showThankYou();
-      createPaymentSink.add(APIResponse.completed(response));
-=======
       //await CustomerDisplayService.showThankYou();
       // createPaymentSink.add(APIResponse.completed(response));
->>>>>>> origin/Grocery_pch_api_integration
     } catch (e) {
       //Build #1.0.180
       if (e.toString().contains('UnauthorisedException')) {
@@ -134,10 +120,7 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
   }
 
   // 3. Get Payments by Order ID
-<<<<<<< HEAD
-=======
 
->>>>>>> origin/Grocery_pch_api_integration
   Future<void> getPaymentsByOrderId(int orderId) async {
     if (_paymentsListController.isClosed) return;
 
@@ -165,10 +148,7 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
   }
 
   // 4.  Build #1.0.49: Added Void Payment api func
-<<<<<<< HEAD
-=======
 
->>>>>>> origin/Grocery_pch_api_integration
   Future<void> voidPayment(VoidPaymentRequestModel request) async {
     if (_voidPaymentController.isClosed) return;
 

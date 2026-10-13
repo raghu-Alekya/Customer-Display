@@ -2,23 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-<<<<<<< HEAD
-=======
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
->>>>>>> origin/Grocery_pch_api_integration
 import '../../Constants/text.dart';
 import '../../Database/db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import '../../Helper/api_response.dart';
-<<<<<<< HEAD
-import '../../Helper/file_helper.dart';
-import '../../Models/Auth/login_model.dart';
-=======
 import '../../Helper/cashbackhelper.dart';
 import '../../Helper/file_helper.dart';
 import '../../Models/Auth/login_model.dart';
 import '../../core/api/token_storage.dart';
->>>>>>> origin/Grocery_pch_api_integration
 import '../../Repositories/Auth/login_repository.dart';
 import 'package:pinaka_pos/Helper/Extentions/exceptions.dart'; // Import custom exceptions
 
@@ -45,11 +37,6 @@ class LoginBloc { // Build #1.0.8
       String token = await _loginRepository.fetchLoginToken(request);
       LoginResponse loginResponse = LoginResponse.fromJson(json.decode(token));
 
-<<<<<<< HEAD
-      if (loginResponse.token != null && loginResponse.success == true) {
-        // Build #1.0.148: Always save/update the new login data
-        await _userDbHelper.saveUserData(loginResponse);
-=======
       if (loginResponse.token != null &&
           loginResponse.token!.isNotEmpty &&
           (loginResponse.success == true || loginResponse.success == null)) {
@@ -78,7 +65,6 @@ class LoginBloc { // Build #1.0.8
         await CashbackHelper.loadCashbackOnStartup();
 
         // ✅ 4) Notify UI login success
->>>>>>> origin/Grocery_pch_api_integration
         loginSink.add(APIResponse.completed(loginResponse));
       } else {
         // Show the exact error message from API
@@ -145,8 +131,4 @@ class LoginBloc { // Build #1.0.8
       if (kDebugMode) print("LoginBloc disposed");
     }
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/Grocery_pch_api_integration

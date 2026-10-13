@@ -8,8 +8,6 @@ import 'package:flutter/material.dart';
 
 class GlobalUtility { //Build #1.0.126: Added for re-Use code at global level
 
-<<<<<<< HEAD
-=======
   static Future<ByteData?> fileToByteData(File file) async {
     try {
       // 1. Read the file as a list of bytes (Uint8List)
@@ -37,7 +35,6 @@ class GlobalUtility { //Build #1.0.126: Added for re-Use code at global level
     }
   }
 
->>>>>>> origin/Grocery_pch_api_integration
   static Future<Map<String, String>> getDeviceDetails() async {
     final deviceInfo = DeviceInfoPlugin();
     String deviceId = '';
@@ -239,10 +236,5 @@ class GlobalUtility { //Build #1.0.126: Added for re-Use code at global level
     } catch (_) {
       return "Operation failed";
     }
-<<<<<<< HEAD
-   }
-  }
-=======
   }
 }
->>>>>>> origin/Grocery_pch_api_integration

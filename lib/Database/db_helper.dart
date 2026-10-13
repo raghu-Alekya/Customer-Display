@@ -26,8 +26,6 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String userShiftId = 'shift_id'; // Build #1.0.149: Added shift_id column
   static const String themeMode = 'theme_mode';
   static const String layoutSelection = 'layout_selection';
-<<<<<<< HEAD
-=======
   static const String orderCashbackFee = "order_cashback_fee";
 
   // ── Offline / Sync columns ─────────────────────────────────────────────────
@@ -51,7 +49,6 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String storeGstin         = 'store_gstin';
   static const String storeLogo          = 'store_logo';
   static const String deviceTableId      = 'device_table_id';  // terminal/table id from validate-merchant
->>>>>>> origin/Grocery_pch_api_integration
 
   // Orders Table
   static const String orderTable = 'orders_table';
@@ -68,9 +65,6 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String merchantDiscountIds = 'merchant_discount_ids'; //Build #1.0.94
   static const String orderTax = 'tax'; // Optional: Tax applied to the order
   static const String orderShipping = 'shipping'; // Optional: Shipping charges
-<<<<<<< HEAD
-  static const String orderAgeRestricted = 'age_restricted'; //Build #1.0.234: Added column in order table
-=======
   static const String orderAgeRestricted = 'age_restricted';
   static const String isEbtEligible = "is_ebt_eligible";//Build #1.0.234: Added column in order table
 
@@ -92,7 +86,6 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
 
 
   // static const autoDiscount = 'multipack_discount_total';
->>>>>>> origin/Grocery_pch_api_integration
 
   // Purchased Items Table
   static const String purchasedItemsTable = 'purchased_items_table';
@@ -113,9 +106,6 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String itemCombo = 'item_combo'; // line_item -> meta_data->value contains (combo)
   static const String itemSalesPrice = 'item_sales_price'; // It is a Discounted price = line_item -> product_data-> sales price * quantity
   static const String itemRegularPrice = 'item_regular_price'; //It is a Regular price = line_item -> product_data-> regular price * quantity
-<<<<<<< HEAD
-  static const String itemUnitPrice = 'item_unit_price'; // line_item -> product_data-> regular price
-=======
   static const String itemUnitPrice = 'item_unit_price';
   static const String isRefundItem = 'is_refund_item';// line_item -> product_data-> regular price
   // Offline refund / inventory audit
@@ -138,7 +128,6 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const orderMultipackDiscount = 'multipack_discount_applied';
   static const orderAutoDiscountTotal = 'auto_discount_total';
 
->>>>>>> origin/Grocery_pch_api_integration
 
   // Coupon Items Table: remove if above itemType is not working properly
   static const String couponsItemsTable = 'coupons_items_table';
@@ -171,9 +160,6 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String fastKeyItemVariantId = 'fast_key_item_variant_id';
   static const String fastKeyItemIsVariant = 'fast_key_item_is_variant';
   static const String fastKeyItemHasVariant = 'fast_key_item_has_variant';
-<<<<<<< HEAD
-
-=======
   /// JSON array of Woo tags from Fast Keys API (EBT, age restriction, etc.)
   static const String fastKeyItemTags = 'fast_key_item_tags';
   // Add these to AppDBConst class
@@ -182,7 +168,6 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String fastKeyItemType = 'type';
 // In AppDBConst class, add:
   static const String updatedAt = 'updated_at';
->>>>>>> origin/Grocery_pch_api_integration
   /// Printer Table Added
   static const String printerTable = 'printer_table';
   static const String printerId = 'printer_id';
@@ -243,10 +228,6 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
   static const String baseUrl = 'base_url';
   static const String currency = 'currency';
   static const String currencySymbol = 'currency_symbol';
-<<<<<<< HEAD
-}
-
-=======
   // Shift Table
   static const String shiftTable = 'shift_table';
 
@@ -287,7 +268,6 @@ class AppDBConst { // Build #1.0.10 - Naveen: Updated DB tables constants
 }
 
 
->>>>>>> origin/Grocery_pch_api_integration
 class DBHelper {
   // Singleton instance to ensure only one instance of DBHelper exists
   static final DBHelper instance = DBHelper._init();
@@ -303,10 +283,6 @@ class DBHelper {
 
   // Initialize the database
   Future<Database> _initDB(String filePath) async {
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/Grocery_pch_api_integration
     if(Platform.isWindows){
       // Init ffi loader if needed.
       sqfliteFfiInit();
@@ -326,9 +302,6 @@ class DBHelper {
         final SharedPreferences prefs = await SharedPreferences.getInstance();
         await prefs.clear(); // This removes all stored preferences
       }
-<<<<<<< HEAD
-      return await databaseFactory.openDatabase(path, options: OpenDatabaseOptions(version: 1, onCreate: _createTables));
-=======
       return await databaseFactory.openDatabase(
         path,
         options: OpenDatabaseOptions(
@@ -337,7 +310,6 @@ class DBHelper {
           onUpgrade: _upgradeTables,
         ),
       );
->>>>>>> origin/Grocery_pch_api_integration
     }
 
     final dbPath = await getDatabasesPath();
@@ -356,9 +328,6 @@ class DBHelper {
       await prefs.clear(); // This removes all stored preferences
     }
 
-<<<<<<< HEAD
-    return await openDatabase(path, version: 1, onCreate: _createTables);
-=======
     return await openDatabase(
       path,
       version: 7, // Offline refund/inventory recovery schema
@@ -580,7 +549,6 @@ class DBHelper {
         print('✅ Upgraded to v7: offline refund table added');
       }
     }
->>>>>>> origin/Grocery_pch_api_integration
   }
 
   // Create all tables in the database
@@ -604,14 +572,6 @@ class DBHelper {
     )
     ''');
 
-<<<<<<< HEAD
-   //Build #1.0.40:  Updated Orders Table
-    await db.execute('''
-CREATE TABLE ${AppDBConst.orderTable} (
-  ${AppDBConst.orderId} INTEGER PRIMARY KEY, -- Changed: Use API id, no AUTOINCREMENT
-  ${AppDBConst.orderServerId} INTEGER, -- Required: Updated by REST API, can be NULL initially
-  ${AppDBConst.userId} INTEGER NOT NULL,
-=======
     //Build #1.0.40:  Updated Orders Table
     await db.execute('''
 CREATE TABLE ${AppDBConst.orderTable} (
@@ -619,25 +579,11 @@ CREATE TABLE ${AppDBConst.orderTable} (
   ${AppDBConst.orderServerId} INTEGER, -- Updated by REST API, can be NULL initially
   ${AppDBConst.userId} INTEGER NOT NULL,
 
->>>>>>> origin/Grocery_pch_api_integration
   ${AppDBConst.orderTotal} REAL NOT NULL,
   ${AppDBConst.orderStatus} TEXT NOT NULL,
   ${AppDBConst.orderType} TEXT NOT NULL,
   ${AppDBConst.orderDate} TEXT NOT NULL,
   ${AppDBConst.orderTime} TEXT NOT NULL,
-<<<<<<< HEAD
-  ${AppDBConst.orderPaymentMethod} TEXT, -- Optional: Payment method (e.g., cash, card)
-  ${AppDBConst.orderDiscount} REAL DEFAULT 0, -- Optional: Discount applied to the order
-  ${AppDBConst.merchantDiscount} REAL DEFAULT 0, -- Optional: Merchant Discount applied to the order
-  ${AppDBConst.merchantDiscountIds} TEXT, -- Optional: Merchant Discount Ids applied to the order 
-  ${AppDBConst.orderTax} REAL DEFAULT 0, -- Optional: Tax applied to the order
-  ${AppDBConst.orderShipping} REAL DEFAULT 0, -- Optional: Shipping charges
-  ${AppDBConst.orderAgeRestricted} TEXT, -- Added this line
-  FOREIGN KEY(${AppDBConst.userId}) REFERENCES ${AppDBConst.userTable}(${AppDBConst.userId}) ON DELETE CASCADE
-)
-''');
-
-=======
 
   ${AppDBConst.orderPaymentMethod} TEXT, -- cash, card, etc.
 
@@ -672,7 +618,6 @@ CREATE TABLE ${AppDBConst.orderTable} (
 ''');
 
 
->>>>>>> origin/Grocery_pch_api_integration
     // Purchased Items Table
     await db.execute('''
     CREATE TABLE ${AppDBConst.purchasedItemsTable} (
@@ -694,8 +639,6 @@ CREATE TABLE ${AppDBConst.orderTable} (
       ${AppDBConst.itemUnitPrice} REAL,
       ${AppDBConst.orderIdForeignKey} INTEGER NOT NULL,
       ${AppDBConst.itemType} TEXT NOT NULL,
-<<<<<<< HEAD
-=======
      ${AppDBConst.multipack_discount_total} REAL DEFAULT 0, -- correct syntax
      ${AppDBConst.autoDiscountTotal} REAL DEFAULT 0, -- correct syntax
      -- ADD THIS COLUMN
@@ -705,7 +648,6 @@ CREATE TABLE ${AppDBConst.orderTable} (
      ${AppDBConst.displayAutoDiscount} REAL DEFAULT 0, -- NEW: For "auto_discount_amount" display discounts
       is_refund_item INTEGER DEFAULT 0,
 
->>>>>>> origin/Grocery_pch_api_integration
       FOREIGN KEY(${AppDBConst.orderIdForeignKey}) REFERENCES ${AppDBConst.orderTable}(${AppDBConst.orderServerId}) ON DELETE CASCADE
     )
     ''');
@@ -721,35 +663,12 @@ CREATE TABLE ${AppDBConst.orderTable} (
       ${AppDBConst.fastKeyTabItemCount} INTEGER NOT NULL,
       ${AppDBConst.fastKeyTabIndex} TEXT NOT NULL,
       ${AppDBConst.fastKeyTabSynced} INTEGER DEFAULT 0, -- 0 = false, 1 = true
-<<<<<<< HEAD
-=======
       
->>>>>>> origin/Grocery_pch_api_integration
       FOREIGN KEY(${AppDBConst.userIdForeignKey}) REFERENCES ${AppDBConst.userTable}(${AppDBConst.userId}) ON DELETE CASCADE
     )
     ''');
 
     // Build #1.0.11 : FastKey Product Items Table
-<<<<<<< HEAD
-    await db.execute('''
-    CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
-      ${AppDBConst.fastKeyItemId} INTEGER PRIMARY KEY AUTOINCREMENT,
-      ${AppDBConst.fastKeyIdForeignKey} INTEGER NOT NULL,
-      ${AppDBConst.fastKeyItemName} TEXT NOT NULL,
-      ${AppDBConst.fastKeyProductId} TEXT NOT NULL,
-      ${AppDBConst.fastKeySlNumber} TEXT NOT NULL,
-      ${AppDBConst.fastKeyItemImage} TEXT NOT NULL,
-      ${AppDBConst.fastKeyItemPrice} REAL NOT NULL,
-      ${AppDBConst.fastKeyItemSKU} TEXT NOT NULL,
-      ${AppDBConst.fastKeyItemMinAge} INTEGER,
-      ${AppDBConst.fastKeyItemIsVariant} INTEGER,
-      ${AppDBConst.fastKeyItemHasVariant} INTEGER,
-      ${AppDBConst.fastKeyItemVariantId} TEXT NOT NULL,
-      FOREIGN KEY(${AppDBConst.fastKeyIdForeignKey}) REFERENCES ${AppDBConst.fastKeyTable}(${AppDBConst.fastKeyId}) ON DELETE CASCADE
-    )
-    ''');
-
-=======
     // Build #1.0.11 : FastKey Product Items Table
     await db.execute('''
 CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
@@ -811,7 +730,6 @@ CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
   )
 ''');
 
->>>>>>> origin/Grocery_pch_api_integration
     /// Printer Table
     await db.execute('''
     CREATE TABLE ${AppDBConst.printerTable} (
@@ -842,15 +760,11 @@ CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
       ${AppDBConst.storePhone} TEXT NOT NULL,
       ${AppDBConst.storeInfo} TEXT NOT NULL,
       ${AppDBConst.licenseKey} TEXT NOT NULL,
-<<<<<<< HEAD
-      ${AppDBConst.licenseStatus} TEXT NOT NULL
-=======
       ${AppDBConst.licenseStatus} TEXT NOT NULL,
       ${AppDBConst.deviceDisplayName} TEXT,
       ${AppDBConst.deviceTableId} TEXT,
       ${AppDBConst.storeLogo} TEXT,
       ${AppDBConst.storeGstin} TEXT
->>>>>>> origin/Grocery_pch_api_integration
     )
   ''');
 
@@ -1028,11 +942,8 @@ CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
     CREATE TABLE ${AppDBConst.employeesTable} (
       ${AppDBConst.employeeId} TEXT PRIMARY KEY,
       ${AppDBConst.employeeDisplayName} TEXT NOT NULL,
-<<<<<<< HEAD
-=======
       ${AppDBConst.employeePinHash} TEXT,
       ${AppDBConst.employeeEmail} TEXT,
->>>>>>> origin/Grocery_pch_api_integration
       ${AppDBConst.assetId} INTEGER NOT NULL,
       FOREIGN KEY(${AppDBConst.assetId}) REFERENCES ${AppDBConst.assetTable}(${AppDBConst.assetId}) ON DELETE CASCADE
     )
@@ -1047,9 +958,6 @@ CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
       FOREIGN KEY(${AppDBConst.assetId}) REFERENCES ${AppDBConst.assetTable}(${AppDBConst.assetId}) ON DELETE CASCADE
     )
     ''');
-<<<<<<< HEAD
-
-=======
 // Shift Table
     await db.execute('''
   CREATE TABLE ${AppDBConst.shiftTable} (
@@ -1077,7 +985,6 @@ CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
       ON DELETE CASCADE
   )
 ''');
->>>>>>> origin/Grocery_pch_api_integration
     if (kDebugMode) {
       print("#### All tables created successfully!");
     }
@@ -1092,8 +999,6 @@ CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
       print("#### Database connection closed!");
     }
   }
-<<<<<<< HEAD
-=======
 
 
   Future<void> insertPurchasedItem(Map<String, dynamic> item) async {
@@ -1132,6 +1037,5 @@ CREATE TABLE ${AppDBConst.fastKeyItemsTable} (
     );
   }
 
->>>>>>> origin/Grocery_pch_api_integration
 }
 

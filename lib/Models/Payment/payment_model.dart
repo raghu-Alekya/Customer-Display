@@ -22,10 +22,7 @@ class PaymentRequestModel {  // Build #1.0.25 - added by naveen
     required this.serviceType,
     required this.datetime,
     required this.notes,
-<<<<<<< HEAD
-=======
 
->>>>>>> origin/Grocery_pch_api_integration
   });
 
   Map<String, dynamic> toJson() {
@@ -58,12 +55,9 @@ class PaymentResponseModel { // Build #1.0.175: Updated -> PaymentResponseModel 
   final String? orderStatus; // Optional for specific APIs
   final bool? voidStatus; // Optional for payment response
   final List<int>? voidedPayments; // Optional for void order
-<<<<<<< HEAD
-=======
   // ⭐ ADD THESE TWO
   final int? availableCoupons;
   final List<CouponModel>? coupons;
->>>>>>> origin/Grocery_pch_api_integration
 
   PaymentResponseModel({
     required this.message,
@@ -78,11 +72,8 @@ class PaymentResponseModel { // Build #1.0.175: Updated -> PaymentResponseModel 
     this.orderStatus,
     this.voidStatus,
     this.voidedPayments,
-<<<<<<< HEAD
-=======
     this.availableCoupons,
     this.coupons,
->>>>>>> origin/Grocery_pch_api_integration
   });
 
   factory PaymentResponseModel.fromJson(Map<String, dynamic> json) => PaymentResponseModel(
@@ -100,13 +91,10 @@ class PaymentResponseModel { // Build #1.0.175: Updated -> PaymentResponseModel 
     voidedPayments: json['voided_payments'] != null
         ? List<int>.from(json['voided_payments'])
         : null,
-<<<<<<< HEAD
-=======
     availableCoupons: json['available_coupons'],
     coupons: (json['coupons'] as List?)
         ?.map((e) => CouponModel.fromJson(e))
         .toList(),
->>>>>>> origin/Grocery_pch_api_integration
   );
 
   Map<String, dynamic> toJson() => {
@@ -122,11 +110,6 @@ class PaymentResponseModel { // Build #1.0.175: Updated -> PaymentResponseModel 
     if (orderStatus != null) 'order_status': orderStatus,
     if (voidStatus != null) 'void': voidStatus,
     if (voidedPayments != null) 'voided_payments': voidedPayments,
-<<<<<<< HEAD
-  };
-}
-
-=======
     if (availableCoupons != null)
       'available_coupons': availableCoupons,
     if (coupons != null)
@@ -185,7 +168,6 @@ class CouponModel {
 }
 
 
->>>>>>> origin/Grocery_pch_api_integration
 // models/payment/payment_detail_model.dart
 class PaymentDetailModel {
   final int id;

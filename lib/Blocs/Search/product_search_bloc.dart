@@ -53,11 +53,7 @@ class ProductBloc { // Build #1.0.13: Added Product Search Bloc
       List<ProductResponse> products = await _productRepository.fetchProducts(searchQuery: searchQuery);
       if (kDebugMode) {
         print("ProductBloc - Fetched ${products.length} products");
-<<<<<<< HEAD
-        print("First product: ${products.first.toJson()}");
-=======
         print("products: $products"); // Build #1.0.256: no need to print first product from response, if we get empty at that time getting issue!
->>>>>>> origin/Grocery_pch_api_integration
       }
       productSink.add(APIResponse.completed(products));
 
@@ -85,16 +81,6 @@ class ProductBloc { // Build #1.0.13: Added Product Search Bloc
 
     variationSink.add(APIResponse.loading("Loading variations..."));
     try {
-<<<<<<< HEAD
-      List<ProductVariation> variations = await _productRepository.fetchProductVariations(productId);
-
-      if (kDebugMode) {
-        print("ProductBloc - Fetched ${variations.length} variations for product $productId");
-        print("First variation: ${variations.first.toJson()}");
-      }
-      variationSink.add(APIResponse.completed(variations));
-
-=======
       List<ProductVariation> variations =
       await _productRepository.fetchProductVariations(productId);
 
@@ -103,7 +89,6 @@ class ProductBloc { // Build #1.0.13: Added Product Search Bloc
             "ProductBloc - Fetched ${variations.length} variations for product $productId");
       }
       variationSink.add(APIResponse.completed(variations));
->>>>>>> origin/Grocery_pch_api_integration
     } catch (e) {
       if (e.toString().contains('Unauthorised')) {
         variationSink.add(APIResponse.error("Unauthorised. Session is expired."));
@@ -118,10 +103,6 @@ class ProductBloc { // Build #1.0.13: Added Product Search Bloc
   }
 
   // Build #1.0.43: added this function for ProductBySku api call
-<<<<<<< HEAD
-  Future<void> fetchProductBySku(String sku) async {
-    if (_productBySkuController.isClosed) return;
-=======
   Future<String> fetchProductBySku(String sku) async {
     String logString = "";
     if (_productBySkuController.isClosed) {
@@ -131,7 +112,6 @@ class ProductBloc { // Build #1.0.13: Added Product Search Bloc
       }
       logString += "ProductBloc - Reinitialized _productBySkuController \n ";
     }
->>>>>>> origin/Grocery_pch_api_integration
 
     productBySkuSink.add(APIResponse.loading(TextConstants.loading));
     try {
@@ -140,15 +120,6 @@ class ProductBloc { // Build #1.0.13: Added Product Search Bloc
       if (products.isNotEmpty) {
         if (kDebugMode) {
           print("ProductBloc - Fetched ${products.length} products by SKU: $sku");
-<<<<<<< HEAD
-          print("First product: ${products.first.toJson()}");
-        }
-        productBySkuSink.add(APIResponse.completed(products));
-      } else {
-        productBySkuSink.add(APIResponse.error("No products found for SKU: $sku"));
-      }
-    } catch (e) {
-=======
           print("products: $products"); // Build #1.0.256
         }
         logString += "ProductBloc - Fetched ${products.length} products by SKU: $sku \n ";
@@ -160,18 +131,11 @@ class ProductBloc { // Build #1.0.13: Added Product Search Bloc
       }
       return logString;
     } catch (e,s) {
->>>>>>> origin/Grocery_pch_api_integration
       if (e.toString().contains('Unauthorised')) {
         productBySkuSink.add(APIResponse.error("Unauthorised. Session is expired."));
       }
       else if (e.toString().contains('SocketException')) {
         productBySkuSink.add(APIResponse.error("Network error. Please check your connection."));
-<<<<<<< HEAD
-      } else {
-        productBySkuSink.add(APIResponse.error("Failed to fetch product by SKU"));
-      }
-      if (kDebugMode) print("ProductBloc - Exception in fetchProductBySku: $e");
-=======
         logString += "ProductBloc - Network error. Please check your connection. \n ";
       } else {
         productBySkuSink.add(APIResponse.error("Failed to fetch product by SKU"));
@@ -180,7 +144,6 @@ class ProductBloc { // Build #1.0.13: Added Product Search Bloc
       if (kDebugMode) print("ProductBloc - Exception in fetchProductBySku: $e, *** Stack: $s ***");
       logString += "ProductBloc - Exception in fetchProductBySku: $e, *** Stack: $s *** \n ";
       return logString;
->>>>>>> origin/Grocery_pch_api_integration
     }
   }
 

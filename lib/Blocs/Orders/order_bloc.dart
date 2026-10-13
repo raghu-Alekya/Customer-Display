@@ -5,13 +5,8 @@ import 'package:flutter/foundation.dart';
 import '../../Constants/text.dart';
 import '../../Database/db_helper.dart';
 import '../../Database/order_panel_db_helper.dart';
-<<<<<<< HEAD
-import '../../Helper/CustomerDisplayHelper.dart';
-import '../../Helper/api_response.dart';
-=======
 import '../../Helper/api_response.dart';
 import '../../Helper/customerdisplayhelper.dart';
->>>>>>> origin/Grocery_pch_api_integration
 import '../../Models/Orders/apply_discount_model.dart';
 import '../../Models/Orders/get_orders_model.dart' as model;
 import '../../Models/Orders/orders_model.dart';
@@ -20,10 +15,7 @@ import '../../Repositories/Orders/order_repository.dart';
 
 class OrderBloc { // Build #1.0.25 - added by naveen
   final OrderRepository _orderRepository;
-<<<<<<< HEAD
-=======
   String lastApplyCouponError = "";
->>>>>>> origin/Grocery_pch_api_integration
 
   // Build #1.0.53 : updated code - Stream Controllers ---
   late  StreamController<APIResponse<CreateOrderResponseModel>> _createOrderController;
@@ -37,10 +29,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
   late  StreamController<APIResponse<model.OrderModel>> _removePayoutController;
   late StreamController<APIResponse<model.OrderModel>> _removeCouponController;
   late StreamController<APIResponse<TotalOrdersResponseModel>> _fetchTotalOrdersController;
-<<<<<<< HEAD
-=======
   late StreamController<APIResponse<model.OrderModel>> _addMerchantDiscountController; // Build #1.0.274
->>>>>>> origin/Grocery_pch_api_integration
 
   // Build #1.0.53 : updated code -  Constructor ---
   OrderBloc(this._orderRepository) {
@@ -55,10 +44,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
     _removePayoutController = StreamController<APIResponse<model.OrderModel>>.broadcast();
     _removeCouponController = StreamController<APIResponse<model.OrderModel>>.broadcast();
     _fetchTotalOrdersController = StreamController<APIResponse<TotalOrdersResponseModel>>.broadcast();
-<<<<<<< HEAD
-=======
     _addMerchantDiscountController = StreamController<APIResponse<model.OrderModel>>.broadcast(); // Build #1.0.274
->>>>>>> origin/Grocery_pch_api_integration
     if (kDebugMode) {
       print("OrderBloc Initialized with all stream controllers.");
     }
@@ -100,26 +86,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
   // Remove Payout
   StreamSink<APIResponse<model.OrderModel>> get removePayoutSink => _removePayoutController.sink;
   Stream<APIResponse<model.OrderModel>> get removePayoutStream => _removePayoutController.stream;
-<<<<<<< HEAD
-   // Remove Coupon
-  StreamSink<APIResponse<model.OrderModel>> get removeCouponSink => _removeCouponController.sink;
-  Stream<APIResponse<model.OrderModel>> get removeCouponStream => _removeCouponController.stream;
-   //
-  StreamSink<APIResponse<TotalOrdersResponseModel>> get fetchTotalOrdersSink => _fetchTotalOrdersController.sink;
-  Stream<APIResponse<TotalOrdersResponseModel>> get fetchTotalOrdersStream => _fetchTotalOrdersController.stream;
-
-  // 1. Create Order
-  Future<void> createOrder() async { //Build #1.0.128: Updated - metadata using from _orderRepository
-    final serverOrderId = OrderHelper().activeOrderId;
-    if (serverOrderId != null) {
-      await CustomerDisplayHelper.updateCustomerDisplay(serverOrderId);
-    }
-    if (_createOrderController.isClosed) return;
-
-    createOrderSink.add(APIResponse.loading(TextConstants.loading));
-    try {
-     // final request = CreateOrderRequestModel(metaData: metaData);
-=======
   // Remove Coupon
   StreamSink<APIResponse<model.OrderModel>> get removeCouponSink => _removeCouponController.sink;
   Stream<APIResponse<model.OrderModel>> get removeCouponStream => _removeCouponController.stream;
@@ -142,7 +108,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
     createOrderSink.add(APIResponse.loading(TextConstants.loading));
     try {
       // final request = CreateOrderRequestModel(metaData: metaData);
->>>>>>> origin/Grocery_pch_api_integration
       //Build #1.0.128: Updated - metadata using from _orderRepository
       final response = await _orderRepository.createOrder();
 
@@ -151,22 +116,12 @@ class OrderBloc { // Build #1.0.25 - added by naveen
         print("OrderBloc - Order Status: ${response.status}");
       }
 
-<<<<<<< HEAD
-=======
       logString += "OrderBloc - Order created with ID: ${response.id} \n ";
->>>>>>> origin/Grocery_pch_api_integration
       //Build #1.0.78: Save to DB after successful API response
       OrderHelper orderHelper = OrderHelper();
       //Build #1.0.78: Removed updateServerOrderIDInDB as it’s redundant with createOrder(serverOrderId: response.id)
       int orderId = await orderHelper.createOrder(serverOrderId: response.id);
       await orderHelper.setActiveOrder(orderId);
-<<<<<<< HEAD
-
-      createOrderSink.add(APIResponse.completed(response));
-    } catch (e) {
-      if (e.toString().contains('Unauthorised')) {
-        createOrderSink.add(APIResponse.error("Unauthorised. Session is expired."));
-=======
       logString += "OrderBloc - setActiveOrder: ${response.id} -- end of order creation -- \n ";
       createOrderSink.add(APIResponse.completed(response));
       return logString;
@@ -175,18 +130,13 @@ class OrderBloc { // Build #1.0.25 - added by naveen
         createOrderSink.add(APIResponse.error("Unauthorised. Session is expired."));
       } else if (isUpdateOrder == true){ //Build #1.0.249 : FIXED continues loader on product selection
         rethrow;
->>>>>>> origin/Grocery_pch_api_integration
       }
       else {
         createOrderSink.add(APIResponse.error(_extractErrorMessage(e))); //Build #1.0.84
       }
-<<<<<<< HEAD
-      if (kDebugMode) print("Exception in createOrder: $e");
-=======
       if (kDebugMode) print("Exception in createOrder: $e, *** Stack: $s ***");
       logString += "OrderBloc - Exception in createOrder: $e, *** Stack: $s *** \n";
       return logString;
->>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
@@ -203,8 +153,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
     }
   }
 
-<<<<<<< HEAD
-=======
   Future<Map<String, dynamic>?> syncSingleOfflineOrder(
       Map<String, dynamic> offlineOrder,
       ) async {
@@ -215,7 +163,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
     );
   }
 
->>>>>>> origin/Grocery_pch_api_integration
   // 2. Update Order Products
 
   ///Todo:
@@ -227,14 +174,9 @@ class OrderBloc { // Build #1.0.25 - added by naveen
   ///5. Save response in db for line_items
   ///6. stop loading
   ///7. Return
-<<<<<<< HEAD
-  Future<void> updateOrderProducts({required int? orderId, required int? dbOrderId, required List<OrderLineItem> lineItems, bool isEditQuantity = false}) async {
-    if (_updateOrderController.isClosed) return;
-=======
   Future<String> updateOrderProducts({required int? orderId, required int? dbOrderId, required List<OrderLineItem> lineItems, bool isEditQuantity = false}) async {
     String logString = " OrderBloc - updateOrderProducts \n";
     if (_updateOrderController.isClosed) return logString;
->>>>>>> origin/Grocery_pch_api_integration
 
     updateOrderSink.add(APIResponse.loading(TextConstants.loading));
     try {
@@ -266,15 +208,10 @@ class OrderBloc { // Build #1.0.25 - added by naveen
         if (kDebugMode) {
           print("#### updateOrderProducts orderId is $orderId");
         }
-<<<<<<< HEAD
-        // Call create new order if orderId is null
-        await createOrder();
-=======
         logString += " -- createOrder -- \n";
         // Call create new order if orderId is null
         logString += await createOrder(isUpdateOrder: true); //Build #1.0.249 : FIXED continues loader on product selection
         logString += " -- OrderBloc.updateOrderProducts - order created -- \n";
->>>>>>> origin/Grocery_pch_api_integration
       }
 
       final serverOrderId = OrderHelper().activeOrderId;
@@ -283,12 +220,8 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       }
 
       if(serverOrderId == null){
-<<<<<<< HEAD
-        return;
-=======
         updateOrderSink.add(APIResponse.error(TextConstants.orderNotFoundError));
         return logString;
->>>>>>> origin/Grocery_pch_api_integration
       }
 
       // var itemsInDB = await OrderHelper().getOrderItems(orderId);
@@ -319,21 +252,12 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             whereArgs: [serverOrderId, item.productId, ItemType.product.value],
           );
           if(existingItem.isEmpty) { // Build #1.0.187: Fixed - Updating Quantity of Custom Item Creates Duplicate Line Item
-<<<<<<< HEAD
-          existingItem = await db.query(
-            AppDBConst.purchasedItemsTable,
-            where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemType} = ?',
-            whereArgs: [serverOrderId, item.productId, ItemType.customProduct.value],
-          );
-         }
-=======
             existingItem = await db.query(
               AppDBConst.purchasedItemsTable,
               where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemProductId} = ? AND ${AppDBConst.itemType} = ?',
               whereArgs: [serverOrderId, item.productId, ItemType.customProduct.value],
             );
           }
->>>>>>> origin/Grocery_pch_api_integration
           if((existingItem.isNotEmpty && (existingItem.first[AppDBConst.itemVariationId] as int) > 0)){
             if (kDebugMode) {
               print(
@@ -365,11 +289,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
               print("OrderBloc - Existing item not found in order, isEditQuantity is $isEditQuantity, skipping update for item");
             }
             updateOrderSink.add(APIResponse.error("Cannot update quantity: Item not found in order."));
-<<<<<<< HEAD
-            return;
-=======
             return logString;
->>>>>>> origin/Grocery_pch_api_integration
           }
           itemsToAdd.add(OrderLineItem(
             productId: item.productId,
@@ -389,11 +309,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
 
       if(response == null){
         updateOrderSink.add(APIResponse.error("Response is empty after updating product to order $serverOrderId"));
-<<<<<<< HEAD
-        return;
-=======
         return logString;
->>>>>>> origin/Grocery_pch_api_integration
       }
 
       if (kDebugMode) {
@@ -404,11 +320,8 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       //Build 1.1.36: working on updating order items in db getting issue.....
       //Build #1.0.78: Update DB after successful API response
       OrderHelper orderHelper = OrderHelper();
-<<<<<<< HEAD
-=======
       double merchantDiscount = 0.0; // Build #1.0.278: Updating merchant discount data into order table
       var merchantDiscountIds = "";
->>>>>>> origin/Grocery_pch_api_integration
       // Clear existing items for this order
       await orderHelper.clearOrderItems(serverOrderId);
       //Build #1.0.78: Add updated items from the API response
@@ -418,50 +331,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             " totalTax:${double.tryParse(response.totalTax) ?? 0.0}");
         print("#### OrderBloc - updateOrderProducts -> couponLines count : ${response.couponLines.length}"); // Build #1.0.181: Debug print
       }
-<<<<<<< HEAD
-      await db.update(
-        AppDBConst.orderTable,
-        {
-          AppDBConst.orderTotal: double.tryParse(response.total) ?? 0.0,
-          AppDBConst.orderStatus: response.status,
-          AppDBConst.orderType: response.createdVia ?? 'in-store',
-          AppDBConst.orderDate: response.dateCreated,
-          AppDBConst.orderTime: response.dateCreated,
-          AppDBConst.orderPaymentMethod: response.paymentMethod,
-          AppDBConst.orderDiscount: double.tryParse(response.discountTotal) ?? 0.0, // Store discount
-          AppDBConst.orderTax: double.tryParse(response.totalTax) ?? 0.0, // Store tax
-          AppDBConst.orderShipping: double.tryParse(response.shippingTotal) ?? 0.0, // Store shipping
-          //Build #1.0.234: Saving Age Restricted value in order table
-          AppDBConst.orderAgeRestricted: response.metaData.firstWhere(
-                (meta) => meta.key == TextConstants.ageRestrictedKey,
-                orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
-               ).value.toString(),
-        },
-        where: '${AppDBConst.orderServerId} = ?',
-        whereArgs: [serverOrderId],
-      );
-
-      //DEBUG : query and print the updated data to verify
-      final updatedOrder = await db.query(
-        AppDBConst.orderTable,
-        where: '${AppDBConst.orderServerId} = ?',
-        whereArgs: [serverOrderId],
-      );
-
-      if (updatedOrder.isNotEmpty && kDebugMode) {
-        if (kDebugMode) {
-        print("#### OrderBloc - AFTER UPDATE - Order data for orderId $serverOrderId:");
-        print("Total: ${updatedOrder[0][AppDBConst.orderTotal]}");
-        print("Status: ${updatedOrder[0][AppDBConst.orderStatus]}");
-        print("Type: ${updatedOrder[0][AppDBConst.orderType]}");
-        print("Discount: ${updatedOrder[0][AppDBConst.orderDiscount]}");
-        print("Tax: ${updatedOrder[0][AppDBConst.orderTax]}");
-        print("Shipping: ${updatedOrder[0][AppDBConst.orderShipping]}");
-        print("========================================");
-      }
-     }
-=======
->>>>>>> origin/Grocery_pch_api_integration
       // LineItems
       for (var lineItem in response.lineItems) {
         final String variationName = lineItem.productVariationData?.metaData?.firstWhere((e) => e.key == "custom_name", orElse: () => model.MetaData(id: 0, key: "", value: "")).value ?? "";
@@ -497,9 +366,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
           print("#### Start adding lineItem ${lineItem.id}, orderId:$serverOrderId , ProductId:${lineItem.productId}, VariationId:${lineItem.variationId}");
           print("variationName $variationName, variationCount:$variationCount, combo:$combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
         }
-<<<<<<< HEAD
-        if ((lineItem.name == TextConstants.payout)) {  /// Build #1.0.205: payout is added as product so while updating order table check here as well
-=======
         if (lineItem.name == TextConstants.discountText) { // Build #1.0.278: Updating merchant discount data into order table  // Updated: Detect 'Discount' in line_items
           if (kDebugMode) {
             print("#### OrderBloc - Adding merchant discount item: id: ${lineItem.id}, total: ${lineItem.total}");
@@ -510,7 +376,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             print("#### TEST 0000  - $merchantDiscountIds");
           }
         }else if ((lineItem.name == TextConstants.payout)) {  /// Build #1.0.205: payout is added as product so while updating order table check here as well
->>>>>>> origin/Grocery_pch_api_integration
           if (kDebugMode) {
             print("#### OrderBloc - Adding payout item: id: ${response.lineItems!.last.id}, total: ${response.lineItems!.last.total}");
           }
@@ -524,11 +389,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             serverOrderId,
             type: ItemType.payout.value,
           );
-<<<<<<< HEAD
-        } else {
-=======
         } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
->>>>>>> origin/Grocery_pch_api_integration
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name,
@@ -555,15 +416,9 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       if (kDebugMode) {
         var itemsInDB = await OrderHelper().getOrderItems(serverOrderId);
         for(var item in itemsInDB){
-<<<<<<< HEAD
-            print("#### updateOrderProducts getOrderItems after adding : "
-                "dbOrderId-> $dbOrderId, orderId:$serverOrderId, orderHelper.activeOrderId!: ${orderHelper.activeOrderId!} "
-                "productId-> ${item[AppDBConst.itemProductId]}, variationId-> ${item[AppDBConst.itemVariationId]}, "
-=======
           print("#### updateOrderProducts getOrderItems after adding : "
               "dbOrderId-> $dbOrderId, orderId:$serverOrderId, orderHelper.activeOrderId!: ${orderHelper.activeOrderId!} "
               "productId-> ${item[AppDBConst.itemProductId]}, variationId-> ${item[AppDBConst.itemVariationId]}, "
->>>>>>> origin/Grocery_pch_api_integration
               "itemId-> ${item[AppDBConst.itemServerId]}");
         }
       }
@@ -601,11 +456,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
           type: ItemType.coupon.value,
         );
       }
-<<<<<<< HEAD
-      await CustomerDisplayHelper.updateCustomerDisplay(serverOrderId);
-
-      updateOrderSink.add(APIResponse.completed(response));
-=======
 
       // Build #1.0.278: Updating merchant discount data into order table
       // replaced placement from above to here , because we have to collect merchantDiscount, merchantDiscountIds then append into order table
@@ -656,7 +506,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
 
       updateOrderSink.add(APIResponse.completed(response));
       return logString;
->>>>>>> origin/Grocery_pch_api_integration
     } catch (e, s) {
       if (e.toString().contains('Unauthorised')) {
         updateOrderSink.add(APIResponse.error("Unauthorised. Session is expired."));
@@ -664,13 +513,9 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       else {
         updateOrderSink.add(APIResponse.error(_extractErrorMessage(e)));
         if (kDebugMode) print("Exception in updateOrderProducts: $e, DEBUG $s");
-<<<<<<< HEAD
-      }
-=======
         logString = "Exception in OrderBloc.updateOrderProducts: $e, *** DEBUG $s ***\n";
       }
       return logString;
->>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
@@ -697,11 +542,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       if (kDebugMode) {
         print("OrderBloc - fetchOrders calling syncOrdersFromApi with ${response.orders.length} orders");
       }
-<<<<<<< HEAD
-       // Build #1.0.219 -> FIXED ISSUE [SCRUM - 370] : Same Order ID displayed in fast keys, after successfully payment done with completed status.
-=======
       // Build #1.0.219 -> FIXED ISSUE [SCRUM - 370] : Same Order ID displayed in fast keys, after successfully payment done with completed status.
->>>>>>> origin/Grocery_pch_api_integration
       if(response.orders.isEmpty) {
         if (orderHelper.activeOrderId != null) {
           if (kDebugMode) {
@@ -725,20 +566,12 @@ class OrderBloc { // Build #1.0.25 - added by naveen
   }
 
   // Build #1.0.118: Added this function for Get Orders Total with count API call
-<<<<<<< HEAD
-  Future<void> fetchTotalOrdersCount({bool allStatuses = false, int pageNumber =1, int pageLimit = 10, String status = "", String orderType = "", String userId = "", String startDate = "", String endDate = ""}) async { //Build #1.0.134: Added Start date and end date parameters
-=======
   Future<void> fetchTotalOrdersCount({bool allStatuses = false, int pageNumber =1, int pageLimit = 10, String status = "", String orderType = "", String userId = "", String startDate = "", String endDate = "", required String search}) async { //Build #1.0.134: Added Start date and end date parameters
->>>>>>> origin/Grocery_pch_api_integration
     if (_fetchTotalOrdersController.isClosed) return;
 
     fetchTotalOrdersSink.add(APIResponse.loading(TextConstants.loading));
     try {
-<<<<<<< HEAD
-      final response = await _orderRepository.fetchTotalOrdersCount(allStatuses: allStatuses, pageNumber: pageNumber, pageLimit: pageLimit, status: status, orderType: orderType, userId: userId, startDate: startDate, endDate: endDate);
-=======
       final response = await _orderRepository.fetchTotalOrdersCount(allStatuses: allStatuses, pageNumber: pageNumber, pageLimit: pageLimit, status: status, orderType: orderType, userId: userId, startDate: startDate, endDate: endDate,  search: search,);
->>>>>>> origin/Grocery_pch_api_integration
 
       if (kDebugMode) {
         print("OrderBloc - Fetched ${response.ordersData.length} total orders, Total Count: ${response.orderTotalCount}");
@@ -752,12 +585,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
 
       // Convert List<OrderList> to List<get_orders.OrderModel>
       final orderModels = response.ordersData; //Build #1.0.134
-<<<<<<< HEAD
-      OrderHelper orderHelper = OrderHelper();
-      await orderHelper.syncOrdersFromApi(orderModels);
-      fetchTotalOrdersSink.add(APIResponse.completed(response));
-    } catch (e, s) {
-=======
       //  FIX: re-check isClosed after the await. If the screen that owns this
       // OrderBloc got disposed while fetchTotalOrdersCount() was awaiting (e.g.
       // an instant sidebar navigation), dispose() will have already closed this
@@ -771,7 +598,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
     } catch (e, s) {
       // ✅ FIX: same guard for the error path
       if (_fetchTotalOrdersController.isClosed) return;
->>>>>>> origin/Grocery_pch_api_integration
       if (e.toString().contains('Unauthorised')) {
         fetchTotalOrdersSink.add(APIResponse.error("Unauthorised. Session is expired."));
       }else {
@@ -780,11 +606,8 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       }
     }
   }
-<<<<<<< HEAD
-=======
 
 
->>>>>>> origin/Grocery_pch_api_integration
   ///"Used only for test fetching single order API"
   Future<void> fetchOrder({required String orderId}) async { //Build #1.0.54: updated
     if (_fetchOrdersController.isClosed) return;
@@ -855,13 +678,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
     }
   }
 
-<<<<<<< HEAD
-  // 3. Apply Coupon to Order
-  Future<void> applyCouponToOrder({required int orderId, required String couponCode}) async {
-    if (_applyCouponController.isClosed) return;
-
-    applyCouponSink.add(APIResponse.loading(TextConstants.loading));
-=======
   Future<dynamic> addLoyaltyPoints({
     required int orderId,
     required String contact,
@@ -882,59 +698,16 @@ class OrderBloc { // Build #1.0.25 - added by naveen
 
     applyCouponSink.add(APIResponse.loading(TextConstants.loading));
 
->>>>>>> origin/Grocery_pch_api_integration
     try {
       final request = ApplyCouponRequestModel(
         couponLines: [CouponLine(code: couponCode)],
       );
-<<<<<<< HEAD
-=======
 
->>>>>>> origin/Grocery_pch_api_integration
       final response = await _orderRepository.applyCouponToOrder(
         orderId: orderId,
         request: request,
       );
 
-<<<<<<< HEAD
-      // Build #1.0.226: Fixed Issue -> Unable to remove Payout , after coupon addition
-      // Update coupons response with line items as well
-      // Clear existing items for this order
-      OrderHelper orderHelper = OrderHelper();
-      await orderHelper.clearOrderItems(orderId);
-
-      // Debug print: Clearing order items
-      if (kDebugMode) {
-        print("#### OrderBloc - applyCouponToOrder: Cleared existing items for orderId $orderId");
-      }
-      // Build #1.0.92: Update order table and handle coupon lines
-      final db = await DBHelper.instance.database;
-      if (kDebugMode) {
-        print("#### OrderBloc - Updating order table for orderId $orderId, total: ${double.tryParse(response.total) ?? 0.0}, discount: ${double.tryParse(response.discountTotal) ?? 0.0}");
-      }
-      await db.update(
-        AppDBConst.orderTable,
-        {
-          AppDBConst.orderTotal: double.tryParse(response.total) ?? 0.0,
-          AppDBConst.orderStatus: response.status,
-          AppDBConst.orderType: response.createdVia ?? 'in-store',
-          AppDBConst.orderDate: response.dateCreated,
-          AppDBConst.orderTime: response.dateCreated,
-          AppDBConst.orderPaymentMethod: response.paymentMethod,
-          AppDBConst.orderDiscount: double.tryParse(response.discountTotal) ?? 0.0,
-          AppDBConst.orderTax: double.tryParse(response.totalTax) ?? 0.0,
-          AppDBConst.orderShipping: double.tryParse(response.shippingTotal) ?? 0.0,
-          AppDBConst.orderAgeRestricted: response.metaData.firstWhere( //Build #1.0.234: Saving Age Restricted value in order table
-                (meta) => meta.key == TextConstants.ageRestrictedKey,
-            orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
-          ).value.toString(),
-        },
-        where: '${AppDBConst.orderServerId} = ?',
-        whereArgs: [orderId],
-      );
-
-      // Build #1.0.92: Clear existing coupon items and add new ones from response
-=======
       OrderHelper orderHelper = OrderHelper();
       await orderHelper.clearOrderItems(orderId);
 
@@ -943,48 +716,12 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       double merchantDiscount = 0.0;
       var merchantDiscountIds = "";
 
->>>>>>> origin/Grocery_pch_api_integration
       await db.delete(
         AppDBConst.purchasedItemsTable,
         where: '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
         whereArgs: [orderId, ItemType.coupon.value],
       );
 
-<<<<<<< HEAD
-      // Build #1.0.226: Added updated line items from the API response
-      for (var lineItem in response.lineItems) {
-        final String variationName = lineItem.productVariationData?.metaData?.firstWhere(
-              (e) => e.key == "custom_name",
-          orElse: () => model.MetaData(id: 0, key: "", value: ""),
-        ).value ?? "";
-        final int variationCount = lineItem.productData.variations?.length ?? 0;
-        final String combo = lineItem.metaData.firstWhere(
-              (e) => e.value.contains('Combo'),
-          orElse: () => model.MetaData(id: 0, key: "", value: ""),
-        ).value.split(' ').first ?? "";
-        final bool hasVariations = lineItem.productData.variations != null && lineItem.productData.variations!.isNotEmpty;
-        final double salesPrice = hasVariations
-            ? double.tryParse(lineItem.productVariationData?.salePrice?.isNotEmpty == true ? lineItem.productVariationData!.salePrice! : "0.0") ?? 0.0
-            : double.tryParse(lineItem.productData.salePrice?.isNotEmpty == true ? lineItem.productData.salePrice! : "0.0") ?? 0.0;
-        final double regularPrice = hasVariations
-            ? double.tryParse(lineItem.productVariationData?.regularPrice?.isNotEmpty == true ? lineItem.productVariationData!.regularPrice! : "0.0") ?? 0.0
-            : double.tryParse(lineItem.productData.regularPrice?.isNotEmpty == true ? lineItem.productData.regularPrice! : "0.0") ?? 0.0;
-        final double unitPrice = hasVariations
-            ? double.tryParse(lineItem.productVariationData?.price?.isNotEmpty == true ? lineItem.productVariationData!.price! : "0.0") ?? 0.0
-            : double.tryParse(lineItem.productData.price?.isNotEmpty == true ? lineItem.productData.price! : "0.0") ?? 0.0;
-        final double itemPrice = double.tryParse(lineItem.subtotal.isNotEmpty == true ? lineItem.subtotal : '0.0') ?? 0.0;
-        bool isCustomItem = lineItem.productData.tags.any((tag) => tag.name == TextConstants.customItem);
-
-        if (kDebugMode) {
-          print("#### OrderBloc - applyCouponToOrder: Adding lineItem ${lineItem.id}, orderId: $orderId, ProductId: ${lineItem.productId}, VariationId: ${lineItem.variationId}");
-          print("#### OrderBloc - applyCouponToOrder: variationName $variationName, variationCount: $variationCount, combo: $combo, salesPrice: $salesPrice, regularPrice: $regularPrice, unitPrice: $unitPrice");
-        }
-
-        if ((lineItem.name == TextConstants.payout)) {  /// Build #1.0.205: payout is added as product so while updating order table check here as well
-          if (kDebugMode) {
-            print("#### OrderBloc - Adding payout item: id: ${response.lineItems!.last.id}, total: ${response.lineItems!.last.total}");
-          }
-=======
       for (var lineItem in response.lineItems) {
         final String variationName = lineItem.productVariationData?.metaData
             ?.firstWhere((e) => e.key == "custom_name",
@@ -1046,7 +783,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
               ? "${lineItem.id}"
               : "$merchantDiscountIds,${lineItem.id}";
         } else if (lineItem.name == TextConstants.payout) {
->>>>>>> origin/Grocery_pch_api_integration
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name ?? '',
@@ -1068,13 +804,9 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             productId: lineItem.productId,
             variationId: lineItem.variationId,
-<<<<<<< HEAD
-            type: isCustomItem ? ItemType.customProduct.value : ItemType.product.value,
-=======
             type: isCustomItem
                 ? ItemType.customProduct.value
                 : ItemType.product.value,
->>>>>>> origin/Grocery_pch_api_integration
             variationName: variationName,
             variationCount: variationCount,
             combo: combo,
@@ -1086,12 +818,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       }
 
       for (var couponLine in response.couponLines) {
-<<<<<<< HEAD
-        if (kDebugMode) {
-          print("#### OrderBloc - Adding coupon line: id: ${couponLine.id}, code: ${couponLine.code}, amount: ${couponLine.nominalAmount}");
-        }
-=======
->>>>>>> origin/Grocery_pch_api_integration
         await orderHelper.addItemToOrder(
           couponLine.id,
           couponLine.code ?? '',
@@ -1103,25 +829,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
           type: ItemType.coupon.value,
         );
       }
-<<<<<<< HEAD
-      await CustomerDisplayHelper.updateCustomerDisplay(orderId);
-
-      if (kDebugMode) {
-        print("OrderBloc - Coupon applied to order ID: ${response.id}");
-        print("OrderBloc - New total: ${response.total}");
-        print("OrderBloc - Order Status: ${response.status}");
-        print("OrderBloc - Coupon lines count: ${response.couponLines.length}");
-      }
-      applyCouponSink.add(APIResponse.completed(response));
-    } catch (e) {
-      if (e.toString().contains('Unauthorised')) {
-        applyCouponSink.add(APIResponse.error("Unauthorised. Session is expired."));
-      }
-      else {
-        applyCouponSink.add(APIResponse.error(_extractErrorMessage(e)));
-      }
-      if (kDebugMode) print("Exception in applyCouponToOrder: $e");
-=======
 
       await db.update(
         AppDBConst.orderTable,
@@ -1159,7 +866,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
 
       applyCouponSink.add(APIResponse.error(errorMessage));
       return null;
->>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
@@ -1192,11 +898,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
   }
   // 5. Delete Order Item
   /// Build #1.0.192: Fixed -> After Deleting Item/Payout/Coupon/Discount , update response to db and update UI
-<<<<<<< HEAD
-  Future<void> deleteOrderItem({required int orderId, required List<OrderLineItem> lineItems, required int dbItemId}) async {
-=======
   Future<void> deleteOrderItem({required int orderId, required List<OrderLineItem> lineItems, int? dbItemId}) async {
->>>>>>> origin/Grocery_pch_api_integration
     if (_deleteOrderItemController.isClosed) return;
 
     deleteOrderItemSink.add(APIResponse.loading(TextConstants.loading));
@@ -1225,14 +927,9 @@ class OrderBloc { // Build #1.0.25 - added by naveen
 
       // Build #1.0.78: Delete specific item from DB after successful API response
       OrderHelper orderHelper = OrderHelper();
-<<<<<<< HEAD
-      await orderHelper.deleteItem(dbItemId);
-
-=======
       if((dbItemId != null) || (dbItemId != 0)) { // Build #1.0.274 : delete only product items not for merchant discount
         await orderHelper.deleteItem(dbItemId ?? 0);
       }
->>>>>>> origin/Grocery_pch_api_integration
       // Clear existing items for this order
       await orderHelper.clearOrderItems(orderId);
 
@@ -1245,15 +942,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       final db = await DBHelper.instance.database;
       double merchantDiscount = 0.0;
       String merchantDiscountIds = "";
-<<<<<<< HEAD
-      if (response.feeLines != null && response.feeLines!.isNotEmpty) {
-        for (var feeLine in response.feeLines!) {
-          if (feeLine.name == TextConstants.discountText) {
-            merchantDiscount += double.tryParse(feeLine.total ?? '0.0')?.abs() ?? 0.0;
-            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${feeLine.id}" : "$merchantDiscountIds,${feeLine.id}";
-            if (kDebugMode) {
-              print("#### OrderBloc - deleteOrderItem: Adding to merchantDiscount: ${feeLine.total}, new total: $merchantDiscount");
-=======
       if (response.lineItems.isNotEmpty) {
         for (var lineItem in response.lineItems) { // Build #1.0.274 : updated feelines to line items
           if (lineItem.name == TextConstants.discountText) {
@@ -1261,7 +949,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
             if (kDebugMode) {
               print("#### OrderBloc - deleteOrderItem: Adding to merchantDiscount: ${lineItem.total}, new total: $merchantDiscount");
->>>>>>> origin/Grocery_pch_api_integration
             }
           }
         }
@@ -1338,11 +1025,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             type: ItemType.payout.value,
           );
-<<<<<<< HEAD
-        } else {
-=======
         } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
->>>>>>> origin/Grocery_pch_api_integration
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name,
@@ -1409,10 +1092,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
         }
       }
       await CustomerDisplayHelper.updateCustomerDisplay(orderId);
-<<<<<<< HEAD
-=======
 
->>>>>>> origin/Grocery_pch_api_integration
       deleteOrderItemSink.add(APIResponse.completed(response));
     } catch (e) {
       if (e.toString().contains('Unauthorised')) {
@@ -1454,8 +1134,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
     }
   }
 
-<<<<<<< HEAD
-=======
   // Build #1.0.274 : Added API call
   // New function for add merchant discount (similar to addPayoutAsProduct)
   Future<void> addMerchantDiscount({required int orderId, required double amount}) async {
@@ -1623,7 +1301,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
     }
   }
 
->>>>>>> origin/Grocery_pch_api_integration
   // Build #1.0.53 : Add Payout to Order
   @Deprecated("This API is deprecated for payout, please use 'addPayoutAsProduct'. Use it only for adding Discount to order with isPauout = false.")
   Future<void> addPayout({required int orderId, required int dbOrderId, required double amount, required bool isPayOut}) async {
@@ -1665,16 +1342,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       final db = await DBHelper.instance.database;
       double merchantDiscount = 0.0;
       var merchantDiscountIds = "";
-<<<<<<< HEAD
-      if (response.feeLines!.isNotEmpty) {
-        for (var feeLine in response.feeLines!) {
-          if (feeLine.name == TextConstants.discountText) {
-            if (kDebugMode) {
-              print("#### TEST 2121");
-            }
-            merchantDiscount += double.parse(feeLine.total ?? '0.0').abs();
-            merchantDiscountIds = "$merchantDiscountIds,${feeLine.id}";
-=======
       if (response.lineItems.isNotEmpty) {
         for (var lineItem in response.lineItems) { // Build #1.0.274 : updated fee lines to line items
           if (lineItem.name == TextConstants.discountText) {
@@ -1683,7 +1350,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             }
             merchantDiscount += double.parse(lineItem.total ?? '0.0').abs();
             merchantDiscountIds = "$merchantDiscountIds,${lineItem.id}";
->>>>>>> origin/Grocery_pch_api_integration
           }
           /// NO NEED TO CHECK PAYOUT CODE IN FEE LINE
           // if (isPayOut && (feeLine.name == TextConstants.payout)) {  /// Build #1.0.138: check with 'AND' condition to check correctly , otherwise some times discount also adding into orderPanel as item issue
@@ -1774,11 +1440,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             type: ItemType.payout.value,
           );
-<<<<<<< HEAD
-        } else {
-=======
         } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
->>>>>>> origin/Grocery_pch_api_integration
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name,
@@ -1828,90 +1490,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       if (kDebugMode) print("Exception in addPayout: $e, Stack: $s");
     }
   }
-<<<<<<< HEAD
-
-  // Build #1.0.198 : Add Payout as product to Order
-  Future<void> addPayoutAsProduct({required int orderId, required int dbOrderId, required double amount, required bool isPayOut}) async {
-    if (_addPayoutController.isClosed) return;
-
-    addPayoutSink.add(APIResponse.loading(TextConstants.loading));
-    try {
-      final AddPayoutAsProductRequestModel request = AddPayoutAsProductRequestModel(
-        orderId: orderId,
-        amount: -amount,
-      );
-      final response = await _orderRepository.addPayoutAsProduct(orderId: orderId, request: request);
-
-      if (kDebugMode) {
-        print("OrderBloc - Payout added to order ID: ${response.id}");
-        print("OrderBloc - New total: ${response.total}");
-        print("OrderBloc - Line Items count: ${response.lineItems?.length ?? 0}");
-      }
-
-      // Build #1.0.92: Added payout/discount to DB after successful API response
-      OrderHelper orderHelper = OrderHelper();
-      final db = await DBHelper.instance.database;
-      double merchantDiscount = 0.0;
-      var merchantDiscountIds = "";
-      if (response.lineItems!.isNotEmpty) {
-        for (var lineItem in response.lineItems!) {
-          if (isPayOut && (lineItem.name == TextConstants.payout)) {  /// Build #1.0.138: check with 'AND' condition to check correctly , otherwise some times discount also adding into orderPanel as item issue
-            if (kDebugMode) {
-              print("#### OrderBloc - Adding payout item: id: ${response.lineItems!.last.id}, total: ${response.lineItems!.last.total}");
-            }
-            await orderHelper.addItemToOrder(
-              lineItem.id,
-              lineItem.name ?? '',
-              'assets/svg/payout.svg',
-              double.parse(lineItem.total ?? '0.0'),
-              1,
-              '',
-              orderId,
-              type: ItemType.payout.value,
-            );
-          }
-        }
-        if (kDebugMode) {
-          print("#### OrderBloc - addPayout Setting merchantDiscount to $merchantDiscount AND discountsIds to $merchantDiscountIds for orderId $orderId");
-        }
-      }
-      // Build #1.0.92
-      await db.update(
-        AppDBConst.orderTable,
-        {
-          AppDBConst.orderTotal: double.tryParse(response.total) ?? 0.0,
-          AppDBConst.orderStatus: response.status,
-          AppDBConst.orderType: response.createdVia ?? 'in-store',
-          AppDBConst.orderDate: response.dateCreated,
-          AppDBConst.orderTime: response.dateCreated,
-          AppDBConst.orderPaymentMethod: response.paymentMethod,
-          AppDBConst.orderDiscount: double.tryParse(response.discountTotal) ?? 0.0,
-          AppDBConst.orderTax: double.tryParse(response.totalTax) ?? 0.0,
-          AppDBConst.orderShipping: double.tryParse(response.shippingTotal) ?? 0.0,
-          AppDBConst.orderAgeRestricted: response.metaData.firstWhere( //Build #1.0.234: Saving Age Restricted value in order table
-                (meta) => meta.key == TextConstants.ageRestrictedKey,
-            orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
-          ).value.toString(),
-          ///In this API update we do not need to add merchant discount update as Payout is coming from line item instead of fee lines
-          ///So comment below line, as they will remove merchant discount otherwise from UI
-          // AppDBConst.merchantDiscount: merchantDiscount,
-          // AppDBConst.merchantDiscountIds: merchantDiscountIds,
-        },
-        where: '${AppDBConst.orderServerId} = ?',
-        whereArgs: [orderId],
-      );
-      await CustomerDisplayHelper.updateCustomerDisplay(orderId);
-
-      addPayoutSink.add(APIResponse.completed(response));
-    } catch (e, s) {
-      if (e.toString().contains('Unauthorised')) {
-        addPayoutSink.add(APIResponse.error("Unauthorised. Session is expired."));
-      }
-      else {
-        addPayoutSink.add(APIResponse.error(_extractErrorMessage(e)));
-      }
-      if (kDebugMode) print("Exception in addPayout: $e, Stack: $s");
-=======
   Future<void> addPayoutAsProduct({
     required int orderId,
     required double amount,
@@ -1952,7 +1530,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       print("❌ [Bloc] Failed to add payout offline: $e");
       print(s);
       addPayoutSink.add(APIResponse.error("Failed to add payout offline: $e"));
->>>>>>> origin/Grocery_pch_api_integration
     }
   }
 
@@ -1991,15 +1568,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       // Calculate merchant discount from remaining fee lines
       double merchantDiscount = 0.0;
       String merchantDiscountIds = "";
-<<<<<<< HEAD
-      if (response.feeLines != null && response.feeLines!.isNotEmpty) {
-        for (var feeLine in response.feeLines!) {
-          if (feeLine.name == TextConstants.discountText) {
-            merchantDiscount += double.tryParse(feeLine.total ?? '0.0')?.abs() ?? 0.0;
-            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${feeLine.id}" : "$merchantDiscountIds,${feeLine.id}";
-            if (kDebugMode) {
-              print("#### OrderBloc - removeFeeLine: Adding to merchantDiscount: ${feeLine.total}, new total: $merchantDiscount");
-=======
       if (response.lineItems.isNotEmpty) {
         for (var lineItem in response.lineItems) { // Build #1.0.274 : updated
           if (lineItem.name == TextConstants.discountText) {
@@ -2007,7 +1575,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
             if (kDebugMode) {
               print("#### OrderBloc - removeFeeLine: Adding to merchantDiscount: ${lineItem.total}, new total: $merchantDiscount");
->>>>>>> origin/Grocery_pch_api_integration
             }
           }
         }
@@ -2099,27 +1666,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             type: ItemType.payout.value,
           );
-<<<<<<< HEAD
-        } else {
-        await orderHelper.addItemToOrder(
-          lineItem.id,
-          lineItem.name,
-          lineItem.image.src ?? '',
-          itemPrice,
-          lineItem.quantity,
-          lineItem.sku ?? '',
-          orderId,
-          productId: lineItem.productId,
-          variationId: lineItem.variationId,
-          type: isCustomItem ? ItemType.customProduct.value : ItemType.product.value,
-          variationName: variationName,
-          variationCount: variationCount,
-          combo: combo,
-          salesPrice: salesPrice,
-          regularPrice: regularPrice,
-          unitPrice: unitPrice,
-        );
-=======
         } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
           await orderHelper.addItemToOrder(
             lineItem.id,
@@ -2139,7 +1685,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             regularPrice: regularPrice,
             unitPrice: unitPrice,
           );
->>>>>>> origin/Grocery_pch_api_integration
         }
       }
 
@@ -2237,15 +1782,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       // Calculate merchant discount from remaining fee lines
       double merchantDiscount = 0.0;
       String merchantDiscountIds = "";
-<<<<<<< HEAD
-      if (response.feeLines != null && response.feeLines!.isNotEmpty) {
-        for (var feeLine in response.feeLines!) {
-          if (feeLine.name == TextConstants.discountText) {
-            merchantDiscount += double.tryParse(feeLine.total ?? '0.0')?.abs() ?? 0.0;
-            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${feeLine.id}" : "$merchantDiscountIds,${feeLine.id}";
-            if (kDebugMode) {
-              print("#### OrderBloc - removeFeeLines: Adding to merchantDiscount: ${feeLine.total}, new total: $merchantDiscount");
-=======
       if (response.lineItems.isNotEmpty) {
         for (var lineItem in response.lineItems) { // Build #1.0.274 : updated
           if (lineItem.name == TextConstants.discountText) {
@@ -2253,7 +1789,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
             if (kDebugMode) {
               print("#### OrderBloc - removeFeeLines: Adding to merchantDiscount: ${lineItem.total}, new total: $merchantDiscount");
->>>>>>> origin/Grocery_pch_api_integration
             }
           }
         }
@@ -2347,11 +1882,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             type: ItemType.payout.value,
           );
-<<<<<<< HEAD
-        } else {
-=======
         } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
->>>>>>> origin/Grocery_pch_api_integration
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name,
@@ -2462,15 +1993,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
       // Calculate merchant discount from remaining fee lines
       double merchantDiscount = 0.0;
       String merchantDiscountIds = "";
-<<<<<<< HEAD
-      if (response.feeLines != null && response.feeLines!.isNotEmpty) {
-        for (var feeLine in response.feeLines!) {
-          if (feeLine.name == TextConstants.discountText) {
-            merchantDiscount += double.tryParse(feeLine.total ?? '0.0')?.abs() ?? 0.0;
-            merchantDiscountIds = merchantDiscountIds.isEmpty ? "${feeLine.id}" : "$merchantDiscountIds,${feeLine.id}";
-            if (kDebugMode) {
-              print("#### OrderBloc - removeCoupon: Adding to merchantDiscount: ${feeLine.total}, new total: $merchantDiscount");
-=======
       if (response.lineItems.isNotEmpty) {
         for (var lineItem in response.lineItems) { // Build #1.0.274 : updated
           if (lineItem.name == TextConstants.discountText) {
@@ -2478,7 +2000,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             merchantDiscountIds = merchantDiscountIds.isEmpty ? "${lineItem.id}" : "$merchantDiscountIds,${lineItem.id}";
             if (kDebugMode) {
               print("#### OrderBloc - removeCoupon: Adding to merchantDiscount: ${lineItem.total}, new total: $merchantDiscount");
->>>>>>> origin/Grocery_pch_api_integration
             }
           }
         }
@@ -2570,11 +2091,7 @@ class OrderBloc { // Build #1.0.25 - added by naveen
             orderId,
             type: ItemType.payout.value,
           );
-<<<<<<< HEAD
-        } else {
-=======
         } else if(lineItem.name != TextConstants.discountText) { // Build #1.0.274 : skip to adding merchant discount to order , no need like product
->>>>>>> origin/Grocery_pch_api_integration
           await orderHelper.addItemToOrder(
             lineItem.id,
             lineItem.name,
@@ -2639,11 +2156,6 @@ class OrderBloc { // Build #1.0.25 - added by naveen
           print("#### OrderBloc - removeCoupon: Final items in DB - orderId: $orderId, productId: ${item[AppDBConst.itemProductId]}, variationId: ${item[AppDBConst.itemVariationId]}, itemId: ${item[AppDBConst.itemServerId]}");
         }
       }
-<<<<<<< HEAD
-      await CustomerDisplayHelper.updateCustomerDisplay(orderId);
-
-=======
->>>>>>> origin/Grocery_pch_api_integration
       removeCouponSink.add(APIResponse.completed(response));
     } catch (e) {
       if (e.toString().contains('Unauthorised')) {

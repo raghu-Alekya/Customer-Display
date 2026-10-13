@@ -1,11 +1,7 @@
 import 'dart:convert';
 
-<<<<<<< HEAD
-class ShiftRequest { // Build #1.0.70 - Added by Naveen
-=======
 class ShiftRequest {
   // Build #1.0.70 - Added by Naveen
->>>>>>> origin/Grocery_pch_api_integration
   final int? shiftId; // Optional for create shift
   final String? status; // Optional: open, closed
   final List<Denomination> drawerDenominations;
@@ -28,12 +24,8 @@ class ShiftRequest {
     final json = {
       if (shiftId != null) 'shift_id': shiftId,
       if (status != null) 'status': status,
-<<<<<<< HEAD
-      'drawer_denominations': drawerDenominations.map((e) => e.toJson()).toList(),
-=======
       'drawer_denominations':
       drawerDenominations.map((e) => e.toJson()).toList(),
->>>>>>> origin/Grocery_pch_api_integration
       'drawer_total_amount': drawerTotalAmount.toString(),
       'tube_denominations': tubeDenominations.map((e) => e.toJson()).toList(),
       'tube_total_amount': tubeTotalAmount.toString(),
@@ -103,23 +95,15 @@ class TubeDenomination {
 
 class ShiftResponse {
   final int shiftId;
-<<<<<<< HEAD
-  final String userName;
-  final num totalAmount;  //Build #1.0.74
-=======
   final String? externalShiftId;
   final String userName;
   final num totalAmount; //Build #1.0.74
->>>>>>> origin/Grocery_pch_api_integration
   final num overShort;
   final String status;
 
   ShiftResponse({
     required this.shiftId,
-<<<<<<< HEAD
-=======
     this.externalShiftId,
->>>>>>> origin/Grocery_pch_api_integration
     required this.userName,
     required this.totalAmount,
     required this.overShort,
@@ -135,8 +119,4 @@ class ShiftResponse {
       status: json['status'] as String,
     );
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/Grocery_pch_api_integration

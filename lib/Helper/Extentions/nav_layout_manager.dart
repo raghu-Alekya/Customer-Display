@@ -2,10 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../Constants/text.dart';
 import '../../Database/db_helper.dart';
-<<<<<<< HEAD
-=======
 import '../../Database/order_panel_db_helper.dart';
->>>>>>> origin/Grocery_pch_api_integration
 import '../../Database/user_db_helper.dart';
 import '../../Preferences/pinaka_preferences.dart';
 
@@ -75,12 +72,9 @@ mixin LayoutSelectionMixin<T extends StatefulWidget> on State<T> { // Build #1.0
       print("#### LayoutSelectionMixin: Layout changed to: ${PinakaPreferences.layoutSelectionNotifier.value}");
     }
     _updateLayoutFromPreference(PinakaPreferences.layoutSelectionNotifier.value, true);
-<<<<<<< HEAD
-=======
     // Force order panel to refresh when layout changes (fixes stale orders on navbar toggle)
     OrderHelper.isOrderPanelLoaded = false;
     OrderHelper.notifyOrderPanelToRefresh();
->>>>>>> origin/Grocery_pch_api_integration
   }
 
   void _updateLayoutFromPreference(String savedLayout, bool shouldSetState) {
@@ -100,13 +94,10 @@ mixin LayoutSelectionMixin<T extends StatefulWidget> on State<T> { // Build #1.0
         newSidebarPosition = SidebarPosition.bottom;
         newOrderPanelPosition = OrderPanelPosition.left;
         break;
-<<<<<<< HEAD
-=======
       case SharedPreferenceTextConstants.navBottomOrderRight:
         newSidebarPosition = SidebarPosition.bottom;
         newOrderPanelPosition = OrderPanelPosition.right;
         break;
->>>>>>> origin/Grocery_pch_api_integration
       default:
         return;
     }
