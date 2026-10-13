@@ -23,9 +23,7 @@ class AttendanceEmployee {
       name: fullName.isNotEmpty
           ? fullName
           : (json['name'] ?? json['username'] ?? 'Employee').toString(),
-      isRegistered: json['pinSet'] == true ||
-          json['loginPin'] != null ||
-          json['isRegistered'] == true,
+      isRegistered: json['isRegistered'] != false,
       loginPin: json['loginPin']?.toString(),
       roleName: json['roleName']?.toString() ?? 'Staff',
     );
