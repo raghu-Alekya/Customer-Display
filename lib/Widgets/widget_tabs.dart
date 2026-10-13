@@ -29,6 +29,10 @@ import '../Models/Assets/asset_model.dart';
 import '../Models/Orders/orders_model.dart';
 import '../Models/Search/product_custom_item_model.dart' as model;
 import '../Repositories/Assets/asset_repository.dart';
+<<<<<<< HEAD
+=======
+import '../Repositories/Auth/AuthIdsStore.dart';
+>>>>>>> ab702b514c32bed018e70015da3953d0b8db00ea
 import '../Repositories/Category/category_repository.dart';
 import '../Repositories/Orders/order_repository.dart';
 import '../Repositories/Search/product_search_repository.dart';
@@ -635,46 +639,114 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 //     }
 //   }
 
-  // ==================== FETCH CATEGORIES WITH TAX ====================
-  // Uses the same working CategoryRepository / store-categories API that the
-  // Categories tab uses, instead of the legacy pinaka-pos endpoint which is
-  // not available on the connector API and caused empty category dropdowns.
+  // ==================== FETCH CATEGORIES WITH TAX (Custom Item only) ====================
+  // Uses catalog API: GET {safeApiBaseUrl}/pos/auth/catalog/categories
+  // Only for Custom Item category dropdown — other screens keep CategoryRepository.
 
   Future<void> _fetchCategoriesWithTax() async {
     await _loadCategoriesFromCache();
 
     try {
-      final repo = CategoryRepository();
-      // parent: 0 → top-level store categories (same as Categories screen)
-      final response = await repo.getCategories(parent: 0);
-      final allCategories = response.categories;
+      final token = await _getTokenFromDb();
+      final merchantId = (await AuthIdsStore.getMerchantId()).trim();
+      final storeId = (await AuthIdsStore.getStoreId()).trim();
+
+      final uri = Uri.parse(
+          '${UrlHelper.safeApiBaseUrl}/pos/auth/catalog/categories');
+
+      final headers = <String, String>{
+        'Accept': 'application/json',
+        if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+        if (merchantId.isNotEmpty) 'x-merchant-id': merchantId,
+        if (storeId.isNotEmpty) 'x-store-id': storeId,
+      };
+
+      if (kDebugMode) {
+        print('Custom Item categories API: GET $uri');
+      }
+
+      final response = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+            'Catalog categories failed (${response.statusCode}): ${response.body}');
+      }
+
+      final decoded = jsonDecode(response.body);
+      final List rawList;
+      if (decoded is Map && decoded['categories'] is List) {
+        rawList = decoded['categories'] as List;
+      } else if (decoded is List) {
+        rawList = decoded;
+      } else {
+        rawList = const [];
+      }
 
       if (!mounted) return;
 
-      final filteredCategories = allCategories.where((cat) {
-        final name = (cat.name).trim().toLowerCase();
-        final slug = (cat.slug).trim().toLowerCase();
+      final filteredCategories = rawList
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .where((cat) {
+        final name = (cat['name'] ?? '').toString().trim().toLowerCase();
+        final slug = (cat['slug'] ?? '').toString().trim().toLowerCase();
         return name != 'uncategorized' &&
             slug != 'uncategorized' &&
             name != 'default' &&
             slug != 'default' &&
             name.isNotEmpty;
       }).map((cat) {
-        // Map Category model → map expected by Custom Item dropdown / add logic.
-        // Tax fields may be absent on the new store-categories API; default safely.
-        final raw = <String, dynamic>{
-          'id': cat.id,
-          'name': cat.name,
-          'slug': cat.slug,
-          'parent': cat.parent,
-          'description': cat.description,
-          'count': cat.count,
-          'image': cat.image,
-          'pos_tax_class': 'standard',
-          'pos_tax_percent': '0',
-          'pos_tax_slug': 'standard',
+        // Prefer payload (legacy shape) then top-level camelCase fields from catalog API
+        final payload = cat['payload'] is Map
+            ? Map<String, dynamic>.from(cat['payload'] as Map)
+            : <String, dynamic>{};
+
+        final id = payload['id'] ??
+            cat['wordpressId'] ??
+            cat['id'] ??
+            0;
+        final name = (payload['name'] ?? cat['name'] ?? '').toString();
+        final slug = (payload['slug'] ?? cat['slug'] ?? '').toString();
+        final parent = payload['parent'] ??
+            cat['parentWordpressId'] ??
+            cat['parent'] ??
+            0;
+        final description =
+            (payload['description'] ?? cat['description'] ?? '').toString();
+        final count = payload['count'] ??
+            cat['productCount'] ??
+            cat['count'] ??
+            0;
+        final image = payload['image'] ?? cat['image'];
+
+        final posTaxClass = (payload['pos_tax_class'] ??
+                cat['posTaxClass'] ??
+                cat['pos_tax_class'] ??
+                '')
+            .toString();
+        final posTaxPercent = (payload['pos_tax_percent'] ??
+                cat['posTaxPercent'] ??
+                cat['pos_tax_percent'] ??
+                '0')
+            .toString();
+        final posTaxSlug = posTaxClass.isNotEmpty
+            ? posTaxClass.toLowerCase().replaceAll(' ', '-')
+            : 'standard';
+
+        return <String, dynamic>{
+          'id': id,
+          'name': name,
+          'slug': slug,
+          'parent': parent,
+          'description': description,
+          'count': count,
+          'image': image,
+          'pos_tax_class': posTaxClass.isNotEmpty ? posTaxClass : 'standard',
+          'pos_tax_percent': posTaxPercent,
+          'pos_tax_slug': posTaxSlug,
         };
-        return raw;
       }).toList();
 
       if (mounted) {
@@ -686,9 +758,10 @@ class _AppScreenTabWidgetState extends State<AppScreenTabWidget>
 
       if (kDebugMode) {
         print(
-            "✅ Loaded ${_categoriesList.length} Categories via CategoryRepository (Custom Item tab)");
+            "✅ Loaded ${_categoriesList.length} Categories via catalog API (Custom Item tab)");
         for (var cat in _categoriesList) {
-          print("Category: ${cat['name']} | id: ${cat['id']}");
+          print(
+              "Category: ${cat['name']} | id: ${cat['id']} | tax: ${cat['pos_tax_percent']}%");
         }
       }
       await _saveCategoriesToCache(filteredCategories);

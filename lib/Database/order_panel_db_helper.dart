@@ -3405,6 +3405,18 @@ class OrderHelper {
           print('   Calculated Weight: $finalWeightQty');
         }
 
+        // Line tax for new item (same formula as merge path / saveOfflineOrder)
+        final String newTaxStatus =
+            effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus;
+        double newItemTax = 0.0;
+        if (newTaxStatus.toLowerCase() == "taxable" &&
+            effectiveTaxRate > 0) {
+          final double taxableBase =
+              isWeightedItem ? price : (price * itemQuantity);
+          newItemTax =
+              roundTaxHalfUp(taxableBase * (effectiveTaxRate / 100));
+        }
+
         // Build the new product map
         final newProduct = {
           'server_item_id': serverItemId,
@@ -3427,14 +3439,14 @@ class OrderHelper {
           'regular_price': regularPrice,
           'unit_price': unitPrice,
           'is_ebt_eligible': isEbtEligible,
-          'tax_status': effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus,
+          'tax_status': newTaxStatus,
           'tax_class': effectiveTaxClass,
           'tax_rate': effectiveTaxRate,
           'auto_discount': 0.0,
           'auto_discount_total': 0.0,
           'multipack_discount_total': 0.0,
           'combo_discount_total': 0.0,
-          'item_tax': 0.0,
+          'item_tax': newItemTax,
           'meta_data': metaData ?? [],           // ✅ persists loyalty points meta
           'loyalty_points': loyaltyPoints ?? 0,   // ✅ persists computed loyalty points
         };

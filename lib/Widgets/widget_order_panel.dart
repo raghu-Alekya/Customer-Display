@@ -7645,8 +7645,35 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                 product['items_count'] = newQuantity;
                                                 product['subtotal'] = price * newQuantity;
 
+                                                // Instant line tax from stored tax_rate × qty
+                                                final lineTaxStatus = (product['tax_status'] ?? 'taxable')
+                                                    .toString()
+                                                    .toLowerCase();
+                                                final lineTaxRate = double.tryParse(
+                                                        (product['tax_rate'] ?? '0').toString()) ??
+                                                    0.0;
+                                                final isEbt = product['is_ebt_eligible'] == true;
+                                                if (isEbt || lineTaxStatus == 'none') {
+                                                  product['item_tax'] = 0.0;
+                                                  product['tax_status'] = 'none';
+                                                } else if (lineTaxRate > 0) {
+                                                  product['item_tax'] = roundTaxHalfUp(
+                                                      ((price * newQuantity) * lineTaxRate) / 100);
+                                                  product['tax_status'] = 'taxable';
+                                                } else {
+                                                  final pid = int.tryParse(
+                                                          (product['product_id'] ?? product['id'])
+                                                              ?.toString() ??
+                                                              '0') ??
+                                                      0;
+                                                  product['item_tax'] = pid > 0
+                                                      ? getProductTaxFromHive(pid, price, newQuantity)
+                                                      : 0.0;
+                                                }
+
                                                 if (kDebugMode) {
-                                                  print("🟢 Updated PRODUCT → ${product['name'] ?? product['product_name']} | Qty: $newQuantity");
+                                                  print(
+                                                      "🟢 Updated PRODUCT → ${product['name'] ?? product['product_name']} | Qty: $newQuantity | tax: ${product['item_tax']}");
                                                 }
                                               } else if (tappedItemType.contains('custom') &&
                                                   resolvedIndex >= productsLen &&
@@ -7662,9 +7689,17 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                 custom['items_count'] = newQuantity;
                                                 custom['subtotal'] = price * newQuantity;
 
+                                                final cRate = double.tryParse(
+                                                        (custom['tax_rate'] ?? '0').toString()) ??
+                                                    0.0;
+                                                if (cRate > 0) {
+                                                  custom['item_tax'] = roundTaxHalfUp(
+                                                      ((price * newQuantity) * cRate) / 100);
+                                                }
+
                                                 if (kDebugMode) {
                                                   final customName = (custom['custom_item_name'] ?? custom['item_name'] ?? '').toString();
-                                                  print("🟣 Updated CUSTOM ITEM → $customName | Qty: $newQuantity");
+                                                  print("🟣 Updated CUSTOM ITEM → $customName | Qty: $newQuantity | tax: ${custom['item_tax']}");
                                                 }
                                               }
 
@@ -7705,33 +7740,91 @@ class _RightOrderPanelState extends State<RightOrderPanel>
                                                   ? (offlineOrder['cashbackFee'] as num).toDouble()
                                                   : 0.0;
 
+                                              // Recalculate order tax from each line (tax_rate × qty), same as saveOfflineOrder
                                               double orderTax = 0.0;
                                               for (final p in products) {
-                                                final String itemType = (p['item_type'] ?? p['type'] ?? '').toString().toLowerCase();
-                                                final int qty = int.tryParse(p['quantity']?.toString() ?? p['items_count']?.toString() ?? '1') ?? 1;
-                                                final double price = double.tryParse(p['price']?.toString() ?? '0') ?? 0.0;
+                                                final int qty = int.tryParse(
+                                                        p['quantity']?.toString() ??
+                                                            p['items_count']?.toString() ??
+                                                            '1') ??
+                                                    1;
+                                                final double price =
+                                                    double.tryParse(p['price']?.toString() ?? '0') ??
+                                                        0.0;
+                                                final bool isEbt = p['is_ebt_eligible'] == true;
+                                                final lineTaxStatus =
+                                                    (p['tax_status'] ?? 'taxable')
+                                                        .toString()
+                                                        .toLowerCase();
+                                                final lineTaxRate = double.tryParse(
+                                                        (p['tax_rate'] ?? '0').toString()) ??
+                                                    0.0;
+                                                final int productId = int.tryParse(
+                                                        (p['product_id'] ?? p['id'])
+                                                            ?.toString() ??
+                                                            '0') ??
+                                                    0;
 
-                                                if (!itemType.contains('custom')) {
-                                                  final int productId = int.tryParse((p['product_id'] ?? p['id'])?.toString() ?? '0') ?? 0;
-                                                  orderTax += getProductTaxFromHive(productId, price, qty);
+                                                double lineTax = 0.0;
+                                                if (isEbt || lineTaxStatus == 'none') {
+                                                  lineTax = 0.0;
+                                                } else if (lineTaxStatus == 'taxable' &&
+                                                    lineTaxRate > 0) {
+                                                  lineTax = roundTaxHalfUp(
+                                                      ((price * qty) * lineTaxRate) / 100);
+                                                } else if (productId > 0) {
+                                                  lineTax = getProductTaxFromHive(
+                                                      productId, price, qty);
+                                                }
+                                                p['item_tax'] = lineTax;
+                                                orderTax += lineTax;
+                                              }
+                                              for (final c in customItems) {
+                                                final int qty = int.tryParse(
+                                                        c['quantity']?.toString() ?? '1') ??
+                                                    1;
+                                                final double price = double.tryParse(
+                                                        c['custom_item_price']?.toString() ??
+                                                            c['amount']?.toString() ??
+                                                            c['price']?.toString() ??
+                                                            '0') ??
+                                                    0.0;
+                                                final cRate = double.tryParse(
+                                                        (c['tax_rate'] ?? '0').toString()) ??
+                                                    0.0;
+                                                double lineTax = 0.0;
+                                                if (cRate > 0) {
+                                                  lineTax = roundTaxHalfUp(
+                                                      ((price * qty) * cRate) / 100);
                                                 } else {
-                                                  orderTax += getCustomItemTax(
-                                                    taxClass: p['tax_class'] ?? '',
+                                                  lineTax = getCustomItemTax(
+                                                    taxClass: c['tax_class'] ?? '',
                                                     unitPrice: price,
                                                     qty: qty,
                                                     taxes: await _assetDBHelper.getTaxList(),
-                                                    taxRate: p['tax_rate'],
+                                                    taxRate: c['tax_rate'],
                                                   );
                                                 }
+                                                c['item_tax'] = lineTax;
+                                                orderTax += lineTax;
                                               }
+                                              orderTax = roundTaxHalfUp(orderTax);
+                                              offlineOrder['products'] = products;
+                                              offlineOrder['custom_items'] = customItems;
                                               offlineOrder['order_tax'] = orderTax;
 
                                               // Update net totals
                                               offlineOrder['gross_total'] = grossTotal;
-                                              offlineOrder['net_total'] = grossTotal - orderDiscount - merchantDiscount;
-                                              offlineOrder['net_payable'] = offlineOrder['net_total']! + orderTax + cashbackFee;
+                                              offlineOrder['net_total'] =
+                                                  grossTotal - orderDiscount - merchantDiscount;
+                                              offlineOrder['net_payable'] =
+                                                  (offlineOrder['net_total'] as num).toDouble() +
+                                                      orderTax +
+                                                      cashbackFee;
 
-                                              await offlineBox.put(orderKey, offlineOrder);
+                                              // Persist via saveOfflineOrder so tax/totals stay consistent
+                                              await orderHelper.saveOfflineOrder(
+                                                  confirmedOrderId, offlineOrder);
                                               await orderHelper.loadData();
                                               OrderHelper.notifyOrderPanelToRefresh();
 

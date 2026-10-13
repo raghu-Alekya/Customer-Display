@@ -179,6 +179,15 @@ class OrderRepository {
     return 'unknown';
   }
 
+  // PCH shift ids are strings ("SHIFT-..."), older backends used numbers.
+  // Returns null while the shift only exists locally (offline, not synced).
+  Future<String?> _serverShiftIdFor(int? localShiftId) async {
+    if (localShiftId == null || localShiftId <= 0) return null;
+    final shift = await ShiftDbHelper().getShiftById(localShiftId);
+    final serverId = shift?[AppDBConst.shiftServerId]?.toString().trim() ?? '';
+    return serverId.isEmpty || serverId == '0' ? null : serverId;
+  }
+
   // 1. Create Order
   Future<CreateOrderResponseModel> createOrder() async {
     // 🔹 Get local user and device info
@@ -197,11 +206,13 @@ class OrderRepository {
           "User not logged in or user data not available. Please log in again.");
     }
     final userId = userData[AppDBConst.userId] as int;
+    // Server shift id so the backend can total sales per shift
+    final metaShiftId = await _serverShiftIdFor(shiftId) ?? shiftId.toString();
 
     final metaData = [
       OrderMetaData(key: OrderMetaData.posDeviceId, value: deviceId),
       OrderMetaData(key: OrderMetaData.posPlacedBy, value: '$userId'),
-      OrderMetaData(key: OrderMetaData.shiftId, value: shiftId.toString()),
+      OrderMetaData(key: OrderMetaData.shiftId, value: metaShiftId),
       OrderMetaData(
           key: 'user_name', value: (userData?[AppDBConst.username] ?? "")),
       OrderMetaData(key: 'user_id', value: userId.toString()),
@@ -812,7 +823,8 @@ class OrderRepository {
       // ---------------------------------------------------------
       // ⭐ Meta
       // ---------------------------------------------------------
-      final shiftId = await UserDbHelper().getUserShiftId();
+      final localShiftId = await UserDbHelper().getUserShiftId();
+      final shiftId = await _serverShiftIdFor(localShiftId) ?? localShiftId;
       final userData = await UserDbHelper().getUserData();
       final userId = userData?[AppDBConst.userId] ?? "admin";
 
@@ -3138,28 +3150,21 @@ class OrderRepository {
 
       final int finalLocalShiftId = resolvedLocalShiftId ?? 0;
 
-      // 2. Query SQLite to check if this shift has already synced to PCH
-      int? serverShiftId;
-      if (finalLocalShiftId > 0) {
-        final shiftRecord =
-        await ShiftDbHelper().getShiftById(finalLocalShiftId);
-        if (shiftRecord != null &&
-            shiftRecord[AppDBConst.shiftServerId] != null) {
-          serverShiftId =
-              int.tryParse(shiftRecord[AppDBConst.shiftServerId].toString());
-        }
-      }
+      // 2. Query SQLite to check if this shift has already synced to PCH.
+      // PCH ids are strings ("SHIFT-..."), so don't require a number here.
+      final String? serverShiftId = await _serverShiftIdFor(finalLocalShiftId);
 
       // 3. Determine offline flag:
       // - true: Shift has not received a server ID yet (still local/pending sync)
       // - false: Shift is already synced to PCH backend
-      final bool isOffline = (serverShiftId == null || serverShiftId == 0);
+      final bool isOffline = serverShiftId == null;
 
       // 4. Determine shift_id based on offline flag:
       // - If offline == true  -> send local_shift_id
       // - If offline == false -> send authoritative serverShiftId
-      final dynamic finalShiftId =
-      isOffline ? finalLocalShiftId : serverShiftId;
+      final dynamic finalShiftId = isOffline
+          ? finalLocalShiftId
+          : (int.tryParse(serverShiftId) ?? serverShiftId);
 
       // 5. Resolve user login PIN directly from FlutterSecureStorage (saved in LoginScreen)
       final prefs = await SharedPreferences.getInstance();
@@ -5806,7 +5811,6 @@ class OrderRepository {
 
     if (kDebugMode) {
       print("OrderRepository - Validate PIN URL: $url");
-      print("OrderRepository - PIN: $pin");
     }
 
     final response = await _helper.postForm(
