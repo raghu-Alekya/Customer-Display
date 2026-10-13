@@ -83,20 +83,31 @@ class EmployeeAttendanceBloc
       AttendanceLoadRequested event,
       Emitter<EmployeeAttendanceState> emit,
       ) async {
+    // Keep existing records while loading
     emit(state.copyWith(isLoading: true, clearError: true, clearNotice: true));
     try {
       final record = await _repository.getMyAttendanceForDate(
         employeeCode: event.employeeCode,
         date: event.date,
       );
+
       final records = Map<String, EmployeeAttendanceRecord>.from(state.records);
-      if (record == null) {
-        records.remove(event.employeeCode);
-      } else {
+
+      // If API returned a record, update it.
+      // If API returned null, KEEP the existing record if present!
+      if (record != null) {
         records[record.employeeCode] = record;
+      } else if (!records.containsKey(event.employeeCode)) {
+        // Only if cache also doesn't have it
+        final cached = EmployeeAttendanceRepository.cachedRecords[event.employeeCode];
+        if (cached != null) {
+          records[event.employeeCode] = cached;
+        }
       }
+
       final loaded = Set<String>.from(state.loadedEmployeeCodes)
         ..add(event.employeeCode);
+
       emit(state.copyWith(
         records: records,
         loadedEmployeeCodes: loaded,
@@ -136,7 +147,6 @@ class EmployeeAttendanceBloc
       successMessage: 'Clock-out recorded.',
     );
   }
-
   Future<void> _clock(
       Emitter<EmployeeAttendanceState> emit, {
         required String employeeCode,
@@ -161,10 +171,40 @@ class EmployeeAttendanceBloc
         noticeMessage: successMessage,
       ));
     } catch (error) {
-      emit(state.copyWith(
-        clearSubmittingEmployeeCode: true,
-        errorMessage: error.toString(),
-      ));
+      final errorStr = error.toString().toLowerCase();
+
+      // If 409 or open attendance session, update that employee's record directly in Bloc!
+      if (errorStr.contains('open attendance session') ||
+          errorStr.contains('already has an open') ||
+          errorStr.contains('409') ||
+          errorStr.contains('already clocked')) {
+        final openRecord = EmployeeAttendanceRecord(
+          id: 'open-$employeeCode',
+          employeeCode: employeeCode,
+          employeeName: '',
+          clockIn: DateTime.now(),
+          status: 'PRESENT',
+        );
+
+        final records = Map<String, EmployeeAttendanceRecord>.from(state.records)
+          ..[employeeCode] = openRecord;
+        final loaded = Set<String>.from(state.loadedEmployeeCodes)
+          ..add(employeeCode);
+
+        EmployeeAttendanceRepository.cacheRecord(openRecord);
+
+        emit(state.copyWith(
+          records: records,
+          loadedEmployeeCodes: loaded,
+          clearSubmittingEmployeeCode: true,
+          clearError: true,
+        ));
+      } else {
+        emit(state.copyWith(
+          clearSubmittingEmployeeCode: true,
+          errorMessage: error.toString(),
+        ));
+      }
     }
   }
 }

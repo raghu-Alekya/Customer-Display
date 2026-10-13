@@ -57,7 +57,7 @@ class EmployeeAttendanceRecord {
   final DateTime? clockOut;
   final String status;
 
-  bool get isOpen => clockOut == null && status.toUpperCase() == 'PRESENT';
+  bool get isOpen => clockOut == null && (status.toUpperCase() == 'PRESENT' || status.toUpperCase() == 'INCOMPLETE');
 
   factory EmployeeAttendanceRecord.fromJson(Map<String, dynamic> json) {
     final clockInValue = json['clockIn'] ?? json['clock_in'];
