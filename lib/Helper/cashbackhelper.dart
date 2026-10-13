@@ -107,7 +107,7 @@ class CashbackHelper {
       return;
     }
 
-    print("🔐 Using token for Cashback Startup → $token");
+    print("🔐 Using token for Cashback Startup");
 
     final box = StorageProvider.cashbackConfig;
 

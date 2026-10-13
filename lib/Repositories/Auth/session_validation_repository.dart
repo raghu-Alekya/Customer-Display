@@ -53,8 +53,6 @@ class TokenValidationService {
     try {
 
       print("VALIDATING TOKEN...");
-      print("TOKEN: $token");
-      print("PIN: $pin");
 
       final response = await http.post(
         Uri.parse(
