@@ -37,11 +37,15 @@ import '../Auth/login_screen.dart';
 class ShiftSummaryDashboardScreen extends StatefulWidget {
   final int? lastSelectedIndex;
   final int? shiftId;
+  // Shift from the history list. The PCH backend has no get-shift-by-id API,
+  // so shifts with string ids ("SHIFT-...") are shown from this object.
+  final Shift? shift;
 
   const ShiftSummaryDashboardScreen({
     super.key,
     this.lastSelectedIndex,
     this.shiftId,
+    this.shift,
   });
 
   @override
@@ -104,6 +108,9 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
             "ShiftSummaryDashboardScreen: Initialized with shiftId ${widget.shiftId}");
 =======
     vendorPaymentBloc = VendorPaymentBloc(VendorPaymentRepository()); //Build #1.0.74
+    if (widget.shift != null) {
+      apiResponse = APIResponse.completed(ShiftByIdResponse(shift: widget.shift!));
+    }
     if (widget.shiftId != null) {
       _subscribeAndFetchShift(widget.shiftId!);
       _loadVendorData(); // Load vendor data from AssetDBHelper
@@ -111,7 +118,15 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
     }
   }
 
+  // Shifts without a numeric id can't be fetched by id; keep the passed shift.
+  bool get _canFetchShiftById => (widget.shiftId ?? 0) > 0;
+
+  void _refreshShift() {
+    if (_canFetchShiftById) shiftBloc.getShiftById(widget.shiftId!);
+  }
+
   void _subscribeAndFetchShift(int shiftId) {
+    if (!_canFetchShiftById && widget.shift != null) return;
     _shiftSubscription?.cancel();
     _shiftSubscription = shiftBloc.shiftByIdStream.listen((response) {
       if (mounted) {
@@ -129,7 +144,9 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
     if (oldWidget.shiftId != widget.shiftId && widget.shiftId != null) {
       // Clear stale summary first, then fetch fresh data for new shift id.
       setState(() {
-        apiResponse = null;
+        apiResponse = widget.shift != null
+            ? APIResponse.completed(ShiftByIdResponse(shift: widget.shift!))
+            : null;
       });
       _subscribeAndFetchShift(widget.shiftId!);
 >>>>>>> origin/Grocery_pch_api_integration
@@ -1978,24 +1995,7 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
             });
             // Navigator.of(context).pop(); // Dismiss confirmation dialog
 
-            shiftBloc.getShiftById(widget.shiftId!);
-<<<<<<< HEAD
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  response.message ?? 'Vendor payout deleted successfully',
-                  style: TextStyle(color: Colors.white),
-                ),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 2),
-              ),
-            );
-          } else if (response.status == Status.ERROR) {
-            if (response.message!.contains('Unauthorised')) {
-              if (kDebugMode) {
-                print(
-                    "shift summary screen -- Unauthorised : response.message ${response.message!}");
-=======
+            _refreshShift();
             if (Misc.showDebugSnackBar) { // Build #1.0.254
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -2114,7 +2114,7 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
               await for (var response in vendorPaymentBloc.updateVendorPaymentStream) {
                 if (response.status == Status.COMPLETED) {
 
-                  shiftBloc.getShiftById(widget.shiftId!); // Refresh shift data
+                  _refreshShift(); // Refresh shift data
                   if (Misc.showDebugSnackBar) { // Build #1.0.254
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -2182,30 +2182,9 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
             } else {
               vendorPaymentBloc.createVendorPayment(request);
               // Listen to create stream
-<<<<<<< HEAD
-              await for (var response
-              in vendorPaymentBloc.createVendorPaymentStream) {
-                if (response.status == Status.COMPLETED) {
-                  shiftBloc.getShiftById(widget.shiftId!); // Refresh shift data
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        response.message ?? 'Vendor payout added successfully',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      backgroundColor: Colors.green,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                } else if (response.status == Status.ERROR) {
-                  if (response.message!.contains('Unauthorised')) {
-                    if (kDebugMode) {
-                      print(
-                          "Unauthorised : response.message ${response.message!}");
-=======
               await for (var response in vendorPaymentBloc.createVendorPaymentStream) {
                 if (response.status == Status.COMPLETED) {
-                  shiftBloc.getShiftById(widget.shiftId!); // Refresh shift data
+                  _refreshShift(); // Refresh shift data
                   if (Misc.showDebugSnackBar) { // Build #1.0.254
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(

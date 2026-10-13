@@ -20,6 +20,7 @@ import '../../Models/Auth/login_model.dart';
 import '../../core/api/token_storage.dart';
 >>>>>>> origin/Grocery_pch_api_integration
 import '../../Repositories/Auth/login_repository.dart';
+import '../../Repositories/Auth/AuthIdsStore.dart';
 import 'package:pinaka_pos/Helper/Extentions/exceptions.dart'; // Import custom exceptions
 
 class LoginBloc { // Build #1.0.8
@@ -56,6 +57,8 @@ class LoginBloc { // Build #1.0.8
         // Build #1.0.148: Always save/update the new login data
         // ✅ 1) Existing logic: Save to SQLite (keep this if you still use it)
         await _userDbHelper.saveUserData(loginResponse);
+        // Keep the raw employee UUID for /pos/shifts/employee/{id}
+        await AuthIdsStore.saveEmployeeId(loginResponse.id?.toString() ?? '');
 
         // ✅ 2) Save fresh token (used by Cashback + APIs)
         final userBox = StorageProvider.user;
@@ -71,7 +74,7 @@ class LoginBloc { // Build #1.0.8
         // }
 
         if (kDebugMode) {
-          print("🟩 [LoginBloc] Fresh token saved to Hive → ${loginResponse.token}");
+          print("🟩 [LoginBloc] Fresh token saved to Hive");
         }
 
         // ✅ 3) OPTIONAL: Now that token exists, preload cashback config

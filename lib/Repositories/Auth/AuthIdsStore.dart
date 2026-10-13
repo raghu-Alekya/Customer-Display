@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AuthIdsStore {
   static const String _kMerchantId = 'auth_merchant_uuid';
   static const String _kStoreId = 'auth_store_uuid';
+  static const String _kEmployeeId = 'auth_employee_uuid';
   static const String _markerFileName = '.pch_merchant_login_ok';
 
   static Future<void> save({
@@ -38,6 +39,18 @@ class AuthIdsStore {
   static Future<String> getStoreId() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_kStoreId) ?? '';
+  }
+
+  /// Employee UUID from the PIN login response. The SQLite user table only
+  /// keeps a numeric id, so the raw UUID is kept here for employee APIs.
+  static Future<void> saveEmployeeId(String employeeId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kEmployeeId, employeeId);
+  }
+
+  static Future<String> getEmployeeId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_kEmployeeId) ?? '';
   }
 
   /// True only when prefs have both IDs **and** this build still has the marker.

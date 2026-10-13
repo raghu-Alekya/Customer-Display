@@ -187,7 +187,6 @@ class APIHelper {
       if (kDebugMode) {
         print("URL: $finalUrl");
         print("Environment: ${UrlHelper.environment[UrlHelper.baseUrl]}");
-        print("Bearer Token: $token");
       }
 
       var request = http.Request('GET', Uri.parse(finalUrl));
@@ -337,7 +336,6 @@ class APIHelper {
         print("MultiPartForm file data exists: ${fileHelper.exists()}");
         print("URL: $finalUrl");
         print("Environment: ${UrlHelper.environment[UrlHelper.baseUrl]}");
-        print("Bearer Token: $token");
       }
 
 <<<<<<< HEAD
@@ -479,7 +477,6 @@ class APIHelper {
       print("Exception in $method REQUEST: $error");
       print("Final URL: $url");
       print("Environment: ${UrlHelper.environment[UrlHelper.baseUrl]}");
-      print("Token: $token");
       if (body.isNotEmpty) print("Body: $body");
       print("Stack Trace: $stackTrace");
     }

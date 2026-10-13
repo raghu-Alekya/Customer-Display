@@ -79,7 +79,6 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
   Future<void> saveUserData(LoginResponse loginResponse) async {
     if (kDebugMode) {
       print("#### Saving user data for: ${loginResponse.displayName}");
-      print("#### Token: ${loginResponse.token}");
     }
 
     final db = await DBHelper.instance.database;
