@@ -120,4 +120,86 @@ class AuthIdsStore {
       if (await file.exists()) await file.delete();
     } catch (_) {}
   }
+
+  // ── Device Activation ──────────────────────────────────────────
+  static const String _kDeviceActivated = 'device_is_activated';
+  static const String _kDeviceActivationCode = 'device_activation_code';
+  static const String _kDeviceSerialNumber = 'device_serial_number';
+  static const String _kDeviceId = 'device_id';
+  static const String _kDeviceCode = 'device_code';
+  static const String _kDeviceName = 'device_name';
+  static const String _kDeviceAccessToken = 'device_access_token';
+  static const String _kDeviceRegisterId = 'device_register_id';
+  static const String _kDeviceMerchantCode = 'device_merchant_code';
+  static const String _kDeviceStoreCode = 'device_store_code';
+  static const String _kDeviceStoreName = 'device_store_name';
+
+  static Future<bool> isDeviceActivated() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_kDeviceActivated) ?? false;
+  }
+
+  static Future<void> saveDeviceActivation({
+    required String activationCode,
+    required String serialNumber,
+    Map<String, dynamic>? data,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kDeviceActivated, true);
+    await prefs.setString(_kDeviceActivationCode, activationCode.trim());
+    await prefs.setString(_kDeviceSerialNumber, serialNumber.trim());
+
+    if (data != null) {
+      final deviceId = (data['deviceId'] ?? data['device_id'] ?? '').toString();
+      final deviceCode = (data['deviceCode'] ?? data['device_code'] ?? '').toString();
+      final deviceName = (data['deviceName'] ?? data['device_name'] ?? '').toString();
+      final registerId = (data['registerId'] ?? '').toString();
+      final token = (data['deviceAccessToken'] ?? data['accessToken'] ?? data['token'] ?? '').toString();
+
+      if (deviceId.isNotEmpty) await prefs.setString(_kDeviceId, deviceId);
+      if (deviceCode.isNotEmpty) await prefs.setString(_kDeviceCode, deviceCode);
+      if (deviceName.isNotEmpty) await prefs.setString(_kDeviceName, deviceName);
+      if (registerId.isNotEmpty) await prefs.setString(_kDeviceRegisterId, registerId);
+      if (token.isNotEmpty) await prefs.setString(_kDeviceAccessToken, token);
+
+      if (data['merchant'] is Map) {
+        final m = data['merchant'] as Map;
+        final mId = (m['id'] ?? '').toString();
+        final mCode = (m['merchantCode'] ?? '').toString();
+        if (mId.isNotEmpty) await prefs.setString(_kMerchantId, mId);
+        if (mCode.isNotEmpty) await prefs.setString(_kDeviceMerchantCode, mCode);
+      }
+
+      if (data['store'] is Map) {
+        final s = data['store'] as Map;
+        final sId = (s['id'] ?? '').toString();
+        final sCode = (s['storeCode'] ?? '').toString();
+        final sName = (s['storeName'] ?? '').toString();
+        if (sId.isNotEmpty) await prefs.setString(_kStoreId, sId);
+        if (sCode.isNotEmpty) {
+          await prefs.setString(_kDeviceStoreCode, sCode);
+          await prefs.setString('storeId', sCode);
+        }
+        if (sName.isNotEmpty) {
+          await prefs.setString(_kDeviceStoreName, sName);
+          await prefs.setString('storeName', sName);
+        }
+      }
+    }
+  }
+
+  static Future<String> getDeviceSerialNumber() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_kDeviceSerialNumber) ?? '';
+  }
+
+  static Future<String> getDeviceActivationCode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_kDeviceActivationCode) ?? '';
+  }
+
+  static Future<String> getDeviceAccessToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_kDeviceAccessToken) ?? '';
+  }
 }

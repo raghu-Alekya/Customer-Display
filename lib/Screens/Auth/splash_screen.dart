@@ -3,6 +3,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:pinaka_pos/Screens/Auth/store_id_screen.dart';
 import '../../Database/store_db_helper.dart';
 import '../../Database/user_db_helper.dart';
+import '../../DeviceActivationScreen/DeviceActivationScreen.dart';
 import 'login_screen.dart';
 import '../../Repositories/Auth/AuthIdsStore.dart';
 import '../../Repositories/Auth/startup_recovery_service.dart';
@@ -92,11 +93,21 @@ class _SplashScreenState extends State<SplashScreen> {
         ),
       );
     } else if (mounted) {
+      bool isActivated = false;
+      try {
+        isActivated = await AuthIdsStore.isDeviceActivated()
+            .timeout(const Duration(seconds: 2));
+      } catch (_) {}
+
+      final Widget nextScreen =
+          isActivated ? const StoreIdScreen() : const DeviceActivationScreen();
+
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
           pageBuilder: (context, animation,
-              secondaryAnimation) => const StoreIdScreen(),
+              secondaryAnimation) => nextScreen,
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             const begin = Offset(0.2, 0.0);
             const end = Offset.zero;
