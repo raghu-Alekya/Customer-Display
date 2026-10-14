@@ -7,48 +7,68 @@ import '../../Models/Payment/payment_model.dart';
 import '../../Models/Payment/send_order_details_model.dart';
 import '../../Models/Payment/void_payment_model.dart';
 import '../../Repositories/Payment/payment_repository.dart';
-import '../../services/CustomerDisplayService.dart';
 
-class PaymentBloc {  // Build #1.0.25 - added by naveen
+class PaymentBloc {
+  // Build #1.0.25 - added by naveen
   final PaymentRepository _paymentRepository;
 
   // Stream Controllers
-  final StreamController<APIResponse<PaymentResponseModel>> _createPaymentController =
-  StreamController<APIResponse<PaymentResponseModel>>.broadcast();
+  final StreamController<APIResponse<PaymentResponseModel>>
+      _createPaymentController =
+      StreamController<APIResponse<PaymentResponseModel>>.broadcast();
 
-  final StreamController<APIResponse<List<PaymentDetailModel>>> _paymentDetailController =
-  StreamController<APIResponse<List<PaymentDetailModel>>>.broadcast();
+  final StreamController<APIResponse<List<PaymentDetailModel>>>
+      _paymentDetailController =
+      StreamController<APIResponse<List<PaymentDetailModel>>>.broadcast();
 
-  final StreamController<APIResponse<List<PaymentListModel>>> _paymentsListController =
-  StreamController<APIResponse<List<PaymentListModel>>>.broadcast();
+  final StreamController<APIResponse<List<PaymentListModel>>>
+      _paymentsListController =
+      StreamController<APIResponse<List<PaymentListModel>>>.broadcast();
 
-  final StreamController<APIResponse<PaymentResponseModel>> _voidPaymentController =
-  StreamController<APIResponse<PaymentResponseModel>>.broadcast();
+  final StreamController<APIResponse<PaymentResponseModel>>
+      _voidPaymentController =
+      StreamController<APIResponse<PaymentResponseModel>>.broadcast();
 
-  final StreamController<APIResponse<SendOrderDetailsResponseModel>> _sendOrderDetailsController =
-  StreamController<APIResponse<SendOrderDetailsResponseModel>>.broadcast();
+  final StreamController<APIResponse<SendOrderDetailsResponseModel>>
+      _sendOrderDetailsController =
+      StreamController<APIResponse<SendOrderDetailsResponseModel>>.broadcast();
 
-  final StreamController<APIResponse<PaymentResponseModel>> _voidOrderController =
-  StreamController<APIResponse<PaymentResponseModel>>.broadcast(); // Build #1.0.175: Added void order API call for cancel the payment completed order if it is void
+  final StreamController<
+      APIResponse<
+          PaymentResponseModel>> _voidOrderController = StreamController<
+      APIResponse<
+          PaymentResponseModel>>.broadcast(); // Build #1.0.175: Added void order API call for cancel the payment completed order if it is void
 
-  StreamSink<APIResponse<PaymentResponseModel>> get voidPaymentSink => _voidPaymentController.sink;
-  Stream<APIResponse<PaymentResponseModel>> get voidPaymentStream => _voidPaymentController.stream;
+  StreamSink<APIResponse<PaymentResponseModel>> get voidPaymentSink =>
+      _voidPaymentController.sink;
+  Stream<APIResponse<PaymentResponseModel>> get voidPaymentStream =>
+      _voidPaymentController.stream;
 
-  StreamSink<APIResponse<PaymentResponseModel>> get voidOrderSink => _voidOrderController.sink;
-  Stream<APIResponse<PaymentResponseModel>> get voidOrderStream => _voidOrderController.stream;
+  StreamSink<APIResponse<PaymentResponseModel>> get voidOrderSink =>
+      _voidOrderController.sink;
+  Stream<APIResponse<PaymentResponseModel>> get voidOrderStream =>
+      _voidOrderController.stream;
 
   // Getters for Streams
-  StreamSink<APIResponse<PaymentResponseModel>> get createPaymentSink => _createPaymentController.sink;
-  Stream<APIResponse<PaymentResponseModel>> get createPaymentStream => _createPaymentController.stream;
+  StreamSink<APIResponse<PaymentResponseModel>> get createPaymentSink =>
+      _createPaymentController.sink;
+  Stream<APIResponse<PaymentResponseModel>> get createPaymentStream =>
+      _createPaymentController.stream;
 
-  StreamSink<APIResponse<List<PaymentDetailModel>>> get paymentDetailSink => _paymentDetailController.sink;
-  Stream<APIResponse<List<PaymentDetailModel>>> get paymentDetailStream => _paymentDetailController.stream;
+  StreamSink<APIResponse<List<PaymentDetailModel>>> get paymentDetailSink =>
+      _paymentDetailController.sink;
+  Stream<APIResponse<List<PaymentDetailModel>>> get paymentDetailStream =>
+      _paymentDetailController.stream;
 
-  StreamSink<APIResponse<List<PaymentListModel>>> get paymentsListSink => _paymentsListController.sink;
-  Stream<APIResponse<List<PaymentListModel>>> get paymentsListStream => _paymentsListController.stream;
+  StreamSink<APIResponse<List<PaymentListModel>>> get paymentsListSink =>
+      _paymentsListController.sink;
+  Stream<APIResponse<List<PaymentListModel>>> get paymentsListStream =>
+      _paymentsListController.stream;
 
-  StreamSink<APIResponse<SendOrderDetailsResponseModel>> get sendOrderDetailsSink => _sendOrderDetailsController.sink;
-  Stream<APIResponse<SendOrderDetailsResponseModel>> get sendOrderDetailsStream => _sendOrderDetailsController.stream;
+  StreamSink<APIResponse<SendOrderDetailsResponseModel>>
+      get sendOrderDetailsSink => _sendOrderDetailsController.sink;
+  Stream<APIResponse<SendOrderDetailsResponseModel>>
+      get sendOrderDetailsStream => _sendOrderDetailsController.stream;
 
   PaymentBloc(this._paymentRepository) {
     if (kDebugMode) {
@@ -62,7 +82,6 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
 
     createPaymentSink.add(APIResponse.loading(TextConstants.loading));
     try {
-
       // final response = await _paymentRepository.createPayment(request);
 
       // if (kDebugMode) {
@@ -81,12 +100,15 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
       //Build #1.0.180
       if (e.toString().contains('UnauthorisedException')) {
         if (kDebugMode) print("UnAutherized $e");
-        createPaymentSink.add(APIResponse.error("Unauthorised. Session is expired."));
+        createPaymentSink
+            .add(APIResponse.error("Unauthorised. Session is expired."));
       }
       if (e.toString().contains('SocketException')) {
-        createPaymentSink.add(APIResponse.error("Network error. Please check your connection."));
+        createPaymentSink.add(
+            APIResponse.error("Network error. Please check your connection."));
       } else {
-        createPaymentSink.add(APIResponse.error("Failed to create payment: ${e.toString()}"));
+        createPaymentSink.add(
+            APIResponse.error("Failed to create payment: ${e.toString()}"));
       }
       if (kDebugMode) print("Exception in createPayment: $e");
     }
@@ -111,9 +133,11 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
       paymentDetailSink.add(APIResponse.completed(response));
     } catch (e) {
       if (e.toString().contains('SocketException')) {
-        paymentDetailSink.add(APIResponse.error("Network error. Please check your connection."));
+        paymentDetailSink.add(
+            APIResponse.error("Network error. Please check your connection."));
       } else {
-        paymentDetailSink.add(APIResponse.error("Failed to get payment details: ${e.toString()}"));
+        paymentDetailSink.add(APIResponse.error(
+            "Failed to get payment details: ${e.toString()}"));
       }
       if (kDebugMode) print("Exception in getPaymentById: $e");
     }
@@ -132,16 +156,19 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
         print("PaymentBloc - Retrieved payments for order ID: $orderId");
         print("PaymentBloc - Found ${response.length} payment(s)");
         if (response.isNotEmpty) {
-          print("PaymentBloc - First payment method: ${response.first.paymentMethod}");
+          print(
+              "PaymentBloc - First payment method: ${response.first.paymentMethod}");
         }
       }
 
       paymentsListSink.add(APIResponse.completed(response));
     } catch (e) {
       if (e.toString().contains('SocketException')) {
-        paymentsListSink.add(APIResponse.error("Network error. Please check your connection."));
+        paymentsListSink.add(
+            APIResponse.error("Network error. Please check your connection."));
       } else {
-        paymentsListSink.add(APIResponse.error("Failed to get payments list: ${e.toString()}"));
+        paymentsListSink.add(
+            APIResponse.error("Failed to get payments list: ${e.toString()}"));
       }
       if (kDebugMode) print("Exception in getPaymentsByOrderId: $e");
     }
@@ -164,9 +191,11 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
       voidPaymentSink.add(APIResponse.completed(response));
     } catch (e) {
       if (e.toString().contains('SocketException')) {
-        voidPaymentSink.add(APIResponse.error("Network error. Please check your connection."));
+        voidPaymentSink.add(
+            APIResponse.error("Network error. Please check your connection."));
       } else {
-        voidPaymentSink.add(APIResponse.error("Failed to void payment: ${e.toString()}"));
+        voidPaymentSink
+            .add(APIResponse.error("Failed to void payment: ${e.toString()}"));
       }
       if (kDebugMode) print("Exception in voidPayment: $e");
     }
@@ -191,9 +220,11 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
       voidOrderSink.add(APIResponse.completed(response));
     } catch (e) {
       if (e.toString().contains('SocketException')) {
-        voidOrderSink.add(APIResponse.error("Network error. Please check your connection."));
+        voidOrderSink.add(
+            APIResponse.error("Network error. Please check your connection."));
       } else {
-        voidOrderSink.add(APIResponse.error("Failed to void order: ${e.toString()}"));
+        voidOrderSink
+            .add(APIResponse.error("Failed to void order: ${e.toString()}"));
       }
       if (kDebugMode) print("Exception in voidOrder: $e");
     }
@@ -207,19 +238,23 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
     sendOrderDetailsSink.add(APIResponse.loading(TextConstants.loading));
     try {
       final request = SendOrderDetailsRequestModel(email: email);
-      final response = await _paymentRepository.sendOrderDetails(orderId, request);
+      final response =
+          await _paymentRepository.sendOrderDetails(orderId, request);
 
       if (kDebugMode) {
-        print("PaymentBloc - Send order details for order ID: $orderId, Email: $email");
+        print(
+            "PaymentBloc - Send order details for order ID: $orderId, Email: $email");
         print("PaymentBloc - Send Order Details Message: ${response.message}");
       }
 
       sendOrderDetailsSink.add(APIResponse.completed(response));
     } catch (e) {
       if (e.toString().contains('SocketException')) {
-        sendOrderDetailsSink.add(APIResponse.error("Network error. Please check your connection."));
+        sendOrderDetailsSink.add(
+            APIResponse.error("Network error. Please check your connection."));
       } else {
-        sendOrderDetailsSink.add(APIResponse.error("Failed to send order details: ${e.toString()}"));
+        sendOrderDetailsSink.add(
+            APIResponse.error("Failed to send order details: ${e.toString()}"));
       }
       if (kDebugMode) print("Exception in sendOrderDetails: $e");
     }
@@ -230,7 +265,8 @@ class PaymentBloc {  // Build #1.0.25 - added by naveen
     if (!_paymentDetailController.isClosed) _paymentDetailController.close();
     if (!_paymentsListController.isClosed) _paymentsListController.close();
     if (!_voidPaymentController.isClosed) _voidPaymentController.close();
-    if (!_sendOrderDetailsController.isClosed) _sendOrderDetailsController.close();
+    if (!_sendOrderDetailsController.isClosed)
+      _sendOrderDetailsController.close();
     if (!_voidOrderController.isClosed) _createPaymentController.close();
     if (kDebugMode) print("PaymentBloc disposed with all controllers");
   }

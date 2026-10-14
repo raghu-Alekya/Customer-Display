@@ -5,7 +5,6 @@ import 'package:http/http.dart' as http;
 import '../../Constants/text.dart';
 import '../../Database/user_db_helper.dart';
 import '../../Helper/api_response.dart';
-import '../../Helper/url_helper.dart';
 import '../../Models/Auth/logout_model.dart';
 import '../../Repositories/Auth/logout_repository.dart';
 
@@ -41,11 +40,11 @@ class LogoutBloc {
       // Call repository to perform logout
       String response = await _logoutRepository.logout();
       LogoutResponse logoutResponse = LogoutResponse.fromJson(json.decode(response));
-      // await UserDbHelper().logout();
+      // await _userDbHelper.logout();
       if (kDebugMode) {
         print("LogoutBloc - Logout response: ${logoutResponse.message}");
       }
-      await UserDbHelper().logout();
+      await _userDbHelper.logout();
 
 
       if (logoutResponse.success) {

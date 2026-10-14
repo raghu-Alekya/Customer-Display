@@ -52,17 +52,17 @@ class StoreValidationBloc { //Build #1.0.42: Added by Naveen
         print("StoreValidationBloc - Validation Response: ${response.toJson()}");
       }
 
-      if (response.storeId != null && response.storeId!.isNotEmpty) {
+      if (response.storeId.isNotEmpty) {
         await PinakaPreferences.saveLoggedInStore(
-          storeId: response.storeId!,
-          storeName: response.storeName ?? "",
+          storeId: response.storeId,
+          storeName: response.storeName,
           storeLogoUrl: response.storeLogo,
           storeBaseUrl: response.storeBaseUrl,
         );
 
         await CustomerDisplayHelper.updateWelcomeWithStore(
-          response.storeId!,
-          response.storeName ?? "",
+          response.storeId,
+          response.storeName,
           storeLogoUrl: response.storeLogo,
           storeBaseUrl: response.storeBaseUrl,
         );

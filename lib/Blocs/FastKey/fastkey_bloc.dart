@@ -16,12 +16,12 @@ class FastKeyBloc {
 
   // Stream Controllers
   final StreamController<APIResponse<FastKeyResponse>>
-  _createFastKeyController =
-  StreamController<APIResponse<FastKeyResponse>>.broadcast();
+      _createFastKeyController =
+      StreamController<APIResponse<FastKeyResponse>>.broadcast();
 
   final StreamController<APIResponse<FastKeyListResponse>>
-  _getFastKeysController =
-  StreamController<APIResponse<FastKeyListResponse>>.broadcast();
+      _getFastKeysController =
+      StreamController<APIResponse<FastKeyListResponse>>.broadcast();
 
   // Getters for Streams
   StreamSink<APIResponse<FastKeyResponse>> get createFastKeySink =>
@@ -36,8 +36,8 @@ class FastKeyBloc {
 
   // Build #1.0.19: Fast Key Delete API Code
   final StreamController<APIResponse<FastKeyResponse>>
-  _deleteFastKeyController =
-  StreamController<APIResponse<FastKeyResponse>>.broadcast();
+      _deleteFastKeyController =
+      StreamController<APIResponse<FastKeyResponse>>.broadcast();
 
   StreamSink<APIResponse<FastKeyResponse>> get deleteFastKeySink =>
       _deleteFastKeyController.sink;
@@ -46,8 +46,8 @@ class FastKeyBloc {
 
   // Build #1.0.89: Added StreamController for updateFastKey
   final StreamController<APIResponse<FastKeyResponse>>
-  _updateFastKeyController =
-  StreamController<APIResponse<FastKeyResponse>>.broadcast();
+      _updateFastKeyController =
+      StreamController<APIResponse<FastKeyResponse>>.broadcast();
 
   StreamSink<APIResponse<FastKeyResponse>> get updateFastKeySink =>
       _updateFastKeyController.sink;
@@ -63,9 +63,9 @@ class FastKeyBloc {
   // POST: Create FastKey
   Future<void> createFastKey(
       {required String title,
-        required int index,
-        required String imageUrl,
-        required int userId}) async {
+      required int index,
+      required String imageUrl,
+      required int userId}) async {
     if (_createFastKeyController.isClosed) return;
 
     createFastKeySink.add(APIResponse.loading(TextConstants.loading));
@@ -129,8 +129,7 @@ class FastKeyBloc {
       ///insert into DB
 
       final FastKeyDBHelper fastKeyDBHelper = FastKeyDBHelper();
-      final fastKeyTabs =
-      await fastKeyDBHelper.getFastKeyTabsByUserId(userId ?? 0);
+      final fastKeyTabs = await fastKeyDBHelper.getFastKeyTabsByUserId(userId);
       if (kDebugMode) {
         print("#### fastKeyTabs : $fastKeyTabs");
       }
@@ -166,7 +165,7 @@ class FastKeyBloc {
         }
         for (var product in fastkey.products ?? []) {
           var tagg = product.tags?.firstWhere(
-                  (element) => element.name == TextConstants.age_restricted,
+              (element) => element.name == TextConstants.age_restricted,
               orElse: () => Tags());
           var hasAgeRestriction =
               tagg?.name?.contains(TextConstants.age_restricted) ?? false;
@@ -188,7 +187,8 @@ class FastKeyBloc {
             // login/startup landed in SQLite with fast_key_item_tags = '[]',
             // even though the raw API response (e.g. Jamun → "Produce" tag) had
             // the data. Nothing else in this method is touched.
-            tagsJson: jsonEncode(product.tags?.map((tag) => tag.toJson()).toList() ?? []),
+            tagsJson: jsonEncode(
+                product.tags?.map((tag) => tag.toJson()).toList() ?? []),
             metaDataJson: jsonEncode(product.metaData ?? []),
           );
         }
@@ -286,10 +286,10 @@ class FastKeyBloc {
   // Build #1.0.89: Added updateFastKey API method
   Future<void> updateFastKey(
       {required String title,
-        required int index,
-        required String imageUrl,
-        required dynamic fastKeyServerId,
-        required int userId}) async {
+      required int index,
+      required String imageUrl,
+      required dynamic fastKeyServerId,
+      required int userId}) async {
     if (_updateFastKeyController.isClosed) return;
 
     updateFastKeySink.add(APIResponse.loading(TextConstants.loading));

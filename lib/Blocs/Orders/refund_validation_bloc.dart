@@ -1,8 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../Models/Orders/refund_checkin_model.dart';
-import '../../Preferences/pinaka_preferences.dart';
 import '../../Repositories/Orders/refund_validation_repository.dart';
 
 abstract class RefundValidationEvent extends Equatable {

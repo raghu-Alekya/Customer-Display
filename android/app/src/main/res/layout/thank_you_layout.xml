@@ -17,15 +17,15 @@
         android:padding="32dp">
 
         <!-- Store Logo -->
-        <!--        <ImageView-->
-        <!--            android:id="@+id/thank_you_store_logo"-->
-        <!--            android:layout_width="150dp"-->
-        <!--            android:layout_height="150dp"-->
-        <!--            android:layout_gravity="center_horizontal"-->
-        <!--            android:layout_marginBottom="32dp"-->
-        <!--            android:scaleType="centerInside"-->
-        <!--            android:contentDescription="Store Logo"-->
-        <!--            android:src="@drawable/pinaka_logo" />-->
+        <ImageView
+            android:id="@+id/thank_you_store_logo"
+            android:layout_width="150dp"
+            android:layout_height="150dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="32dp"
+            android:scaleType="centerInside"
+            android:contentDescription="Store Logo"
+            android:src="@drawable/pinaka_logo" />
 
         <!-- Emoji -->
         <TextView

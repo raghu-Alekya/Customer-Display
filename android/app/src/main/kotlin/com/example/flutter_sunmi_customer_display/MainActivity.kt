@@ -1,5 +1,7 @@
 package com.example.flutter_sunmi_customer_display
 
+import com.alekta.pinakapos.R
+
 import android.app.Presentation
 import android.content.Context
 import android.hardware.display.DisplayManager
