@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/Database/storage/storage_provider.dart';
+import 'package:pinaka_pos/Database/user_db_helper.dart';
 import 'package:pinaka_pos/Helper/url_helper.dart';
+import 'package:pinaka_pos/Repositories/Auth/AuthIdsStore.dart';
 
 class CashbackHelper {
   // ---------------------------------------------------------
@@ -45,41 +48,112 @@ class CashbackHelper {
     return value;
   }
 
+  /// Token from SQLite active user (same source as rest of POS).
+  /// Falls back to Hive StorageProvider.user only if DB has none.
+  static Future<String?> _resolveToken() async {
+    try {
+      final fromDb = await UserDbHelper().getUserToken();
+      if (fromDb != null && fromDb.isNotEmpty) {
+        if (kDebugMode) {
+          print("🔑 Cashback token from UserDbHelper (len=${fromDb.length})");
+        }
+        return fromDb;
+      }
+    } catch (e) {
+      if (kDebugMode) print("⚠️ UserDbHelper token failed: $e");
+    }
+
+    try {
+      final userBox = StorageProvider.user;
+      final tokenRaw = await userBox.get('token');
+      if (tokenRaw is String && tokenRaw.trim().isNotEmpty) {
+        return tokenRaw.trim();
+      }
+      if (tokenRaw is Map && tokenRaw['token'] != null) {
+        final t = tokenRaw['token'].toString().trim();
+        if (t.isNotEmpty) return t;
+      }
+    } catch (e) {
+      if (kDebugMode) print("⚠️ StorageProvider.user token failed: $e");
+    }
+
+    return null;
+  }
+
+  /// Store UUID from AuthIdsStore (global prefs after merchant login).
+  static Future<String?> _resolveStoreId() async {
+    try {
+      final id = (await AuthIdsStore.getStoreId()).trim();
+      if (id.isNotEmpty) {
+        if (kDebugMode) print("🏪 Cashback storeId from AuthIdsStore → $id");
+        return id;
+      }
+    } catch (e) {
+      if (kDebugMode) print("⚠️ AuthIdsStore storeId failed: $e");
+    }
+    return null;
+  }
+
   // ---------------------------------------------------------
   // FETCH API
+  // GET {connector base}/store/store-pos-configuration/{storeId}/cashback_settings
+  // Response: { "cash_back_service": { enabled, max_cashback, tiers } }
   // ---------------------------------------------------------
   static Future<Map<String, dynamic>?> fetchCashbackConfig() async {
-    final userBox = StorageProvider.user;
-    final tokenRaw = await userBox.get('token');
-
-    final token = tokenRaw?.toString();
-
+    final token = await _resolveToken();
     if (token == null || token.isEmpty) {
-      print("❌ No token found");
+      print("❌ No token found (UserDb + Hive) — cannot fetch cashback");
+      return getCashbackConfig();
+    }
+
+    final storeId = await _resolveStoreId();
+    if (storeId == null || storeId.isEmpty) {
+      print("❌ No storeId found (AuthIdsStore) — cannot fetch cashback");
       return getCashbackConfig();
     }
 
     final box = StorageProvider.cashbackConfig;
 
+    // baseUrl is: https://pch.alektasolutions.com/connector/api/v1
     final url =
-        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.cashbackservices}";
+        "${UrlHelper.baseUrl}/store/store-pos-configuration/$storeId/cashback_settings";
 
     try {
       final response = await http.get(
         Uri.parse(url),
-        headers: {"Authorization": "Bearer $token"},
+        headers: {
+          "Authorization": "Bearer $token",
+          "Accept": "application/json",
+        },
       );
 
       print("🌐 Cashback API Status → ${response.statusCode}");
+      print("🌐 Cashback API URL    → $url");
       print("🌐 Cashback API Body   → ${response.body}");
 
       if (response.statusCode == 200) {
-        final safeJson = deepConvert(jsonDecode(response.body));
+        final decoded = deepConvert(jsonDecode(response.body));
+        if (decoded is! Map) {
+          print("❌ Cashback API body is not a map");
+          return getCashbackConfig();
+        }
+        final safeJson = Map<String, dynamic>.from(decoded);
 
         await box.put("config", safeJson);
-        return Map<String, dynamic>.from(safeJson);
+
+        final service = safeJson["cash_back_service"];
+        if (service is Map) {
+          print(
+            "✅ Cashback config saved → enabled=${service['enabled']} "
+                "max=${service['max_cashback']} "
+                "tiers=${(service['tiers'] is List) ? (service['tiers'] as List).length : 0}",
+          );
+        }
+
+        return safeJson;
       }
 
+      print("❌ Cashback API non-200 → falling back to cache");
       return getCashbackConfig();
     } catch (e) {
       print("❌ Cashback API error: $e");
@@ -88,26 +162,22 @@ class CashbackHelper {
   }
 
   // ---------------------------------------------------------
-  // STARTUP LOADER (FIXED TYPE SAFE)
+  // STARTUP LOADER
   // ---------------------------------------------------------
   static Future<void> loadCashbackOnStartup() async {
-    final userBox = StorageProvider.user;
-    final tokenRaw = await userBox.get('token');
-
-    String? token;
-
-    if (tokenRaw is String) {
-      token = tokenRaw;
-    } else if (tokenRaw is Map && tokenRaw['token'] != null) {
-      token = tokenRaw['token'].toString();
-    }
-
+    final token = await _resolveToken();
     if (token == null || token.isEmpty) {
       print("❌ No valid token found — skipping cashback API");
       return;
     }
 
-    print("🔐 Using token for Cashback Startup");
+    final storeId = await _resolveStoreId();
+    if (storeId == null || storeId.isEmpty) {
+      print("❌ No storeId found — skipping cashback API");
+      return;
+    }
+
+    print("🔐 Cashback startup → token ok, storeId=$storeId");
 
     final box = StorageProvider.cashbackConfig;
 
@@ -118,21 +188,14 @@ class CashbackHelper {
     print("🕒 Cashback lastFetch = $lastFetchRaw");
     print("📦 Cached config = $cached");
 
-    // ---------------------------------------------------------
-    // SAFE PARSE lastFetchTime (FIX FOR YOUR CRASH)
-    // ---------------------------------------------------------
     DateTime? lastFetchTime;
 
     if (lastFetchRaw is String) {
       lastFetchTime = DateTime.tryParse(lastFetchRaw);
     } else if (lastFetchRaw is Map && lastFetchRaw["time"] != null) {
-      lastFetchTime =
-          DateTime.tryParse(lastFetchRaw["time"].toString());
+      lastFetchTime = DateTime.tryParse(lastFetchRaw["time"].toString());
     }
 
-    // ---------------------------------------------------------
-    // 1️⃣ No cache → fetch
-    // ---------------------------------------------------------
     if (cached == null) {
       print("🟡 No Cashback config found → fetching new...");
       await fetchCashbackConfig();
@@ -140,9 +203,6 @@ class CashbackHelper {
       return;
     }
 
-    // ---------------------------------------------------------
-    // 2️⃣ Refresh logic (safe)
-    // ---------------------------------------------------------
     if (lastFetchTime == null ||
         now.difference(lastFetchTime).inSeconds >= 2) {
       print("🔄 Refreshing cashback config...");
@@ -155,7 +215,7 @@ class CashbackHelper {
   }
 
   // ---------------------------------------------------------
-  // CASHBACK FEE CALCULATOR (SAFE)
+  // CASHBACK FEE CALCULATOR
   // ---------------------------------------------------------
   static Future<double> getCashbackFee(double cashbackAmount) async {
     final config = await getCashbackConfig();
@@ -166,7 +226,15 @@ class CashbackHelper {
     if (service is! Map) return 0.0;
 
     final enabled = service["enabled"];
-    if (enabled != 1) return 0.0;
+    // Accept 1 or true
+    final bool isEnabled =
+        enabled == 1 || enabled == true || enabled?.toString() == "1";
+    if (!isEnabled) {
+      if (kDebugMode) {
+        print("💰 Cashback fee skipped — service disabled (enabled=$enabled)");
+      }
+      return 0.0;
+    }
 
     final tiers = service["tiers"];
     if (tiers is! List) return 0.0;
@@ -174,9 +242,9 @@ class CashbackHelper {
     for (final t in tiers) {
       if (t is! Map) continue;
 
-      final from = (t["from"] as num?)?.toDouble();
-      final to = (t["to"] as num?)?.toDouble();
-      final fee = (t["fee"] as num?)?.toDouble();
+      final from = double.tryParse(t["from"]?.toString() ?? "");
+      final to = double.tryParse(t["to"]?.toString() ?? "");
+      final fee = double.tryParse(t["fee"]?.toString() ?? "");
 
       if (from == null || to == null || fee == null) continue;
 
@@ -186,6 +254,9 @@ class CashbackHelper {
       }
     }
 
+    if (kDebugMode) {
+      print("💰 No tier matched for cashback amount $cashbackAmount → fee 0");
+    }
     return 0.0;
   }
 }
