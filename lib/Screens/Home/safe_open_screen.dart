@@ -27,6 +27,15 @@ import '../../Widgets/widget_topbar.dart';
 import '../../Widgets/widget_navigation_bar.dart' as custom_widgets;
 import 'pos_home_screen.dart';
 
+/// Tube counts returned by [SafeOpenScreen] to the shift balance screen.
+/// Each denomination map has denomValue, symbol, tubeLimit, tubeCount, amount.
+class SafeTubeCount {
+  final List<Map<String, dynamic>> denominations;
+  final double cashTubes;
+
+  const SafeTubeCount({required this.denominations, required this.cashTubes});
+}
+
 class SafeOpenScreen extends StatefulWidget {
   final int? lastSelectedIndex;
   final double cashNotesCoins;  // Build #1.0.70
@@ -40,11 +49,6 @@ class SafeOpenScreen extends StatefulWidget {
 class _SafeOpenScreenState extends State<SafeOpenScreen> with LayoutSelectionMixin {
   // Build #1.0.70
   List<Denom> _tubeDenominations = [];
-  late ShiftBloc _shiftBloc;
-  List<Denom> _notesDenominations = [];
-  List<Denom> _coinsDenominations = [];
-  final Map<String, TextEditingController> _controllers = {};
-  final Map<String, TextEditingController> _coinControllers = {};
 
   double totalAmount = 0.0;
   double cashTubes = 0.0;
@@ -53,10 +57,8 @@ class _SafeOpenScreenState extends State<SafeOpenScreen> with LayoutSelectionMix
   int _selectedSidebarIndex = 4;
   // List to store denomination data
   final List<Map<String, dynamic>> denominations = [];
-  StreamSubscription? _shiftSubscription;
   bool _isSubmitting = false;
   final PinakaPreferences _preferences = PinakaPreferences(); // Added this
-  final logoutBloc = LogoutBloc(LogoutRepository());
 
   @override
   void initState() {
@@ -64,22 +66,14 @@ class _SafeOpenScreenState extends State<SafeOpenScreen> with LayoutSelectionMix
     _selectedSidebarIndex = widget.lastSelectedIndex ?? 4;
     cashNotesCoin = widget.cashNotesCoins;
     _fetchTubeDenominations();
-    _shiftBloc = ShiftBloc(ShiftRepository());  // Build #1.0.70
-    _fetchNotesAndCoinsDenominations();
     updateAmounts();
 
     Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
       setState(() {
         isLoading = false;
       });
     });
-  }
-
-  // Build #1.0.70: Added dispose method
-  @override
-  void dispose() {
-    _shiftSubscription?.cancel();
-    super.dispose();
   }
 
   // Build #1.0.70: Calculate tube amounts and totals
@@ -154,19 +148,6 @@ class _SafeOpenScreenState extends State<SafeOpenScreen> with LayoutSelectionMix
     });
   }
 
-  // Build #1.0.70
-  Future<void> _fetchNotesAndCoinsDenominations() async {
-    _notesDenominations = await AssetDBHelper.instance.getNotesDenomList();
-    _coinsDenominations = await AssetDBHelper.instance.getCoinDenomList();
-
-    _notesDenominations.forEach((denom) {
-      _controllers[denom.denom.toString()] = TextEditingController();
-    });
-    _coinsDenominations.forEach((denom) {
-      _coinControllers[denom.denom.toString()] = TextEditingController();
-    });
-  }
-
   Color _getColorForDenom(num denom) {
     // switch (denom) {
     final List<Color> colorPalette = [
@@ -201,59 +182,6 @@ class _SafeOpenScreenState extends State<SafeOpenScreen> with LayoutSelectionMix
     return index >= 0
         ? colorPalette[index % colorPalette.length]
         : colorPalette[0]; // Default to first color if not found
-  }
-
-  ShiftRequest _buildShiftRequest({int? shiftId, String? status}) {
-    List<Denomination> drawerDenoms = [];
-
-    _notesDenominations.forEach((denom) {
-      int count = int.tryParse(_controllers[denom.denom.toString()]?.text ?? '0') ?? 0;
-      drawerDenoms.add(Denomination(denomination: num.tryParse(denom.denom.toString()) ?? 0, denomCount: count));
-    });
-    _coinsDenominations.forEach((denom) {
-      int count = int.tryParse(_coinControllers[denom.denom.toString()]?.text ?? '0') ?? 0;
-      drawerDenoms.add(Denomination(denomination: num.tryParse(denom.denom.toString()) ?? 0, denomCount: count));
-    });
-
-    List<TubeDenomination> tubeDenoms = [];
-    denominations.forEach((denom) {
-      tubeDenoms.add(TubeDenomination(
-        denomination: denom['denomValue'],
-        tubeCount: denom['tubeCount'],
-        cellCount: denom['tubeCount'],
-        total: denom['amount'],
-      ));
-    });
-
-    return ShiftRequest(
-      shiftId: shiftId,
-      status: status,
-      drawerDenominations: drawerDenoms,
-      drawerTotalAmount: cashNotesCoin,
-      tubeDenominations: tubeDenoms,
-      tubeTotalAmount: cashTubes,
-      totalAmount: totalAmount,
-    );
-  }
-
-  void _resetAllTubes() {
-    setState(() {
-      // Reset all tube counts and amounts
-      for (var denom in denominations) {
-        denom['tubeCount'] = 0;
-        denom['amount'] = 0.0;
-      }
-
-      // Reset calculated totals (keep cashNotesCoin if needed)
-      cashTubes = 0.0;
-      totalAmount = 0.0;
-      cashNotesCoin = 0.0;
-
-      if (kDebugMode) {
-        print("All tube values have been reset");
-        print("Current totals - Cash Tubes: $cashTubes, Total Amount: $totalAmount");
-      }
-    });
   }
 
   @override
@@ -420,488 +348,22 @@ class _SafeOpenScreenState extends State<SafeOpenScreen> with LayoutSelectionMix
                                               0.1,
                                           child: ElevatedButton(
                                             // Build #1.0.70: updated code
-                                            onPressed: () async {
-                                              // Build #1.0. 140: fixed - after submit tap dialog come after 2, 3 sec issue
-                                              if (kDebugMode) {
-                                                print(
-                                                    "Submit button pressed, setting _isSubmitting to true");
-                                              }
-                                              setState(
-                                                      () => _isSubmitting = true);
-
-                                              try {
-                                                int? shiftId = await UserDbHelper()
-                                                    .getUserShiftId(); // Build #1.0.149 : using from db
-                                                String? previousScreen =
-                                                    widget.previousScreen;
-                                                String status =
-                                                    TextConstants.open;
-                                                String?
-                                                closeShiftStatus; // Build #1.0.247
-
-                                                if (shiftId != null) {
-                                                  if (previousScreen ==
-                                                      TextConstants.navLogout) {
-                                                    // status = TextConstants.closed;
-                                                    // Build #1.0.247 : While Closing Shift scenario, first call update shift then popUp confirm close shift call
-                                                    // Code Updated according to that !
-                                                    status =
-                                                        TextConstants.update;
-                                                    closeShiftStatus =
-                                                        TextConstants.closed;
-                                                  } else if (previousScreen ==
-                                                      TextConstants
-                                                          .navShiftHistory) {
-                                                    //Build #1.0.74
-                                                    status =
-                                                        TextConstants.update;
-                                                  }
-                                                }
-
-                                                if (kDebugMode) {
-                                                  print(
-                                                      "##### SUBMIT onPressed -> shiftId: $shiftId, previousScreen: $previousScreen, status: $status");
-                                                }
-
-                                                // Cancel any existing subscription
-                                                await _shiftSubscription
-                                                    ?.cancel();
-
-                                                final request =
-                                                _buildShiftRequest(
-                                                  shiftId: shiftId,
-                                                  status: status,
-                                                );
-
-                                                _shiftBloc.manageShift(request);
-
-                                                bool dialogShown =
-                                                false; // Flag to prevent multiple dialogs
-
-                                                _shiftSubscription = _shiftBloc
-                                                    .shiftStream
-                                                    .listen((response) async {
-                                                  if (response.status ==
-                                                      Status.COMPLETED &&
-                                                      !dialogShown) {
-                                                    if (kDebugMode) {
-                                                      print(
-                                                          "##### _shiftBloc COMPLETED -> status: $status, overShort: ${response.data!.overShort}");
-                                                    }
-
-                                                    dialogShown =
-                                                    true; // Mark dialog as shown
-
-                                                    if (status ==
-                                                        TextConstants.open) {
-                                                      // final prefs = await SharedPreferences.getInstance();
-                                                      // await prefs.setString(TextConstants.shiftId, response.data!.shiftId.toString());
-                                                      // Build #1.0.149 : update shift id while create shift
-                                                      await UserDbHelper()
-                                                          .updateUserShiftId(
-                                                          response.data!
-                                                              .shiftId);
-                                                    }
-                                                    setState(() => _isSubmitting =
-                                                    false); // Build #1.0. 140: hide loader
-                                                    // Show dialog only once
-                                                    // Build #1.0.70: Show appropriate dialog based on status
-                                                    bool? result;
-                                                    if (status ==
-                                                        TextConstants.open) {
-                                                      result = await CustomDialog
-                                                          .showStartShiftVerification(
-                                                        context,
-                                                        totalAmount:
-                                                        totalAmount,
-                                                        overShort: response
-                                                            .data!.overShort
-                                                            .toDouble(), //Build #1.0.74
-                                                      );
-                                                    } else if (status ==
-                                                        TextConstants
-                                                            .update &&
-                                                        closeShiftStatus ==
-                                                            null) {
-                                                      // Build #1.0.247
-                                                      result = await CustomDialog
-                                                          .showUpdateShiftVerification(
-                                                        context,
-                                                        totalAmount:
-                                                        totalAmount,
-                                                        overShort: response
-                                                            .data!.overShort
-                                                            .toDouble(),
-                                                      );
-                                                    } else if (status ==
-                                                        TextConstants
-                                                            .update &&
-                                                        closeShiftStatus ==
-                                                            TextConstants
-                                                                .closed) {
-                                                      // Build #1.0.247
-                                                      bool? result =
-                                                      await CustomDialog
-                                                          .showCloseShiftVerification(
-                                                        context,
-                                                        totalAmount:
-                                                        totalAmount,
-                                                        overShort: response
-                                                            .data!.overShort
-                                                            .toDouble(),
-                                                      );
-
-                                                      if (mounted &&
-                                                          result != null &&
-                                                          result == true) {
-                                                        if (kDebugMode) {
-                                                          print(
-                                                              "##### Close shift dialog confirmed, calling manageShift with closed status");
-                                                        }
-
-                                                        // Re-show dialog with loader on Close Shift button
-                                                        CustomDialog
-                                                            .showCloseShiftVerification(
-                                                          context,
-                                                          totalAmount:
-                                                          totalAmount,
-                                                          overShort: response
-                                                              .data!.overShort
-                                                              .toDouble(),
-                                                          isLoading:
-                                                          true, // Show loader on button
-                                                        );
-
-                                                        // Cancel previous subscription
-                                                        await _shiftSubscription
-                                                            ?.cancel();
-
-                                                        // Create close shift request
-                                                        final closeRequest =
-                                                        _buildShiftRequest(
-                                                          shiftId: shiftId,
-                                                          status: TextConstants
-                                                              .closed,
-                                                        );
-
-                                                        _shiftBloc.manageShift(
-                                                            closeRequest);
-
-                                                        // Listen for close shift response
-                                                        _shiftSubscription =
-                                                            _shiftBloc
-                                                                .shiftStream
-                                                                .listen(
-                                                                    (closeResponse) async {
-                                                                  if (closeResponse
-                                                                      .status ==
-                                                                      Status
-                                                                          .COMPLETED) {
-                                                                    if (kDebugMode) {
-                                                                      print(
-                                                                          "##### Close shift COMPLETED");
-                                                                    }
-
-                                                                    if (mounted) {
-                                                                      _resetAllTubes();
-                                                                      if (kDebugMode) {
-                                                                        print(
-                                                                            "##### Dialog result: $result");
-                                                                      }
-                                                                    }
-
-                                                                    await UserDbHelper()
-                                                                        .updateUserShiftId(
-                                                                        null);
-
-                                                                    // KEEP THE LOGOUT STREAM HANDLING - call logout API
-                                                                    logoutBloc
-                                                                        .performLogout();
-
-                                                                    // Listen for logout response
-                                                                    logoutBloc
-                                                                        .logoutStream
-                                                                        .listen(
-                                                                            (logoutResponse) {
-                                                                          if (logoutResponse
-                                                                              .status ==
-                                                                              Status
-                                                                                  .COMPLETED) {
-                                                                            // Close the verification dialog with loader
-                                                                            Navigator.of(
-                                                                                context)
-                                                                                .pop(); // This will close the loader dialog
-                                                                            if (kDebugMode) {
-                                                                              print(
-                                                                                  "Logout successful, navigating to LoginScreen");
-                                                                            }
-                                                                            if (Misc
-                                                                                .showDebugSnackBar) {
-                                                                              // Build #1.0.254
-                                                                              ScaffoldMessenger.of(
-                                                                                  context)
-                                                                                  .showSnackBar(
-                                                                                SnackBar(
-                                                                                  content: Text(logoutResponse
-                                                                                      .message ??
-                                                                                      TextConstants
-                                                                                          .successfullyLogout),
-                                                                                  backgroundColor:
-                                                                                  Colors
-                                                                                      .green,
-                                                                                  duration: const Duration(
-                                                                                      seconds:
-                                                                                      2),
-                                                                                ),
-                                                                              );
-                                                                            }
-                                                                            Navigator.pushReplacement(
-                                                                                context,
-                                                                                MaterialPageRoute(
-                                                                                    builder:
-                                                                                        (context) =>
-                                                                                        LoginScreen()));
-                                                                          } else if (logoutResponse
-                                                                              .status ==
-                                                                              Status
-                                                                                  .ERROR) {
-                                                                            if (logoutResponse
-                                                                                .message!
-                                                                                .contains(
-                                                                                'Unauthorised')) {
-                                                                              if (kDebugMode) {
-                                                                                print(
-                                                                                    " safe open screen -- Unauthorised : response.message ${logoutResponse.message!}");
-                                                                              }
-                                                                              WidgetsBinding
-                                                                                  .instance
-                                                                                  .addPostFrameCallback(
-                                                                                      (_) {
-                                                                                    if (mounted) {
-                                                                                      Navigator.pushReplacement(
-                                                                                          context,
-                                                                                          MaterialPageRoute(
-                                                                                              builder: (context) => LoginScreen()));
-                                                                                      ScaffoldMessenger.of(
-                                                                                          context)
-                                                                                          .showSnackBar(
-                                                                                        const SnackBar(
-                                                                                          content:
-                                                                                          Text("Unauthorised. Session is expired on this device."),
-                                                                                          backgroundColor:
-                                                                                          Colors.red,
-                                                                                          duration:
-                                                                                          Duration(seconds: 2),
-                                                                                        ),
-                                                                                      );
-                                                                                    }
-                                                                                  });
-                                                                            } else {
-                                                                              if (kDebugMode) {
-                                                                                print(
-                                                                                    "Logout failed: ${logoutResponse.message}");
-                                                                              }
-                                                                              ScaffoldMessenger.of(
-                                                                                  context)
-                                                                                  .showSnackBar(
-                                                                                SnackBar(
-                                                                                  content: Text(logoutResponse
-                                                                                      .message ??
-                                                                                      TextConstants
-                                                                                          .failedToLogout),
-                                                                                  backgroundColor:
-                                                                                  Colors
-                                                                                      .red,
-                                                                                  duration: const Duration(
-                                                                                      seconds:
-                                                                                      2),
-                                                                                ),
-                                                                              );
-                                                                            }
-                                                                          }
-                                                                        });
-                                                                  } else if (closeResponse
-                                                                      .status ==
-                                                                      Status.ERROR) {
-                                                                    // Close the verification dialog on error
-                                                                    Navigator.of(
-                                                                        context)
-                                                                        .pop();
-                                                                    // Build #1.0.248: ADDED THIS: Stop loading on any error
-                                                                    setState(() =>
-                                                                    _isSubmitting =
-                                                                    false);
-                                                                    if (closeResponse
-                                                                        .message!
-                                                                        .contains(
-                                                                        TextConstants
-                                                                            .unAuth)) {
-                                                                      if (kDebugMode) {
-                                                                        print(
-                                                                            " safe open screen -- Unauthorised in close shift: response.message ${closeResponse.message!}");
-                                                                      }
-                                                                      WidgetsBinding
-                                                                          .instance
-                                                                          .addPostFrameCallback(
-                                                                              (_) {
-                                                                            if (mounted) {
-                                                                              Navigator.pushReplacement(
-                                                                                  context,
-                                                                                  MaterialPageRoute(
-                                                                                      builder: (context) =>
-                                                                                          LoginScreen()));
-                                                                              ScaffoldMessenger.of(
-                                                                                  context)
-                                                                                  .showSnackBar(
-                                                                                const SnackBar(
-                                                                                  content: Text(
-                                                                                      TextConstants
-                                                                                          .unAuthMessage),
-                                                                                  backgroundColor:
-                                                                                  Colors
-                                                                                      .red,
-                                                                                  duration: Duration(
-                                                                                      seconds:
-                                                                                      2),
-                                                                                ),
-                                                                              );
-                                                                            }
-                                                                          });
-                                                                    } else {
-                                                                      if (kDebugMode) {
-                                                                        print(
-                                                                            "Close shift failed: ${closeResponse.message}");
-                                                                      }
-                                                                      ScaffoldMessenger
-                                                                          .of(context)
-                                                                          .showSnackBar(
-                                                                        SnackBar(
-                                                                          content: Text(
-                                                                              TextConstants
-                                                                                  .failedCloseShift), // Build #1.0.248: added into constants
-                                                                          backgroundColor:
-                                                                          Colors
-                                                                              .red,
-                                                                          duration:
-                                                                          const Duration(
-                                                                              seconds:
-                                                                              3),
-                                                                        ),
-                                                                      );
-                                                                    }
-                                                                  }
-                                                                });
-                                                      }
-                                                    }
-
-                                                    if (mounted &&
-                                                        result != null &&
-                                                        result == true &&
-                                                        closeShiftStatus !=
-                                                            TextConstants
-                                                                .closed) {
-                                                      //Build #1.0.78: fix : don't reset after back button tap on alert/ don't go to fastKey screen if back tap
-                                                      if (mounted) {
-                                                        _resetAllTubes();
-                                                        if (kDebugMode) {
-                                                          print(
-                                                              "##### Dialog result: $result");
-                                                        }
-                                                      }
-
-                                                      // Cancel subscription after dialog is handled
-                                                      await _shiftSubscription
-                                                          ?.cancel(); // Build #1.0.70
-                                                      Navigator.push(
-                                                          context,
-                                                          MaterialPageRoute(
-                                                              builder: (context) =>
-                                                                  POSHomeScreen()));
-                                                    }
-                                                  } else {
-                                                    if (response.status ==
-                                                        Status.ERROR) {
-                                                      // Build #1.0.248: ADDED THIS: Stop loading on any error
-                                                      setState(() => _isSubmitting =
-                                                      false); // Build #1.0.248: Hide loader for all errors
-                                                      if (response.message!
-                                                          .contains(
-                                                          TextConstants
-                                                              .unAuth)) {
-                                                        if (kDebugMode) {
-                                                          print(
-                                                              " safe open screen 2 -- Unauthorised : response.message ${response.message!}");
-                                                        }
-                                                        //we have to add out side below line for all error cases
-                                                        // setState(() => _isSubmitting = false); // Build #1.0. 140: hide loader
-                                                        WidgetsBinding.instance
-                                                            .addPostFrameCallback(
-                                                                (_) {
-                                                              if (mounted) {
-                                                                Navigator.pushReplacement(
-                                                                    context,
-                                                                    MaterialPageRoute(
-                                                                        builder:
-                                                                            (context) =>
-                                                                            LoginScreen()));
-
-                                                                if (kDebugMode) {
-                                                                  print(
-                                                                      "message 2 --- ${response.message}");
-                                                                }
-                                                                ScaffoldMessenger
-                                                                    .of(context)
-                                                                    .showSnackBar(
-                                                                  const SnackBar(
-                                                                    content: Text(
-                                                                        TextConstants
-                                                                            .unAuthMessage),
-                                                                    backgroundColor:
-                                                                    Colors.red,
-                                                                    duration:
-                                                                    Duration(
-                                                                        seconds:
-                                                                        2),
-                                                                  ),
-                                                                );
-                                                              }
-                                                            });
-                                                      } else {
-                                                        // Build #1.0.248: added based on shift error
-                                                        String errorMessage = status ==
-                                                            TextConstants
-                                                                .open
-                                                            ? TextConstants
-                                                            .failedToStartShift
-                                                            : TextConstants
-                                                            .failedToUpdateShift;
-
-                                                        ScaffoldMessenger.of(
-                                                            context)
-                                                            .showSnackBar(
-                                                          SnackBar(
-                                                            content: Text(
-                                                                errorMessage),
-                                                            backgroundColor:
-                                                            Colors.red,
-                                                            duration:
-                                                            const Duration(
-                                                                seconds: 3),
-                                                          ),
-                                                        );
-                                                      }
-                                                    }
-                                                  }
-                                                });
-                                              } catch (e) {
-                                                setState(() => _isSubmitting =
-                                                false); // Build #1.0. 140: hide loader
-                                                if (kDebugMode) {
-                                                  print(
-                                                      "Error during submit: $e");
-                                                }
-                                              }
-                                            },
+                                            // Only collects the tube counts; the balance screen submits the
+                                            // shift with them through its shared open/update/close flow.
+                                            onPressed: _isSubmitting
+                                                ? null
+                                                : () {
+                                                    setState(() => _isSubmitting = true);
+                                                    Navigator.pop(
+                                                      context,
+                                                      SafeTubeCount(
+                                                        denominations: denominations
+                                                            .map((d) => Map<String, dynamic>.from(d))
+                                                            .toList(),
+                                                        cashTubes: cashTubes,
+                                                      ),
+                                                    );
+                                                  },
                                             style: ElevatedButton.styleFrom(
                                               backgroundColor: Color(
                                                   0xFFFF6B6B), //Build #1.0.78: no need to change bg

@@ -248,6 +248,42 @@ class ShiftRepository {
       try {
         ShiftResponse shiftResponse;
         if (isOpening) {
+          // One shift per store: if the store already has an open shift,
+          // continue it instead of opening a second one on the server.
+          Map<String, dynamic>? activeShift;
+          try {
+            activeShift = await getActiveStoreShift();
+          } catch (e) {
+            if (kDebugMode) {
+              print('ShiftRepository - active shift check before open failed: $e');
+            }
+          }
+          if (activeShift != null) {
+            final localShiftId = await linkActiveStoreShift(activeShift);
+            if (localShiftId != null) {
+              final userData = await UserDbHelper().getUserData();
+              return ShiftResponse(
+                shiftId: localShiftId,
+                externalShiftId: (activeShift['shiftId'] ??
+                    activeShift['shift_id'] ??
+                    activeShift['id'])
+                    .toString(),
+                userName:
+                userData?[AppDBConst.userDisplayName]?.toString() ?? 'Cashier',
+                totalAmount: _readNum(activeShift, const [
+                  'openingCash',
+                  'opening_cash',
+                  'openingBalance',
+                  'opening_balance',
+                ]) ??
+                    request.totalAmount,
+                overShort: 0,
+                status: 'OPEN',
+                reusedActiveShift: true,
+              );
+            }
+          }
+
           final userData = await UserDbHelper().getUserData();
           final token =
               userData?[AppDBConst.userToken]?.toString().trim() ?? '';
@@ -359,20 +395,15 @@ class ShiftRepository {
           await _shiftDbHelper.markShiftClosureSynced(request.shiftId!);
         } else if (isExternalClosePreview) {
           final userData = await UserDbHelper().getUserData();
-          // Prefer the server's totals so the dialog matches pos_shifts.discrepancy
-          final serverOverShort = await _serverOverShortPreview(
-            externalServerShiftId,
-            request.totalAmount,
-          );
           shiftResponse = ShiftResponse(
             shiftId: request.shiftId!,
             externalShiftId: externalServerShiftId,
             userName:
             userData?[AppDBConst.userDisplayName]?.toString() ?? 'Cashier',
             totalAmount: request.totalAmount,
-            overShort: serverOverShort ??
-                ShiftDbHelper.overShortFor(
-                    localShift ?? const {}, request.totalAmount.toDouble()),
+            // 0 hides Over/Short in the confirm popup; it is shown only
+            // after closing, in the Shift Closed popup (server value)
+            overShort: 0,
             status: 'OPEN',
           );
         } else {
@@ -502,7 +533,10 @@ class ShiftRepository {
       response = await _helper.get(url, true);
     } catch (e) {
       // 404 = no active shift for this store
-      if (e.toString().contains('Resource Not Found')) return null;
+      if (e.toString().contains('Resource Not Found')) {
+        await _shiftDbHelper.closeStaleSyncedOpenShifts();
+        return null;
+      }
       rethrow;
     }
     if (kDebugMode) {
@@ -510,7 +544,32 @@ class ShiftRepository {
     }
     final dynamic decoded =
     response is String && response.isNotEmpty ? json.decode(response) : response;
-    return _extractActiveShift(decoded);
+    final activeShift = _extractActiveShift(decoded);
+
+    // Server is the source of truth: any other OPEN shift on this device
+    // is a leftover, so it must not be picked up by the offline fallback.
+    // Skip when nothing was found in a response we don't understand.
+    if (activeShift != null || _hasNoShiftData(decoded)) {
+      await _shiftDbHelper.closeStaleSyncedOpenShifts(
+        keepServerShiftId: (activeShift?['shiftId'] ??
+            activeShift?['shift_id'] ??
+            activeShift?['id'])
+            ?.toString(),
+      );
+    }
+    return activeShift;
+  }
+
+  /// True when the response holds no objects at all (e.g. `data: null`,
+  /// empty list), i.e. the server clearly says "no active shift".
+  static bool _hasNoShiftData(dynamic decoded) {
+    if (decoded == null) return true;
+    if (decoded is List) return decoded.isEmpty;
+    if (decoded is Map) {
+      return !decoded.values
+          .any((v) => v is Map || (v is List && v.isNotEmpty));
+    }
+    return false;
   }
 
   /// Finds the open shift object in the active-shift response
@@ -622,18 +681,6 @@ class ShiftRepository {
       }
     }
     return null;
-  }
-
-  /// Over/Short for the close dialog, based on the server's Expected Cash for
-  /// the open shift. Returns null if the server doesn't report it, so the
-  /// caller can fall back to the local calculation.
-  Future<double?> _serverOverShortPreview(
-      String serverShiftId, num closingCash) async {
-    final shift = await _fetchServerShift(serverShiftId);
-    if (shift == null) return null;
-    final expectedCash = _readNum(shift, _expectedCashKeys);
-    if (expectedCash == null) return null;
-    return double.parse((closingCash - expectedCash).toStringAsFixed(2));
   }
 
   /// Reads one shift from /pos/shifts/employee/{id}. Null if unavailable.

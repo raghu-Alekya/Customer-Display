@@ -317,11 +317,17 @@ class _EmployeeAttendanceDialogState extends State<_EmployeeAttendanceDialog> {
                   final isCurrent =
                       emp.employeeCode == widget.currentEmployeeCode;
                   final record = state.records[emp.employeeCode];
+
+                  final status = record?.status.toUpperCase();
+
                   final statusText = record?.isOpen == true
                       ? ' · [Present]'
-                      : record?.status == 'COMPLETED'
-                      ? ' · [Completed]'
+                      : status == 'COMPLETED' ||
+                      status == 'CLOCK_OUT' ||
+                      status == 'CLOCKED_OUT'
+                      ? ' · [Clock Out]'
                       : '';
+
 
                   return DropdownMenuItem(
                     value: emp,
@@ -389,23 +395,52 @@ class _EmployeeAttendanceDialogState extends State<_EmployeeAttendanceDialog> {
   Widget _summary() =>
       BlocBuilder<EmployeeAttendanceBloc, EmployeeAttendanceState>(
         builder: (context, state) {
-          final present =
-              state.records.values.where((r) => r.isOpen).length;
-          final completed =
-              state.records.values.where((r) => r.status == 'COMPLETED').length;
-          final notMarked = widget.employees
-              .where((e) => !state.records.containsKey(e.employeeCode))
-              .length;
+          final employees = widget.employees;
+
+          final present = employees.where((employee) {
+            final record = state.records[employee.employeeCode];
+            return record?.isOpen == true;
+          }).length;
+
+          final completed = employees.where((employee) {
+            final record = state.records[employee.employeeCode];
+            if (record == null || record.isOpen) return false;
+
+            final status = record.status.trim().toUpperCase();
+
+            return status == 'COMPLETED' ||
+                status == 'CLOCK_OUT' ||
+                status == 'CLOCKED_OUT';
+          }).length;
+
+          final notMarked = employees.where((employee) {
+            return state.records[employee.employeeCode] == null;
+          }).length;
 
           return Wrap(
             spacing: 10,
             runSpacing: 10,
             children: [
-              _summaryCard('Employees', widget.employees.length,
-                  const Color(0xFF3B65B3)),
-              _summaryCard('Present', present, const Color(0xFF16834B)),
-              _summaryCard('Completed', completed, const Color(0xFF3B65B3)),
-              _summaryCard('Not marked', notMarked, const Color(0xFFD98212)),
+              _summaryCard(
+                'Employees',
+                employees.length,
+                const Color(0xFF3B65B3),
+              ),
+              _summaryCard(
+                'Present',
+                present,
+                const Color(0xFF16834B),
+              ),
+              _summaryCard(
+                'Clock Out',
+                completed,
+                const Color(0xFF3B65B3),
+              ),
+              _summaryCard(
+                'Not marked',
+                notMarked,
+                const Color(0xFFD98212),
+              ),
             ],
           );
         },
@@ -444,13 +479,17 @@ class _EmployeeAttendanceDialogState extends State<_EmployeeAttendanceDialog> {
         state.submittingEmployeeCode == employee.employeeCode;
     final isCurrent = employee.employeeCode == widget.currentEmployeeCode;
 
+
     final label = record == null
         ? 'Not marked'
-        : switch (record.status) {
+        : switch (record.status.toUpperCase()) {
       'PRESENT' => 'Present',
-      'COMPLETED' => 'Completed',
+      'COMPLETED' => 'Clock Out',
+      'CLOCK_OUT' => 'Clock Out',
+      'CLOCKED_OUT' => 'Clock Out',
       _ => record.status,
     };
+
     final color = isOpen
         ? const Color(0xFF16834B)
         : record == null

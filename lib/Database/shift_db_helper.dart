@@ -1011,6 +1011,32 @@ class ShiftDbHelper {
     }
   }
 
+  /// Server shift ID ("SHIFT-...") for a local shift, or null while the
+  /// shift only exists locally (opened offline, not synced yet).
+  Future<String?> serverShiftIdFor(int localShiftId) async {
+    final shift = await getShiftById(localShiftId);
+    final serverId = shift?[AppDBConst.shiftServerId]?.toString().trim() ?? '';
+    return serverId.isEmpty || serverId == '0' ? null : serverId;
+  }
+
+  /// Adds a safe drop to the shift's safe drop total, which Expected Cash
+  /// subtracts (cash moved from the drawer to the safe).
+  Future<void> addSafeDropToShift({
+    required int localShiftId,
+    required double amount,
+  }) async {
+    if (amount <= 0) return;
+    final db = await _getDb();
+    await db.rawUpdate(
+      'UPDATE ${AppDBConst.shiftTable} '
+          'SET ${AppDBConst.shiftSafeDropTotal} = '
+          'COALESCE(${AppDBConst.shiftSafeDropTotal}, 0) + ?, '
+          '${AppDBConst.updatedAt} = ? '
+          'WHERE ${AppDBConst.shiftLocalId} = ?',
+      [amount, DateTime.now().toUtc().toIso8601String(), localShiftId],
+    );
+  }
+
   /// Expected Cash = Opening Balance + Cash Sales - Safe Drops - Payouts
   static double expectedCashFor(Map<String, dynamic> shift) {
     double read(String key) => (shift[key] as num?)?.toDouble() ?? 0.0;
@@ -1082,6 +1108,30 @@ class ShiftDbHelper {
       'overShort': overShort,
       'status': 'CLOSED',
     };
+  }
+
+  /// Marks local OPEN shifts as CLOSED when the server no longer has them
+  /// as the store's active shift (one shift per store). Only touches shifts
+  /// that came from the server (have a server ID and are SYNCED); shifts
+  /// created offline and not yet synced are left alone.
+  /// Returns the number of rows updated.
+  Future<int> closeStaleSyncedOpenShifts({String? keepServerShiftId}) async {
+    final db = await _getDb();
+    final keep = keepServerShiftId?.trim() ?? '';
+    final updated = await db.rawUpdate(
+      'UPDATE ${AppDBConst.shiftTable} '
+          "SET ${AppDBConst.shiftStatus} = 'CLOSED', ${AppDBConst.updatedAt} = ? "
+          "WHERE ${AppDBConst.shiftStatus} = 'OPEN' "
+          "AND ${AppDBConst.shiftSyncStatus} = 'SYNCED' "
+          "AND ${AppDBConst.shiftServerId} IS NOT NULL "
+          "AND CAST(${AppDBConst.shiftServerId} AS TEXT) NOT IN ('', '0', ?)",
+      [DateTime.now().toUtc().toIso8601String(), keep],
+    );
+    if (kDebugMode && updated > 0) {
+      print('🧹 [ShiftDbHelper] Marked $updated stale OPEN shift(s) as CLOSED '
+          '(kept: ${keep.isEmpty ? 'none' : keep})');
+    }
+    return updated;
   }
 
   /// GET ACTIVE SHIFT

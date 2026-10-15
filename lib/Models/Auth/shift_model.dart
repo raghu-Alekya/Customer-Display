@@ -100,6 +100,9 @@ class ShiftResponse {
   final num totalAmount; //Build #1.0.74
   final num overShort;
   final String status;
+  // True when opening found the store's shift already open and reused it
+  // instead of opening a second one (one shift per store).
+  final bool reusedActiveShift;
 
   ShiftResponse({
     required this.shiftId,
@@ -108,6 +111,7 @@ class ShiftResponse {
     required this.totalAmount,
     required this.overShort,
     required this.status,
+    this.reusedActiveShift = false,
   });
 
   factory ShiftResponse.fromJson(Map<String, dynamic> json) {

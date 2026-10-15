@@ -727,6 +727,7 @@ class _LoginScreenState extends State<LoginScreen> {
         'token': loginResponse.token, // optional; not used offline for API
         'shiftId': shiftId,
         'safeEnable': loginResponse.safeEnable,
+        'role': loginResponse.role,
         'safeEnableDrop': loginResponse.safeEnableDrop,
         // add more if needed later (role, email, etc.)
       };
@@ -908,6 +909,7 @@ class _LoginScreenState extends State<LoginScreen> {
       userId: userId,
       displayName: displayName,
       shiftId: shiftId,
+      role: userData['role']?.toString(),
       // optional: email / role / avatar if you store them in secure storage
     );
 

@@ -22,6 +22,7 @@ import '../../Helper/api_response.dart';
 import '../../Models/Assets/asset_model.dart';
 import '../../Models/Auth/shift_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
+import '../../Repositories/Auth/safe_drop_repository.dart';
 import '../../Repositories/Auth/shift_repository.dart';
 import '../../Widgets/SafeStorageHelper.dart';
 import '../../Widgets/widget_alert_popup_dialogs.dart';
@@ -365,8 +366,8 @@ class _ShiftOpenCloseBalanceScreenState
       final bool? confirmClose = await CustomDialog.showCloseShiftVerification(
         context,
         totalAmount: totalAmount,
-        overShort: ShiftDbHelper.overShortFor(
-            existingShift, totalAmount.toDouble()),
+        // Over/Short is shown only after closing (Shift Closed popup)
+        overShort: 0.0,
       );
 
       if (confirmClose != true) {
@@ -472,6 +473,14 @@ class _ShiftOpenCloseBalanceScreenState
 
       if (!mounted) return;
 
+      // Same as online close: Over/Short only after the shift is closed
+      await CustomDialog.showShiftClosedResult(
+        context,
+        totalAmount: totalAmount.toDouble(),
+        overShort: (result['overShort'] as num?)?.toDouble() ?? 0.0,
+      );
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -514,9 +523,21 @@ class _ShiftOpenCloseBalanceScreenState
   // EXISTING DENOMINATION HELPERS
   // ---------------------------------------------------------------------------
 
+  // Submit opens the tube (safe) screen when the store uses the safe: the
+  // login flag, or the store's safe-drop status (the PCH login doesn't send
+  // safe_enable, and login resets the saved drop flag, so refresh it here).
   Future<void> _loadSafeEnable() async {
-    _isSafeEnabled = await SafeStorageHelper.getSafeEnable();
+    final safeEnable = await SafeStorageHelper.getSafeEnable();
+    _isSafeEnabled = safeEnable || await SafeStorageHelper.getSafeEnableDrop();
     if (mounted) setState(() {});
+
+    final dropEnabled = await SafeDropRepository().getSafeDropStatus();
+    if (dropEnabled == null) return; // offline / error: keep saved value
+    await SafeStorageHelper.saveSafeEnableDrop(dropEnabled);
+    final enabled = safeEnable || dropEnabled;
+    if (mounted && enabled != _isSafeEnabled) {
+      setState(() => _isSafeEnabled = enabled);
+    }
   }
 
   Future<int> _getLoggedInUserId() async {
@@ -564,6 +585,9 @@ class _ShiftOpenCloseBalanceScreenState
       _noteTotals.updateAll((key, value) => 0.0);
       _coinTotals.updateAll((key, value) => 0.0);
       _grandTotal = 0.0;
+      // Tube counts from the Safe screen
+      denominations.clear();
+      cashTubes = 0.0;
     });
   }
 
@@ -824,7 +848,8 @@ class _ShiftOpenCloseBalanceScreenState
       tubeDenoms.add(TubeDenomination(
         denomination: denom['denomValue'],
         tubeCount: denom['tubeCount'],
-        cellCount: denom['tubeCount'],
+        // Coins per tube (amount = denom × tubeCount × tubeLimit)
+        cellCount: denom['tubeLimit'] ?? denom['tubeCount'],
         total: denom['amount'],
       ));
     }
@@ -969,6 +994,24 @@ class _ShiftOpenCloseBalanceScreenState
           // OPEN / UPDATE
           if (closeShiftStatus == null) {
             bool? result;
+            // Store already had an open shift: it was reused (already
+            // linked locally), so skip the start popup and continue it.
+            if (status == TextConstants.open &&
+                response.data!.reusedActiveShift) {
+              _shiftId = response.data!.shiftId.toString();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(TextConstants.shiftAlreadyOpenForStore),
+                ),
+              );
+              _resetState();
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const POSHomeScreen()),
+                    (_) => false,
+              );
+              return;
+            }
             if (status == TextConstants.open) {
               final int serverShiftId = response.data!.shiftId;
               final int userId = await _getLoggedInUserId();
@@ -1418,7 +1461,9 @@ class _ShiftOpenCloseBalanceScreenState
                                                 FocusScope.of(context).unfocus();
 
                                                 if (_isSafeEnabled) {
-                                                  Navigator.push(
+                                                  // Safe screen only counts the tubes; this
+                                                  // screen submits with them (shared flow).
+                                                  final tubeCount = await Navigator.push(
                                                     context,
                                                     SlideRightRoute(
                                                       page: SafeOpenScreen(
@@ -1432,6 +1477,19 @@ class _ShiftOpenCloseBalanceScreenState
                                                           .navShiftHistory,
                                                     ),
                                                   );
+                                                  if (tubeCount is! SafeTubeCount ||
+                                                      !mounted) {
+                                                    return; // Back without submitting
+                                                  }
+                                                  setState(() {
+                                                    denominations
+                                                      ..clear()
+                                                      ..addAll(tubeCount.denominations);
+                                                    cashTubes = tubeCount.cashTubes;
+                                                    _calculateGrandTotal();
+                                                  });
+                                                  await _handleShiftSubmit(
+                                                      navigateNext: true);
                                                 } else {
                                                   await _handleShiftSubmit(
                                                       navigateNext: true);

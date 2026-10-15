@@ -20,6 +20,7 @@ import '../Blocs/Auth/logout_bloc.dart';
 import '../Blocs/Orders/order_bloc.dart';
 import '../Blocs/Search/product_search_bloc.dart';
 import '../Constants/text.dart';
+import '../Database/assets_db_helper.dart';
 import '../Database/db_helper.dart';
 import '../Database/fast_key_db_helper.dart';
 import '../Database/isar_cache_entry.dart';
@@ -472,6 +473,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
 
   bool isAddingItemLoading = false;
   int? userId;
+  String? employeeRoleName;
   String? userRole;
   String? userDisplayName;
   bool isLoading = false;
@@ -594,8 +596,10 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           userId = userData[AppDBConst.userId] as int?;
           userDisplayName = userData[AppDBConst.userDisplayName] as String?;
           userRole = userData[AppDBConst.userRole] as String?;
+          employeeRoleName = _formatRole(userRole);
         }
         if (mounted) setState(() {});
+        _resolveRoleName();
       });
     } else {
       if (_cachedUserData != null) {
@@ -603,6 +607,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         userDisplayName =
         _cachedUserData![AppDBConst.userDisplayName] as String?;
         userRole = _cachedUserData![AppDBConst.userRole] as String?;
+        employeeRoleName = _formatRole(userRole);
+        _resolveRoleName();
       }
     }
 
@@ -2879,6 +2885,138 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
     _overlayEntry?.remove();
     _overlayEntry = null;
   }
+  String _formatRole(String? role) {
+    if (role == null || role.trim().isEmpty) return "Store Manager";
+    final trimmed = role.trim();
+    final upper = trimmed.toUpperCase();
+
+    switch (upper) {
+      case 'RLC_001':
+        return 'Administrator';
+      case 'RLC_002':
+        return 'Manager';
+      case 'RLC_003':
+        return 'Store Manager';
+      case 'RLC_004':
+        return 'Cashier';
+      case 'RLC_005':
+        return 'Staff';
+      case 'STORE_MANAGER':
+      case 'STOREMANAGER':
+        return 'Store Manager';
+      case 'ASSISTANT_MANAGER':
+        return 'Assistant Manager';
+      case 'ADMIN':
+      case 'ADMINISTRATOR':
+        return 'Administrator';
+      case 'CASHIER':
+        return 'Cashier';
+      case 'STAFF':
+        return 'Staff';
+    }
+
+    if (upper.startsWith('RLC_')) {
+      return 'Store Manager';
+    }
+
+    if (trimmed.contains('_')) {
+      return trimmed
+          .split('_')
+          .where((s) => s.isNotEmpty)
+          .map((s) => s[0].toUpperCase() + s.substring(1).toLowerCase())
+          .join(' ');
+    }
+
+    return trimmed;
+  }
+
+  Future<void> _resolveRoleName() async {
+    try {
+      final current = employeeRoleName ?? userRole;
+      if (current != null && !current.toUpperCase().startsWith('RLC_')) {
+        if (employeeRoleName != current && mounted) {
+          setState(() => employeeRoleName = current);
+        }
+        return;
+      }
+
+      // 1. Check local role_table from AssetDBHelper
+      try {
+        final roles = await AssetDBHelper.instance.getRoleList();
+        for (final r in roles) {
+          if (r.slug.trim().toLowerCase() == current?.trim().toLowerCase() && r.name.isNotEmpty) {
+            if (mounted) {
+              setState(() {
+                employeeRoleName = r.name;
+                userRole = r.name;
+              });
+              _updateStoredUserRole(r.name);
+              return;
+            }
+          }
+        }
+      } catch (_) {}
+
+      // 2. Check store employees from Attendance API
+      try {
+        final repo = EmployeeAttendanceRepository.forCurrentApp();
+        final merchantId = await AuthIdsStore.getMerchantId() ?? '';
+        final storeId = await AuthIdsStore.getStoreId() ?? '';
+        final userData = _cachedUserData ?? await UserDbHelper().getUserData();
+        final empCode = userData?[AppDBConst.userNickname]?.toString().trim() ?? '';
+        final empName = userData?[AppDBConst.userDisplayName]?.toString().trim() ?? '';
+
+        if (merchantId.isNotEmpty && storeId.isNotEmpty) {
+          final employees = await repo.getStoreEmployees(
+            merchantId: merchantId,
+            storeId: storeId,
+          );
+          final matched = employees.firstWhere(
+            (e) => (empCode.isNotEmpty && e.employeeCode == empCode) ||
+                (empName.isNotEmpty && e.name.toLowerCase() == empName.toLowerCase()),
+            orElse: () => const AttendanceEmployee(employeeCode: '', name: ''),
+          );
+          if (matched.roleName != null &&
+              matched.roleName!.isNotEmpty &&
+              matched.roleName != 'Staff' &&
+              mounted) {
+            setState(() {
+              employeeRoleName = matched.roleName;
+              userRole = matched.roleName;
+            });
+            _updateStoredUserRole(matched.roleName!);
+            return;
+          }
+        }
+      } catch (_) {}
+
+      // 3. Fallback: format role code directly
+      final formatted = _formatRole(current);
+      if (mounted) {
+        setState(() {
+          employeeRoleName = formatted;
+          userRole = formatted;
+        });
+        _updateStoredUserRole(formatted);
+      }
+    } catch (e) {
+      if (kDebugMode) print("TopBar _resolveRoleName error: $e");
+    }
+  }
+
+  Future<void> _updateStoredUserRole(String newRole) async {
+    try {
+      if (_cachedUserData != null) {
+        _cachedUserData![AppDBConst.userRole] = newRole;
+      }
+      final db = await DBHelper.instance.database;
+      await db.update(
+        AppDBConst.userTable,
+        {AppDBConst.userRole: newRole},
+        where: "${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ''",
+      );
+    } catch (_) {}
+  }
 
   Future<void> _fetchUserId() async {
     if (_isUserDataLoaded && _cachedUserData != null) {
@@ -2888,7 +3026,9 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
           userId = userData[AppDBConst.userId] as int;
           userDisplayName = userData[AppDBConst.userDisplayName];
           userRole = userData[AppDBConst.userRole];
+          employeeRoleName = _formatRole(userRole);
         });
+        _resolveRoleName();
       }
       return;
     }
@@ -2898,7 +3038,9 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
         userId = userData[AppDBConst.userId] as int;
         userDisplayName = userData[AppDBConst.userDisplayName];
         userRole = userData[AppDBConst.userRole];
+        employeeRoleName = _formatRole(userRole);
       });
+      _resolveRoleName();
     }
   }
 
@@ -3238,6 +3380,19 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
                   ),
                 ];
               }
+              final currentEmployee = storeEmployees.firstWhere(
+                    (e) => e.employeeCode == employeeCode,
+                orElse: () => storeEmployees.first,
+              );
+
+              if (mounted) {
+                final resolvedRole = currentEmployee.roleName ?? 'Store Manager';
+                setState(() {
+                  employeeRoleName = resolvedRole;
+                  userRole = resolvedRole;
+                });
+                _updateStoredUserRole(resolvedRole);
+              }
 
               // ★★★ 4. READ THE SAVED 6-DIGIT LOGIN PIN ★★★
               const secureStorage = FlutterSecureStorage(
@@ -3481,9 +3636,11 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver {
                       ),
                     ),
                     Text(
-                      userRole ?? "Unknown",
+                      _formatRole(employeeRoleName ?? userRole),
                       style: const TextStyle(
-                          color: Color(0xFFE09696), fontSize: 12),
+                        color: Color(0xFFE09696),
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),

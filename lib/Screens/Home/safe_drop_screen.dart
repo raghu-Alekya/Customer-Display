@@ -14,6 +14,7 @@ import '../../Constants/text.dart';
 import '../../Database/assets_db_helper.dart';
 import '../../Database/db_helper.dart';
 import '../../Database/printer_db_helper.dart';
+import '../../Database/shift_db_helper.dart';
 import '../../Database/store_db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';
@@ -75,6 +76,9 @@ class _SafeDropScreenState extends State<SafeDropScreen>
   var _printerSettings = PrinterSettings();
   List<int> bytes = [];
   StreamSubscription? _safeDropSubscription; // Build #1.0.240
+  // Drop being sent, added to the local shift total once the API succeeds
+  int? _pendingDropShiftId;
+  double _pendingDropAmount = 0.0;
   @override
   void initState() {
     super.initState();
@@ -94,6 +98,15 @@ class _SafeDropScreenState extends State<SafeDropScreen>
         if (kDebugMode)
           print(
               "#### SafeDropScreen: Safe drop created successfully: ${response.data!.message}");
+        // Cash left the drawer: include it in the shift's Expected Cash
+        final dropShiftId = _pendingDropShiftId;
+        if (dropShiftId != null) {
+          unawaited(ShiftDbHelper().addSafeDropToShift(
+            localShiftId: dropShiftId,
+            amount: _pendingDropAmount,
+          ));
+          _pendingDropShiftId = null;
+        }
         if (Misc.showDebugSnackBar) {
           // Build #1.0.254
           ScaffoldMessenger.of(context).showSnackBar(
@@ -195,6 +208,7 @@ class _SafeDropScreenState extends State<SafeDropScreen>
 
     // Simulate a loading delay
     Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
       setState(() {
         isLoading = false; // Set loading to false after 3 seconds
       });
@@ -205,7 +219,22 @@ class _SafeDropScreenState extends State<SafeDropScreen>
   Future<void> _fetchSafeDenominations() async {
     if (kDebugMode) print("#### SafeDropScreen: Fetching safe denominations");
     try {
-      final denoms = await AssetDBHelper.instance.getSafeDenomList();
+      var denoms = await AssetDBHelper.instance.getSafeDenomList();
+      // No safe denominations cached (assets not synced): fall back to the
+      // note denominations, then to the same built-in list the shift balance
+      // screen uses, so the screen doesn't spin forever.
+      if (denoms.isEmpty) {
+        denoms = await AssetDBHelper.instance.getNotesDenomList();
+      }
+      if (denoms.isEmpty) {
+        denoms = const ['100', '50', '20', '10', '5', '2', '1']
+            .map((d) => Denom(denom: d, image: 'assets/svg/1.svg'))
+            .toList();
+        if (kDebugMode) {
+          print("#### SafeDropScreen: No safe denominations cached; using built-in defaults");
+        }
+      }
+      if (!mounted) return;
       setState(() {
         _safeDenominations = denoms;
         // Initialize controllers for each denomination
@@ -378,11 +407,17 @@ class _SafeDropScreenState extends State<SafeDropScreen>
       );
     }).toList();
 
+    // API needs the server shift ID ("SHIFT-...") so the drop is linked to
+    // the shift (totalSafeDrops); local ID only if the shift isn't synced yet.
+    final serverShiftId = await ShiftDbHelper().serverShiftIdFor(shiftId);
+    _pendingDropShiftId = shiftId;
+    _pendingDropAmount = totalCash;
+
     final request = SafeDropRequest(
       safeDenominations: denominations,
       coinsTotal: 0,
       totalAmount: totalCash,
-      shiftId: shiftId.toString(),
+      shiftId: serverShiftId ?? shiftId.toString(),
     );
 
     if (kDebugMode)

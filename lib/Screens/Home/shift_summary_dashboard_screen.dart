@@ -20,6 +20,7 @@ import '../../Helper/api_response.dart';
 import '../../Models/Assets/asset_model.dart';
 import '../../Models/Auth/shift_summary_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
+import '../../Repositories/Auth/safe_drop_repository.dart';
 import '../../Repositories/Auth/shift_repository.dart';
 import '../../Repositories/Auth/vendor_payment_repository.dart';
 import '../../Widgets/widget_add_vendor_payout_dialog.dart';
@@ -59,6 +60,9 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
   APIResponse<ShiftByIdResponse>? apiResponse;
   StreamSubscription? _shiftSubscription; // build 1.0.206 We changed the code to store the shift summary data within the screen's state,
   // which prevents the UI from getting stuck on a loading indicator after you change the display mode.
+  // Safe drops of this shift from get-all-safe-drops (null = not loaded,
+  // falls back to the shift response's safe_drops).
+  List<SafeDrop>? _apiSafeDrops;
 
 
 
@@ -71,10 +75,25 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
     if (widget.shift != null) {
       apiResponse = APIResponse.completed(ShiftByIdResponse(shift: widget.shift!));
     }
+    _loadSafeDrops();
     if (widget.shiftId != null) {
       _subscribeAndFetchShift(widget.shiftId!);
       _loadVendorData(); // Load vendor data from AssetDBHelper
       if (kDebugMode) print("ShiftSummaryDashboardScreen: Initialized with shiftId ${widget.shiftId}");
+    }
+  }
+
+  /// Loads this shift's safe drops from the PCH get-all-safe-drops API.
+  /// PCH shifts carry their "SHIFT-..." id in [Shift.title].
+  Future<void> _loadSafeDrops() async {
+    final serverShiftId = widget.shift?.title.trim() ?? '';
+    if (!serverShiftId.startsWith('SHIFT-')) return;
+    try {
+      final drops = await SafeDropRepository()
+          .getAllSafeDrops(serverShiftId: serverShiftId);
+      if (mounted) setState(() => _apiSafeDrops = drops);
+    } catch (e) {
+      if (kDebugMode) print("ShiftSummaryDashboardScreen: safe drops load failed: $e");
     }
   }
 
@@ -752,6 +771,11 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
 
   Widget _buildSafeDropSection(Shift shift) {
     final themeHelper = Provider.of<ThemeNotifier>(context);
+    // Prefer the safe-drops API; the PCH shift response has no safe_drops list
+    final safeDrops = _apiSafeDrops ?? shift.safeDrops;
+    final safeDropTotal = _apiSafeDrops == null
+        ? shift.safeDropTotal
+        : _apiSafeDrops!.fold<double>(0.0, (sum, d) => sum + d.total);
     return Container(
       width: MediaQuery.of(context).size.width * 0.3,
       height: MediaQuery.of(context).size.height * 0.595,
@@ -788,7 +812,7 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
                   ),
                 ),
                 Text(
-                  '${TextConstants.currencySymbol}${shift.safeDropTotal.toStringAsFixed(2)}', // "safe_drop_total": 0,
+                  '${TextConstants.currencySymbol}${safeDropTotal.toStringAsFixed(2)}', // "safe_drop_total": 0,
                   style: TextStyle(
                     color: Color(0xFF4CAF50),
                     fontSize: MediaQuery.of(context).size.width * 0.012,
@@ -801,13 +825,13 @@ class _ShiftSummaryDashboardScreenState extends State<ShiftSummaryDashboardScree
 
           // Safe Drop List
           Expanded(
-            child: shift.safeDrops.isEmpty
+            child: safeDrops.isEmpty
                 ? Center(child: Text(TextConstants.safeDropNotFound))
                 : ListView.builder(
               padding: EdgeInsets.zero,
-              itemCount: shift.safeDrops.length,
+              itemCount: safeDrops.length,
               itemBuilder: (context, index) {
-                final item = shift.safeDrops[index];
+                final item = safeDrops[index];
                 return Container(
                   margin: EdgeInsets.only(
                       bottom: 3,

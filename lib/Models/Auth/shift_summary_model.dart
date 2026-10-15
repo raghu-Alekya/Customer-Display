@@ -61,6 +61,61 @@ class SafeDrop extends Equatable {
     );
   }
 
+  /// From the PCH get-all-safe-drops API. Accepts snake_case or camelCase
+  /// and numbers sent as strings ("30.00").
+  factory SafeDrop.fromApi(Map<String, dynamic> json) {
+    num? readNum(Map map, List<String> keys) {
+      for (final key in keys) {
+        final value = map[key];
+        if (value is num) return value;
+        final parsed = num.tryParse(value?.toString() ?? '');
+        if (parsed != null) return parsed;
+      }
+      return null;
+    }
+
+    final rawDenoms = json['safe_denom'] ??
+        json['safeDenom'] ??
+        json['safe_denominations'] ??
+        json['safeDenominations'] ??
+        json['denominations'];
+    return SafeDrop(
+      id: readNum(json, const ['id', 'safe_id', 'safeId', 'safe_drop_id', 'safeDropId'])
+          ?.toInt() ??
+          0,
+      total: readNum(json, const ['total_amount', 'totalAmount', 'total', 'amount'])
+          ?.toDouble() ??
+          0.0,
+      denominations: rawDenoms is List
+          ? rawDenoms.whereType<Map>().map((d) {
+        final denom = Map<String, dynamic>.from(d);
+        return Denomination(
+          denom: (denom['denom'] ?? denom['denomination'])?.toString() ?? '',
+          denomCount: readNum(denom, const [
+            'tube_count',
+            'tubeCount',
+            'denom_count',
+            'denomCount',
+            'count',
+          ])?.toInt() ??
+              0,
+          total: readNum(denom, const ['total', 'amount'])?.toDouble() ?? 0.0,
+        );
+      }).toList()
+          : const [],
+      note: (json['note'] ?? json['notes'] ?? json['safe_drop_note'] ?? '')
+          .toString(),
+      time: (json['createdAt'] ??
+          json['created_at'] ??
+          json['droppedAt'] ??
+          json['dropped_at'] ??
+          json['time'] ??
+          json['date'] ??
+          '')
+          .toString(),
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'total': total,

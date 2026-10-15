@@ -13,12 +13,22 @@ class SafeDropRequest { // Build #1.0.70 - Added by Naveen
     required this.shiftId,
   });
 
+  /// Body for POST .../pos/safe-drops/create-safe-drop:
+  /// { shift_id, safe_drop_denom: [{denom, denom_count, total}],
+  ///   total_cash, total_notes }. Only denominations with a count are sent.
   Map<String, dynamic> toJson() {
+    final counted = safeDenominations.where((e) => e.tubeCount > 0).toList();
     return {
-      'safe_denom': safeDenominations.map((e) => e.toJson()).toList(),
-      'coins_total': coinsTotal,
-      'total_amount': totalAmount,
       'shift_id': shiftId,
+      'safe_drop_denom': counted
+          .map((e) => {
+        'denom': e.denom,
+        'denom_count': e.tubeCount,
+        'total': e.total,
+      })
+          .toList(),
+      'total_cash': totalAmount,
+      'total_notes': counted.fold<int>(0, (sum, e) => sum + e.tubeCount),
     };
   }
 
@@ -75,9 +85,18 @@ class SafeDropResponse {
         .map((item) => SafeDropDenomination.fromJson(item as Map<String, dynamic>))
         .toList();
 
+    // Ids may come back as numbers or strings; don't fail the drop on that
+    final data = rawData is Map ? rawData : const {};
+    final rawId = json['safe_drop_id'] ??
+        json['safeDropId'] ??
+        json['safe_id'] ??
+        json['id'] ??
+        data['safe_drop_id'] ??
+        data['safeDropId'] ??
+        data['id'];
     return SafeDropResponse(
-      message: json['message'] as String? ?? 'Safe Drop created successfully',
-      safeDropId: (json['safe_id'] ?? json['safe_drop_id']) as int? ?? 0,
+      message: json['message']?.toString() ?? 'Safe Drop created successfully',
+      safeDropId: rawId is num ? rawId.toInt() : int.tryParse('$rawId') ?? 0,
       denominations: denominations,
     );
   }
