@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../Repositories/Auth/AuthIdsStore.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:pinaka_pos/Screens/Auth/login_screen.dart';
+import '../../DeviceActivationScreen/DeviceActivationScreen.dart';
 import 'package:provider/provider.dart';
 
 import '../../Blocs/Auth/store_validation_bloc.dart';
@@ -719,6 +720,30 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
                               ),
                             )
                                 : const Text('Submit'),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const DeviceActivationScreen(),
+                              ),
+                            );
+                          },
+                          icon: const Icon(
+                            Icons.phonelink_setup,
+                            size: 18,
+                            color: Color(0xFF1E2745),
+                          ),
+                          label: const Text(
+                            'Device Activation',
+                            style: TextStyle(
+                              color: Color(0xFF1E2745),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
                       ],

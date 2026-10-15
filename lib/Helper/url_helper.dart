@@ -318,7 +318,10 @@ class UrlMethodConstants {
   static const taxes = "assets/all-taxes";
   static const String loyaltyRemove = "loyalty/remove-loyalty-points";
   static const String deleteofflineorders = "orders/sync-offline-orders";
-  static const String cashbackservices = "assets/cash-back-service";  ///
+  // GET {baseUrl}/store/store-pos-configuration/{storeId}/cashback_settings
+  // (CashbackHelper builds full path with storeId)
+  static const String cashbackservices =
+      "store/store-pos-configuration"; // + /{storeId}/cashback_settings
   static const String discountRules = "assets/discount-rules";
 }
 

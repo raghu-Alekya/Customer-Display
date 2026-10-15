@@ -334,7 +334,11 @@ List<Map<String, dynamic>> panelMapsFromApiLineItems(List<LineItem> lines) {
         AppDBConst.itemSalesPrice: total,
         AppDBConst.itemRegularPrice: li.price,
         'product_id': li.productId,
-        'item_type': isWeightedItem ? 'weighted' : 'product',
+        'item_type': isWeightedItem
+            ? 'weighted'
+            : (nameLower == 'cashback' || nameLower.contains('cashback')
+            ? 'cashback'
+            : 'product'),
         AppDBConst.itemImage: li.image.src,
         AppDBConst.itemVariationId: variationId,
         AppDBConst.itemVariationCustomName: variationName,
@@ -373,6 +377,233 @@ List<Map<String, dynamic>> panelMapsFromApiLineItems(List<LineItem> lines) {
         print('Stack: $st');
       }
     }
+  }
+  return out;
+}
+
+/// Maps API `fee_lines` (Payout / Cashback / Cashback Fee) into order-panel rows.
+/// Merchant discount stays in totals only (not a product line).
+List<Map<String, dynamic>> panelMapsFromApiFeeLines(dynamic feeLinesRaw) {
+  final out = <Map<String, dynamic>>[];
+  if (feeLinesRaw is! List || feeLinesRaw.isEmpty) return out;
+
+  for (final fee in feeLinesRaw) {
+    try {
+      String name = '';
+      double total = 0.0;
+      String taxStatus = 'none';
+
+      if (fee is Map) {
+        name = (fee['name'] ?? '').toString();
+        total = double.tryParse(fee['total']?.toString() ?? '0') ?? 0.0;
+        taxStatus = (fee['tax_status'] ?? 'none').toString();
+      } else {
+        name = (fee.name ?? '').toString();
+        total = double.tryParse((fee.total ?? '0').toString()) ?? 0.0;
+        try {
+          taxStatus = (fee.taxStatus ?? 'none').toString();
+        } catch (_) {}
+      }
+
+      final lower = name.toLowerCase().trim().replaceAll('_', ' ');
+      if (lower.isEmpty) continue;
+
+      // Skip merchant discount — shown in summary totals, not as a cart line
+      if (lower.contains('merchant') && lower.contains('discount')) continue;
+
+      String itemType = 'fee';
+      String displayName = name;
+
+      if (lower.contains('payout')) {
+        itemType = 'payout';
+        displayName = 'Payout';
+      } else if (lower.contains('cashback')) {
+        // Cashback Fee lives in summary fees section — not order line list
+        continue;
+      } else {
+        // Unknown fee — skip from line list
+        continue;
+      }
+
+      out.add({
+        AppDBConst.itemName: displayName,
+        AppDBConst.itemPrice: total.abs(),
+        AppDBConst.itemCount: 1,
+        AppDBConst.itemSumPrice: total,
+        AppDBConst.itemImage: '',
+        AppDBConst.itemType: itemType,
+        'item_type': itemType,
+        'product_id': 0,
+        'tax_status': taxStatus,
+        'is_fee_line': true,
+      });
+    } catch (e) {
+      if (kDebugMode) print('panelMapsFromApiFeeLines skip: $e');
+    }
+  }
+  return out;
+}
+
+/// Line list: products + Cashback amount only.
+/// Cashback Fee is NOT a line item — it is shown in the summary fees section
+/// via [cashbackFee] / [uiCashbackFee] (TextConstants.cashbackFee row).
+List<Map<String, dynamic>> normalizeCashbackAndFeeRows(
+    List<Map<String, dynamic>> items, {
+      double cashbackFee = 0.0,
+    }) {
+  final out = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> cashbackNamed = [];
+
+  for (final item in items) {
+    final type =
+    (item[AppDBConst.itemType] ?? item['item_type'] ?? '').toString().toLowerCase();
+    final name =
+    (item[AppDBConst.itemName] ?? item['name'] ?? '').toString().toLowerCase();
+
+    // Never put Cashback Fee into the line-items list
+    if (type == 'cashback_fee' ||
+        (name.contains('cashback') && name.contains('fee'))) {
+      continue;
+    }
+
+    if (type == 'cashback' || name == 'cashback') {
+      cashbackNamed.add(Map<String, dynamic>.from(item));
+      continue;
+    }
+
+    out.add(item);
+  }
+
+  if (cashbackNamed.isEmpty) {
+    return out;
+  }
+
+  // Largest amount = Cashback (money given to customer)
+  cashbackNamed.sort((a, b) {
+    final aa = (double.tryParse(
+        (a[AppDBConst.itemSumPrice] ?? a[AppDBConst.itemPrice] ?? 0)
+            .toString()) ??
+        0.0)
+        .abs();
+    final bb = (double.tryParse(
+        (b[AppDBConst.itemSumPrice] ?? b[AppDBConst.itemPrice] ?? 0)
+            .toString()) ??
+        0.0)
+        .abs();
+    return bb.compareTo(aa);
+  });
+
+  final main = cashbackNamed.first;
+  out.add({
+    ...main,
+    AppDBConst.itemName: 'Cashback',
+    AppDBConst.itemType: 'cashback',
+    'item_type': 'cashback',
+  });
+  // Extra cashback-named rows (e.g. $10 fee mislabeled as Cashback) are dropped
+  // from lines; their amount is handled as cashbackFee in summary.
+
+  return out;
+}
+
+/// Pull Cashback Fee amount from fee_lines / misnamed cashback rows for summary UI.
+double extractCashbackFeeAmount(
+    dynamic feeLinesRaw, {
+      double existingFee = 0.0,
+      List<Map<String, dynamic>>? panelItems,
+    }) {
+  double fee = existingFee.abs();
+
+  if (feeLinesRaw is List) {
+    for (final f in feeLinesRaw) {
+      String name = '';
+      double total = 0.0;
+      if (f is Map) {
+        name = (f['name'] ?? '').toString().toLowerCase().replaceAll('_', ' ');
+        total = double.tryParse(f['total']?.toString() ?? '0') ?? 0.0;
+      } else {
+        try {
+          name = (f.name ?? '').toString().toLowerCase().replaceAll('_', ' ');
+          total = double.tryParse((f.total ?? '0').toString()) ?? 0.0;
+        } catch (_) {}
+      }
+      if (name.contains('cashback') && name.contains('fee')) {
+        fee = total.abs();
+        break;
+      }
+      // fee_line named only "Cashback" with small amount vs line cashback — treat as fee
+      if (name == 'cashback' || name.contains('cashback')) {
+        // Prefer explicit cashback fee name; if only bare cashback in fees, use as fee
+        if (fee <= 0) fee = total.abs();
+      }
+    }
+  }
+
+  // If panel had two cashback rows, smaller one is the fee
+  if (panelItems != null && fee <= 0) {
+    final amounts = <double>[];
+    for (final item in panelItems) {
+      final type =
+      (item[AppDBConst.itemType] ?? item['item_type'] ?? '').toString().toLowerCase();
+      final name =
+      (item[AppDBConst.itemName] ?? '').toString().toLowerCase();
+      if (type == 'cashback' || name == 'cashback') {
+        amounts.add((double.tryParse(
+            (item[AppDBConst.itemSumPrice] ?? item[AppDBConst.itemPrice] ?? 0)
+                .toString()) ??
+            0.0)
+            .abs());
+      }
+    }
+    amounts.sort();
+    if (amounts.length >= 2) {
+      fee = amounts.first; // smallest = fee
+    }
+  }
+
+  return fee;
+}
+
+List<Map<String, dynamic>> dedupeOrderPanelItems(List<Map<String, dynamic>> items) {
+  final seen = <String>{};
+  final out = <Map<String, dynamic>>[];
+  for (final item in items) {
+    final type = (item[AppDBConst.itemType] ?? item['item_type'] ?? 'product')
+        .toString()
+        .toLowerCase();
+    final pid = (item['product_id'] ??
+        item[AppDBConst.itemProductId] ??
+        item['server_item_id'] ??
+        '')
+        .toString();
+    final vid = (item['variation_id'] ??
+        item[AppDBConst.itemVariationId] ??
+        item['item_variation'] ??
+        '0')
+        .toString();
+    final name = (item[AppDBConst.itemName] ?? item['name'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    // Fee / payout / cashback: unique by type + name only
+    final String key;
+    if (type == 'payout' ||
+        type == 'cashback' ||
+        type == 'cashback_fee' ||
+        type == 'fee' ||
+        item['is_fee_line'] == true) {
+      key = 'fee|$type|$name';
+    } else {
+      key = 'prod|$pid|$vid|$name';
+    }
+    if (seen.contains(key)) {
+      if (kDebugMode) {
+        print('🧹 Dedupe skip duplicate panel row → $key');
+      }
+      continue;
+    }
+    seen.add(key);
+    out.add(item);
   }
   return out;
 }
@@ -980,14 +1211,53 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
       payByOther = 0.0;
       ebtAmount = 0.0;
       if (hasApiPreview) {
-        orderItems = panelMapsFromApiLineItems(preview);
-        _isLoading = false;
+        final List<Map<String, dynamic>> fromLines =
+        panelMapsFromApiLineItems(preview);
         final po = widget.previewOrderFromApi;
+        List<Map<String, dynamic>> fromFees = [];
         if (po != null && po.id == widget.activeOrderId) {
+          fromFees = panelMapsFromApiFeeLines(po.feeLines);
+          // Avoid duplicate if cashback already in line_items as product
+          final existingNames = fromLines
+              .map((e) => (e[AppDBConst.itemName] ?? '').toString().toLowerCase())
+              .toSet();
+          fromFees = fromFees
+              .where((f) {
+            final n = (f[AppDBConst.itemName] ?? '').toString().toLowerCase();
+            // Always show payout / cashback fee from fee_lines
+            if (n.contains('payout') || n.contains('cashback fee')) return true;
+            // Skip cashback fee-line if already a cashback product line
+            if (n == 'cashback' && existingNames.contains('cashback')) {
+              return false;
+            }
+            return true;
+          })
+              .toList();
           _order = orderPanelOrderMapFromOrderModel(po);
           _wooOrder = po;
           orderServerId = po.id;
         }
+        final double feeFromModel = po != null
+            ? (double.tryParse(po.cashbackFee.toString()) ?? 0.0)
+            : 0.0;
+        final double feeFromLines = extractCashbackFeeAmount(
+          po?.feeLines,
+          existingFee: feeFromModel,
+          panelItems: fromLines,
+        );
+        final double feeHint = feeFromLines > 0 ? feeFromLines : feeFromModel.abs();
+        orderItems = dedupeOrderPanelItems(
+          normalizeCashbackAndFeeRows(
+            [...fromLines, ...fromFees],
+            cashbackFee: feeHint,
+          ),
+        );
+        if (feeHint > 0 && po != null) {
+          _order['cashbackFee'] = feeHint;
+          _order['cashback_fee'] = feeHint;
+          _order[AppDBConst.orderCashbackFee] = feeHint;
+        }
+        _isLoading = false;
       } else {
         _isLoading = true;
       }
@@ -1503,6 +1773,57 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         return;
       }
 
+      // Prefer Total-Orders API preview when present (avoids SQLite duplicate rows
+      // on completed orders that were synced more than once).
+      final apiPreview = widget.previewLineItemsFromApi;
+      final bool preferApiLines =
+          apiPreview != null &&
+              apiPreview.isNotEmpty &&
+              widget.previewOrderFromApi != null &&
+              widget.previewOrderFromApi!.id == requestOrderId;
+      if (preferApiLines) {
+        final status = (widget.previewOrderFromApi!.status).toLowerCase();
+        final isTerminal = status.contains('complete') ||
+            status.contains('cancel') ||
+            status.contains('refund');
+        if (isTerminal) {
+          final fromLines = panelMapsFromApiLineItems(apiPreview);
+          final fromFees =
+          panelMapsFromApiFeeLines(widget.previewOrderFromApi!.feeLines);
+          if (requestId != _fetchOrderItemsSeq) return;
+          final double feeFromModel = double.tryParse(
+              widget.previewOrderFromApi!.cashbackFee.toString()) ??
+              0.0;
+          final double feeFromLines = extractCashbackFeeAmount(
+            widget.previewOrderFromApi!.feeLines,
+            existingFee: feeFromModel,
+            panelItems: fromLines,
+          );
+          final double feeHint =
+          feeFromLines > 0 ? feeFromLines : feeFromModel.abs();
+          setState(() {
+            orderItems = dedupeOrderPanelItems(
+              normalizeCashbackAndFeeRows(
+                [...fromLines, ...fromFees],
+                cashbackFee: feeHint,
+              ),
+            );
+            if (feeHint > 0) {
+              _order['cashbackFee'] = feeHint;
+              _order['cashback_fee'] = feeHint;
+              _order[AppDBConst.orderCashbackFee] = feeHint;
+            }
+          });
+          if (kDebugMode) {
+            print(
+              '✅ Using API line_items (${fromLines.length}) + fee_lines (${fromFees.length}) '
+                  '— skipped SQLite to avoid duplicates',
+            );
+          }
+          return;
+        }
+      }
+
       if (items.isNotEmpty) {
         print("🟦 SQLite Order Items Loaded: $items");
 
@@ -1589,7 +1910,52 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         }
 
         if (requestId != _fetchOrderItemsSeq) return;
-        setState(() => orderItems = processedItems);
+        // Merge API fee_lines (Payout / Cashback Fee) so they show in the panel
+        List<Map<String, dynamic>> feeRows = [];
+        if (_wooOrder != null && _wooOrder!.id == widget.activeOrderId) {
+          feeRows = panelMapsFromApiFeeLines(_wooOrder!.feeLines);
+        } else if (_order is Map && _order['fee_lines'] != null) {
+          feeRows = panelMapsFromApiFeeLines(_order['fee_lines']);
+        }
+        if (feeRows.isNotEmpty) {
+          final existingTypes = processedItems
+              .map((e) => (e[AppDBConst.itemType] ?? e['item_type'] ?? '')
+              .toString()
+              .toLowerCase())
+              .toSet();
+          final existingNames = processedItems
+              .map((e) =>
+              (e[AppDBConst.itemName] ?? '').toString().toLowerCase())
+              .toSet();
+          for (final f in feeRows) {
+            final t = (f[AppDBConst.itemType] ?? '').toString().toLowerCase();
+            final n = (f[AppDBConst.itemName] ?? '').toString().toLowerCase();
+            // Don't duplicate payout/cashback already present from SQLite
+            if (t == 'payout' &&
+                (existingTypes.contains('payout') ||
+                    existingNames.contains('payout'))) {
+              continue;
+            }
+            if (t == 'cashback' && existingNames.contains('cashback')) {
+              continue;
+            }
+            processedItems.add(f);
+          }
+        }
+        final double feeHint = (_wooOrder != null)
+            ? (double.tryParse(_wooOrder!.cashbackFee.toString()) ?? 0.0)
+            : (double.tryParse(
+            (_order[AppDBConst.orderCashbackFee] ??
+                _order['cashbackFee'] ??
+                0)
+                .toString()) ??
+            0.0);
+        setState(() => orderItems = dedupeOrderPanelItems(
+          normalizeCashbackAndFeeRows(
+            processedItems,
+            cashbackFee: feeHint.abs(),
+          ),
+        ));
         return;
       }
     } catch (_) {}
@@ -2444,8 +2810,20 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
               name == "cashback";
         });
 
-    final cf = order["cashbackFee"] ?? order["cashback_fee"] ?? 0.0;
+    final cf = order["cashbackFee"] ??
+        order["cashback_fee"] ??
+        order[AppDBConst.orderCashbackFee] ??
+        0.0;
     cashbackFee = double.tryParse(cf.toString()) ?? 0.0;
+    // Prefer explicit Cashback Fee from API fee_lines for summary row
+    final double feeFromApiLines = extractCashbackFeeAmount(
+      _wooOrder?.feeLines ?? order['fee_lines'] ?? order['feeLines'],
+      existingFee: cashbackFee,
+      panelItems: orderItems,
+    );
+    if (feeFromApiLines > 0) {
+      cashbackFee = feeFromApiLines;
+    }
 
     // Build #1.0.269: Source of truth for tax (Woo > SQLite)
     // Moving this BEFORE computedNetTotal for accurate math

@@ -1,138 +1,211 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:package_info_plus/package_info_plus.dart';
-import 'package:pinaka_pos/Screens/Auth/login_screen.dart' hide Text;
+import 'package:http/http.dart' as http;
+import 'package:pinaka_pos/Helper/url_helper.dart';
+import 'package:pinaka_pos/Repositories/Auth/AuthIdsStore.dart';
 import 'package:pinaka_pos/Screens/Auth/store_id_screen.dart';
 
-import '../../Widgets/widget_custom_num_pad.dart';
-import '../../core/api/auth_bloc.dart';
-import '../../core/api/models/auth_state.dart';
-import '../../core/api/pch_service_locator.dart';
-
-class DeviceAuthorizationScreen extends StatefulWidget {
-  const DeviceAuthorizationScreen({super.key});
+class DeviceActivationScreen extends StatefulWidget {
+  const DeviceActivationScreen({super.key});
 
   @override
-  State<DeviceAuthorizationScreen> createState() =>
-      _DeviceAuthorizationScreenState();
+  State<DeviceActivationScreen> createState() => _DeviceActivationScreenState();
 }
 
-class _DeviceAuthorizationScreenState extends State<DeviceAuthorizationScreen> {
-  final List<String> _pin = List.filled(6, "");
-  final TextEditingController _pinController = TextEditingController();
+// Retain alias for backward compatibility with existing imports
+typedef DeviceAuthorizationScreen = DeviceActivationScreen;
 
-  AuthBloc? _authBloc;
-  String _deviceFingerprint = '';
-  String _appVersion = '2.5.0';
-  String _platform = 'UNKNOWN';
-  bool _navigated = false;
+class _DeviceActivationScreenState extends State<DeviceActivationScreen> {
+  final _formKey = GlobalKey<FormState>();
+
+  final TextEditingController _activationCodeController =
+      TextEditingController();
+  final TextEditingController _serialNumberController = TextEditingController();
+
+  bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _authBloc = PchServiceLocator.createAuthBloc();
-    _initDeviceInfo();
+    _loadExistingDetails();
   }
 
-  Future<void> _initDeviceInfo() async {
-    _deviceFingerprint = await DeviceHelper.getDeviceId();
-    _platform = DeviceHelper.getPlatformName().toUpperCase();
+  Future<void> _loadExistingDetails() async {
     try {
-      final info = await PackageInfo.fromPlatform();
-      _appVersion = info.version;
-    } catch (_) {
-      _appVersion = '2.5.0';
-    }
+      final savedCode = await AuthIdsStore.getDeviceActivationCode();
+      final savedSerial = await AuthIdsStore.getDeviceSerialNumber();
 
-    if (!mounted) return;
-    setState(() {});
-
-    _authBloc!.stateStream.listen((state) {
-      if (state is DeviceActivated) {
-        _goToLogin();
+      if (savedCode.isNotEmpty) {
+        _activationCodeController.text = savedCode;
       }
-    });
-  }
 
-  void _goToLogin() {
-    if (_navigated || !mounted) return;
-    _navigated = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const StoreIdScreen()),
-      );
-    });
-  }
-
-  void _updatePin(String value) {
-    for (int i = 0; i < _pin.length; i++) {
-      if (_pin[i].isEmpty) {
-        setState(() => _pin[i] = value);
-        break;
+      if (savedSerial.isNotEmpty) {
+        _serialNumberController.text = savedSerial;
+      } else {
+        // Auto-suggest device id as default serial number
+        final deviceId = await DeviceHelper.getDeviceId();
+        if (deviceId.isNotEmpty && mounted) {
+          _serialNumberController.text = deviceId;
+        }
+      }
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (kDebugMode) {
+        print('[DeviceActivation] Error loading existing details: $e');
       }
     }
   }
 
-  void _deletePin() {
-    for (int i = _pin.length - 1; i >= 0; i--) {
-      if (_pin[i].isNotEmpty) {
-        setState(() => _pin[i] = "");
-        break;
-      }
-    }
-  }
+  Future<void> _handleSaveAndContinue() async {
+    FocusScope.of(context).unfocus();
 
-  void _clearPin() {
+    final activationCode = _activationCodeController.text.trim();
+    final serialNumber = _serialNumberController.text.trim();
+
+    if (activationCode.isEmpty) {
+      _showToast('Please enter the Activation Code', isError: true);
+      return;
+    }
+
+    if (serialNumber.isEmpty) {
+      _showToast('Please enter the Serial Number', isError: true);
+      return;
+    }
+
     setState(() {
-      for (int i = 0; i < _pin.length; i++) {
-        _pin[i] = "";
-      }
-      _pinController.clear();
+      _isLoading = true;
+      _errorMessage = null;
     });
+
+    try {
+      // POST https://pch.alektasolutions.com/connector/api/v1/device-activation/activate
+      final endpoint = '${UrlHelper.baseUrl}device-activation/activate';
+      final payload = {
+        'activationCode': activationCode,
+        'serialNumber': serialNumber,
+      };
+
+      if (kDebugMode) {
+        print('📱 [DeviceActivation] Calling API: $endpoint');
+        print('📱 [DeviceActivation] Payload: $payload');
+      }
+
+      final response = await http
+          .post(
+            Uri.parse(endpoint),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (kDebugMode) {
+        print('📱 [DeviceActivation] Status: ${response.statusCode}');
+        print('📱 [DeviceActivation] Response Body: ${response.body}');
+      }
+
+      Map<String, dynamic> responseData = {};
+      try {
+        responseData = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {}
+
+      final bool isSuccess = (response.statusCode >= 200 &&
+              response.statusCode < 300) &&
+          (responseData['success'] == true || responseData['data'] != null);
+
+      final String message = (responseData['message'] ??
+              (isSuccess
+                  ? 'This device is already activated'
+                  : 'Device activation failed'))
+          .toString();
+
+      if (isSuccess) {
+        // Save activation information to preferences
+        final data = responseData['data'] is Map<String, dynamic>
+            ? responseData['data'] as Map<String, dynamic>
+            : (responseData['data'] is Map
+                ? Map<String, dynamic>.from(responseData['data'])
+                : null);
+
+        await AuthIdsStore.saveDeviceActivation(
+          activationCode: activationCode,
+          serialNumber: serialNumber,
+          data: data,
+        );
+
+        if (!mounted) return;
+
+        // Show snackbar message returned from server (e.g. "This device is already activated")
+        _showToast(message, isError: false);
+
+        // Navigate to Merchant Login (StoreIdScreen)
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const StoreIdScreen()),
+        );
+      } else {
+        final err = responseData['message'] ??
+            responseData['error'] ??
+            'Activation failed. Please verify activation code and serial number.';
+        setState(() {
+          _errorMessage = err.toString();
+        });
+        _showToast(err.toString(), isError: true);
+      }
+    } on SocketException catch (_) {
+      const err = 'No internet connection. Please connect and try again.';
+      setState(() => _errorMessage = err);
+      _showToast(err, isError: true);
+    } catch (e) {
+      final err = 'Activation error: $e';
+      setState(() => _errorMessage = err);
+      _showToast(err, isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
-  bool _validatePin() {
-    if (_pin.any((digit) => digit.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please enter 6-digit Activation Code',
-            style: TextStyle(color: Colors.red),
+  void _showToast(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
           ),
         ),
-      );
-      return false;
-    }
-    return true;
+        backgroundColor:
+            isError ? Colors.red.shade700 : const Color(0xFF1E2745),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
-  Future<void> _handleSubmit() async {
-    if (!_validatePin()) return;
-    if (_deviceFingerprint.isEmpty) {
-      _deviceFingerprint = await DeviceHelper.getDeviceId();
-    }
-
-    final activationCode = _pin.join();
-
-    if (kDebugMode) {
-      print('📱 Device Authorization Payload:');
-      print({
-        'activationCode': activationCode,
-        'deviceFingerprint': _deviceFingerprint,
-        'appVersion': _appVersion,
-        'platform': _platform,
-      });
-    }
-
-    await _authBloc!.activateDevice(
-      activationCode: activationCode,
-      deviceFingerprint: _deviceFingerprint,
-      appVersion: _appVersion,
-      platform: _platform,
+  void _goToMerchantLogin() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const StoreIdScreen()),
     );
+  }
+
+  @override
+  void dispose() {
+    _activationCodeController.dispose();
+    _serialNumberController.dispose();
+    super.dispose();
   }
 
   @override
@@ -141,97 +214,123 @@ class _DeviceAuthorizationScreenState extends State<DeviceAuthorizationScreen> {
         MediaQuery.of(context).orientation == Orientation.portrait;
 
     return Scaffold(
-      body: _authBloc == null
-          ? const Center(child: CircularProgressIndicator())
-          : StreamBuilder<AuthState>(
-        stream: _authBloc!.stateStream,
-        initialData: _authBloc!.currentState,
-        builder: (context, snapshot) {
-          final state = snapshot.data;
-          final isLoading = state is Authenticating;
-          final errorText =
-              state is AuthenticationFailed ? state.message : null;
-
-          return Row(
-            children: [
-              Expanded(
-                flex: 1,
-                child: Container(
-                  color: const Color(0xFF1E2745),
-                  child: Center(
-                    child: SvgPicture.asset(
+      body: Row(
+        children: [
+          // Left side branding (matches Employee PIN screen)
+          Expanded(
+            flex: 1,
+            child: Container(
+              color: const Color(0xFF1E2745),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SvgPicture.asset(
                       'assets/svg/app_logo.svg',
                       height: 150,
                     ),
-                  ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Retail POS',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Device Activation & Authorization',
+                      style: TextStyle(
+                        color: Color(0xB3FFFFFF),
+                        fontSize: 13,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Expanded(
-                flex: 1,
-                child: Container(
-                  color: const Color(0xFFE0E0E0),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 16,
-                    ),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text(
-                            'Device Authorization',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E2745),
+            ),
+          ),
+
+          // Right side form (matches Employee PIN screen layout)
+          Expanded(
+            flex: 1,
+            child: Container(
+              color: const Color(0xFFE0E0E0),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isPortrait ? 24 : 48,
+                  vertical: 24,
+                ),
+                child: Center(
+                  child: SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 480),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Device Activation',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E2745),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Enter 6-digit Activation Code',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey.shade700,
-                            ),
-                          ),
-                          if (_deviceFingerprint.isNotEmpty) ...[
                             const SizedBox(height: 8),
                             Text(
-                              'Device ID: $_deviceFingerprint',
+                              'Enter your activation code and device serial number',
+                              textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 13,
-                                color: Colors.grey.shade600,
+                                color: Colors.grey.shade700,
                               ),
-                              textAlign: TextAlign.center,
                             ),
-                          ],
-                          const SizedBox(height: 28),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 40),
-                            child: TextField(
-                              controller: _pinController,
-                              keyboardType: TextInputType.number,
-                              obscureText: true,
-                              maxLength: 6,
-                              textAlign: TextAlign.center,
-                              enabled: !isLoading,
+                            const SizedBox(height: 32),
+
+                            // Activation Code Field
+                            const Text(
+                              'Activation Code',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1E2745),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _activationCodeController,
+                              textCapitalization: TextCapitalization.characters,
+                              enabled: !_isLoading,
                               style: const TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 12,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1E2745),
+                                letterSpacing: 1.0,
                               ),
                               decoration: InputDecoration(
-                                counterText: '',
-                                hintText: '••••••',
+                                hintText: 'e.g. PK-643015',
                                 hintStyle: TextStyle(
                                   color: Colors.grey.shade400,
-                                  letterSpacing: 12,
+                                  fontWeight: FontWeight.normal,
+                                  letterSpacing: 0,
+                                ),
+                                prefixIcon: const Icon(
+                                  Icons.vpn_key_outlined,
+                                  color: Color(0xFF1E2745),
                                 ),
                                 filled: true,
                                 fillColor: Colors.white,
-                                contentPadding:
-                                    const EdgeInsets.symmetric(vertical: 18),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 16,
+                                ),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide:
@@ -250,116 +349,162 @@ class _DeviceAuthorizationScreenState extends State<DeviceAuthorizationScreen> {
                                   ),
                                 ),
                               ),
-                              onChanged: (value) {
-                                final digits =
-                                    value.padRight(6, '').split('');
-                                setState(() {
-                                  for (int i = 0; i < 6; i++) {
-                                    _pin[i] =
-                                        i < digits.length ? digits[i] : '';
-                                  }
-                                });
-                              },
                             ),
-                          ),
-                          if (errorText != null) ...[
+
+                            const SizedBox(height: 20),
+
+                            // Serial Number Field
+                            const Text(
+                              'Serial Number',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1E2745),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _serialNumberController,
+                              enabled: !_isLoading,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1E2745),
+                                letterSpacing: 0.8,
+                              ),
+                              decoration: InputDecoration(
+                                hintText: 'e.g. TEST00001234',
+                                hintStyle: TextStyle(
+                                  color: Colors.grey.shade400,
+                                  fontWeight: FontWeight.normal,
+                                  letterSpacing: 0,
+                                ),
+                                prefixIcon: const Icon(
+                                  Icons.devices_outlined,
+                                  color: Color(0xFF1E2745),
+                                ),
+                                filled: true,
+                                fillColor: Colors.white,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 16,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide:
+                                      BorderSide(color: Colors.grey.shade300),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide:
+                                      BorderSide(color: Colors.grey.shade300),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFF1E2745),
+                                    width: 2,
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            if (_errorMessage != null &&
+                                _errorMessage!.isNotEmpty) ...[
+                              const SizedBox(height: 18),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade50,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: Colors.red.shade200),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.error_outline,
+                                      color: Colors.red.shade700,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        _errorMessage!,
+                                        style: TextStyle(
+                                          color: Colors.red.shade800,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+
+                            const SizedBox(height: 32),
+
+                            // Save and Continue Button
+                            SizedBox(
+                              height: 52,
+                              child: ElevatedButton(
+                                onPressed:
+                                    _isLoading ? null : _handleSaveAndContinue,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1E2745),
+                                  foregroundColor: Colors.white,
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2.5,
+                                        ),
+                                      )
+                                    : const Text(
+                                        'Save and Continue',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                              ),
+                            ),
+
                             const SizedBox(height: 16),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 24),
-                              child: Text(
-                                errorText,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: Colors.red),
+
+                            // Skip to Merchant Login
+                            TextButton(
+                              onPressed: _isLoading ? null : _goToMerchantLogin,
+                              child: const Text(
+                                'Skip to Merchant Login →',
+                                style: TextStyle(
+                                  color: Color(0xFF1E2745),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
                               ),
                             ),
                           ],
-                          const SizedBox(height: 32),
-                          CustomNumPad(
-                            numPadType: NumPadType.login,
-                            onDigitPressed: (digit) {
-                              if (isLoading) return;
-                              if (_pinController.text.length < 6) {
-                                _pinController.text += digit;
-                                _updatePin(digit);
-                              }
-                            },
-                            onClearPressed: isLoading ? () {} : _clearPin,
-                            onDeletePressed: () {
-                              if (isLoading) return;
-                              if (_pinController.text.isNotEmpty) {
-                                _pinController.text = _pinController.text
-                                    .substring(
-                                        0, _pinController.text.length - 1);
-                                _deletePin();
-                              }
-                            },
-                            actionButtonType: ActionButtonType.delete,
-                          ),
-                          const SizedBox(height: 32),
-                          SizedBox(
-                            width: MediaQuery.of(context).size.width /
-                                (isPortrait ? 7.3 : 7.2),
-                            height: MediaQuery.of(context).size.height /
-                                (isPortrait ? 20.0 : 10.0),
-                            child: ElevatedButton(
-                              onPressed: isLoading ? null : _handleSubmit,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF1E2745),
-                                foregroundColor: Colors.white,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: isLoading
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Authorize Device',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          TextButton(
-                            onPressed:
-                                isLoading ? null : () => Navigator.pop(context),
-                            child: const Text(
-                              '← Back to Login',
-                              style: TextStyle(
-                                color: Color(0xFF1E2745),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ],
-          );
-        },
+            ),
+          ),
+        ],
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _pinController.dispose();
-    _authBloc?.dispose();
-    super.dispose();
   }
 }

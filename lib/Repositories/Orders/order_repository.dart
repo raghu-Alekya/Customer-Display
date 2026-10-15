@@ -3056,37 +3056,95 @@ class OrderRepository {
       }
 
       // ---------------------------------------------------------
-      // ⭐ HANDLE CASHBACK
+      // ⭐ HANDLE CASHBACK (amount → line_items / fee_lines)
+      // Always name "Cashback" so backend/UI are not confused with
+      // catalog product names (e.g. "OCB bamboo cone").
       // ---------------------------------------------------------
       final cashbacks = (offlineOrder['cashbacks'] ?? []) as List? ?? [];
-      for (final c in cashbacks) {
-        final double amount =
-            double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0;
+      double totalCashbackAmount = 0.0;
+
+      debugPrint("💵 CASHBACK LIST COUNT → ${cashbacks.length}");
+      for (final raw in cashbacks) {
+        if (raw is! Map) continue;
+        final c = Map<String, dynamic>.from(raw);
+
+        final double amount = (double.tryParse(
+            (c['amount'] ??
+                c[AppDBConst.itemSumPrice] ??
+                c[AppDBConst.itemPrice] ??
+                c['price'] ??
+                '0')
+                .toString()) ??
+            0.0)
+            .abs();
+        if (amount <= 0) {
+          debugPrint("⚠️ Skip cashback entry with amount 0 → $c");
+          continue;
+        }
+        totalCashbackAmount += amount;
+
         final dynamic cashbackPidRaw = c['cashback_product_id'] ??
             c['product_id'] ??
             c['id'] ??
             c['cashbackProductId'];
         final int? productId = cashbackPidRaw == null
             ? null
-            : int.tryParse(cashbackPidRaw.toString());
+            : int.tryParse(cashbackPidRaw.toString().split('.').first);
 
         if (productId != null && productId > 0) {
           lineItems.add({
             "product_id": productId,
-            "name": c["product_name"] ?? "Cashback",
+            "name": "Cashback",
             "quantity": 1,
             "subtotal": amount.toStringAsFixed(2),
             "total": amount.toStringAsFixed(2),
+            "tax_status": "none",
+            "meta_data": [
+              {"key": "_pos_line_type", "value": "cashback"},
+              {
+                "key": "_pos_cashback_amount",
+                "value": amount.toStringAsFixed(2),
+              },
+            ],
           });
-          debugPrint("🟢 Added Cashback as product line → $productId");
+          debugPrint(
+              "🟢 Added Cashback as line_item → product_id=$productId amount=$amount");
         } else {
           feeLines.add({
-            "name": c["product_name"] ?? "Cashback",
+            "name": "Cashback",
             "tax_status": "none",
             "total": amount.toStringAsFixed(2),
           });
-          debugPrint("🟡 Cashback product_id missing → sending as fee line");
+          debugPrint(
+              "🟡 Cashback product_id missing → fee_line amount=$amount");
         }
+      }
+
+      // Cashback service fee → fee_lines (from Hive cashbackFee)
+      final double cashbackFeeToSend = (double.tryParse(
+          (offlineOrder['cashbackFee'] ??
+              offlineOrder['cashback_fee'] ??
+              offlineOrder[AppDBConst.orderCashbackFee] ??
+              '0')
+              .toString()) ??
+          0.0)
+          .abs();
+      if (cashbackFeeToSend > 0) {
+        feeLines.add({
+          "name": "Cashback Fee",
+          "tax_status": "none",
+          "total": cashbackFeeToSend.toStringAsFixed(2),
+        });
+        debugPrint(
+            "🟢 Added Cashback Fee as fee_line → $cashbackFeeToSend");
+      }
+
+      if (totalCashbackAmount > 0 || cashbackFeeToSend > 0) {
+        debugPrint(
+          "💵 CASHBACK SUMMARY → amount=$totalCashbackAmount fee=$cashbackFeeToSend "
+              "line_items=${lineItems.where((e) => (e['name'] ?? '').toString() == 'Cashback').length} "
+              "fee_lines=${feeLines.length}",
+        );
       }
 
       // ---------------------------------------------------------
@@ -3101,6 +3159,18 @@ class OrderRepository {
         offlineOrder,
         lineItemsTotal: lineItemsSubtotal,
       );
+
+      // ⭐ MERCHANT DISCOUNT → fee_lines (negative total) so Woo applies it
+      if (merchantDiscount > 0) {
+        feeLines.add({
+          "name": "merchant_discount",
+          "total": (-merchantDiscount).toStringAsFixed(2),
+          "tax_status": "none",
+        });
+        print(
+          "🟢 Added Merchant Discount as FEE LINE → -${merchantDiscount.toStringAsFixed(2)}",
+        );
+      }
 
       // ---------------------------------------------------------
       // ⭐ SEPARATE ISSUED vs REDEEMED COUPONS
@@ -3333,6 +3403,20 @@ class OrderRepository {
         print(
           "🟢 Added Merchant Discount as META_DATA → ${merchantDiscount.toStringAsFixed(2)}",
         );
+      }
+
+      // Cashback amount + fee in meta for POS reporting
+      if (totalCashbackAmount > 0) {
+        metaData.add({
+          "key": "_pos_cashback_amount",
+          "value": totalCashbackAmount.toStringAsFixed(2),
+        });
+      }
+      if (cashbackFeeToSend > 0) {
+        metaData.add({
+          "key": "_pos_cashback_fee",
+          "value": cashbackFeeToSend.toStringAsFixed(2),
+        });
       }
 
       if (issuedCoupons.isNotEmpty) {
@@ -5559,9 +5643,10 @@ class OrderRepository {
 
   Future<Map<String, dynamic>> syncOfflineDeletedOrders(
       List<Map<String, dynamic>> orders) async {
+    // Same create-order API as syncSingleOfflineOrder; status=cancelled
     final String url =
-        "${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}${UrlMethodConstants.deleteofflineorders}";
-    print("Sync Offline Deleted Orders URL: $url");
+        "${UrlHelper.componentVersionUrl}${UrlMethodConstants.orders}";
+    print("Sync Offline Deleted Orders (create-order cancelled) URL: $url");
 
     final List<Map<String, dynamic>> formattedOrders = [];
 
@@ -5694,92 +5779,104 @@ class OrderRepository {
       }
 
       // ---------------------------------------------------------
-      // ⭐ MERCHANT DISCOUNT
+      // ⭐ MERCHANT DISCOUNT → fee_lines (same as create order)
       // ---------------------------------------------------------
-      final discount =
-          double.tryParse(order["merchantDiscount"]?.toString() ?? "0") ?? 0.0;
-      final ids = (order["merchantDiscountIds"] ?? []).cast<int>();
-
-      if (discount > 0 && ids.isNotEmpty) {
-        lineItems.add({
-          "product_id": ids.first,
-          "name": "Discount",
-          "quantity": 1,
-          "subtotal": (-discount).toStringAsFixed(2),
+      final double discount = resolveOfflineMerchantDiscountAmount(
+        order is Map<String, dynamic>
+            ? Map<String, dynamic>.from(order)
+            : Map<String, dynamic>.from(order as Map),
+        lineItemsTotal: lineItems.fold<double>(
+          0.0,
+              (sum, li) =>
+          sum + (double.tryParse(li['total']?.toString() ?? '0') ?? 0.0),
+        ),
+      );
+      if (discount > 0) {
+        feeLines.add({
+          "name": "merchant_discount",
           "total": (-discount).toStringAsFixed(2),
           "tax_status": "none",
-          "type": "discount"
         });
       }
 
       // ---------------------------------------------------------
-      // ⭐ META + PAYMENT
+      // ⭐ META (same shape as create order) + status cancelled
       // ---------------------------------------------------------
+      final List<Map<String, dynamic>> metaData = [
+        {"key": "pos_device_id", "value": order["device_id"] ?? ""},
+        {"key": "pos_placed_by", "value": order["user_name"] ?? ""},
+        {"key": "shift_id", "value": order["shift_id"]?.toString() ?? ""},
+        {"key": "_pos_client_order_id", "value": clientOrderId},
+        if (discount > 0)
+          {
+            "key": "_merchant_discount",
+            "value": discount.toStringAsFixed(2),
+          },
+      ];
+
+      // Same payload shape as create/sync order, status = cancelled
       formattedOrders.add({
-        "client_order_id": clientOrderId,
-        "status": "canceled",
-        "set_paid": false,
         "payment_method": "cash",
         "payment_method_title": "POS-CASH",
-        "line_items": lineItems,
+        "set_paid": false,
+        "status": "cancelled",
+        "offline": order["offline"] == true,
+        "shift_id": order["shift_id"]?.toString() ?? "",
+        "local_shift_id": order["local_shift_id"] ?? order["shift_id"],
+        "meta_data": metaData,
         "fee_lines": feeLines,
+        "line_items": lineItems,
+        "coupon_lines": [],
         "tax_lines": [],
-        "meta_data": [
-          {"key": "pos_device_id", "value": order["device_id"] ?? ""},
-          {"key": "pos_placed_by", "value": order["user_name"] ?? ""},
-          {"key": "shift_id", "value": order["shift_id"]?.toString() ?? ""},
-          // {
-          //   "key": "offline_woo_order_id",
-          //   "value": order["woo_order_id"] ??
-          //       order["wooOrderId"] ??
-          //       ""
-          // },
-        ],
-        "payment": {
-          "method": "cash",
-          "paid": false,
-          "transaction_id": "deleted_${order["order_id"]}"
-        }
       });
     }
 
-    final body = {"orders": formattedOrders};
     final List<String> deletedSkus = [];
+    int? lastWooOrderId;
+    bool anySuccess = false;
 
-    debugPrint(
-      " DELETE SYNC PAYLOAD:\n${JsonEncoder.withIndent('  ').convert(body)}",
-      wrapWidth: 9000,
-    );
+    // Use the same create-order API (POST orders) for each deleted order
+    for (final payload in formattedOrders) {
+      debugPrint(
+        " DELETE→CREATE ORDER PAYLOAD (status=cancelled):\n${JsonEncoder.withIndent('  ').convert(payload)}",
+        wrapWidth: 9000,
+      );
 
-    try {
-      final response =
-      await _helper.post(url, body, true, validateMarchentUrl: true);
+      try {
+        final response = await _helper.post(url, payload, true);
+        String body = response.toString().trim();
+        if (body.startsWith('1{')) body = body.substring(1);
+        final decoded = body is String ? jsonDecode(body) : body;
 
-      final decoded = jsonDecode(response);
-      final result = decoded["results"]?.first;
+        final int? wooOrderId = decoded is Map
+            ? (int.tryParse(decoded['number']?.toString() ?? '') ??
+            int.tryParse(decoded['woo_order_id']?.toString() ?? '') ??
+            int.tryParse(decoded['id']?.toString() ?? '') ??
+            int.tryParse(decoded['order_id']?.toString() ?? ''))
+            : null;
 
-      final int? wooOrderId = result?["order_id"];
-
-      if (wooOrderId != null) {
-        //  CLEAN LOCAL PRODUCT CACHE
-        for (final sku in deletedSkus) {
-          await _deleteProductLocally(sku);
+        if (wooOrderId != null) {
+          lastWooOrderId = wooOrderId;
+          anySuccess = true;
+        } else if (decoded is Map &&
+            (decoded['success'] == true || decoded['id'] != null)) {
+          anySuccess = true;
         }
-
-        print(" All deleted products removed from local cache");
+      } catch (e) {
+        print("Delete Sync (create order cancelled) Error: $e");
       }
-
-      return {
-        "success": true,
-        "wooOrderId": wooOrderId,
-      };
-    } catch (e) {
-      print("Delete Sync Error: $e");
-      return {
-        "success": false,
-        "wooOrderId": null,
-      };
     }
+
+    if (anySuccess) {
+      for (final sku in deletedSkus) {
+        await _deleteProductLocally(sku);
+      }
+    }
+
+    return {
+      "success": anySuccess,
+      "wooOrderId": lastWooOrderId,
+    };
   }
 
   Future<List<TaxModel>> getAllTaxes() async {
