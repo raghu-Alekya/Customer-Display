@@ -32,6 +32,7 @@ import '../../Constants/text.dart';
 import '../../Database/db_helper.dart';
 import '../../Database/order_panel_db_helper.dart';
 import '../../Database/printer_db_helper.dart';
+import '../../Database/shift_db_helper.dart';
 import '../../Database/store_db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
@@ -6800,6 +6801,28 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
 
 
+  // Adds cash that stays in the drawer to the active shift's sales total,
+  // which shift close uses for Expected Cash and Over/Short.
+  // Card / EBT / other methods don't put cash in the drawer, so they are skipped.
+  Future<void> _recordCashInShift(String? method, double cashAmount) async {
+    if (cashAmount == 0 ||
+        (method ?? '').trim().toLowerCase() !=
+            TextConstants.cash.toLowerCase()) {
+      return;
+    }
+    try {
+      // Local shift ID (shiftId on this screen may be the server ID)
+      final localShiftId = await UserDbHelper().getUserShiftId();
+      if (localShiftId == null) return;
+      await ShiftDbHelper().addSaleToShift(
+        localShiftId: localShiftId,
+        saleAmount: cashAmount,
+      );
+    } catch (e) {
+      if (kDebugMode) print("⚠ Failed to record cash in shift: $e");
+    }
+  }
+
   Future<void> _callCreatePaymentAPI({bool skipPopup = false}) async {
     if (kDebugMode) {
       print(
@@ -6947,6 +6970,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
         await LocalPaymentDBHelper.instance.savePayment(localPayment);
         _lastPayment?.paymentId = "local_${saved.id}";
         _updateHivePaymentData(localPayment);
+        // Change goes back to the customer, so only the rest stays in the drawer
+        await _recordCashInShift(localPayment.paymentMethod, amount - newChange);
 
         if (kDebugMode) {
           print(
@@ -11386,6 +11411,13 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
                                                     }
                                                   });
 
+                                                  // Record the cash kept in the drawer for shift
+                                                  // Over/Short here: the field is reset to 0.00 below,
+                                                  // so _callCreatePaymentAPI records nothing for this path.
+                                                  unawaited(_recordCashInShift(
+                                                      selectedPaymentMethod,
+                                                      amount - newChange));
+
                                                   // ────────────────────────────────────────────────
                                                   // CRITICAL CHANGE: RESET TO 0.00 — BUT DO NOT AUTO-FILL
                                                   // ────────────────────────────────────────────────
@@ -13803,6 +13835,8 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
 
     final voidedAmount = _lastPayment!.amount;
     final method = _lastPayment!.method;
+    // Change already handed back for this payment (0 for partial payments)
+    final double voidedChange = changeAmount.clamp(0.0, voidedAmount);
 
     print(
         "VOID INITIATED → reversing \$${voidedAmount.toStringAsFixed(2)} ($method) | isPartial: $isPartial");
@@ -13843,6 +13877,7 @@ ${JsonEncoder.withIndent('  ').convert(paymentEntry)}
       await LocalPaymentDBHelper.instance.savePayment(negativePayment);
       print(
           "Void saved in Isar → ID: ${savedVoid.id} | amount: -${voidedAmount.toStringAsFixed(2)}");
+      await _recordCashInShift(method, -(voidedAmount - voidedChange));
 
       await _savePaymentToHive(
         amount: -voidedAmount,

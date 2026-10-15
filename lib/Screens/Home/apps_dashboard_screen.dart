@@ -11,6 +11,7 @@ import '../../Helper/Extentions/nav_layout_manager.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Inventory_screen/InventoryScreen.dart';
 import '../../Preferences/pinaka_preferences.dart';
+import '../../Repositories/Auth/safe_drop_repository.dart';
 import '../../Widgets/SafeStorageHelper.dart';
 import '../../Widgets/widget_topbar.dart';
 import 'package:flutter/material.dart';
@@ -62,6 +63,18 @@ class _AppsDashboardScreenState extends State<AppsDashboardScreen>
         _isSafeDropEnabled = isSafeDropEnabled;
         isLoading = false;
       });
+    }
+    await _refreshSafeDropStatus();
+  }
+
+  // Safe Drop tile follows the store's safe-drop status API; keeps the saved
+  // value when the API can't be reached.
+  Future<void> _refreshSafeDropStatus() async {
+    final enabled = await SafeDropRepository().getSafeDropStatus();
+    if (enabled == null) return;
+    await SafeStorageHelper.saveSafeEnableDrop(enabled);
+    if (mounted && enabled != _isSafeDropEnabled) {
+      setState(() => _isSafeDropEnabled = enabled);
     }
   }
 

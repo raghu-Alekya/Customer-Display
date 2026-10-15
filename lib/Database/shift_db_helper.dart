@@ -976,56 +976,56 @@ class ShiftDbHelper {
     }
   }
 
+  /// Adds cash kept in the drawer from a sale to the shift's sales total,
+  /// which closeShiftOffline uses for Expected Cash and Over/Short.
+  /// Pass a negative amount to reverse a voided cash payment.
   Future<void> addSaleToShift({
     required int localShiftId,
     required double saleAmount,
   }) async {
+    if (saleAmount == 0) return;
+
     final db = await _getDb();
 
-    if (saleAmount <= 0) return;
-
-    final shift = await getShiftById(localShiftId);
-
-    if (shift == null) {
-      throw Exception(
-        'Shift not found: $localShiftId',
-      );
-    }
-
-    final currentGross =
-        (shift['shift_gross_sales_amount'] as num?)?.toDouble() ?? 0.0;
-
-    final totalRefund =
-        (shift['shift_total_refund_amount'] as num?)?.toDouble() ?? 0.0;
-
-    final newGross = currentGross + saleAmount;
-
-    final newNetSales = newGross - totalRefund;
-
-    await db.update(
-      AppDBConst.shiftTable,
-      {
-        'shift_gross_sales_amount': newGross,
-        'shift_net_sales_amount': newNetSales,
-
-        // Existing field can represent net sales
-        AppDBConst.shiftTotalSalesAmount: newNetSales,
-
-        AppDBConst.updatedAt: DateTime.now().toUtc().toIso8601String(),
-      },
-      where: '${AppDBConst.shiftLocalId} = ?',
-      whereArgs: [localShiftId],
+    // Single atomic UPDATE so back-to-back payments cannot overwrite each other.
+    final updated = await db.rawUpdate(
+      'UPDATE ${AppDBConst.shiftTable} '
+          'SET ${AppDBConst.shiftTotalSalesAmount} = '
+          'MAX(0, COALESCE(${AppDBConst.shiftTotalSalesAmount}, 0) + ?), '
+          '${AppDBConst.updatedAt} = ? '
+          'WHERE ${AppDBConst.shiftLocalId} = ?',
+      [saleAmount, DateTime.now().toUtc().toIso8601String(), localShiftId],
     );
 
+    if (updated == 0) {
+      throw Exception('Shift not found: $localShiftId');
+    }
+
     if (kDebugMode) {
+      final shift = await getShiftById(localShiftId);
       print('════════ SALE ADDED TO SHIFT ════════');
       print('Shift ID: $localShiftId');
       print('Sale: ₹$saleAmount');
-      print('Gross Sales: ₹$newGross');
-      print('Refunds: ₹$totalRefund');
-      print('Net Sales: ₹$newNetSales');
+      print('Total Sales: ₹${shift?[AppDBConst.shiftTotalSalesAmount]}');
       print('═════════════════════════════════════');
     }
+  }
+
+  /// Expected Cash = Opening Balance + Cash Sales - Safe Drops - Payouts
+  static double expectedCashFor(Map<String, dynamic> shift) {
+    double read(String key) => (shift[key] as num?)?.toDouble() ?? 0.0;
+    return read(AppDBConst.shiftOpeningBalance) +
+        read(AppDBConst.shiftTotalSalesAmount) -
+        read(AppDBConst.shiftSafeDropTotal) -
+        read(AppDBConst.shiftVendorPayoutTotal);
+  }
+
+  /// Over/Short = Counted Closing Balance - Expected Cash
+  /// (positive = Over, negative = Short), rounded to 2 decimals.
+  static double overShortFor(
+      Map<String, dynamic> shift, double closingBalance) {
+    final diff = closingBalance - expectedCashFor(shift);
+    return double.parse(diff.toStringAsFixed(2));
   }
 
   /// CLOSE SHIFT LOCALLY (Offline-First)
@@ -1033,6 +1033,8 @@ class ShiftDbHelper {
     required int localShiftId,
     required double closingBalance,
     required Map<String, dynamic> closePayload,
+    // Server's own result (pos_shifts.discrepancy) when closed online
+    double? serverOverShort,
   }) async {
     final db = await _getDb(); // ✅ Auto-creates table if missing
 
@@ -1054,25 +1056,9 @@ class ShiftDbHelper {
       throw Exception('Shift not found in local database: $localShiftId');
     }
 
-    final openingBalance =
-        (shift.first[AppDBConst.shiftOpeningBalance] as num?)?.toDouble() ??
-            0.0;
-
-    final totalSales =
-        (shift.first[AppDBConst.shiftTotalSalesAmount] as num?)?.toDouble() ??
-            0.0;
-
-    final safeDrops =
-        (shift.first[AppDBConst.shiftSafeDropTotal] as num?)?.toDouble() ?? 0.0;
-
-    final payouts =
-        (shift.first[AppDBConst.shiftVendorPayoutTotal] as num?)?.toDouble() ??
-            0.0;
-
-// Expected Cash = Opening Balance + Sales - Safe Drops - Payouts
-    final expectedCash = openingBalance + totalSales - safeDrops - payouts;
-
-    final overShort = closingBalance - expectedCash;
+    final expectedCash = expectedCashFor(shift.first);
+    final overShort =
+        serverOverShort ?? overShortFor(shift.first, closingBalance);
     final now = DateTime.now().toUtc().toIso8601String();
 
     await db.update(

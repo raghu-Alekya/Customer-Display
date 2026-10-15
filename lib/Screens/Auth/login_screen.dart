@@ -605,7 +605,9 @@ import '../../Database/assets_db_helper.dart';
 import '../../Database/db_helper.dart';
 import '../../Database/fast_key_db_helper.dart';
 import '../../Database/order_panel_db_helper.dart';
+import '../../Database/shift_db_helper.dart';
 import '../../Database/user_db_helper.dart';
+import '../../Repositories/Auth/shift_repository.dart';
 import '../../DeviceActivationScreen/DeviceActivationScreen.dart';
 import '../../Employee/Attendance/employee_attendance_model.dart';
 import '../../Employee/Attendance/employee_attendance_repository.dart';
@@ -919,8 +921,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) return;
 
-    // Prefer shiftId from the session we just wrote
-    final currentShiftId = await _userDbHelper.getUserShiftId();
+    // Shift still open → go straight to Fast Keys
+    final currentShiftId = await _findOpenShiftId();
+    if (!mounted) return;
 
     if (currentShiftId != null) {
       Navigator.pushReplacement(
@@ -937,6 +940,52 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     }
   }
+  /// Checks the store's active shift on the server (GET /pos/shifts/active).
+  /// Active → links it locally and returns its local ID (go to Fast Keys).
+  /// None → null (show opening balance). Server unreachable → local check.
+  Future<int?> _resolveOpenShiftOnline() async {
+    final repo = ShiftRepository();
+    try {
+      final activeShift = await repo.getActiveStoreShift();
+      if (activeShift == null) return null;
+      return await repo.linkActiveStoreShift(activeShift);
+    } catch (e) {
+      if (kDebugMode) print('⚠️ Active shift check failed, using local: $e');
+      return _findOpenShiftId();
+    }
+  }
+
+  /// Local ID of the store's OPEN shift on this device, or null if there is
+  /// none. Shifts are per store, so any cashier's open shift counts.
+  /// Used after login (offline / server unreachable) to skip the opening
+  /// balance screen and go straight to Fast Keys.
+  Future<int?> _findOpenShiftId() async {
+    final userData = await _userDbHelper.getUserData();
+    final userId = userData?[AppDBConst.userId] as int?;
+    if (userId == null) return null;
+
+    bool isOpen(Map<String, dynamic>? shift) =>
+        shift?[AppDBConst.shiftStatus]?.toString().toUpperCase() == 'OPEN';
+
+    // 1. Shift saved on the user row
+    final storedId = userData?[AppDBConst.userShiftId] as int?;
+    if (storedId != null &&
+        isOpen(await ShiftDbHelper().getShiftById(storedId))) {
+      return storedId;
+    }
+
+    // 2. Any OPEN shift in the local shift table (this user's first,
+    //    then any cashier's)
+    final activeShift = await ShiftDbHelper().getActiveShift(userId);
+    if (isOpen(activeShift)) {
+      final localId = activeShift![AppDBConst.shiftLocalId] as int;
+      // Orders and payments read the shift from the user row
+      await _userDbHelper.updateUserShiftId(localId);
+      return localId;
+    }
+    return null;
+  }
+
   bool _isServerOrNetworkError(String? message) {
     if (message == null) return true;
     final m = message.toLowerCase();
@@ -1306,8 +1355,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                         resetLoadStatus();
 
                                         // 7. IMMEDIATE NAVIGATION (No more hanging loader!)
-                                        int? shiftId = await UserDbHelper().getUserShiftId();
-                                        if (shiftId != null && loginResponse.shiftId != null) {
+                                        // Store has an active shift → go straight to Fast Keys
+                                        final int? openShiftId = await _resolveOpenShiftOnline();
+                                        if (!context.mounted) return;
+                                        if (openShiftId != null) {
                                           Navigator.pushReplacement(
                                             context,
                                             MaterialPageRoute(builder: (context) => const POSHomeScreen()),

@@ -19,6 +19,7 @@ class ShiftRepository {
   static const String _openShiftUrl = '${_shiftsBaseUrl}open';
   static const String _closeShiftUrl = '${_shiftsBaseUrl}close';
   static const String _employeeShiftsUrl = '${_shiftsBaseUrl}employee/';
+  static const String _activeShiftUrl = '${_shiftsBaseUrl}active';
 
   final APIHelper _helper = APIHelper();
   final ShiftDbHelper _shiftDbHelper =
@@ -345,38 +346,33 @@ class ShiftRepository {
             localShiftId: request.shiftId!,
             closingCash: request.totalAmount,
             cashierName: cashierName,
+            fallbackOverShort: ShiftDbHelper.overShortFor(
+                localShift ?? const {}, request.totalAmount.toDouble()),
           );
+          // Keep the server's Over/Short locally so history matches the server
           await _shiftDbHelper.closeShiftOffline(
             localShiftId: request.shiftId!,
             closingBalance: request.totalAmount.toDouble(),
             closePayload: request.toJson(),
+            serverOverShort: shiftResponse.overShort.toDouble(),
           );
           await _shiftDbHelper.markShiftClosureSynced(request.shiftId!);
         } else if (isExternalClosePreview) {
-          final openingCash =
-              (localShift?[AppDBConst.shiftOpeningBalance] as num?)
-                  ?.toDouble() ??
-                  0;
-          final totalSales =
-              (localShift?[AppDBConst.shiftTotalSalesAmount] as num?)
-                  ?.toDouble() ??
-                  0;
-          final safeDrops = (localShift?[AppDBConst.shiftSafeDropTotal] as num?)
-              ?.toDouble() ??
-              0;
-          final payouts =
-              (localShift?[AppDBConst.shiftVendorPayoutTotal] as num?)
-                  ?.toDouble() ??
-                  0;
-          final expectedCash = openingCash + totalSales - safeDrops - payouts;
           final userData = await UserDbHelper().getUserData();
+          // Prefer the server's totals so the dialog matches pos_shifts.discrepancy
+          final serverOverShort = await _serverOverShortPreview(
+            externalServerShiftId,
+            request.totalAmount,
+          );
           shiftResponse = ShiftResponse(
             shiftId: request.shiftId!,
             externalShiftId: externalServerShiftId,
             userName:
             userData?[AppDBConst.userDisplayName]?.toString() ?? 'Cashier',
             totalAmount: request.totalAmount,
-            overShort: request.totalAmount - expectedCash,
+            overShort: serverOverShort ??
+                ShiftDbHelper.overShortFor(
+                    localShift ?? const {}, request.totalAmount.toDouble()),
             status: 'OPEN',
           );
         } else {
@@ -486,11 +482,187 @@ class ShiftRepository {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Active shift for the store: GET /pos/shifts/active?store_id=
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Returns the store's active (open) shift, or null when the server says
+  /// there is none. Throws if the server can't be reached or answers with an
+  /// error, so callers can fall back to the local shift table.
+  Future<Map<String, dynamic>?> getActiveStoreShift() async {
+    final storeId = (await AuthIdsStore.getStoreId()).trim();
+    if (storeId.isEmpty) {
+      throw StateError('Store ID is missing; cannot check active shift.');
+    }
+    final url =
+        '$_activeShiftUrl?store_id=${Uri.encodeQueryComponent(storeId)}';
+
+    final dynamic response;
+    try {
+      response = await _helper.get(url, true);
+    } catch (e) {
+      // 404 = no active shift for this store
+      if (e.toString().contains('Resource Not Found')) return null;
+      rethrow;
+    }
+    if (kDebugMode) {
+      print('ShiftRepository - GET $url → $response');
+    }
+    final dynamic decoded =
+    response is String && response.isNotEmpty ? json.decode(response) : response;
+    return _extractActiveShift(decoded);
+  }
+
+  /// Finds the open shift object in the active-shift response
+  /// (top level, `data`, `shift`, lists, ...). Null if none or it is closed.
+  static Map<String, dynamic>? _extractActiveShift(dynamic node) {
+    if (node is List) {
+      for (final value in node) {
+        final found = _extractActiveShift(value);
+        if (found != null) return found;
+      }
+      return null;
+    }
+    if (node is! Map) return null;
+
+    final id = node['shiftId'] ?? node['shift_id'] ??
+        (node['id']?.toString().startsWith('SHIFT-') == true ? node['id'] : null);
+    if (id != null && id.toString().trim().isNotEmpty) {
+      final status = node['status']?.toString().toUpperCase();
+      return status == null || status == 'OPEN' || status == 'ACTIVE'
+          ? Map<String, dynamic>.from(node)
+          : null;
+    }
+    for (final value in node.values) {
+      final found = _extractActiveShift(value);
+      if (found != null) return found;
+    }
+    return null;
+  }
+
+  /// Mirrors the store's active server shift into the local shift table and
+  /// links it to the logged-in user, so orders, payments and shift close use
+  /// it. Returns the local shift ID.
+  Future<int?> linkActiveStoreShift(Map<String, dynamic> activeShift) async {
+    final serverShiftId =
+    (activeShift['shiftId'] ?? activeShift['shift_id'] ?? activeShift['id'])
+        ?.toString()
+        .trim();
+    if (serverShiftId == null || serverShiftId.isEmpty) return null;
+
+    final userData = await UserDbHelper().getUserData();
+    final userId = userData?[AppDBConst.userId] as int? ?? 0;
+    final openingCash = _readNum(activeShift, const [
+      'openingCash',
+      'opening_cash',
+      'openingBalance',
+      'opening_balance',
+    ]) ??
+        0;
+
+    // Reuses the existing local row when this server shift is already cached
+    final localShiftId = await _shiftDbHelper.cacheOnlineShift(
+      userId: userId,
+      serverShiftId: serverShiftId,
+      openingBalance: openingCash.toDouble(),
+      requestPayload: const {},
+    );
+    await UserDbHelper().updateUserShiftId(localShiftId);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('active_local_shift_id', localShiftId);
+    return localShiftId;
+  }
+
+  // Keys the PCH shift API may use for Over/Short (pos_shifts.discrepancy)
+  static const List<String> _overShortKeys = [
+    'discrepancy',
+    'cashDifference',
+    'cash_difference',
+    'overShort',
+    'over_short',
+  ];
+  static const List<String> _expectedCashKeys = [
+    'expectedCashInDrawer', // pos_shifts.expected_cash_in_drawer
+    'expected_cash_in_drawer',
+    'expectedCash',
+    'expected_cash',
+    'closingCashExpected',
+    'closing_cash_expected',
+    'expectedClosingCash',
+    'expected_closing_cash',
+  ];
+
+  static num? _readNum(Map map, List<String> keys) {
+    for (final key in keys) {
+      final value = map[key];
+      if (value is num) return value;
+      final parsed = num.tryParse(value?.toString() ?? '');
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  /// Finds the shift object with [serverShiftId] anywhere in a decoded
+  /// response (top level, `shift`, `data`, lists, ...).
+  static Map<String, dynamic>? _findShiftMap(
+      dynamic node, String serverShiftId) {
+    if (node is Map) {
+      final id = node['shiftId'] ?? node['shift_id'] ?? node['id'];
+      if (id?.toString() == serverShiftId) {
+        return Map<String, dynamic>.from(node);
+      }
+      for (final value in node.values) {
+        final found = _findShiftMap(value, serverShiftId);
+        if (found != null) return found;
+      }
+    } else if (node is List) {
+      for (final value in node) {
+        final found = _findShiftMap(value, serverShiftId);
+        if (found != null) return found;
+      }
+    }
+    return null;
+  }
+
+  /// Over/Short for the close dialog, based on the server's Expected Cash for
+  /// the open shift. Returns null if the server doesn't report it, so the
+  /// caller can fall back to the local calculation.
+  Future<double?> _serverOverShortPreview(
+      String serverShiftId, num closingCash) async {
+    final shift = await _fetchServerShift(serverShiftId);
+    if (shift == null) return null;
+    final expectedCash = _readNum(shift, _expectedCashKeys);
+    if (expectedCash == null) return null;
+    return double.parse((closingCash - expectedCash).toStringAsFixed(2));
+  }
+
+  /// Reads one shift from /pos/shifts/employee/{id}. Null if unavailable.
+  Future<Map<String, dynamic>?> _fetchServerShift(String serverShiftId) async {
+    final employeeId = await _getEmployeeUuid();
+    if (employeeId == null) return null;
+    try {
+      final response = await _helper.get('$_employeeShiftsUrl$employeeId', true);
+      final dynamic decoded =
+      response is String ? json.decode(response) : response;
+      final shift = _findShiftMap(decoded, serverShiftId);
+      if (kDebugMode) {
+        print('ShiftRepository - server shift $serverShiftId: $shift');
+      }
+      return shift;
+    } catch (e) {
+      if (kDebugMode) {
+        print('ShiftRepository - fetch server shift failed: $e');
+      }
+      return null;
+    }
+  }
+
   Future<ShiftResponse> _closeExternalShift({
     required String serverShiftId,
     required int localShiftId,
     required num closingCash,
     required String cashierName,
+    required num fallbackOverShort,
   }) async {
     final employeeId = await _getEmployeeUuid();
     final payload = <String, dynamic>{
@@ -519,14 +691,25 @@ class ShiftRepository {
       );
     }
 
-    final shiftData = responseData['shift'] is Map
-        ? Map<String, dynamic>.from(responseData['shift'] as Map)
-        : responseData;
-    final rawOverShort =
-        shiftData['cashDifference'] ?? shiftData['overShort'] ?? 0;
-    final overShort = rawOverShort is num
-        ? rawOverShort
-        : num.tryParse(rawOverShort.toString()) ?? 0;
+    final shiftData = _findShiftMap(responseData, serverShiftId) ??
+        (responseData['shift'] is Map
+            ? Map<String, dynamic>.from(responseData['shift'] as Map)
+            : responseData);
+    if (kDebugMode) {
+      print('ShiftRepository - close shift response: $responseData');
+    }
+    var overShort = _readNum(shiftData, _overShortKeys) ??
+        _readNum(responseData, _overShortKeys);
+    if (overShort == null) {
+      // Close response had no discrepancy; read it from the closed shift.
+      final closedShift = await _fetchServerShift(serverShiftId);
+      if (closedShift != null) {
+        final expectedCash = _readNum(closedShift, _expectedCashKeys);
+        overShort = _readNum(closedShift, _overShortKeys) ??
+            (expectedCash == null ? null : closingCash - expectedCash);
+      }
+    }
+    overShort ??= fallbackOverShort;
     return ShiftResponse(
       shiftId: localShiftId,
       externalShiftId: serverShiftId,
@@ -646,6 +829,7 @@ class ShiftRepository {
           closingCash: closingCash,
           cashierName:
           userData?[AppDBConst.userDisplayName]?.toString() ?? 'Cashier',
+          fallbackOverShort: shift[AppDBConst.shiftOverShort] as num? ?? 0,
         );
       } else {
         final numericServerId = int.tryParse(serverId);
@@ -872,6 +1056,7 @@ class ShiftRepository {
               closingCash: closingCash,
               cashierName: userData?[AppDBConst.userDisplayName]?.toString() ??
                   'Cashier',
+              fallbackOverShort: shift[AppDBConst.shiftOverShort] as num? ?? 0,
             );
           } else {
             closePayload['shift_id'] = serverShiftId;

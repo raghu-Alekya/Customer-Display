@@ -250,6 +250,53 @@ class CustomDialog {
       return completer.future;
     }
 
+    // Shown after the server closes the shift, with the server's Over/Short
+    // (pos_shifts.discrepancy) so the screen matches the backend.
+    static Future<void> showShiftClosedResult(
+        BuildContext context, {
+          required double totalAmount,
+          required double overShort,
+        }) {
+      final String overShortLabel = overShort == 0 ? 'Over/Short' : overShort > 0 ? 'Over' : 'Short';
+      final Color overShortBgColor = overShort < 0 ? Color(0xFFFEE2E2) : Color(0xFFE8F5E8);
+      final Color overShortTextColor = overShort < 0 ? Color(0xFFFE6464) : Color(0xFF22C55E);
+
+      return showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => _buildBaseDialog(
+          context,
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildIcon('assets/svg/check_broken_alert.svg'),
+              const SizedBox(height: 16),
+              _buildTitle(context, TextConstants.shiftClosedTitle),
+              const SizedBox(height: 24),
+              _buildAmountRow(TextConstants.totalAmount, totalAmount),
+              const SizedBox(height: 12),
+              _buildAmountRow(
+                overShortLabel,
+                overShort.abs(),
+                backgroundColor: overShortBgColor,
+                textColor: overShortTextColor,
+              ),
+              const SizedBox(height: 16),
+              _buildDescription(context, TextConstants.shiftClosedDescription, style: _mutedDescriptionStyle),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: _buildPrimaryButton(
+                  TextConstants.ok,
+                  () => Navigator.of(dialogContext).pop(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     static Future<bool?> showUpdateShiftVerification( // Build #1.0.247 : Added loader on button tap of start, update, close shift call
         BuildContext context, {
           required double totalAmount,

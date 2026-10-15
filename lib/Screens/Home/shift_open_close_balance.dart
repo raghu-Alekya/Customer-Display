@@ -365,7 +365,8 @@ class _ShiftOpenCloseBalanceScreenState
       final bool? confirmClose = await CustomDialog.showCloseShiftVerification(
         context,
         totalAmount: totalAmount,
-        overShort: 0.0,
+        overShort: ShiftDbHelper.overShortFor(
+            existingShift, totalAmount.toDouble()),
       );
 
       if (confirmClose != true) {
@@ -1068,11 +1069,21 @@ class _ShiftOpenCloseBalanceScreenState
               _shiftBloc.shiftStream.listen((closeResponse) async {
                 if (closeResponse.status == Status.COMPLETED) {
                   try {
+                    // Show the server's Over/Short (pos_shifts.discrepancy)
+                    // before logging out, so the screen matches the backend.
+                    dismissCloseLoadingDialog();
+                    if (mounted) {
+                      await CustomDialog.showShiftClosedResult(
+                        context,
+                        totalAmount: totalAmount,
+                        overShort:
+                            closeResponse.data?.overShort.toDouble() ?? 0.0,
+                      );
+                    }
                     await UserDbHelper().updateUserShiftId(null);
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.remove('active_local_shift_id');
                     await UserDbHelper().logout();
-                    dismissCloseLoadingDialog();
                     if (mounted) {
                       Navigator.pushReplacement(
                         context,

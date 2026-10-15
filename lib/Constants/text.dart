@@ -280,6 +280,8 @@ class TextConstants { // Build #1.0.7 , Naveen - added TextConstants and SharedP
   static const String back                  = "Back";
   static const String ShiftStartDescription = "Once you've entered and verified the opening cash amounts, click start shift to begin transactions.";
   static const String ShiftCloseDescription = "Make sure all amounts are tallied accurately. Click close shift to logout and end your shift";
+  static const String shiftClosedTitle      = "Shift Closed";
+  static const String shiftClosedDescription = "Your shift has been closed. Click OK to logout.";
 
   static const String noPrinter             = "No printer selected";
   static const String voidConfirmTitle      = "Transaction Void Confirmation ?";  // Build #1.0.49
