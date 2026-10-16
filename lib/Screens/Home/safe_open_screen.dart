@@ -16,6 +16,7 @@ import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/api_response.dart';
+import '../../Helper/denomination_helper.dart';
 import '../../Models/Assets/asset_model.dart';
 import '../../Models/Auth/shift_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
@@ -121,7 +122,11 @@ class _SafeOpenScreenState extends State<SafeOpenScreen> with LayoutSelectionMix
       print("Fetching tube denominations from database...");
     }
 
+    // Refresh from the store bootstrap API; on failure/timeout use the cache.
+    await DenominationHelper.syncFromBootstrap()
+        .timeout(const Duration(seconds: 5), onTimeout: () {});
     _tubeDenominations = await AssetDBHelper.instance.getTubesDenomList();
+    if (!mounted) return;
 
     if (kDebugMode) {
       print("Fetched ${_tubeDenominations.length} tube denominations");
@@ -131,10 +136,14 @@ class _SafeOpenScreenState extends State<SafeOpenScreen> with LayoutSelectionMix
       denominations.clear();
       for (var denom in _tubeDenominations) {
         final numericValue = num.parse(denom.denom);
+        // Bootstrap sends symbol: null, fall back to the store currency symbol
+        final symbol = (denom.symbol == null || denom.symbol!.isEmpty)
+            ? TextConstants.currencySymbol
+            : denom.symbol!;
         denominations.add({
-          'value': '${denom.symbol}${denom.denom}', // Display value with symbol
+          'value': '$symbol${denom.denom}', // Display value with symbol
           'denomValue': numericValue, // Numeric value for calculations
-          'symbol': denom.symbol, // Currency symbol
+          'symbol': symbol, // Currency symbol
           'tubeLimit': denom.tubeLimit, // Tube limit from API
           'color': _getColorForDenom(numericValue),
           'tubeCount': 0,

@@ -3,7 +3,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +18,8 @@ import '../../Helper/Extentions/nav_layout_manager.dart';
 import '../../Helper/Extentions/text_extensions.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/api_response.dart';
+import '../../Helper/denomination_helper.dart';
+import '../../Widgets/widget_denom_image.dart';
 import '../../Models/Assets/asset_model.dart';
 import '../../Models/Auth/shift_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
@@ -719,6 +720,9 @@ class _ShiftOpenCloseBalanceScreenState
     if (kDebugMode) {
       print("Fetching denominations from AssetDBHelper...");
     }
+    // Refresh from the store bootstrap API; on failure/timeout use the cache.
+    await DenominationHelper.syncFromBootstrap()
+        .timeout(const Duration(seconds: 5), onTimeout: () {});
     _notesDenominations = await AssetDBHelper.instance.getNotesDenomList();
     _coinsDenominations = await AssetDBHelper.instance.getCoinDenomList();
     final defaultCoinDenominations = _coinDenominations.keys.toList();
@@ -1249,25 +1253,9 @@ class _ShiftOpenCloseBalanceScreenState
     super.dispose();
   }
 
+  // Handles bootstrap data URIs (svg/jpeg/png), URLs and bundled assets
   Widget _loadSvg(String path, double height, double width) {
-    if (path.startsWith('http')) {
-      return SvgPicture.network(
-        path,
-        height: height,
-        width: width,
-        placeholderBuilder: (context) => SvgPicture.asset(
-          'assets/svg/1.svg',
-          height: height,
-          width: width,
-        ),
-      );
-    } else {
-      return SvgPicture.asset(
-        path,
-        height: height,
-        width: width,
-      );
-    }
+    return DenomImage(source: path, height: height, width: width);
   }
 
   @override

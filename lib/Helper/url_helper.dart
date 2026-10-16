@@ -322,6 +322,9 @@ class UrlMethodConstants {
   // (CashbackHelper builds full path with storeId)
   static const String cashbackservices =
       "store/store-pos-configuration"; // + /{storeId}/cashback_settings
+  // GET {safeApiBaseUrl}/store/store-pos-configuration/{storeId}/bootstrap
+  // (DenominationHelper builds full path with storeId)
+  static const String posConfigurationBootstrap = "bootstrap";
   static const String discountRules = "assets/discount-rules";
 }
 

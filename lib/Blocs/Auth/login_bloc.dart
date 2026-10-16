@@ -7,6 +7,7 @@ import '../../Constants/text.dart';
 import '../../Database/user_db_helper.dart';
 import '../../Helper/api_response.dart';
 import '../../Helper/cashbackhelper.dart';
+import '../../Helper/denomination_helper.dart';
 import '../../Models/Auth/login_model.dart';
 import '../../core/api/token_storage.dart';
 import '../../Repositories/Auth/login_repository.dart';
@@ -64,6 +65,8 @@ class LoginBloc { // Build #1.0.8
 
         // ✅ 3) OPTIONAL: Now that token exists, preload cashback config
         await CashbackHelper.loadCashbackOnStartup();
+        // Refresh cash denominations from the store bootstrap API
+        await DenominationHelper.syncFromBootstrap();
 
         // ✅ 4) Notify UI login success
         loginSink.add(APIResponse.completed(loginResponse));

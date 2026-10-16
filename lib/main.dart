@@ -20,6 +20,7 @@ import 'Database/user_db_helper.dart';
 import 'Helper/Extentions/theme_notifier.dart';
 import 'Helper/cashbackhelper.dart';
 import 'Helper/customerdisplayhelper.dart';
+import 'Helper/denomination_helper.dart';
 import 'Helper/offline_helper.dart';
 import 'Helper/url_helper.dart';
 import '../Repositories/Orders/order_repository.dart';
@@ -314,6 +315,8 @@ Future<void> _startNonCriticalServices(
       await CashbackHelper.loadCashbackOnStartup().timeout(
         const Duration(seconds: 4),
       );
+      // Not awaited: denominations are refreshed again when the cash screens open.
+      unawaited(DenominationHelper.syncFromBootstrap());
     }
   } catch (e) {
     debugPrint('[Startup] Cashback startup skipped: $e');
