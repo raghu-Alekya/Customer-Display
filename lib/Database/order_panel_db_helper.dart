@@ -16,6 +16,9 @@ import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import '../services/CustomerDisplayService.dart';
 import '../services/customer_services.dart';
 import 'db_helper.dart';
+import 'package:pinaka_pos/main.dart' show AppDB;
+import '../Widgets/discount_engine_constants.dart';
+import '../Database/discount_rule_isar.dart';
 import 'isar_service.dart'; // Build #1.0.104
 import 'isar_cache_entry.dart'; // Build #1.0.104
 
@@ -269,11 +272,103 @@ class OrderHelper {
     return 0.0;
   }
 
+
+  /// Apply PCH discount rules (Isar) to cart products on every save.
+  /// Previously engine only ran on Checkout → auto discount never showed on add.
+  Future<void> _applyEngineDiscountsToProducts(List products) async {
+    if (products.isEmpty) return;
+    try {
+      Isar? isar;
+      try {
+        isar = AppDB.isar;
+      } catch (_) {
+        try {
+          isar = Isar.getInstance();
+        } catch (_) {}
+      }
+      if (isar == null) {
+        if (kDebugMode) print('🧠 DiscountEngine skip: no Isar instance');
+        return;
+      }
+
+      final cartItems = <Map<String, dynamic>>[];
+      for (final raw in products) {
+        if (raw is! Map) continue;
+        final p = Map<String, dynamic>.from(raw);
+        final pid = int.tryParse((p['product_id'] ?? p['id'] ?? '0').toString()) ?? 0;
+        if (pid <= 0) continue;
+        final qty = int.tryParse((p['quantity'] ?? p['items_count'] ?? '1').toString()) ?? 1;
+        final price = double.tryParse((p['price'] ?? p['unit_price'] ?? '0').toString()) ?? 0.0;
+        cartItems.add({'product_id': pid, 'qty': qty, 'price': price});
+      }
+      if (cartItems.isEmpty) return;
+
+      final engineMap = await DiscountEngine.applyAll(isar, cartItems);
+      if (kDebugMode) {
+        print('🧠 DiscountEngine result pids=${engineMap.keys.toList()}');
+        engineMap.forEach((pid, r) {
+          print('   → pid=$pid amount=${r.amount} type=${r.ruleType} rule=${r.ruleId}');
+        });
+      }
+
+      for (final raw in products) {
+        if (raw is! Map) continue;
+        final p = raw as Map;
+        final pid = int.tryParse((p['product_id'] ?? p['id'] ?? '0').toString()) ?? 0;
+        final res = engineMap[pid];
+        final amount = res?.amount ?? 0.0;
+        final type = (res?.ruleType ?? '').toLowerCase();
+
+        p['auto_discount'] = amount;
+        p['auto_discount_total'] = amount;
+        p['multipack_discount_total'] = type == 'multipack' ? amount : 0.0;
+        p['combo_discount_total'] = (type == 'mixmatch' || type == 'combo') ? amount : 0.0;
+        p['rule_id'] = res?.ruleId ?? '';
+        p['discount_type'] = res?.ruleType ?? '';
+        p['discount_source'] = res != null ? 'engine' : '';
+
+        // Tax on discounted base
+        final qty = int.tryParse((p['quantity'] ?? '1').toString()) ?? 1;
+        final price = double.tryParse((p['price'] ?? '0').toString()) ?? 0.0;
+        final taxStatus = (p['tax_status'] ?? 'taxable').toString().toLowerCase();
+        final taxRate = double.tryParse((p['tax_rate'] ?? '0').toString()) ?? 0.0;
+        if (taxStatus == 'taxable' && taxRate > 0 && qty > 0) {
+          final discountedUnit = ((price * qty) - amount) / qty;
+          final safeUnit = discountedUnit < 0 ? 0.0 : discountedUnit;
+          p['item_tax'] = roundTaxHalfUp((safeUnit * qty * taxRate) / 100);
+        }
+      }
+    } catch (e, s) {
+      if (kDebugMode) {
+        print('🧠 DiscountEngine apply failed: $e');
+        print(s);
+      }
+    }
+  }
+
   Future<void> saveOfflineOrder(int orderId, Map<String, dynamic> order) async {
     final box = StorageProvider.offlineOrders;
 
     // --- Recalculate Totals ---
     final products = (order['products'] as List?) ?? [];
+    // Apply Isar discount rules (auto / multipack / mixmatch) so UI shows discount on add
+    await _applyEngineDiscountsToProducts(products);
+    // Persist per-line discount meta for order panel / CFD
+    final Map<String, dynamic> discountLines = {};
+    for (final raw in products) {
+      if (raw is! Map) continue;
+      final p = Map<String, dynamic>.from(raw);
+      final sid = (p['server_item_id'] ?? p['product_id'] ?? '').toString();
+      if (sid.isEmpty) continue;
+      discountLines[sid] = {
+        'amount': double.tryParse((p['auto_discount'] ?? 0).toString()) ?? 0.0,
+        'type': p['discount_type'] ?? '',
+        'source': p['discount_source'] ?? '',
+        'rule_id': p['rule_id'] ?? '',
+      };
+    }
+    order['discount_lines'] = discountLines;
+
     final customItems = (order['custom_items'] as List?) ?? [];
     final payouts = (order['payouts'] as List?) ?? [];
     final cashbacks = (order['cashbacks'] as List?) ?? [];
@@ -296,14 +391,20 @@ class OrderHelper {
       final lineTaxRate =
           double.tryParse((p['tax_rate'] ?? '0').toString()) ?? 0.0;
 
+      final autoDisc = double.tryParse(
+          (p['auto_discount'] ?? p['auto_discount_total'] ?? '0').toString()) ??
+          0.0;
+      final taxableBase = ((price * qty) - autoDisc).clamp(0.0, double.infinity);
       if (lineTaxStatus == 'taxable' && lineTaxRate > 0) {
-        orderTax += roundTaxHalfUp(((price * qty) * lineTaxRate) / 100);
+        orderTax += roundTaxHalfUp((taxableBase * lineTaxRate) / 100);
       } else if (pid > 0) {
-        orderTax += getProductTaxFromHive(pid, price, qty);
+        final unitAfterDisc = qty > 0 ? taxableBase / qty : price;
+        orderTax += getProductTaxFromHive(pid, unitAfterDisc, qty);
       } else {
-        final pid = int.tryParse((p['product_id'] ?? p['id']).toString()) ?? 0;
-        if (pid > 0) {
-          orderTax += getProductTaxFromHive(pid, price, qty);
+        final pid2 = int.tryParse((p['product_id'] ?? p['id']).toString()) ?? 0;
+        if (pid2 > 0) {
+          final unitAfterDisc = qty > 0 ? taxableBase / qty : price;
+          orderTax += getProductTaxFromHive(pid2, unitAfterDisc, qty);
         }
       }
     }
@@ -3407,12 +3508,12 @@ class OrderHelper {
 
         // Line tax for new item (same formula as merge path / saveOfflineOrder)
         final String newTaxStatus =
-            effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus;
+        effectiveTaxStatus.isEmpty ? "taxable" : effectiveTaxStatus;
         double newItemTax = 0.0;
         if (newTaxStatus.toLowerCase() == "taxable" &&
             effectiveTaxRate > 0) {
           final double taxableBase =
-              isWeightedItem ? price : (price * itemQuantity);
+          isWeightedItem ? price : (price * itemQuantity);
           newItemTax =
               roundTaxHalfUp(taxableBase * (effectiveTaxRate / 100));
         }

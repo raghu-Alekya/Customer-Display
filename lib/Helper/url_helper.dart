@@ -322,7 +322,8 @@ class UrlMethodConstants {
   // (CashbackHelper builds full path with storeId)
   static const String cashbackservices =
       "store/store-pos-configuration"; // + /{storeId}/cashback_settings
-  static const String discountRules = "assets/discount-rules";
+  // PCH: GET stores/{storeId}/discount-rules (storeId injected in fetchDiscountRules)
+  static const String discountRules = "stores/{storeId}/discount-rules";
 }
 
 class UrlParameterConstants { // Build #1.0.13
