@@ -20,6 +20,8 @@ import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/api_response.dart';
+import '../../Helper/denomination_helper.dart';
+import '../../Widgets/widget_denom_image.dart';
 import '../../Models/Assets/asset_model.dart';
 import '../../Models/Auth/safe_drop_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
@@ -219,6 +221,9 @@ class _SafeDropScreenState extends State<SafeDropScreen>
   Future<void> _fetchSafeDenominations() async {
     if (kDebugMode) print("#### SafeDropScreen: Fetching safe denominations");
     try {
+      // Refresh from the store bootstrap API; on failure/timeout use the cache.
+      await DenominationHelper.syncFromBootstrap()
+          .timeout(const Duration(seconds: 5), onTimeout: () {});
       var denoms = await AssetDBHelper.instance.getSafeDenomList();
       // No safe denominations cached (assets not synced): fall back to the
       // note denominations, then to the same built-in list the shift balance
@@ -1204,35 +1209,9 @@ class _SafeDropScreenState extends State<SafeDropScreen>
   }
 
   //Build #1.0.74: Added Naveen
+  // Handles bootstrap data URIs (svg/jpeg/png), URLs and bundled assets
   Future<Widget> _loadSvg(String assetPath) async {
-    try {
-      if (assetPath.startsWith('http')) {
-        return SvgPicture.network(
-          assetPath,
-          height: 40,
-          width: 32,
-          placeholderBuilder: (context) => SvgPicture.asset(
-            'assets/svg/1.svg', // Your fallback asset
-            height: 40,
-            width: 32,
-          ),
-        );
-      } else {
-        return SvgPicture.asset(
-          assetPath,
-          height: 40,
-          width: 32,
-        );
-      }
-    } catch (e) {
-      if (kDebugMode)
-        print("#### SafeDropScreen: Error loading SVG $assetPath: $e");
-      return SvgPicture.asset(
-        'assets/svg/1.svg', // Fallback SVG
-        width: 40,
-        height: 32,
-      );
-    }
+    return DenomImage(source: assetPath, height: 40, width: 32);
   }
 
   Widget _buildDenominationField(

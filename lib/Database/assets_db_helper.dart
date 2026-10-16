@@ -455,6 +455,41 @@ class AssetDBHelper { //Build #1.0.54: added
     return result.map((map) => Denom.fromJson(map)).toList();
   }
 
+  // Replace denomination tables with lists from the store bootstrap API.
+  // A null list leaves that table untouched (key missing from the response).
+  Future<void> saveDenominations({
+    List<Denom>? notes,
+    List<Denom>? coins,
+    List<Denom>? safe,
+    List<Denom>? tubes,
+  }) async {
+    const int assetId = 1;
+    final db = await database;
+    await db.transaction((txn) async {
+      final tables = <String, List<Denom>?>{
+        AppDBConst.notesDenomTable: notes,
+        AppDBConst.coinDenomTable: coins,
+        AppDBConst.safeDenomTable: safe,
+        AppDBConst.tubesDenomTable: tubes,
+      };
+      for (final entry in tables.entries) {
+        final denoms = entry.value;
+        if (denoms == null) continue;
+        await txn.delete(entry.key);
+        for (final denom in denoms) {
+          await txn.insert(
+            entry.key,
+            {...denom.toMap(), AppDBConst.assetId: assetId},
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+        if (kDebugMode) {
+          print("#### AssetDBHelper: Saved ${denoms.length} rows to ${entry.key}: ${denoms.map((d) => d.denom).toList()}");
+        }
+      }
+    });
+  }
+
   //Build #1.0.74: Naveen Added
   Future<List<Vendor>> getVendorList() async {
     if (kDebugMode) {

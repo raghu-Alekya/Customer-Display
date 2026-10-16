@@ -50,7 +50,7 @@ class CashbackHelper {
 
   /// Token from SQLite active user (same source as rest of POS).
   /// Falls back to Hive StorageProvider.user only if DB has none.
-  static Future<String?> _resolveToken() async {
+  static Future<String?> resolveToken() async {
     try {
       final fromDb = await UserDbHelper().getUserToken();
       if (fromDb != null && fromDb.isNotEmpty) {
@@ -81,7 +81,7 @@ class CashbackHelper {
   }
 
   /// Store UUID from AuthIdsStore (global prefs after merchant login).
-  static Future<String?> _resolveStoreId() async {
+  static Future<String?> resolveStoreId() async {
     try {
       final id = (await AuthIdsStore.getStoreId()).trim();
       if (id.isNotEmpty) {
@@ -100,13 +100,13 @@ class CashbackHelper {
   // Response: { "cash_back_service": { enabled, max_cashback, tiers } }
   // ---------------------------------------------------------
   static Future<Map<String, dynamic>?> fetchCashbackConfig() async {
-    final token = await _resolveToken();
+    final token = await resolveToken();
     if (token == null || token.isEmpty) {
       print("❌ No token found (UserDb + Hive) — cannot fetch cashback");
       return getCashbackConfig();
     }
 
-    final storeId = await _resolveStoreId();
+    final storeId = await resolveStoreId();
     if (storeId == null || storeId.isEmpty) {
       print("❌ No storeId found (AuthIdsStore) — cannot fetch cashback");
       return getCashbackConfig();
@@ -165,13 +165,13 @@ class CashbackHelper {
   // STARTUP LOADER
   // ---------------------------------------------------------
   static Future<void> loadCashbackOnStartup() async {
-    final token = await _resolveToken();
+    final token = await resolveToken();
     if (token == null || token.isEmpty) {
       print("❌ No valid token found — skipping cashback API");
       return;
     }
 
-    final storeId = await _resolveStoreId();
+    final storeId = await resolveStoreId();
     if (storeId == null || storeId.isEmpty) {
       print("❌ No storeId found — skipping cashback API");
       return;
