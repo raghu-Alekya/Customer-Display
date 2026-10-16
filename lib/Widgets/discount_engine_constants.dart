@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:isar_community/isar.dart';
 import 'package:pinaka_pos/Database/discount_rule_isar.dart';
 
@@ -119,12 +120,39 @@ class DiscountEngine {
     // -----------------------------
     // Load rules
     // -----------------------------
-    final rules = (await isar.discountRuleIsars
+    final allActive = await isar.discountRuleIsars
         .filter()
         .activeEqualTo(true)
-        .findAll())
+        .findAll();
+
+    // Date window: empty start/end = always valid
+    bool inDateWindow(DiscountRuleIsar r) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final start = (r.startDate ?? '').trim();
+      final end = (r.endDate ?? '').trim();
+      if (start.isNotEmpty) {
+        final s = DateTime.tryParse(start);
+        if (s != null && today.isBefore(DateTime(s.year, s.month, s.day))) {
+          return false;
+        }
+      }
+      if (end.isNotEmpty) {
+        final e = DateTime.tryParse(end);
+        if (e != null && today.isAfter(DateTime(e.year, e.month, e.day))) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    final rules = allActive.where(inDateWindow).toList()
       ..sort((a, b) =>
           _priority(a.ruleType).compareTo(_priority(b.ruleType)));
+
+    if (kDebugMode) {
+      print('🧠 DiscountEngine rules active=${allActive.length} inWindow=${rules.length}');
+    }
 
     final Map<int, EngineDiscountResult> result = {};
 

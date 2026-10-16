@@ -16,6 +16,7 @@ import '../../Helper/api_helper.dart';
 import '../../Helper/customerdisplayhelper.dart';
 import '../../Helper/offline_helper.dart';  // Build #offline
 import '../../Helper/url_helper.dart';
+import '../Auth/AuthIdsStore.dart';
 import '../../Models/Assets/asset_model.dart';
 import '../../Models/Orders/apply_discount_model.dart';
 import '../../Models/Orders/get_orders_model.dart';
@@ -6050,30 +6051,105 @@ class OrderRepository {
     }
   }
 
+  /// PCH discount rules:
+  /// GET {connector}/stores/{storeId}/discount-rules
+  /// Response is a list of rules (auto / multipack / mixmatch).
   Future<List<Map<String, dynamic>>> fetchDiscountRules() async {
-    final String url = UrlMethodConstants.discountRules;
+    final storeId = (await AuthIdsStore.getStoreId()).trim();
+    if (storeId.isEmpty) {
+      if (kDebugMode) {
+        print('🌐 DISCOUNT RULES: missing storeId — skip fetch');
+      }
+      return [];
+    }
 
-    print("🌐 DISCOUNT API REQUEST");
-    print("➡️ Relative URL: $url");
+    // https://pch.alektasolutions.com/connector/api/v1/stores/{storeId}/discount-rules
+    final String url = "stores/$storeId/discount-rules";
+
+    if (kDebugMode) {
+      print("🌐 DISCOUNT API REQUEST");
+      print("➡️ Relative URL: $url");
+    }
 
     final response = await _helper.get(url, true);
 
-    print("🌐 DISCOUNT API RAW RESPONSE ↓↓↓");
-    print(response);
+    if (kDebugMode) {
+      print("🌐 DISCOUNT API RAW RESPONSE ↓↓↓");
+      print(response);
+    }
 
+    List<dynamic> rawList = [];
+    dynamic parsed = response;
     if (response is String) {
-      final decoded = jsonDecode(response);
-
-      if (decoded is List) {
-        return decoded.cast<Map<String, dynamic>>();
+      try {
+        parsed = jsonDecode(response);
+      } catch (_) {
+        return [];
       }
     }
 
-    if (response is List) {
-      return response.cast<Map<String, dynamic>>();
+    if (parsed is List) {
+      rawList = parsed;
+    } else if (parsed is Map) {
+      final candidate = parsed['data'] ??
+          parsed['rules'] ??
+          parsed['discount_rules'] ??
+          parsed['items'];
+      if (candidate is List) {
+        rawList = candidate;
+      }
     }
 
-    return [];
+    final List<Map<String, dynamic>> rules = [];
+    for (final item in rawList) {
+      if (item is! Map) continue;
+      final m = Map<String, dynamic>.from(item);
+
+      // Normalize productIds → List<int>
+      final pids = m['productIds'] ?? m['product_ids'];
+      if (pids is List) {
+        m['productIds'] = pids
+            .map((e) => int.tryParse(e.toString()) ?? 0)
+            .where((e) => e > 0)
+            .toList();
+      } else if (pids != null) {
+        final one = int.tryParse(pids.toString()) ?? 0;
+        m['productIds'] = one > 0 ? [one] : <int>[];
+      } else {
+        m['productIds'] = <int>[];
+      }
+
+      // requiredProductIds can be int or list — engine uses single int?
+      final req = m['requiredProductIds'] ?? m['required_product_ids'];
+      if (req is List && req.isNotEmpty) {
+        m['requiredProductIds'] = int.tryParse(req.first.toString());
+      } else if (req != null) {
+        m['requiredProductIds'] = int.tryParse(req.toString());
+      }
+
+      // requiredQty
+      final rq = m['requiredQty'] ?? m['required_qty'] ?? 0;
+      m['requiredQty'] = int.tryParse(rq.toString()) ?? 0;
+
+      // bundlePrice
+      final bp = m['bundlePrice'] ?? m['bundle_price'] ?? 0;
+      m['bundlePrice'] = double.tryParse(bp.toString()) ?? 0.0;
+
+      m['ruleId'] = (m['ruleId'] ?? m['rule_id'] ?? '').toString();
+      m['ruleType'] = (m['ruleType'] ?? m['rule_type'] ?? '').toString();
+      m['bundlePriceType'] =
+          (m['bundlePriceType'] ?? m['bundle_price_type'] ?? '').toString();
+      m['startDate'] = (m['startDate'] ?? m['start_date'] ?? '').toString();
+      m['endDate'] = (m['endDate'] ?? m['end_date'] ?? '').toString();
+      m['active'] = m['active'] == true || m['active'] == 1 || m['active'] == '1';
+
+      rules.add(m);
+    }
+
+    if (kDebugMode) {
+      print('🌐 DISCOUNT RULES parsed count: ${rules.length}');
+    }
+    return rules;
   }
 
   // 3. Apply Coupon to Order
