@@ -66,7 +66,8 @@ class CompletedOrder {
 }
 
 class LineItem {
-  final int id;
+  // int for legacy/offline items, String for PCH items (e.g. "ITEM-<uuid>-1")
+  final Object id;
   final String name;
   final int productId;
   final int quantity;
@@ -90,7 +91,7 @@ class LineItem {
 
   factory LineItem.fromJson(Map<String, dynamic> json) {
     return LineItem(
-      id: _parseInt(json['id']) ?? 0,
+      id: _parseInt(json['id']) ?? json['id']?.toString() ?? 0,
       name: json['name']?.toString() ?? '',
       productId: _parseInt(json['product_id']) ?? 0,
       quantity: _parseInt(json['quantity']) ?? 0,
@@ -135,13 +136,14 @@ class Payment {
     required this.paymentAmount,
   });
 
+  // Supports legacy keys and PCH keys (local_id / method / amount)
   factory Payment.fromJson(Map<String, dynamic> json) {
     return Payment(
-      id: _parseInt(json['id']) ?? 0,
+      id: _parseInt(json['id'] ?? json['local_id']) ?? 0,
       orderId: json['order_id']?.toString() ?? '',
-      paymentMethod: json['payment_method']?.toString() ?? '',
-      paymentId: json['payment_id']?.toString() ?? '',
-      paymentAmount: _parseDouble(json['payment_amount']) ?? 0.0,
+      paymentMethod: (json['payment_method'] ?? json['method'])?.toString() ?? '',
+      paymentId: (json['payment_id'] ?? json['transaction_id'])?.toString() ?? '',
+      paymentAmount: _parseDouble(json['payment_amount'] ?? json['amount']) ?? 0.0,
     );
   }
 }
@@ -164,7 +166,7 @@ double? _parseDouble(dynamic value) {
 }
 
 class RefundItem {
-  final int orderItemId;
+  final Object orderItemId; // same type as LineItem.id
   final double orderItemAmount;
 
   RefundItem({
