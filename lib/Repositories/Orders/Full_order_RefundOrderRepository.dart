@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../Database/db_helper.dart';
 import '../../Helper/url_helper.dart';
+import '../Auth/AuthIdsStore.dart';
 
 class RefundOrderRepository {
   final String baseUrl;
@@ -17,9 +18,12 @@ class RefundOrderRepository {
     required String itemsReusable,
   }) async {
     final token = await _getTokenFromDb();
+    final merchantId = (await AuthIdsStore.getMerchantId()).trim();
+    final storeId = (await AuthIdsStore.getStoreId()).trim();
 
+    // PCH API: POST {safeApiBaseUrl}/orders/full-order-refund
     final url = Uri.parse(
-      "${UrlHelper.baseUrl}pinaka-pos/v1/orders/full-order-refund",
+      "${UrlHelper.safeApiBaseUrl}/orders/full-order-refund",
     );
     if (kDebugMode) {
       print("=========== FULL ORDER REFUND API ===========");
@@ -36,10 +40,13 @@ class RefundOrderRepository {
         url,
         headers: {
           "Content-Type": "application/json",
+          "Accept": "application/json",
           "Authorization": "Bearer $token",
+          if (merchantId.isNotEmpty) "x-merchant-id": merchantId,
+          if (storeId.isNotEmpty) "x-store-id": storeId,
         },
         body: jsonEncode({
-          "order_id": orderId,
+          "order_id": orderId.toString(),
           "amount": amount,
           "reason": reason,
           "items_reusable": itemsReusable,
@@ -51,7 +58,7 @@ class RefundOrderRepository {
         print("Raw Response: ${response.body}");
       }
 
-      if (response.statusCode == 200) {
+      if (response.statusCode >= 200 && response.statusCode < 300) {
         if (response.body.isEmpty || response.body == '[]') {
           if (kDebugMode) print("Refund API SUCCESS (empty array returned)");
           return true;

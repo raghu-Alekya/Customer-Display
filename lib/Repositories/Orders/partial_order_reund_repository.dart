@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../Database/db_helper.dart';
 import '../../Helper/url_helper.dart';
+import '../Auth/AuthIdsStore.dart';
 
 class PartialRefundRepository {
   final String baseUrl;
@@ -14,12 +15,15 @@ class PartialRefundRepository {
     required String reason,
     required String itemsReusable,
     required List<Map<String, dynamic>>
-        items, // [{"order_item_id": 123, "qty": 1, "refundable_amount": 10}]
+        items, // [{"order_item_id": "ITEM-<uuid>-1", "qty": 1, "refundable_amount": 10}]
   }) async {
     final token = await _getTokenFromDb();
+    final merchantId = (await AuthIdsStore.getMerchantId()).trim();
+    final storeId = (await AuthIdsStore.getStoreId()).trim();
 
+    // PCH API: POST {safeApiBaseUrl}/orders/partial-order-refund
     final url = Uri.parse(
-      '${UrlHelper.baseUrl}pinaka-pos/v1/orders/partial-order-refund',
+      '${UrlHelper.safeApiBaseUrl}/orders/partial-order-refund',
     );
 
     if (kDebugMode) {
@@ -37,7 +41,10 @@ class PartialRefundRepository {
         url,
         headers: {
           "Content-Type": "application/json",
+          "Accept": "application/json",
           "Authorization": "Bearer $token",
+          if (merchantId.isNotEmpty) "x-merchant-id": merchantId,
+          if (storeId.isNotEmpty) "x-store-id": storeId,
         },
         body: jsonEncode({
           "order_id": orderId,
@@ -52,7 +59,7 @@ class PartialRefundRepository {
         print("Raw Response: ${response.body}");
       }
 
-      if (response.statusCode == 200) {
+      if (response.statusCode >= 200 && response.statusCode < 300) {
         if (response.body.isEmpty || response.body == '[]') {
           if (kDebugMode)
             print("Partial Refund API SUCCESS ✅ (empty array returned)");

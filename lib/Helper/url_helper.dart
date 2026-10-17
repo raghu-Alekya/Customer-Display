@@ -324,6 +324,7 @@ class UrlMethodConstants {
       "store/store-pos-configuration"; // + /{storeId}/cashback_settings
   // PCH: GET stores/{storeId}/discount-rules (storeId injected in fetchDiscountRules)
   static const String discountRules = "stores/{storeId}/discount-rules";
+  static const String posConfigurationBootstrap = "bootstrap";
 }
 
 class UrlParameterConstants { // Build #1.0.13

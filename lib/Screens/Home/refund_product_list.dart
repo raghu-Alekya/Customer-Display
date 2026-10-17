@@ -1770,7 +1770,7 @@ class _RefundScreenState extends State<RefundScreen> {
   }
   Widget _refundRow(
       bool isDark,
-      int orderItemId,
+      Object orderItemId,
       String itemName,
       String unitPrice,
       String tax,

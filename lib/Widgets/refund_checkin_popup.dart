@@ -136,8 +136,14 @@ class _PinCheckInDialogState extends State<PinCheckInDialog> {
           }
 
           if (state is RefundValidationFailure) {
+            // Show server message (strip "Exception: " prefix from e.toString())
+            final message = state.error.startsWith('Exception: ')
+                ? state.error.substring('Exception: '.length).trim()
+                : '';
             setState(() {
-              errorMessage = "Invalid PIN or unauthorized user";
+              errorMessage = message.isNotEmpty
+                  ? message
+                  : "Invalid PIN or unauthorized user";
               pin.clear();
             });
           }
