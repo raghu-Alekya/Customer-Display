@@ -1025,6 +1025,48 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
     }
   }
 
+
+  /// Merge duplicate product rows (same product/variation/name) by summing qty & totals.
+  /// Offline sync / re-open can leave many identical lines and inflate Total Items.
+  List<Map<String, dynamic>> _dedupeOrderPanelItems(List<Map<String, dynamic>> items) {
+    final Map<String, Map<String, dynamic>> merged = {};
+    for (final item in items) {
+      final name = item[AppDBConst.itemName]?.toString() ?? '';
+      final type = item[AppDBConst.itemType]?.toString().toLowerCase() ?? 'product';
+      final productId = item['product_id'] ?? item[AppDBConst.itemProductId] ?? 0;
+      final variationId = item[AppDBConst.itemVariationId] ?? item['variation_id'] ?? 0;
+      final key = '$type|$productId|$variationId|$name';
+      final qty = (item[AppDBConst.itemCount] is num)
+          ? (item[AppDBConst.itemCount] as num).toInt()
+          : int.tryParse(item[AppDBConst.itemCount]?.toString() ?? '1') ?? 1;
+      final sum = (item[AppDBConst.itemSumPrice] is num)
+          ? (item[AppDBConst.itemSumPrice] as num).toDouble()
+          : double.tryParse(item[AppDBConst.itemSumPrice]?.toString() ?? '0') ?? 0.0;
+      if (merged.containsKey(key)) {
+        final existing = merged[key]!;
+        final eq = (existing[AppDBConst.itemCount] is num)
+            ? (existing[AppDBConst.itemCount] as num).toInt()
+            : int.tryParse(existing[AppDBConst.itemCount]?.toString() ?? '0') ?? 0;
+        final es = (existing[AppDBConst.itemSumPrice] is num)
+            ? (existing[AppDBConst.itemSumPrice] as num).toDouble()
+            : double.tryParse(existing[AppDBConst.itemSumPrice]?.toString() ?? '0') ?? 0.0;
+        existing[AppDBConst.itemCount] = eq + qty;
+        existing[AppDBConst.itemSumPrice] = es + sum;
+        final newQty = eq + qty;
+        if (newQty > 0) {
+          existing[AppDBConst.itemPrice] = (es + sum) / newQty;
+        }
+      } else {
+        merged[key] = Map<String, dynamic>.from(item);
+      }
+    }
+    final result = merged.values.toList();
+    if (kDebugMode && items.length != result.length) {
+      print('#### Order panel dedupe: ${items.length} → ${result.length} lines');
+    }
+    return result;
+  }
+
   // Build #1.0.10: Fetches order items for the active order
 
   Future<void> fetchOrderItems() async {
@@ -1094,7 +1136,9 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         }
 
         if (requestId != _fetchOrderItemsSeq) return;
-        setState(() => orderItems = processedItems);
+        // Dedupe identical product lines (offline sync can insert the same row many times)
+        orderItems = _dedupeOrderPanelItems(processedItems);
+        setState(() {});
         return;
       }
     } catch (_) {}
@@ -1162,7 +1206,7 @@ class _OrderScreenPanelState extends State<OrderScreenPanel>
         });
       }
 
-      orderItems = mergedItems;
+      orderItems = _dedupeOrderPanelItems(mergedItems);
 
       print("🔥 Final Loaded Deleted OrderItems = $orderItems");
 

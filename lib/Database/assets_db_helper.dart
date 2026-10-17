@@ -80,10 +80,13 @@ class AssetDBHelper { //Build #1.0.54: added
           }
         }
 
-        TextConstants.currencySymbol = assetResponse.currencySymbol;
+        // Prefer bootstrap/assets symbol; never overwrite with empty
+        if (assetResponse.currencySymbol.trim().isNotEmpty) {
+          TextConstants.currencySymbol = assetResponse.currencySymbol;
+        }
 
         // Build #1.0.163: No need save media from assets api, updated to saving from image assets api
-       // await txn.delete(AppDBConst.mediaTable, where: '${AppDBConst.assetId} = ?', whereArgs: [assetId]);
+        // await txn.delete(AppDBConst.mediaTable, where: '${AppDBConst.assetId} = ?', whereArgs: [assetId]);
         await txn.delete(AppDBConst.taxTable, where: '${AppDBConst.assetId} = ?', whereArgs: [assetId]);
         await txn.delete(AppDBConst.couponTable, where: '${AppDBConst.assetId} = ?', whereArgs: [assetId]);
         await txn.delete(AppDBConst.orderStatusTable, where: '${AppDBConst.assetId} = ?', whereArgs: [assetId]);
@@ -446,6 +449,42 @@ class AssetDBHelper { //Build #1.0.54: added
       print("#### AssetDBHelper: Retrieved ${result.length} tubes denom");
     }
     return result.map((map) => Denom.fromJson(map)).toList();
+  }
+
+  /// Persist denomination lists from bootstrap (notes / coins / safe / tubes).
+  /// Only tables with a non-null list are replaced; others are left intact.
+  Future<void> saveDenominations({
+    List<Denom>? notes,
+    List<Denom>? coins,
+    List<Denom>? safe,
+    List<Denom>? tubes,
+  }) async {
+    const int assetId = 1;
+    final db = await database;
+    await db.transaction((txn) async {
+      final tables = <String, List<Denom>?>{
+        AppDBConst.notesDenomTable: notes,
+        AppDBConst.coinDenomTable: coins,
+        AppDBConst.safeDenomTable: safe,
+        AppDBConst.tubesDenomTable: tubes,
+      };
+      for (final entry in tables.entries) {
+        final denoms = entry.value;
+        if (denoms == null) continue;
+        await txn.delete(entry.key);
+        for (final denom in denoms) {
+          await txn.insert(
+            entry.key,
+            {...denom.toMap(), AppDBConst.assetId: assetId},
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+        if (kDebugMode) {
+          print(
+              "#### AssetDBHelper: Saved ${denoms.length} rows to ${entry.key}: ${denoms.map((d) => d.denom).toList()}");
+        }
+      }
+    });
   }
 
   //Build #1.0.74: Naveen Added

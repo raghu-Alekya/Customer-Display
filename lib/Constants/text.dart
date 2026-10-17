@@ -6,7 +6,7 @@ class TextConstants {
   // Build #1.0.7 , Naveen - added TextConstants and SharedPreferenceTextConstants classes
 
   static const String age_restricted = 'Age Restricted';
-  static String currencySymbol = '\u{20AC}'; //"\u{20B9}"; //  \\u{20AC})
+  static String currencySymbol = '\$'; // USD default; overridden by bootstrap/assets (was Euro)
   static String dateFormat = "MMM d, yyyy";
   static String timeFormat = "hh:mm:ss a";
   static const String loginBtnText = "Login";

@@ -45,8 +45,15 @@ class Denomination {
   });
 
   Map<String, dynamic> toJson() {
+    // API requires positive numeric denomination + non-negative int denom_count
+    // (string values fail validation: "must contain positive denominations...")
+    final denomNum = denomination is int
+        ? denomination
+        : (denomination == denomination.roundToDouble()
+        ? denomination.toInt()
+        : denomination.toDouble());
     return {
-      'denomination': denomination.toString(),
+      'denomination': denomNum,
       'denom_count': denomCount,
     };
   }
@@ -54,7 +61,7 @@ class Denomination {
   factory Denomination.fromJson(Map<String, dynamic> json) {
     return Denomination(
       denomination: num.parse(json['denomination'].toString()),
-      denomCount: json['denom_count'] as int,
+      denomCount: int.tryParse(json['denom_count']?.toString() ?? '0') ?? 0,
     );
   }
 }
@@ -93,13 +100,15 @@ class TubeDenomination {
 
 class ShiftResponse {
   final int shiftId;
+  final String? externalShiftId;
   final String userName;
-  final num totalAmount;  //Build #1.0.74
+  final num totalAmount; //Build #1.0.74
   final num overShort;
   final String status;
 
   ShiftResponse({
     required this.shiftId,
+    this.externalShiftId,
     required this.userName,
     required this.totalAmount,
     required this.overShort,
@@ -107,12 +116,26 @@ class ShiftResponse {
   });
 
   factory ShiftResponse.fromJson(Map<String, dynamic> json) {
+    final data = json['data'] is Map
+        ? Map<String, dynamic>.from(json['data'] as Map)
+        : Map<String, dynamic>.from(json);
+    final idRaw = data['shift_id'] ?? data['id'] ?? json['shift_id'];
+    int shiftId = 0;
+    if (idRaw is int) {
+      shiftId = idRaw;
+    } else if (idRaw != null) {
+      shiftId = int.tryParse(idRaw.toString()) ??
+          idRaw.toString().hashCode.abs() % 1000000000;
+    }
     return ShiftResponse(
-      shiftId: json['shift_id'] as int,
-      userName: json['user'] as String,
-      totalAmount: num.parse(json['total_amount'].toString()),
-      overShort: num.parse(json['over_short'].toString()),
-      status: json['status'] as String,
+      shiftId: shiftId,
+      externalShiftId: idRaw?.toString(),
+      userName: (data['user'] ?? data['cashier_name'] ?? 'Cashier').toString(),
+      totalAmount: num.tryParse(
+          (data['total_amount'] ?? data['opening_cash'] ?? 0).toString()) ??
+          0,
+      overShort: num.tryParse((data['over_short'] ?? 0).toString()) ?? 0,
+      status: (data['status'] ?? 'open').toString(),
     );
   }
 }

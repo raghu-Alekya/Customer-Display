@@ -81,7 +81,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   bool isBulkAdding = false;
   bool isimageLoading = false;
 
-  final ValueNotifier<int?> fastKeyTabIdNotifier = ValueNotifier<int?>(null);
+  final ValueNotifier<dynamic> fastKeyTabIdNotifier = ValueNotifier<dynamic>(null);
   final FastKeyDBHelper fastKeyDBHelper = FastKeyDBHelper();
   late FastKeyBloc _fastKeyBloc;
   List<FastKey> fastKeyTabs = [];
@@ -91,7 +91,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
   int? userId;
   static final Map<int, Map<String, dynamic>> _productMetaCache = {};
 // 🔥 NEW: in-memory cache of already-loaded tab items, keyed by fastKeyTabId
-  final Map<int, List<Map<String, dynamic>>> _tabItemsMemoryCache = {};
+  final Map<dynamic, List<Map<String, dynamic>>> _tabItemsMemoryCache = {};
 
   static int? _productMetaIdFromCacheMap(dynamic raw) {
     if (raw is! Map) return null;
@@ -120,7 +120,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
 
   late FastKeyProductBloc _fastKeyProductBloc;
   List<Map<String, dynamic>> fastKeyProductItems = [];
-  int? _fastKeyTabId;
+  dynamic _fastKeyTabId; // PCH UUID string or legacy int
   List<int?> reorderedIndices = [];
   int? selectedItemIndex;
   bool?
@@ -3095,7 +3095,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                 setState(() => _editingCategoryIndex = null),
           ),
           Expanded(
-            child: ValueListenableBuilder<int?>(
+            child: ValueListenableBuilder<dynamic>(
               valueListenable: fastKeyTabIdNotifier,
               builder: (context, fastKeyTabId, child) {
                 return fastKeyTabId != null
@@ -3403,7 +3403,7 @@ class _FastKeyScreenState extends State<FastKeyScreen>
                         },
                       ),
                       // In _FastKeyScreenState.build, modify the NestedGridWidget section
-                      ValueListenableBuilder<int?>(
+                      ValueListenableBuilder<dynamic>(
                         valueListenable: fastKeyTabIdNotifier,
                         builder: (context, fastKeyTabId, child) {
                           return fastKeyTabId != null //Build #1.0.68: updated

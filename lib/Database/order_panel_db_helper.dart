@@ -16,6 +16,8 @@ import '../Screens/Home/isar_payments/local_payments_db_helper.dart';
 import '../services/CustomerDisplayService.dart';
 import '../services/customer_services.dart';
 import 'db_helper.dart';
+import '../Widgets/discount_engine_constants.dart';
+import 'package:pinaka_pos/main.dart' show AppDB;
 import 'isar_service.dart'; // Build #1.0.104
 import 'isar_cache_entry.dart'; // Build #1.0.104
 
@@ -103,7 +105,7 @@ class OrderHelper {
   int? activeOrderId; // Stores the currently active order ID
   int? activeUserId; // Stores the active user ID
   int?
-      selectedOrderId; // Build #1.0.248 : save & persists across rebuilds of theme selection change
+  selectedOrderId; // Build #1.0.248 : save & persists across rebuilds of theme selection change
   int? cancelledOrderId; // Build #1.0.189: Stores the cancelled order ID
   List<int> orderIds = []; // List of order IDs for the active user
   List<Map<String, dynamic>> orders = [];
@@ -135,7 +137,7 @@ class OrderHelper {
     }
     final type = order['merchantDiscountType']?.toString() ?? 'fixed';
     final perc = double.tryParse(
-            order['merchantDiscountPercentage']?.toString() ?? '0') ??
+        order['merchantDiscountPercentage']?.toString() ?? '0') ??
         0.0;
     final fixed =
         double.tryParse(order['merchantDiscountFixed']?.toString() ?? '0') ??
@@ -167,9 +169,9 @@ class OrderHelper {
         final List products = json.decode(entry.json);
 
         final product = products.firstWhere(
-          (p) {
+              (p) {
             final pid = int.tryParse(
-                    (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
                 -1;
             return pid == productId;
           },
@@ -179,7 +181,7 @@ class OrderHelper {
         if (product == null) continue;
 
         final taxStatus =
-            (product["tax_status"] ?? "taxable").toString().toLowerCase();
+        (product["tax_status"] ?? "taxable").toString().toLowerCase();
 
         if (taxStatus == "none") return 0.0;
 
@@ -209,9 +211,9 @@ class OrderHelper {
 
         // Fallback: some cached products store a single tax rate instead of tax_rates array.
         final fallbackRate = double.tryParse(
-              (product["tax_rate"] ?? product["tax"]?["rate"] ?? "0")
-                  .toString(),
-            ) ??
+          (product["tax_rate"] ?? product["tax"]?["rate"] ?? "0")
+              .toString(),
+        ) ??
             0.0;
         if (fallbackRate > 0) {
           final tax = roundTaxHalfUp((taxableBase * fallbackRate) / 100);
@@ -230,9 +232,9 @@ class OrderHelper {
         final dynamic decoded = json.decode(allProductsEntry.json);
         final List allProducts = decoded is List ? decoded : <dynamic>[];
         final product = allProducts.cast<dynamic>().firstWhere(
-          (p) {
+              (p) {
             final pid = int.tryParse(
-                    (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
                 -1;
             return pid == productId;
           },
@@ -241,7 +243,7 @@ class OrderHelper {
 
         if (product != null) {
           final taxStatus =
-              (product["tax_status"] ?? "taxable").toString().toLowerCase();
+          (product["tax_status"] ?? "taxable").toString().toLowerCase();
           if (taxStatus == "none") return 0.0;
 
           final taxRates = product["tax_rates"] ?? product["tax"]?["tax_rates"];
@@ -258,9 +260,9 @@ class OrderHelper {
           }
 
           final fallbackRate = double.tryParse(
-                (product["tax_rate"] ?? product["tax"]?["rate"] ?? "0")
-                    .toString(),
-              ) ??
+            (product["tax_rate"] ?? product["tax"]?["rate"] ?? "0")
+                .toString(),
+          ) ??
               0.0;
           if (fallbackRate > 0) {
             final tax = roundTaxHalfUp((taxableBase * fallbackRate) / 100);
@@ -276,11 +278,95 @@ class OrderHelper {
     return 0.0;
   }
 
+
+  Future<void> _applyEngineDiscountsToProducts(List products) async {
+    if (products.isEmpty) return;
+    try {
+      Isar? isar;
+      try {
+        isar = AppDB.isar;
+      } catch (_) {
+        try { isar = Isar.getInstance(); } catch (_) {}
+      }
+      if (isar == null) {
+        if (kDebugMode) print('🧠 DiscountEngine skip: no Isar instance');
+        return;
+      }
+      final cartItems = <Map<String, dynamic>>[];
+      for (final raw in products) {
+        if (raw is! Map) continue;
+        final p = Map<String, dynamic>.from(raw);
+        final pid = int.tryParse((p['product_id'] ?? p['id'] ?? '0').toString()) ?? 0;
+        if (pid <= 0) continue;
+        final qty = int.tryParse((p['quantity'] ?? p['items_count'] ?? '1').toString()) ?? 1;
+        final price = double.tryParse((p['price'] ?? p['unit_price'] ?? '0').toString()) ?? 0.0;
+        cartItems.add({'product_id': pid, 'qty': qty, 'price': price});
+      }
+      if (cartItems.isEmpty) return;
+      final engineMap = await DiscountEngine.applyAll(isar, cartItems);
+      if (kDebugMode) {
+        print('🧠 DiscountEngine result pids=${engineMap.keys.toList()}');
+        engineMap.forEach((pid, r) {
+          print('   → pid=$pid amount=${r.amount} type=${r.ruleType} rule=${r.ruleId}');
+        });
+      }
+      for (final raw in products) {
+        if (raw is! Map) continue;
+        final p = raw as Map;
+        final pid = int.tryParse((p['product_id'] ?? p['id'] ?? '0').toString()) ?? 0;
+        final res = engineMap[pid];
+        final amount = res?.amount ?? 0.0;
+        final type = (res?.ruleType ?? '').toLowerCase();
+        p['auto_discount'] = amount;
+        p['auto_discount_total'] = amount;
+        p['multipack_discount_total'] = type == 'multipack' ? amount : 0.0;
+        p['combo_discount_total'] = (type == 'mixmatch' || type == 'combo') ? amount : 0.0;
+        p['rule_id'] = res?.ruleId ?? '';
+        p['discount_type'] = res?.ruleType ?? '';
+        p['discount_source'] = res != null ? 'engine' : '';
+        final qty = int.tryParse((p['quantity'] ?? '1').toString()) ?? 1;
+        final price = double.tryParse((p['price'] ?? '0').toString()) ?? 0.0;
+        final taxStatus = (p['tax_status'] ?? 'taxable').toString().toLowerCase();
+        final taxRate = double.tryParse((p['tax_rate'] ?? '0').toString()) ?? 0.0;
+        if (taxStatus == 'taxable' && taxRate > 0 && qty > 0) {
+          final discountedUnit = ((price * qty) - amount) / qty;
+          final safeUnit = discountedUnit < 0 ? 0.0 : discountedUnit;
+          try {
+            p['item_tax'] = roundTaxHalfUp((safeUnit * qty * taxRate) / 100);
+          } catch (_) {
+            p['item_tax'] = (safeUnit * qty * taxRate) / 100;
+          }
+        }
+      }
+    } catch (e, s) {
+      if (kDebugMode) {
+        print('🧠 DiscountEngine apply failed: $e');
+        print(s);
+      }
+    }
+  }
+
   Future<void> saveOfflineOrder(int orderId, Map<String, dynamic> order) async {
     final box = StorageProvider.offlineOrders;
 
     // --- Recalculate Totals ---
     final products = (order['products'] as List?) ?? [];
+    await _applyEngineDiscountsToProducts(products);
+    final Map<String, dynamic> discountLines = {};
+    for (final raw in products) {
+      if (raw is! Map) continue;
+      final p = Map<String, dynamic>.from(raw);
+      final sid = (p['server_item_id'] ?? p['product_id'] ?? '').toString();
+      if (sid.isEmpty) continue;
+      discountLines[sid] = {
+        'amount': double.tryParse((p['auto_discount'] ?? 0).toString()) ?? 0.0,
+        'type': p['discount_type'] ?? '',
+        'source': p['discount_source'] ?? '',
+        'rule_id': p['rule_id'] ?? '',
+      };
+    }
+    order['discount_lines'] = discountLines;
+
     final customItems = (order['custom_items'] as List?) ?? [];
     final payouts = (order['payouts'] as List?) ?? [];
     final cashbacks = (order['cashbacks'] as List?) ?? [];
@@ -298,7 +384,7 @@ class OrderHelper {
       final pid = int.tryParse((p['product_id'] ?? p['id']).toString()) ?? 0;
 
       final lineTaxStatus =
-          (p['tax_status'] ?? 'taxable').toString().toLowerCase();
+      (p['tax_status'] ?? 'taxable').toString().toLowerCase();
       final lineTaxRate =
           double.tryParse((p['tax_rate'] ?? '0').toString()) ?? 0.0;
 
@@ -330,13 +416,13 @@ class OrderHelper {
 
     // 3. Payouts & cashbacks
     double payoutTotal = payouts.fold(0.0,
-        (s, p) => s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0));
+            (s, p) => s + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0.0));
     double cashbackTotal = cashbacks.fold(0.0,
-        (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0));
+            (s, c) => s + (double.tryParse(c['amount']?.toString() ?? '0') ?? 0.0));
     double cbFee = (order['cashbackFee'] as num?)?.toDouble() ?? 0.0;
     if (cashbacks.isEmpty) cbFee = 0.0;
 
-   grossTotal += payoutTotal + cashbackTotal;
+    grossTotal += payoutTotal + cashbackTotal;
 
     double orderDiscount = (order['orderDiscount'] as num?)?.toDouble() ?? 0.0;
     double merchantDiscount = getCurrentMerchantDiscount(order,
@@ -347,7 +433,7 @@ class OrderHelper {
 
     final String mdType = order['merchantDiscountType']?.toString() ?? 'fixed';
     final double mdPerc = double.tryParse(
-            order['merchantDiscountPercentage']?.toString() ?? '0') ??
+        order['merchantDiscountPercentage']?.toString() ?? '0') ??
         0.0;
 
     double calculatedPerc = 0.0;
@@ -443,7 +529,7 @@ class OrderHelper {
       /// If required "asc" orders list, un-comment this line (order id's order low to high)
       /// Build #1.0.251 : FIXED - We have to use orderServerId rather than orderDate, it is already latest based on backend
       orderBy:
-          '${AppDBConst.orderServerId} ASC', // Ensure orders are sorted by creation date
+      '${AppDBConst.orderServerId} ASC', // Ensure orders are sorted by creation date
     );
     // ⚡ Ensure mutable list (db.query returns fixed-length list)
     orders = List<Map<String, dynamic>>.from(queryResult);
@@ -519,7 +605,7 @@ class OrderHelper {
       orderIds = [];
       orders = [];
       activeOrderId =
-          null; // ✅ Reset activeOrderId to avoid pointing to stale order
+      null; // ✅ Reset activeOrderId to avoid pointing to stale order
       return;
     }
 
@@ -570,19 +656,19 @@ class OrderHelper {
       // ✅ Normalize nested 'request' if present
       if (normalized['request'] is Map) {
         normalized['request'] =
-            Map<String, dynamic>.from(normalized['request'] as Map);
+        Map<String, dynamic>.from(normalized['request'] as Map);
       }
 
       // ✅ Normalize nested 'customer' if present
       if (normalized['customer'] is Map) {
         normalized['customer'] =
-            Map<String, dynamic>.from(normalized['customer'] as Map);
+        Map<String, dynamic>.from(normalized['customer'] as Map);
       }
 
       // ✅ Normalize 'totals' or other nested objects if exist
       if (normalized['totals'] is Map) {
         normalized['totals'] =
-            Map<String, dynamic>.from(normalized['totals'] as Map);
+        Map<String, dynamic>.from(normalized['totals'] as Map);
       }
 
       return MapEntry(entry.key, normalized);
@@ -591,7 +677,7 @@ class OrderHelper {
     if (validEntries.isNotEmpty) {
       // ⚡ Ensure mutable list (not fixed-length)
       localOrders =
-          List<Map<String, dynamic>>.from(validEntries.map((e) => e.value));
+      List<Map<String, dynamic>>.from(validEntries.map((e) => e.value));
 
       // ✅ Sort by created_at ascending (oldest first) so that new orders stay on the right
       localOrders.sort((a, b) {
@@ -607,11 +693,11 @@ class OrderHelper {
       // ✅ Extract order IDs from sorted orders (keeps orderIds in sync)
       localOrderIds = localOrders
           .map((map) {
-            if (map.containsKey('order_id')) return map['order_id'] as int?;
-            if (map.containsKey('id')) return map['id'] as int?;
-            return int.tryParse(
-                map['order_id']?.toString() ?? map['id']?.toString() ?? '');
-          })
+        if (map.containsKey('order_id')) return map['order_id'] as int?;
+        if (map.containsKey('id')) return map['id'] as int?;
+        return int.tryParse(
+            map['order_id']?.toString() ?? map['id']?.toString() ?? '');
+      })
           .whereType<int>()
           .toList();
 
@@ -648,7 +734,7 @@ class OrderHelper {
         }
 
         currentActiveOrderId ??=
-            localOrderIds.isNotEmpty ? localOrderIds.last : null;
+        localOrderIds.isNotEmpty ? localOrderIds.last : null;
 
         if (currentActiveOrderId != null) {
           await prefs.setInt('activeOrderId', currentActiveOrderId);
@@ -927,7 +1013,7 @@ class OrderHelper {
     try {
       final db = await DBHelper.instance.database;
       activeUserId =
-          await getUserIdFromDB(); // Build #1.0.165: to load user before update order table, to filter user based processing order only
+      await getUserIdFromDB(); // Build #1.0.165: to load user before update order table, to filter user based processing order only
       // Build #1.0.80: Count orders in the database
       final dbOrdersCount = await db.query(AppDBConst.orderTable);
       final apiOrdersCount = apiOrders.length;
@@ -952,7 +1038,7 @@ class OrderHelper {
       if (apiOrders.isNotEmpty) {
         // Check if we're syncing processing orders
         final isSyncingProcessingOrders =
-            apiOrders.any((order) => order.status == 'processing');
+        apiOrders.any((order) => order.status == 'processing');
         if (kDebugMode) {
           print(
               "#### DEBUG: isSyncingProcessingOrders $isSyncingProcessingOrders");
@@ -971,7 +1057,7 @@ class OrderHelper {
           await db.delete(
             AppDBConst.orderTable,
             where:
-                '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} != ?',
+            '${AppDBConst.userId} = ? AND ${AppDBConst.orderStatus} != ?',
             whereArgs: [activeUserId ?? 0, 'processing'],
           );
         }
@@ -1035,17 +1121,17 @@ class OrderHelper {
               AppDBConst.orderTime: apiOrder.dateCreated,
               AppDBConst.orderPaymentMethod: apiOrder.paymentMethod,
               AppDBConst.orderDiscount:
-                  double.tryParse(apiOrder.discountTotal) ??
-                      0.0, // Store discount
+              double.tryParse(apiOrder.discountTotal) ??
+                  0.0, // Store discount
               AppDBConst.orderTax:
-                  double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
+              double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
               AppDBConst.orderAgeRestricted: apiOrder.metaData
                   .firstWhere(
-                    //Build #1.0.234: Saving Age Restricted value in order table
+                //Build #1.0.234: Saving Age Restricted value in order table
                     (meta) => meta.key == TextConstants.ageRestrictedKey,
-                    orElse: () =>
-                        model.MetaData(id: 0, key: '', value: 'false'),
-                  )
+                orElse: () =>
+                    model.MetaData(id: 0, key: '', value: 'false'),
+              )
                   .value
                   .toString(),
             },
@@ -1070,15 +1156,15 @@ class OrderHelper {
             AppDBConst.orderDiscount: double.tryParse(apiOrder.discountTotal) ??
                 0.0, // Store discount
             AppDBConst.orderTax:
-                double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
+            double.tryParse(apiOrder.totalTax) ?? 0.0, // Store tax
             AppDBConst.orderShipping: double.tryParse(apiOrder.shippingTotal) ??
                 0.0, // Store shipping
             AppDBConst.orderAgeRestricted: apiOrder
                 .metaData //Build #1.0.234: Saving Age Restricted value in order table
                 .firstWhere(
                   (meta) => meta.key == TextConstants.ageRestrictedKey,
-                  orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
-                )
+              orElse: () => model.MetaData(id: 0, key: '', value: 'false'),
+            )
                 .value
                 .toString(),
           });
@@ -1195,11 +1281,11 @@ class OrderHelper {
       }
 
       String variationName = apiItem.productVariationData?.metaData
-              ?.firstWhere(
-                (e) => e.key == "custom_name",
-                orElse: () => model.MetaData(id: 0, key: "", value: ""),
-              )
-              .value ??
+          ?.firstWhere(
+            (e) => e.key == "custom_name",
+        orElse: () => model.MetaData(id: 0, key: "", value: ""),
+      )
+          .value ??
           "";
 
 // 🔹 Fallback → check attribute metadata (pa_*)
@@ -1221,11 +1307,11 @@ class OrderHelper {
       print("🟣 VARIANT NAME -> $variationName");
       final int variationCount = apiItem.productData.variations?.length ?? 0;
       final String combo = apiItem.metaData
-              .firstWhere((e) => e.value.contains('Combo'),
-                  orElse: () => model.MetaData(id: 0, key: "", value: ""))
-              .value
-              .split(' ')
-              .first ??
+          .firstWhere((e) => e.value.contains('Combo'),
+          orElse: () => model.MetaData(id: 0, key: "", value: ""))
+          .value
+          .split(' ')
+          .first ??
           "";
       bool isEbtEligible = false;
 
@@ -1248,34 +1334,34 @@ class OrderHelper {
           apiItem.productData.variations!.isNotEmpty;
       final double salesPrice = hasVariations
           ? double.tryParse(
-                  apiItem.productVariationData?.salePrice?.isNotEmpty == true
-                      ? apiItem.productVariationData!.salePrice!
-                      : "0.0") ??
-              0.0
+          apiItem.productVariationData?.salePrice?.isNotEmpty == true
+              ? apiItem.productVariationData!.salePrice!
+              : "0.0") ??
+          0.0
           : double.tryParse(apiItem.productData.salePrice?.isNotEmpty == true
-                  ? apiItem.productData.salePrice!
-                  : "0.0") ??
-              0.0;
+          ? apiItem.productData.salePrice!
+          : "0.0") ??
+          0.0;
       final double regularPrice = hasVariations
           ? double.tryParse(
-                  apiItem.productVariationData?.regularPrice?.isNotEmpty == true
-                      ? apiItem.productVariationData!.regularPrice!
-                      : "0.0") ??
-              0.0
+          apiItem.productVariationData?.regularPrice?.isNotEmpty == true
+              ? apiItem.productVariationData!.regularPrice!
+              : "0.0") ??
+          0.0
           : double.tryParse(apiItem.productData.regularPrice?.isNotEmpty == true
-                  ? apiItem.productData.regularPrice!
-                  : "0.0") ??
-              0.0;
+          ? apiItem.productData.regularPrice!
+          : "0.0") ??
+          0.0;
       final double unitPrice = hasVariations
           ? double.tryParse(
-                  apiItem.productVariationData?.price?.isNotEmpty == true
-                      ? apiItem.productVariationData!.price!
-                      : "0.0") ??
-              0.0
+          apiItem.productVariationData?.price?.isNotEmpty == true
+              ? apiItem.productVariationData!.price!
+              : "0.0") ??
+          0.0
           : double.tryParse(apiItem.productData.price?.isNotEmpty == true
-                  ? apiItem.productData.price!
-                  : "0.0") ??
-              0.0;
+          ? apiItem.productData.price!
+          : "0.0") ??
+          0.0;
 
       if (kDebugMode) {
         print(
@@ -1359,10 +1445,10 @@ class OrderHelper {
           print("#### DEBUG: Inserted new item ID: $itemId for order $orderId");
           print(
             "DB SAVE -> ${apiItem.name} "
-            "AUTO:${apiItem.autoDiscountAmount} "
-            "DISPLAY:${apiItem.displayAutoDiscountAmount} "
-            "COMBO:${apiItem.comboDiscountAmount} "
-            "MULTIPACK:${apiItem.multipackDiscountAmount}",
+                "AUTO:${apiItem.autoDiscountAmount} "
+                "DISPLAY:${apiItem.displayAutoDiscountAmount} "
+                "COMBO:${apiItem.comboDiscountAmount} "
+                "MULTIPACK:${apiItem.multipackDiscountAmount}",
           );
         }
       }
@@ -1434,7 +1520,7 @@ class OrderHelper {
     final existingItems = await db.query(
       AppDBConst.purchasedItemsTable,
       where:
-          '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+      '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
       whereArgs: [orderId, ItemType.payout.value],
     );
 
@@ -1549,7 +1635,7 @@ class OrderHelper {
     final existingItems = await db.query(
       AppDBConst.purchasedItemsTable,
       where:
-          '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+      '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
       whereArgs: [orderId, ItemType.payout.value],
     );
 
@@ -1758,7 +1844,7 @@ class OrderHelper {
 
         // ✅ Update in-memory list
         final orderIndex = orders.indexWhere(
-          (order) => order[AppDBConst.orderServerId] == orderId,
+              (order) => order[AppDBConst.orderServerId] == orderId,
         );
         if (orderIndex != -1) {
           orders[orderIndex][fieldKey] = value;
@@ -1865,7 +1951,7 @@ class OrderHelper {
     final existingItems = await db.query(
       AppDBConst.purchasedItemsTable,
       where:
-          '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
+      '${AppDBConst.orderIdForeignKey} = ? AND ${AppDBConst.itemType} = ?',
       whereArgs: [orderId, ItemType.coupon.value],
     );
 
@@ -1903,7 +1989,7 @@ class OrderHelper {
             AppDBConst.itemSKU: '',
           },
           where:
-              '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
+          '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
           whereArgs: [existingItem[AppDBConst.itemServerId]],
         );
         if (kDebugMode) {
@@ -1935,7 +2021,7 @@ class OrderHelper {
       await db.delete(
         AppDBConst.purchasedItemsTable,
         where:
-            '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
+        '${AppDBConst.itemServerId} = ?', //Build #1.0.128: Updated - itemId to itemServerId
         whereArgs: [item[AppDBConst.itemServerId]],
       );
       if (kDebugMode) {
@@ -1983,10 +2069,10 @@ class OrderHelper {
       final oid =
           order[AppDBConst.orderServerId] ?? order['order_id'] ?? order['id'];
       final int? orderId =
-          oid is int ? oid : int.tryParse(oid?.toString() ?? '');
+      oid is int ? oid : int.tryParse(oid?.toString() ?? '');
       if (orderId == null) continue;
       final payments =
-          await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
+      await LocalPaymentDBHelper.instance.getPaymentsByOrderId(orderId);
 
       if (payments.isEmpty) {
         await setActiveOrder(orderId);
@@ -2377,7 +2463,7 @@ class OrderHelper {
         final price = (map['item_price'] ?? map['price'] ?? 0).toDouble();
         final qty = (map['items_count'] ?? map['quantity'] ?? 1).toInt();
         final itemType =
-            (map['item_type'] ?? map['type'] ?? 'product').toString();
+        (map['item_type'] ?? map['type'] ?? 'product').toString();
         // Skip discount type - we add from discounts list separately
         if (itemType.toLowerCase().contains('discount')) continue;
         final multipack = _toDouble(
@@ -2453,7 +2539,7 @@ class OrderHelper {
           'item_variation_id': vid,
           'variation_name': vName,
           'is_variant':
-              vid > 0 || itemType == 'variant' || itemType == 'variation',
+          vid > 0 || itemType == 'variant' || itemType == 'variation',
           'sku': map['sku'] ?? '',
           AppDBConst.multipackDiscount: multipack,
           AppDBConst.autoDiscountTotal: auto,
@@ -2488,7 +2574,7 @@ class OrderHelper {
         AppDBConst.itemCount: 1,
         AppDBConst.itemSumPrice: price,
         AppDBConst.itemImage:
-            map['product_image'] ?? map['item_image'] ?? map['image'] ?? '',
+        map['product_image'] ?? map['item_image'] ?? map['image'] ?? '',
         AppDBConst.itemType: 'cashback',
       });
     }
@@ -2499,9 +2585,9 @@ class OrderHelper {
     for (final d in discounts) {
       final map = Map<String, dynamic>.from(d is Map ? d : {});
       final amount = (map[AppDBConst.itemPrice] ??
-              map['discount_amount'] ??
-              map['display_amount'] ??
-              0)
+          map['discount_amount'] ??
+          map['display_amount'] ??
+          0)
           .toDouble()
           .abs();
       final name =
@@ -2526,7 +2612,7 @@ class OrderHelper {
     await db.delete(
       AppDBConst.purchasedItemsTable,
       where:
-          '${AppDBConst.itemServerId} = ?', // Build #1.0.92: using item server id , checked used places!!
+      '${AppDBConst.itemServerId} = ?', // Build #1.0.92: using item server id , checked used places!!
       whereArgs: [itemServerId],
     );
 
@@ -2584,9 +2670,9 @@ class OrderHelper {
         for (final entry in cachedEntries) {
           final List products = json.decode(entry.json);
           final product = products.firstWhere(
-            (p) {
+                (p) {
               final pid = int.tryParse(
-                      (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                  (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
                   -1;
               return pid == productId;
             },
@@ -2611,12 +2697,12 @@ class OrderHelper {
 
       // Fallback to flattened product list cache.
       final allProducts =
-          await StorageProvider.productCache.get("all_products_list");
+      await StorageProvider.productCache.get("all_products_list");
       if (allProducts is List) {
         final product = allProducts.cast<dynamic>().firstWhere(
-          (p) {
+              (p) {
             final pid = int.tryParse(
-                    (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
+                (p["fast_key_product_id"] ?? p["id"] ?? "").toString()) ??
                 -1;
             return pid == productId;
           },
@@ -3507,10 +3593,10 @@ class OrderHelper {
   // }
 
   static void addToCache(
-    String sku,
-    Map<String, dynamic> productJson, {
-    int? variationId,
-  }) {
+      String sku,
+      Map<String, dynamic> productJson, {
+        int? variationId,
+      }) {
     final normalizedSku = normalizeSku(sku);
 
     _inMemoryProductCache[normalizedSku] = {
@@ -3550,10 +3636,10 @@ class OrderHelper {
 
     for (final p in order["products"]) {
       final storedSku = (p["sku"] ??
-              p["item_sku"] ??
-              p["product_sku"] ??
-              p["fast_key_item_sku"] ??
-              "")
+          p["item_sku"] ??
+          p["product_sku"] ??
+          p["fast_key_item_sku"] ??
+          "")
           .toString();
 
       final storedSkuNormalized = normalizeSku(storedSku);
@@ -3624,11 +3710,11 @@ class OrderHelper {
 
       // Update the order total in the orders table
       final items =
-          await getOrderItems(item.first[AppDBConst.orderIdForeignKey] as int);
+      await getOrderItems(item.first[AppDBConst.orderIdForeignKey] as int);
       double orderTotal = items.fold(
           0.0,
-          (sum, item) =>
-              sum + (item[AppDBConst.itemSumPrice] as num).toDouble());
+              (sum, item) =>
+          sum + (item[AppDBConst.itemSumPrice] as num).toDouble());
 
       await db.update(
         AppDBConst.orderTable,

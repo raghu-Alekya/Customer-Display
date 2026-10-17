@@ -1,15 +1,18 @@
 // models/store_validation_model.dart
-class StoreValidationResponse { //Build #1.0.42: Added by Naveen
+
+class StoreValidationResponse {
+  //Build #1.0.42: Added by Naveen
   final bool success;
   final String message;
   final int userId;
   final String username;
   final String email;
+  final String merchantId; // PCH: required for x-merchant-id headers
   final String storeId;
   final String subscriptionType;
   final String storeInfo;
   final String storeName;
-  final String storeLogo; // ✅ Added storeLogo
+  final String storeLogo;
   final String expirationDate;
   final List<dynamic> deviceImeis;
   final String storeBaseUrl;
@@ -24,11 +27,12 @@ class StoreValidationResponse { //Build #1.0.42: Added by Naveen
     required this.userId,
     required this.username,
     required this.email,
+    this.merchantId = '',
     required this.storeId,
     required this.subscriptionType,
     required this.storeInfo,
     required this.storeName,
-    required this.storeLogo, // ✅ constructor
+    required this.storeLogo,
     required this.expirationDate,
     required this.deviceImeis,
     required this.storeBaseUrl,
@@ -39,24 +43,60 @@ class StoreValidationResponse { //Build #1.0.42: Added by Naveen
   });
 
   factory StoreValidationResponse.fromJson(Map<String, dynamic> json) {
+    Map<String, dynamic> dataMap = {};
+    if (json['data'] is Map<String, dynamic>) {
+      dataMap = json['data'] as Map<String, dynamic>;
+    } else {
+      dataMap = json;
+    }
+
+    Map<String, dynamic> merchantMap = {};
+    if (dataMap['merchant'] is Map<String, dynamic>) {
+      merchantMap = dataMap['merchant'] as Map<String, dynamic>;
+    }
+
+    Map<String, dynamic> storeMap = {};
+    if (dataMap['store'] is Map<String, dynamic>) {
+      storeMap = dataMap['store'] as Map<String, dynamic>;
+    }
+
+    final String extractedMerchantId = merchantMap['id']?.toString() ??
+        merchantMap['merchantId']?.toString() ??
+        dataMap['merchantId']?.toString() ??
+        dataMap['merchant_id']?.toString() ??
+        '';
+
+    final String extractedStoreId = storeMap['id']?.toString() ??
+        dataMap['store_id']?.toString() ??
+        dataMap['storeId']?.toString() ??
+        storeMap['storeCode']?.toString() ??
+        '';
+
+    final storeName = storeMap['storeName']?.toString() ??
+        storeMap['name']?.toString() ??
+        dataMap['store_name']?.toString() ??
+        dataMap['storeName']?.toString() ??
+        '';
+
     return StoreValidationResponse(
-      success: json['success'] ?? false,
-      message: json['message'] ?? '',
-      userId: json['user_id'] ?? 0,
-      username: json['username'] ?? '',
-      email: json['email'] ?? '',
-      storeId: json['store_id'] ?? '',
-      subscriptionType: json['subscription_type'] ?? '',
-      storeInfo: json['store_info'] ?? '',
-      storeName: json['store_name'] ?? '',
-      storeLogo: json['store_logo'] ?? '', // ✅ map JSON
-      expirationDate: json['expiration_date'] ?? '',
-      deviceImeis: json['device_imeis'] ?? [],
-      storeBaseUrl: json['store_base_url'] ?? '',
-      storeAddress: json['store_address'] ?? '',
-      storePhone: json['store_phone'] ?? '',
-      licenseKey: json['license_key'] ?? '',
-      licenseStatus: json['license_status'] ?? '',
+      success: json['success'] ?? dataMap['success'] ?? true,
+      message: (json['message'] ?? dataMap['message'] ?? '').toString(),
+      userId: int.tryParse((dataMap['user_id'] ?? json['user_id'] ?? 0).toString()) ?? 0,
+      username: (dataMap['username'] ?? json['username'] ?? merchantMap['identifier'] ?? '').toString(),
+      email: (dataMap['email'] ?? json['email'] ?? merchantMap['email'] ?? '').toString(),
+      merchantId: extractedMerchantId,
+      storeId: extractedStoreId,
+      subscriptionType: (dataMap['subscription_type'] ?? json['subscription_type'] ?? '').toString(),
+      storeInfo: (dataMap['store_info'] ?? storeMap['storeInfo'] ?? '').toString(),
+      storeName: storeName,
+      storeLogo: (dataMap['store_logo'] ?? storeMap['logo'] ?? json['store_logo'] ?? '').toString(),
+      expirationDate: (dataMap['expiration_date'] ?? json['expiration_date'] ?? '').toString(),
+      deviceImeis: dataMap['device_imeis'] ?? json['device_imeis'] ?? [],
+      storeBaseUrl: (dataMap['store_base_url'] ?? storeMap['baseUrl'] ?? json['store_base_url'] ?? '').toString(),
+      storeAddress: (dataMap['store_address'] ?? storeMap['address'] ?? '').toString(),
+      storePhone: (dataMap['store_phone'] ?? storeMap['phone'] ?? '').toString(),
+      licenseKey: (dataMap['license_key'] ?? json['license_key'] ?? '').toString(),
+      licenseStatus: (dataMap['license_status'] ?? json['license_status'] ?? '').toString(),
     );
   }
 
@@ -67,11 +107,12 @@ class StoreValidationResponse { //Build #1.0.42: Added by Naveen
       'user_id': userId,
       'username': username,
       'email': email,
+      'merchant_id': merchantId,
       'store_id': storeId,
       'subscription_type': subscriptionType,
       'store_info': storeInfo,
       'store_name': storeName,
-      'store_logo': storeLogo, // ✅ include in JSON
+      'store_logo': storeLogo,
       'expiration_date': expirationDate,
       'device_imeis': deviceImeis,
       'store_base_url': storeBaseUrl,

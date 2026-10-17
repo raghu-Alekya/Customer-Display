@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:pinaka_pos/Helper/url_helper.dart';
 import '../Database/db_helper.dart';
 import '../Database/user_db_helper.dart';
+import '../Repositories/Auth/AuthIdsStore.dart';
 import 'file_helper.dart';
 import 'package:pinaka_pos/Helper/Extentions/exceptions.dart';
 
@@ -19,6 +20,42 @@ class APIHelper { // Build #1.0.8, Naveen added
     if (kDebugMode) {
       print("#### APIHelper: UrlHelper base URL initialized: ${UrlHelper.baseUrl}");
     }
+  }
+
+  /// Bearer + x-merchant-id / x-store-id (required by PCH connector APIs)
+  Future<Map<String, String>> _buildAuthHeaders({required bool useToken}) async {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    if (useToken) {
+      String token = '';
+      try {
+        final userData = await UserDbHelper().getUserData();
+        token = (userData?[AppDBConst.userToken] ?? '').toString().trim();
+      } catch (_) {}
+      if (token.isNotEmpty) {
+        headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
+      }
+    }
+    try {
+      final merchantId = (await AuthIdsStore.getMerchantId()).trim();
+      final storeId = (await AuthIdsStore.getStoreId()).trim();
+      if (merchantId.isNotEmpty) headers['x-merchant-id'] = merchantId;
+      if (storeId.isNotEmpty) headers['x-store-id'] = storeId;
+    } catch (e) {
+      if (kDebugMode) print('APIHelper AuthIdsStore headers: $e');
+    }
+    return headers;
+  }
+
+  String _resolveUrl(String url, {bool validateMarchentUrl = false}) {
+    if (validateMarchentUrl) return url;
+    // Absolute URLs (safeApiBaseUrl) — do not prepend connector base
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    return UrlHelper.baseUrl + url;
   }
   Future<dynamic> postForm(
       String url,
@@ -47,6 +84,12 @@ class APIHelper { // Build #1.0.8, Naveen added
         request.headers[HttpHeaders.authorizationHeader] =
         "Bearer $token";
       }
+      try {
+        final merchantId = (await AuthIdsStore.getMerchantId()).trim();
+        final storeId = (await AuthIdsStore.getStoreId()).trim();
+        if (merchantId.isNotEmpty) request.headers['x-merchant-id'] = merchantId;
+        if (storeId.isNotEmpty) request.headers['x-store-id'] = storeId;
+      } catch (_) {}
 
       request.fields.addAll(params);
 
@@ -68,27 +111,23 @@ class APIHelper { // Build #1.0.8, Naveen added
     String? token = "";
 
     try {
-      await _initializeBaseUrl(); // Ensure base URL is initialized
-      finalUrl = UrlHelper.baseUrl + url;
-      final userData = await UserDbHelper().getUserData();
-      token =  userData?[AppDBConst.userToken] ?? ""; // Build #1.0.13: token get from the user table from db
+      await _initializeBaseUrl();
+      finalUrl = _resolveUrl(url);
+      final headers = await _buildAuthHeaders(useToken: useToken);
+      token = headers[HttpHeaders.authorizationHeader]
+          ?.replaceFirst('Bearer ', '') ??
+          '';
 
       if (kDebugMode) {
         print("URL: $finalUrl");
-        print("Environment: ${UrlHelper.environment[UrlHelper.baseUrl]}");
         print("Bearer Token: $token");
+        if (headers.containsKey('x-merchant-id')) {
+          print("x-merchant-id: ${headers['x-merchant-id']}");
+        }
+        if (headers.containsKey('x-store-id')) {
+          print("x-store-id: ${headers['x-store-id']}");
+        }
       }
-
-      // Add Bearer token if required
-      // final headers =
-      //   useToken && token != null && token.isNotEmpty
-      //       ? {HttpHeaders.authorizationHeader: "Bearer $token"}
-      //       : null;
-      final headers = {
-        'Content-Type': 'application/json',
-        if (useToken && token != null && token.isNotEmpty)
-          HttpHeaders.authorizationHeader: "Bearer $token",
-      };
 
       final response = await http.get(Uri.parse(finalUrl), headers: headers);
       responseJson = _returnResponse(response);
@@ -110,7 +149,7 @@ class APIHelper { // Build #1.0.8, Naveen added
 
     try {
       await _initializeBaseUrl(); // Ensure base URL is initialized
-      finalUrl = UrlHelper.baseUrl + url;
+      finalUrl = _resolveUrl(url);
       final userData = await UserDbHelper().getUserData();
       token =  userData?[AppDBConst.userToken] ?? "";
 
@@ -143,20 +182,21 @@ class APIHelper { // Build #1.0.8, Naveen added
 
     try {
       await _initializeBaseUrl(); // Ensure base URL is initialized
-      finalUrl = (validateMarchentUrl ?? false) ? url : UrlHelper.baseUrl + url;  //Build #1.0.42: Updated url condition
-      final userData = await UserDbHelper().getUserData();
-      token =  userData?[AppDBConst.userToken] ?? "";
+      finalUrl = _resolveUrl(url, validateMarchentUrl: validateMarchentUrl ?? false);
       body = json.encode(params);
-
-      // Add Bearer token if required
-      final headers = {
-        'Content-Type': 'application/json',
-        if (useToken && token != null && token.isNotEmpty)
-          HttpHeaders.authorizationHeader: "Bearer $token",
-      };
+      final headers = await _buildAuthHeaders(useToken: useToken);
+      token = headers[HttpHeaders.authorizationHeader]
+          ?.replaceFirst('Bearer ', '') ??
+          '';
 
       if (kDebugMode) {
         print("URL: $finalUrl");
+        if (headers.containsKey('x-merchant-id')) {
+          print("x-merchant-id: ${headers['x-merchant-id']}");
+        }
+        if (headers.containsKey('x-store-id')) {
+          print("x-store-id: ${headers['x-store-id']}");
+        }
         print("Environment: ${UrlHelper.environment[UrlHelper.baseUrl]}");
         print("Body: $body");
         if (useToken && token != null && token.isNotEmpty) {
@@ -202,7 +242,7 @@ class APIHelper { // Build #1.0.8, Naveen added
 
     try {
       await _initializeBaseUrl(); // Ensure base URL is initialized
-      finalUrl = UrlHelper.baseUrl + url;
+      finalUrl = _resolveUrl(url);
       final userData = await UserDbHelper().getUserData();
       token =  userData?[AppDBConst.userToken] ?? "";
       File formDataFile = await fileHelper.getFile();
@@ -243,13 +283,13 @@ class APIHelper { // Build #1.0.8, Naveen added
 
     try {
       await _initializeBaseUrl(); // Ensure base URL is initialized
-      finalUrl = UrlHelper.baseUrl + url;
-      final userData = await UserDbHelper().getUserData();
-      token =  userData?[AppDBConst.userToken] ?? "";
+      finalUrl = _resolveUrl(url);
+      final headers = await _buildAuthHeaders(useToken: true);
+      token = headers[HttpHeaders.authorizationHeader]
+          ?.replaceFirst('Bearer ', '') ??
+          '';
 
-      final response = await http.delete(Uri.parse(finalUrl), headers: {
-        HttpHeaders.authorizationHeader: "Bearer $token",
-      });
+      final response = await http.delete(Uri.parse(finalUrl), headers: headers);
       responseJson = _returnResponse(response);
     } on SocketException {
       throw FetchDataException('No Internet connection');
@@ -270,24 +310,18 @@ class APIHelper { // Build #1.0.8, Naveen added
 
     try {
       await _initializeBaseUrl(); // Ensure base URL is initialized
-      finalUrl = UrlHelper.baseUrl + url;
-      final userData = await UserDbHelper().getUserData();
-      token =  userData?[AppDBConst.userToken] ?? "";
+      finalUrl = _resolveUrl(url);
       body = json.encode(params);
+      final headers = await _buildAuthHeaders(useToken: useToken);
+      token = headers[HttpHeaders.authorizationHeader]
+          ?.replaceFirst('Bearer ', '') ??
+          '';
 
       if (kDebugMode) {
         print("URL: $finalUrl");
-        print("Environment: ${UrlHelper.environment[UrlHelper.baseUrl]}");
         print("Bearer Token: $token");
         print("Body: $body");
       }
-
-      // Add Bearer token if required
-      final headers = {
-        'Content-Type': 'application/json',
-        if (useToken && token != null && token.isNotEmpty)
-          HttpHeaders.authorizationHeader: "Bearer $token",
-      };
 
       final response = await http.put(Uri.parse(finalUrl), body: body, headers: headers);
       responseJson = _returnResponse(response);

@@ -22,6 +22,10 @@ import '../Database/isar_cache_entry.dart';
 import '../Database/isar_service.dart';
 import '../Database/order_panel_db_helper.dart';
 import '../Database/user_db_helper.dart';
+import '../Employee/Attendance/employee_attendance_model.dart';
+import '../Employee/Attendance/employee_attendance_popup.dart';
+import '../Employee/Attendance/employee_attendance_repository.dart';
+import '../Repositories/Auth/AuthIdsStore.dart';
 import '../Helper/Extentions/theme_notifier.dart';
 import '../Helper/url_helper.dart';
 import '../Models/Search/product_search_model.dart';
@@ -166,25 +170,25 @@ class SevenSegmentDisplay extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children:
-          text.split('').map((ch) {
-            final isDot = ch == '.';
-            final w = isDot ? digitHeight * 0.22 : digitHeight * 0.60;
-            return Padding(
-              padding: EdgeInsets.only(right: isDot ? 1 : spacing),
-              child: SizedBox(
-                width: w,
-                height: digitHeight,
-                child: CustomPaint(
-                  painter: _SegmentPainter(
-                    char: ch,
-                    onColor: onColor,
-                    offColor: offColor,
-                    strokeW: digitHeight * 0.088,
-                  ),
-                ),
+      text.split('').map((ch) {
+        final isDot = ch == '.';
+        final w = isDot ? digitHeight * 0.22 : digitHeight * 0.60;
+        return Padding(
+          padding: EdgeInsets.only(right: isDot ? 1 : spacing),
+          child: SizedBox(
+            width: w,
+            height: digitHeight,
+            child: CustomPaint(
+              painter: _SegmentPainter(
+                char: ch,
+                onColor: onColor,
+                offColor: offColor,
+                strokeW: digitHeight * 0.088,
               ),
-            );
-          }).toList(),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }
@@ -282,7 +286,7 @@ class TopBar extends StatefulWidget {
   /// Bumped when merged product data (Isar/Hive) may have changed — Fast Keys
   /// listens to refresh EBT badges without a fixed delay.
   static final ValueNotifier<int> mergedProductCacheRevision =
-      ValueNotifier<int>(0);
+  ValueNotifier<int>(0);
 
   static Completer<void>? _firstMergedReloadCompleter;
   static bool _mergedReloadCompletedOnce = false;
@@ -419,7 +423,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
       if (_cachedUserData != null) {
         userId = _cachedUserData![AppDBConst.userId] as int?;
         userDisplayName =
-            _cachedUserData![AppDBConst.userDisplayName] as String?;
+        _cachedUserData![AppDBConst.userDisplayName] as String?;
         userRole = _cachedUserData![AppDBConst.userRole] as String?;
       }
     }
@@ -1111,8 +1115,8 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
     if (product is! Map) return null;
     final dynamic raw =
         product["fast_key_product_id"] ??
-        product["product_id"] ??
-        product["id"];
+            product["product_id"] ??
+            product["id"];
     if (raw is int) return raw;
     return int.tryParse(raw?.toString() ?? "");
   }
@@ -1133,11 +1137,11 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
     }
 
     final indigoEntries =
-        await isar.isarCacheEntrys
-            .where()
-            .filter()
-            .keyStartsWith("indigo_products_")
-            .findAll();
+    await isar.isarCacheEntrys
+        .where()
+        .filter()
+        .keyStartsWith("indigo_products_")
+        .findAll();
     for (final entry in indigoEntries) {
       try {
         mergeProductList(json.decode(entry.json) as List<dynamic>);
@@ -1163,11 +1167,11 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
     } catch (_) {}
 
     final cachedEntries =
-        await isar.isarCacheEntrys
-            .where()
-            .filter()
-            .keyStartsWith("products_")
-            .findAll();
+    await isar.isarCacheEntrys
+        .where()
+        .filter()
+        .keyStartsWith("products_")
+        .findAll();
     for (final entry in cachedEntries) {
       try {
         mergeProductList(json.decode(entry.json) as List<dynamic>);
@@ -1294,7 +1298,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
   void _showSearchResultsOverlay() {
     if (_overlayEntry != null || _dialogOpen) return;
     final box =
-        _searchFieldKey.currentContext?.findRenderObject() as RenderBox?;
+    _searchFieldKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
     final offset = box.localToGlobal(Offset.zero);
     final size = box.size;
@@ -1323,9 +1327,9 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
                   constraints: const BoxConstraints(maxHeight: 360),
                   decoration: BoxDecoration(
                     color:
-                        theme.themeMode == ThemeMode.dark
-                            ? ThemeNotifier.secondaryBackground
-                            : Colors.white,
+                    theme.themeMode == ThemeMode.dark
+                        ? ThemeNotifier.secondaryBackground
+                        : Colors.white,
                     borderRadius: const BorderRadius.only(
                       bottomLeft: Radius.circular(8),
                       bottomRight: Radius.circular(8),
@@ -1365,9 +1369,9 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
     String _resolvePrice(dynamic p) {
       final dynamic raw =
           p["fast_key_item_price"] ??
-          p["price"] ??
-          p["regular_price"] ??
-          "0.00";
+              p["price"] ??
+              p["regular_price"] ??
+              "0.00";
       return raw.toString();
     }
 
@@ -1391,15 +1395,15 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
     }
 
     final list =
-        uniqueById.values.toList()..sort((a, b) {
-          final na = (a["fast_key_item_name"] ?? "").toString().toLowerCase();
-          final nb = (b["fast_key_item_name"] ?? "").toString().toLowerCase();
-          final sa = na.startsWith(query);
-          final sb = nb.startsWith(query);
-          if (sa && !sb) return -1;
-          if (!sa && sb) return 1;
-          return na.compareTo(nb);
-        });
+    uniqueById.values.toList()..sort((a, b) {
+      final na = (a["fast_key_item_name"] ?? "").toString().toLowerCase();
+      final nb = (b["fast_key_item_name"] ?? "").toString().toLowerCase();
+      final sa = na.startsWith(query);
+      final sb = nb.startsWith(query);
+      if (sa && !sb) return -1;
+      if (!sa && sb) return 1;
+      return na.compareTo(nb);
+    });
 
     if (list.isEmpty) return const Center(child: Text("No products found"));
 
@@ -1437,24 +1441,24 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child:
-                  imageUrl != null
-                      ? Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        loadingBuilder:
-                            (ctx, child, progress) =>
-                                progress == null
-                                    ? child
-                                    : const Center(
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    ),
-                        errorBuilder:
-                            (_, __, ___) =>
-                                const Icon(Icons.broken_image, size: 40),
-                      )
-                      : const Icon(Icons.image, size: 40),
+              imageUrl != null
+                  ? Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                loadingBuilder:
+                    (ctx, child, progress) =>
+                progress == null
+                    ? child
+                    : const Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                  ),
+                ),
+                errorBuilder:
+                    (_, __, ___) =>
+                const Icon(Icons.broken_image, size: 40),
+              )
+                  : const Icon(Icons.image, size: 40),
             ),
           ),
           title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -1494,27 +1498,27 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
                 if (kDebugMode) {
                   print(
                     "🏷️ Tags enriched from cache for product "
-                    "${fullProduct.id}: ${fullProduct.tags?.map((t) => t.name).toList()}",
+                        "${fullProduct.id}: ${fullProduct.tags?.map((t) => t.name).toList()}",
                   );
                 }
               } else {
                 final isar = await IsarService.instance;
                 final entries =
-                    await isar.isarCacheEntrys
-                        .where()
-                        .filter()
-                        .keyStartsWith("products_")
-                        .findAll();
+                await isar.isarCacheEntrys
+                    .where()
+                    .filter()
+                    .keyStartsWith("products_")
+                    .findAll();
 
                 for (final entry in entries) {
                   final List<dynamic> cached = jsonDecode(entry.json);
                   final match = cached.firstWhere(
-                    (item) =>
-                        ((item["fast_key_product_id"] ??
-                                    item["product_id"] ??
-                                    item["id"])
-                                ?.toString() ==
-                            productId.toString()),
+                        (item) =>
+                    ((item["fast_key_product_id"] ??
+                        item["product_id"] ??
+                        item["id"])
+                        ?.toString() ==
+                        productId.toString()),
                     orElse: () => null,
                   );
                   if (match != null) {
@@ -1535,7 +1539,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
                       if (kDebugMode) {
                         print(
                           "🏷️ Tags enriched via fallback scan for product "
-                          "${fullProduct.id}",
+                              "${fullProduct.id}",
                         );
                       }
                     }
@@ -1684,7 +1688,7 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
     final result = await db.query(
       AppDBConst.userTable,
       where:
-          '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
+      '${AppDBConst.userToken} IS NOT NULL AND ${AppDBConst.userToken} != ""',
       orderBy: '${AppDBConst.userId} DESC',
       limit: 1,
     );
@@ -2161,159 +2165,159 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
     bool isError = false;
 
     return await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) {
-            return StatefulBuilder(
-              builder: (context, setState) {
-                final isDark = Theme.of(context).brightness == Brightness.dark;
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
 
-                return Dialog(
-                  insetPadding: const EdgeInsets.symmetric(horizontal: 40),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  backgroundColor:
-                      isDark ? const Color(0xFF2F3241) : Colors.white,
-                  child: SizedBox(
-                    width: 320,
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              backgroundColor:
+              isDark ? const Color(0xFF2F3241) : Colors.white,
+              child: SizedBox(
+                width: 320,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.lock_outline,
+                          color: Colors.redAccent,
+                          size: 30,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        "Authentication Required",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Inter',
+                          color: isDark ? Colors.white : Colors.black,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        "Enter PIN to open cash drawer",
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Inter',
+                          color: isDark ? Colors.white60 : Colors.grey[600],
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 18),
+                      _PinBoxField(
+                        controller: pinController,
+                        hasError: isError,
+                      ),
+                      if (isError) ...[
+                        const SizedBox(height: 8),
+                        const Text(
+                          "You are not authorized to access this feature.",
+                          style: TextStyle(fontSize: 11, color: Colors.red),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.15),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.lock_outline,
-                              color: Colors.redAccent,
-                              size: 30,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            "Authentication Required",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              fontFamily: 'Inter',
-                              color: isDark ? Colors.white : Colors.black,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            "Enter PIN to open cash drawer",
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontFamily: 'Inter',
-                              color: isDark ? Colors.white60 : Colors.grey[600],
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 18),
-                          _PinBoxField(
-                            controller: pinController,
-                            hasError: isError,
-                          ),
-                          if (isError) ...[
-                            const SizedBox(height: 8),
-                            const Text(
-                              "You are not authorized to access this feature.",
-                              style: TextStyle(fontSize: 11, color: Colors.red),
-                            ),
-                          ],
-                          const SizedBox(height: 20),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor:
-                                        isDark
-                                            ? const Color(0xFF50535F)
-                                            : const Color(0xFFE0E0E0),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 10,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  onPressed: () => Navigator.pop(ctx, false),
-                                  child: Text(
-                                    "Cancel",
-                                    style: TextStyle(
-                                      color:
-                                          isDark
-                                              ? Colors.white70
-                                              : Colors.black87,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor:
+                                isDark
+                                    ? const Color(0xFF50535F)
+                                    : const Color(0xFFE0E0E0),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 10,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.redAccent,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 10,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  onPressed: () async {
-                                    final pin = pinController.text.trim();
-                                    if (pin.length != 6) {
-                                      setState(() => isError = true);
-                                      return;
-                                    }
-                                    setState(() => isError = false);
-                                    try {
-                                      final response = await OrderRepository()
-                                          .validateLoginPin(pin);
-                                      final decoded = json.decode(response);
-                                      if (decoded["success"] == true) {
-                                        Navigator.pop(ctx, true);
-                                      } else {
-                                        setState(() => isError = true);
-                                        pinController.clear();
-                                      }
-                                    } catch (e) {
-                                      setState(() => isError = true);
-                                      pinController.clear();
-                                    }
-                                  },
-                                  child: const Text(
-                                    "Confirm",
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: Text(
+                                "Cancel",
+                                style: TextStyle(
+                                  color:
+                                  isDark
+                                      ? Colors.white70
+                                      : Colors.black87,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
-                            ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 10,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              onPressed: () async {
+                                final pin = pinController.text.trim();
+                                if (pin.length != 6) {
+                                  setState(() => isError = true);
+                                  return;
+                                }
+                                setState(() => isError = false);
+                                try {
+                                  final response = await OrderRepository()
+                                      .validateLoginPin(pin);
+                                  final decoded = json.decode(response);
+                                  if (decoded["success"] == true) {
+                                    Navigator.pop(ctx, true);
+                                  } else {
+                                    setState(() => isError = true);
+                                    pinController.clear();
+                                  }
+                                } catch (e) {
+                                  setState(() => isError = true);
+                                  pinController.clear();
+                                }
+                              },
+                              child: const Text(
+                                "Confirm",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                    ),
+                    ],
                   ),
-                );
-              },
+                ),
+              ),
             );
           },
-        ) ??
+        );
+      },
+    ) ??
         false;
   }
 
@@ -2327,9 +2331,9 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
 
     return Container(
       color:
-          themeHelper.themeMode == ThemeMode.dark
-              ? ThemeNotifier.primaryBackground
-              : Colors.white,
+      themeHelper.themeMode == ThemeMode.dark
+          ? ThemeNotifier.primaryBackground
+          : Colors.white,
       height: 70,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -2351,19 +2355,19 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color:
-                      themeHelper.themeMode == ThemeMode.dark
-                          ? const Color(0xFF3B3939)
-                          : const Color(0xFFEDEBEB),
+                  themeHelper.themeMode == ThemeMode.dark
+                      ? const Color(0xFF3B3939)
+                      : const Color(0xFFEDEBEB),
                 ),
                 boxShadow: [
                   BoxShadow(
                     color:
-                        themeHelper.themeMode == ThemeMode.dark
-                            ? const Color(0xFF605F5F)
-                            : Colors.grey.withOpacity(0.1),
+                    themeHelper.themeMode == ThemeMode.dark
+                        ? const Color(0xFF605F5F)
+                        : Colors.grey.withOpacity(0.1),
                     blurRadius: 2,
                     spreadRadius:
-                        themeHelper.themeMode == ThemeMode.dark ? 2 : 4,
+                    themeHelper.themeMode == ThemeMode.dark ? 2 : 4,
                     offset: const Offset(0, 0),
                   ),
                 ],
@@ -2381,24 +2385,24 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
                     color: Theme.of(context).iconTheme.color,
                   ),
                   suffixIcon:
-                      _searchController.text.isNotEmpty
-                          ? IconButton(
-                            icon: Icon(
-                              Icons.clear,
-                              color: Theme.of(context).iconTheme.color,
-                            ),
-                            onPressed: _clearSearch,
-                          )
-                          : null,
+                  _searchController.text.isNotEmpty
+                      ? IconButton(
+                    icon: Icon(
+                      Icons.clear,
+                      color: Theme.of(context).iconTheme.color,
+                    ),
+                    onPressed: _clearSearch,
+                  )
+                      : null,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(20),
                     borderSide: BorderSide.none,
                   ),
                   filled: true,
                   fillColor:
-                      themeHelper.themeMode == ThemeMode.dark
-                          ? ThemeNotifier.searchBarBackground
-                          : Colors.white,
+                  themeHelper.themeMode == ThemeMode.dark
+                      ? ThemeNotifier.searchBarBackground
+                      : Colors.white,
                 ),
               ),
             ),
@@ -2573,6 +2577,95 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
             ),
           ],
 
+          const SizedBox(width: 12),
+
+          // ── Employee Attendance ────────────────────────────────────────────
+          GestureDetector(
+            onTap: () async {
+              final userData =
+                  _cachedUserData ?? await UserDbHelper().getUserData();
+              final employeeCode =
+                  userData?[AppDBConst.userNickname]?.toString().trim() ?? '';
+              final employeeName =
+                  userData?[AppDBConst.userDisplayName]?.toString().trim() ??
+                      'Employee';
+
+              if (employeeCode.isEmpty) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'Employee code is missing. Please sign in again.'),
+                  ),
+                );
+                return;
+              }
+
+              final repo = EmployeeAttendanceRepository.forCurrentApp();
+              String merchantId = '';
+              String storeId = '';
+              try {
+                merchantId = (await AuthIdsStore.getMerchantId()).trim();
+                storeId = (await AuthIdsStore.getStoreId()).trim();
+              } catch (_) {}
+
+              List<AttendanceEmployee> storeEmployees = [];
+              if (merchantId.isNotEmpty && storeId.isNotEmpty) {
+                try {
+                  storeEmployees = await repo.getStoreEmployees(
+                    merchantId: merchantId,
+                    storeId: storeId,
+                  );
+                } catch (e) {
+                  if (kDebugMode) {
+                    print('TopBar attendance getStoreEmployees: $e');
+                  }
+                }
+              }
+
+              if (storeEmployees.isEmpty) {
+                storeEmployees = [
+                  AttendanceEmployee(
+                    employeeCode: employeeCode,
+                    name: employeeName.isNotEmpty ? employeeName : 'Employee',
+                  ),
+                ];
+              }
+
+              if (!mounted) return;
+              await showDialog<void>(
+                context: context,
+                barrierDismissible: true,
+                builder: (_) => EmployeeAttendanceApiPopup(
+                  employees: storeEmployees,
+                  currentEmployeeCode: employeeCode,
+                  repository: repo,
+                ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.secondaryBackground
+                    : Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: themeHelper.themeMode == ThemeMode.dark
+                      ? const Color(0xFF3B3939)
+                      : const Color(0xFFF1F1F3),
+                ),
+              ),
+              child: Icon(
+                Icons.fact_check_outlined,
+                size: 24,
+                color: themeHelper.themeMode == ThemeMode.dark
+                    ? Colors.white70
+                    : Colors.grey,
+              ),
+            ),
+          ),
+
           // ── Cash drawer ──────────────────────────────────────────────────────
           GestureDetector(
             onTap: () async {
@@ -2584,15 +2677,15 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color:
-                    themeHelper.themeMode == ThemeMode.dark
-                        ? ThemeNotifier.secondaryBackground
-                        : Colors.white,
+                themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.secondaryBackground
+                    : Colors.white,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color:
-                      themeHelper.themeMode == ThemeMode.dark
-                          ? const Color(0xFF3B3939)
-                          : const Color(0xFFF1F1F3),
+                  themeHelper.themeMode == ThemeMode.dark
+                      ? const Color(0xFF3B3939)
+                      : const Color(0xFFF1F1F3),
                 ),
               ),
               child: SvgPicture.asset(
@@ -2617,15 +2710,15 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
               padding: const EdgeInsets.all(13),
               decoration: BoxDecoration(
                 color:
-                    themeHelper.themeMode == ThemeMode.dark
-                        ? ThemeNotifier.secondaryBackground
-                        : Colors.white,
+                themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.secondaryBackground
+                    : Colors.white,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color:
-                      themeHelper.themeMode == ThemeMode.dark
-                          ? const Color(0xFF3B3939)
-                          : const Color(0xFFF1F1F3),
+                  themeHelper.themeMode == ThemeMode.dark
+                      ? const Color(0xFF3B3939)
+                      : const Color(0xFFF1F1F3),
                 ),
               ),
               child: SvgPicture.asset(
@@ -2656,15 +2749,15 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color:
-                    themeHelper.themeMode == ThemeMode.dark
-                        ? ThemeNotifier.secondaryBackground
-                        : Colors.white,
+                themeHelper.themeMode == ThemeMode.dark
+                    ? ThemeNotifier.secondaryBackground
+                    : Colors.white,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color:
-                      themeHelper.themeMode == ThemeMode.dark
-                          ? const Color(0xFF605F5F)
-                          : const Color(0xFFF1F1F3),
+                  themeHelper.themeMode == ThemeMode.dark
+                      ? const Color(0xFF605F5F)
+                      : const Color(0xFFF1F1F3),
                 ),
               ),
               child: SvgPicture.asset(
@@ -2686,15 +2779,15 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
           Container(
             decoration: BoxDecoration(
               color:
-                  themeHelper.themeMode == ThemeMode.dark
-                      ? ThemeNotifier.secondaryBackground
-                      : Colors.white,
+              themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.secondaryBackground
+                  : Colors.white,
               shape: BoxShape.circle,
               border: Border.all(
                 color:
-                    themeHelper.themeMode == ThemeMode.dark
-                        ? const Color(0xFF3B3939)
-                        : const Color(0xFFF1F1F3),
+                themeHelper.themeMode == ThemeMode.dark
+                    ? const Color(0xFF3B3939)
+                    : const Color(0xFFF1F1F3),
               ),
             ),
             padding: const EdgeInsets.all(10),
@@ -2702,9 +2795,9 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
               Icons.notifications,
               size: 24,
               color:
-                  themeHelper.themeMode == ThemeMode.dark
-                      ? Colors.white
-                      : Colors.black54,
+              themeHelper.themeMode == ThemeMode.dark
+                  ? Colors.white
+                  : Colors.black54,
             ),
           ),
           const SizedBox(width: 16),
@@ -2712,13 +2805,13 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
           // ── Refresh ──────────────────────────────────────────────────────────
           IconButton(
             icon:
-                isLoading
-                    ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                    : const Icon(Icons.refresh),
+            isLoading
+                ? const SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+                : const Icon(Icons.refresh),
             onPressed: isLoading ? null : refreshProducts,
           ),
 
@@ -2728,15 +2821,15 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
             decoration: BoxDecoration(
               color:
-                  themeHelper.themeMode == ThemeMode.dark
-                      ? ThemeNotifier.secondaryBackground
-                      : Colors.white,
+              themeHelper.themeMode == ThemeMode.dark
+                  ? ThemeNotifier.secondaryBackground
+                  : Colors.white,
               borderRadius: BorderRadius.circular(15),
               border: Border.all(
                 color:
-                    themeHelper.themeMode == ThemeMode.dark
-                        ? const Color(0xFF3B3939)
-                        : const Color(0xFFF1F1F3),
+                themeHelper.themeMode == ThemeMode.dark
+                    ? const Color(0xFF3B3939)
+                    : const Color(0xFFF1F1F3),
               ),
             ),
             child: Row(
@@ -2765,9 +2858,9 @@ class _TopBarState extends State<TopBar> with WidgetsBindingObserver{
                       style: TextStyle(
                         fontWeight: FontWeight.w500,
                         color:
-                            themeHelper.themeMode == ThemeMode.dark
-                                ? ThemeNotifier.textDark
-                                : ThemeNotifier.textLight,
+                        themeHelper.themeMode == ThemeMode.dark
+                            ? ThemeNotifier.textDark
+                            : ThemeNotifier.textLight,
                         fontSize: 14,
                       ),
                     ),

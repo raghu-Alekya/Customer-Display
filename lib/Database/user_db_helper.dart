@@ -7,16 +7,16 @@ import '../Preferences/pinaka_preferences.dart';
 import 'db_helper.dart';
 
 class UserDbHelper { //Build #1.0.126: Updated for user data into db
-/// DOUBT -> NO PROBLEM IF WE USE "_instance"
-/// RE-Search: Singleton pattern - `UserDbHelper()` returns the same instance every time.
-/// No new object is created, only the existing static instance is reused.
-/// EX: IF WE USE/CALL LIKE THIS WAY !
+  /// DOUBT -> NO PROBLEM IF WE USE "_instance"
+  /// RE-Search: Singleton pattern - `UserDbHelper()` returns the same instance every time.
+  /// No new object is created, only the existing static instance is reused.
+  /// EX: IF WE USE/CALL LIKE THIS WAY !
 // final UserDbHelper _userDbHelper = UserDbHelper();
 // await _userDbHelper.getUserData();
-/// or use below in this call
+  /// or use below in this call
 // static final UserDbHelper instance = UserDbHelper._internal();
 //   factory UserDbHelper() => instance;
-/// then call using
+  /// then call using
 // UserDbHelper.instance.getUserData();
   static final UserDbHelper _instance = UserDbHelper._internal();
   factory UserDbHelper() => _instance;
@@ -46,19 +46,36 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       {AppDBConst.userToken: ''}, // Clear all tokens
     );
 
+    // Resolve numeric user_id for SQLite INTEGER PRIMARY KEY (PCH uses UUID)
+    final rawId = loginResponse.id;
+    int numericUserId;
+    if (rawId is int) {
+      numericUserId = rawId;
+    } else if (rawId != null && int.tryParse(rawId.toString()) != null) {
+      numericUserId = int.parse(rawId.toString());
+    } else if (rawId != null && rawId.toString().isNotEmpty) {
+      numericUserId = rawId.toString().hashCode.abs();
+    } else {
+      numericUserId = 1;
+    }
+
     // 2. Check if user already exists
     final existingUser = await db.query(
       AppDBConst.userTable,
       where: '${AppDBConst.userId} = ?',
-      whereArgs: [loginResponse.id],
+      whereArgs: [numericUserId],
     );
 
     // 3. Prepare user data map
     Map<String, dynamic> userMap = {
-      AppDBConst.userId: loginResponse.id,
+      AppDBConst.userId: numericUserId,
       AppDBConst.userRole: loginResponse.role,
       AppDBConst.userDisplayName: loginResponse.displayName,
-      AppDBConst.userEmail: loginResponse.email,
+      AppDBConst.userEmail: (loginResponse.email != null && loginResponse.email!.trim().isNotEmpty)
+          ? loginResponse.email!.trim()
+          : ((loginResponse.nicename != null && loginResponse.nicename!.trim().isNotEmpty)
+          ? '${loginResponse.nicename!.trim()}@pos.local'
+          : 'cashier@pos.local'),
       AppDBConst.userFirstName: loginResponse.firstName,
       AppDBConst.userLastName: loginResponse.lastName,
       AppDBConst.userNickname: loginResponse.nicename,
@@ -77,11 +94,11 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
         AppDBConst.userTable,
         userMap,
         where: '${AppDBConst.userId} = ?',
-        whereArgs: [loginResponse.id],
+        whereArgs: [numericUserId],
       );
 
       if (kDebugMode) {
-        print("#### Updated existing user: ${loginResponse.id}");
+        print("#### Updated existing user: $numericUserId (raw=${loginResponse.id})");
       }
     } else {
       // Set defaults for new user
@@ -95,7 +112,7 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       );
 
       if (kDebugMode) {
-        print("#### Inserted new user: ${loginResponse.id}");
+        print("#### Inserted new user: $numericUserId (raw=${loginResponse.id})");
       }
     }
 
@@ -235,7 +252,19 @@ class UserDbHelper { //Build #1.0.126: Updated for user data into db
       return false;
     }
   }
-
+  /// Update the cached loyalty points balance for the active user.
+  Future<void> updateLoyaltyPoints(int points) async {
+    final db = await DBHelper.instance.database;
+    final userData = await getUserData();
+    if (userData == null) return;
+    await db.update(
+      AppDBConst.userTable,
+      {AppDBConst.loyaltyPoints: points},
+      where: '${AppDBConst.userId} = ?',
+      whereArgs: [userData[AppDBConst.userId]],
+    );
+    if (kDebugMode) print('#### Updated loyalty points cache: $points');
+  }
   /// Clears user data during logout
   Future<void> logout() async {
     final db = await DBHelper.instance.database;

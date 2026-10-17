@@ -17,8 +17,9 @@ class StoreValidationRepository {  //Build #1.0.42: Added by Naveen
     required String deviceId,
   }) async {
     final url = UrlHelper.validateMerchant;
+    // PCH merchant-store-login body
     final body = {
-      'username': username,
+      'merchantIdentifier': username,
       'password': password,
       'store_id': storeId,
       'device_id': deviceId,

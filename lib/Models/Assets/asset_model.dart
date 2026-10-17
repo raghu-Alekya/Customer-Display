@@ -1,6 +1,21 @@
 // Asset Model
 import 'package:flutter/foundation.dart';
 
+/// Resolves currency symbol from bootstrap / assets payload.
+/// New PCH bootstrap uses camelCase `currencySymbol` (often null for USD);
+/// legacy used `currency_symbol`. Defaults to `$` for USD when empty.
+String _resolveCurrencySymbol(Map<String, dynamic> json) {
+  final raw = json['currency_symbol'] ?? json['currencySymbol'];
+  final symbol = raw?.toString().trim() ?? '';
+  if (symbol.isNotEmpty && symbol.toLowerCase() != 'null') return symbol;
+  final currency = (json['currency'] ?? 'USD').toString().toUpperCase();
+  if (currency == 'USD') return '\$';
+  if (currency == 'EUR') return '€';
+  if (currency == 'GBP') return '£';
+  if (currency == 'INR') return '₹';
+  return '\$';
+}
+
 class AssetResponse {
   final String baseUrl;
   final List<Media> media;
@@ -69,8 +84,9 @@ class AssetResponse {
           ?.map((item) => OrderStatus.fromJson(item as Map<String, dynamic>))
           .toList() ??
           [],
-      currency: json['currency']?.toString() ?? '',
-      currencySymbol: json['currency_symbol']?.toString() ?? '',
+      currency: (json['currency'] ?? 'USD').toString(),
+      // Bootstrap may send currencySymbol (camelCase) or currency_symbol; null → $ for USD
+      currencySymbol: _resolveCurrencySymbol(json),
       roles: (json['roles'] as List<dynamic>?)
           ?.map((item) => Role.fromJson(item as Map<String, dynamic>))
           .toList() ??
@@ -444,29 +460,29 @@ class Employees{
   final String? displayName;
 
   Employees(
-    {this.iD,
-    this.userLogin,
-    this.userPass,
-    this.userNicename,
-    this.userEmail,
-    this.userUrl,
-    this.userRegistered,
-    this.userActivationKey,
-    this.userStatus,
-    this.displayName});
+      {this.iD,
+        this.userLogin,
+        this.userPass,
+        this.userNicename,
+        this.userEmail,
+        this.userUrl,
+        this.userRegistered,
+        this.userActivationKey,
+        this.userStatus,
+        this.displayName});
 
   factory Employees.fromJson(Map<String, dynamic> json) {
     return Employees(
-      iD : json['ID'],
-      userLogin : json['user_login'],
-      userPass : json['user_pass'],
-      userNicename : json['user_nicename'],
-      userEmail : json['user_email'],
-      userUrl:  json['user_url'],
-      userRegistered : json['user_registered'],
-      userActivationKey : json['user_activation_key'],
-      userStatus : json['user_status'],
-      displayName : json['display_name']);
+        iD : json['ID'],
+        userLogin : json['user_login'],
+        userPass : json['user_pass'],
+        userNicename : json['user_nicename'],
+        userEmail : json['user_email'],
+        userUrl:  json['user_url'],
+        userRegistered : json['user_registered'],
+        userActivationKey : json['user_activation_key'],
+        userStatus : json['user_status'],
+        displayName : json['display_name']);
   }
 
   Map<String, dynamic> toJson() {

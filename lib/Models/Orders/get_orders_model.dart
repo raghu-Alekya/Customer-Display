@@ -162,7 +162,7 @@
 //       cartTax: json['cart_tax'] ?? '0.00',
 //       total: json['total'] ?? '0.00',
 //       totalTax: json['total_tax'] ?? '0.00',
-//       customerId: json['customer_id'] ?? 0,
+//       customerId: _orderAsInt(json['customer_id'] ?? json['customerId']),
 //       orderKey: json['order_key'] ?? '',
 //       // billing: Billing.fromJson(json['billing'] ?? {}),
 //       // shipping: Shipping.fromJson(json['shipping'] ?? {}),
@@ -763,6 +763,22 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:pinaka_pos/Constants/text.dart';
 
+
+int _orderAsInt(dynamic v, [int fallback = 0]) {
+  if (v == null) return fallback;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v.toString()) ?? fallback;
+}
+
+double _orderAsDouble(dynamic v, [double fallback = 0.0]) {
+  if (v == null) return fallback;
+  if (v is double) return v;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString()) ?? fallback;
+}
+
+
 class OrdersListModel {
   final List<OrderModel> orders;
   OrdersListModel({required this.orders});
@@ -893,23 +909,39 @@ class OrderModel {
     final refundOrderTotal = double.tryParse(json['refund_order_total']?.toString() ?? '0') ?? 0.0;
     final netPayment = double.tryParse(json['net_payment']?.toString() ?? '0') ?? 0.0;
 
+    // Prefer numeric client / POS id (list API) over UUID string (detail API)
+    final clientIdMeta = getOrderMetaValue('_pos_client_order_id');
+    final resolvedId = _orderAsInt(
+      json['id'] ?? json['order_id'] ?? json['orderId'] ?? clientIdMeta,
+    );
+    // Fallback total from net_payment / refund_order_total when total missing
+    final totalStr = (json['total'] ??
+        json['net_payment'] ??
+        json['refund_order_total'] ??
+        '0.00')
+        .toString();
+    final currencySym = (json['currency_symbol'] ??
+        json['currencySymbol'] ??
+        TextConstants.currencySymbol)
+        .toString();
+
     return OrderModel(
-      id: json['id'] ?? 0,
-      parentId: json['parent_id'] ?? 0,
+      id: resolvedId,
+      parentId: _orderAsInt(json['parent_id'] ?? json['parentId']),
       status: (json['status'] ?? json['state'] ?? '').toString(),
-      currency: json['currency'] ?? 'USD',
+      currency: (json['currency'] ?? 'USD').toString(),
       version: json['version'] ?? '',
       pricesIncludeTax: json['prices_include_tax'] ?? false,
       dateCreated: json['date_created'] ?? '',
       dateModified: json['date_modified'] ?? '',
-      discountTotal: json['discount_total'] ?? '0.00',
-      discountTax: json['discount_tax'] ?? '0.00',
-      shippingTotal: json['shipping_total'] ?? '0.00',
-      shippingTax: json['shipping_tax'] ?? '0.00',
-      cartTax: json['cart_tax'] ?? '0.00',
-      total: json['total'] ?? '0.00',
-      totalTax: json['total_tax'] ?? '0.00',
-      customerId: json['customer_id'] ?? 0,
+      discountTotal: json['discount_total']?.toString() ?? '0.00',
+      discountTax: json['discount_tax']?.toString() ?? '0.00',
+      shippingTotal: json['shipping_total']?.toString() ?? '0.00',
+      shippingTax: json['shipping_tax']?.toString() ?? '0.00',
+      cartTax: json['cart_tax']?.toString() ?? '0.00',
+      total: totalStr,
+      totalTax: json['total_tax']?.toString() ?? '0.00',
+      customerId: _orderAsInt(json['customer_id'] ?? json['customerId']),
       orderKey: json['order_key'] ?? '',
       lineItems: (json['line_items'] as List<dynamic>?)
           ?.map((item) => LineItem.fromJson(item))
@@ -935,8 +967,8 @@ class OrderModel {
       paymentMethod: json['payment_method'] ?? '',
       createdVia: json['created_via'] ?? '',
       orderType: resolveOrderType(),
-      number: json['number'] ?? '',
-      currencySymbol: json['currency_symbol'] ?? TextConstants.currencySymbol,
+      number: json['number']?.toString() ?? '',
+      currencySymbol: currencySym.isNotEmpty ? currencySym : TextConstants.currencySymbol,
       multipackDiscountTotal: json['multipack_discount_total'] as String?,
       autoDiscountTotal: json['auto_discount_total'] as String?,
       getTime: json['get_time'] as String?,

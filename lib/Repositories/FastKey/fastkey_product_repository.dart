@@ -41,7 +41,7 @@ class FastKeyProductRepository {  // Build #1.0.15
 
   // GET: Fetch products by FastKey ID
   Future<FastKeyProductsResponse> getProductsByFastKeyId(
-      int fastKeyId, {
+      dynamic fastKeyId, {
         bool forceRefresh = false,
       }) async {
     final cacheKey = "fastkey_products_$fastKeyId";

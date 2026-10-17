@@ -16,6 +16,7 @@ import '../../Models/Auth/login_model.dart';
 import '../../Models/Auth/store_validation_model.dart';
 import '../../Repositories/Auth/login_repository.dart';
 import '../../Repositories/Auth/store_validation_repository.dart';
+import '../../Repositories/Auth/AuthIdsStore.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
 import '../../Widgets/widget_loading.dart';
 import '../../services/customer_services.dart';
@@ -313,8 +314,33 @@ class _StoreIdScreenState extends State<StoreIdScreen> {
                           // );
 
 
-                          // 2) Save validation data and navigate
+                          // 2) Save validation data
                           await StoreDbHelper.instance.saveStoreValidationData(store);
+
+                          // Persist merchant/store IDs for PCH API headers
+                          try {
+                            final mid = (store.merchantId).toString().trim().isNotEmpty
+                                ? store.merchantId.toString().trim()
+                                : _usernameController.text.trim();
+                            final sid = (store.storeId).toString().trim().isNotEmpty
+                                ? store.storeId.toString().trim()
+                                : _storeIdController.text.trim();
+                            if (mid.isNotEmpty && sid.isNotEmpty) {
+                              await AuthIdsStore.save(merchantId: mid, storeId: sid);
+                              debugPrint('[StoreLogin] Saved AuthIdsStore merchant=$mid store=$sid');
+                            } else {
+                              // Fallback: form fields only
+                              final fMid = _usernameController.text.trim();
+                              final fSid = _storeIdController.text.trim();
+                              if (fMid.isNotEmpty && fSid.isNotEmpty) {
+                                await AuthIdsStore.save(merchantId: fMid, storeId: fSid);
+                                debugPrint('[StoreLogin] Saved AuthIdsStore from form merchant=$fMid store=$fSid');
+                              }
+                            }
+                          } catch (e) {
+                            debugPrint('[StoreLogin] AuthIdsStore save failed: $e');
+                          }
+
                           if (!mounted) return;
                           Navigator.pushReplacement(
                             context,

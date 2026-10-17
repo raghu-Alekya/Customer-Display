@@ -17,6 +17,7 @@ import '../../Database/user_db_helper.dart';
 import '../../Helper/Extentions/nav_layout_manager.dart';
 import '../../Helper/Extentions/theme_notifier.dart';
 import '../../Helper/api_response.dart';
+import '../../Helper/denomination_helper.dart';
 import '../../Models/Assets/asset_model.dart';
 import '../../Models/Auth/shift_model.dart';
 import '../../Preferences/pinaka_preferences.dart';
@@ -25,6 +26,7 @@ import '../../Repositories/Auth/shift_repository.dart';
 import '../../Widgets/SafeStorageHelper.dart';
 import '../../Widgets/widget_alert_popup_dialogs.dart';
 import '../../Widgets/widget_custom_num_pad.dart';
+import '../../Widgets/widget_denom_image.dart';
 import '../../Widgets/widget_topbar.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -154,50 +156,55 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
     if (kDebugMode) {
       print("Fetching denominations from AssetDBHelper...");
     }
+    // Refresh from store bootstrap API (notes/coins images as data URIs); on failure use cache
+    await DenominationHelper.syncFromBootstrap()
+        .timeout(const Duration(seconds: 5), onTimeout: () {});
     _notesDenominations = await AssetDBHelper.instance.getNotesDenomList();
     _coinsDenominations = await AssetDBHelper.instance.getCoinDenomList();
 
     if (kDebugMode) {
-      print("Fetched Notes Denominations: $_notesDenominations");
-      print("Fetched Coins Denominations: $_coinsDenominations");
+      print("Fetched Notes Denominations: ${_notesDenominations.map((d) => d.denom).toList()}");
+      print("Fetched Coins Denominations: ${_coinsDenominations.map((d) => d.denom).toList()}");
     }
 
-    // Add dummy denominations for testing (12 more to reach 20 total)
-    // _notesDenominations.addAll([
-    //   Denom(denom: "500", image: 'assets/svg/500_note.svg'),
-    //   Denom(denom: "200", image: 'assets/svg/200_note.svg'),
-    //   Denom(denom: "1000", image: 'assets/svg/1000_note.svg'),
-    //   Denom(denom: "2000", image: 'assets/svg/2000_note.svg'),
-    //   Denom(denom: "5000", image: 'assets/svg/5000_note.svg'),
-    //   Denom(denom: "10000", image: 'assets/svg/10000_note.svg'),
-    //   Denom(denom: "0.01", image: 'assets/svg/1_cent.svg'),
-    //   Denom(denom: "0.02", image: 'assets/svg/2_cent.svg'),
-    //   Denom(denom: "0.20", image: 'assets/svg/20_cent.svg'),
-    //   Denom(denom: "1.00", image: 'assets/svg/1_dollar_coin.svg'),
-    //   Denom(denom: "2.00", image: 'assets/svg/2_dollar_coin.svg'),
-    //   Denom(denom: "5.00", image: 'assets/svg/5_dollar_coin.svg'),
-    // ]);
+    // Fallback to built-in USD denoms if bootstrap/cache empty
+    if (_notesDenominations.isEmpty) {
+      _notesDenominations = _noteDenominations.keys
+          .map((d) => Denom(denom: d, image: 'assets/svg/1.svg'))
+          .toList();
+      if (kDebugMode) print('No note denominations cached; using built-in defaults.');
+    }
+    if (_coinsDenominations.isEmpty) {
+      final defaultCoins = ['0.50', '0.25', '0.10', '0.05'];
+      _coinsDenominations = defaultCoins
+          .map((d) => Denom(denom: d, image: 'assets/svg/1.svg'))
+          .toList();
+      if (kDebugMode) print('No coin denominations cached; using built-in defaults.');
+    }
+
+    if (!mounted) return;
     setState(() {
-      // Initialize controllers and totals dynamically based on fetched denominations
-      _notesDenominations.forEach((denom) {
+      for (var denom in _notesDenominations) {
         if (kDebugMode) {
-          print("###### _notesDenominations image: ${denom.image}");
+          print("###### _notesDenominations image: ${denom.image?.substring(0, denom.image!.length > 40 ? 40 : denom.image!.length)}...");
         }
         _coinDenominations[denom.denom.toString()] = double.parse(denom.denom);
         _noteTotals[denom.denom.toString()] = 0.0;
         _controllers[denom.denom.toString()] = TextEditingController();
-        _controllers[denom.denom.toString()]!.addListener(() => _updateTotal(denom.denom.toString(), _controllers[denom.denom.toString()]!));
-      });
+        _controllers[denom.denom.toString()]!.addListener(() =>
+            _updateTotal(denom.denom.toString(), _controllers[denom.denom.toString()]!));
+      }
 
-      _coinsDenominations.forEach((denom) {
+      for (var denom in _coinsDenominations) {
         if (kDebugMode) {
-          print("###### _coinsDenominations image: ${denom.image}");
+          print("###### _coinsDenominations image: ${denom.image?.substring(0, denom.image!.length > 40 ? 40 : denom.image!.length)}...");
         }
         _coinDenominations[denom.denom.toString()] = double.parse(denom.denom);
         _coinTotals[denom.denom.toString()] = 0.0;
         _coinControllers[denom.denom.toString()] = TextEditingController();
-        _coinControllers[denom.denom.toString()]!.addListener(() => _updateCoinTotal(denom.denom.toString(), _coinControllers[denom.denom.toString()]!));
-      });
+        _coinControllers[denom.denom.toString()]!.addListener(() =>
+            _updateCoinTotal(denom.denom.toString(), _coinControllers[denom.denom.toString()]!));
+      }
     });
   }
 
@@ -513,26 +520,9 @@ class _ShiftOpenCloseBalanceScreenState extends State<ShiftOpenCloseBalanceScree
     super.dispose();
   }
 
-  // Build #1.0.70: Load API and assets images func
+  // Supports bootstrap data-URI images, http(s) URLs, and asset paths
   Widget _loadSvg(String path, double height, double width) {
-    if (path.startsWith('http')) {
-      return SvgPicture.network(
-        path,
-        height: height,
-        width: width,
-        placeholderBuilder: (context) => SvgPicture.asset(
-          'assets/svg/1.svg', // Your fallback asset
-          height: height,
-          width: width,
-        ),
-      );
-    } else {
-      return SvgPicture.asset(
-        path,
-        height: height,
-        width: width,
-      );
-    }
+    return DenomImage(source: path, height: height, width: width);
   }
 
   @override

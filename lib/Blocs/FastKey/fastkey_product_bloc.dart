@@ -120,7 +120,7 @@ class FastKeyProductBloc {  // Build #1.0.15
   }
 
   // GET: Fetch products by FastKey ID
-  Future<void> fetchProductsByFastKeyId(int fastKeyId, int fastKeyServerId) async {
+  Future<void> fetchProductsByFastKeyId(dynamic fastKeyId, dynamic fastKeyServerId) async {
     if (_getProductsController.isClosed) return;
 
     getProductsSink.add(APIResponse.loading(TextConstants.loading));

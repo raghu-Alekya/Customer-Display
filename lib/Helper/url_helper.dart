@@ -12,7 +12,8 @@ class UrlHelper {
   };
 //Hosts
   static const String _dev = 'https://mg.techkumard.com';//"https://pinakapos.techkumard.com"; // Build #1.1.36: Base URL without /wp-json/
-  static const  String _uat = "https://test.alekyatechsolutions.com";
+  static const  String _uat = "https://pch.alektasolutions.com/connector/api/v1";
+  static const String safeApiBaseUrl = "https://pch.alektasolutions.com/api/v1";
   static const  String _prod = "http://api.pinaka.com/";
 
   ///Update the environment URL in below API
@@ -23,7 +24,8 @@ class UrlHelper {
   /// Note: change _uat to _prod in release build
   static const String pinakaBaseUrl =  _uat ;
 
-  static const String validateMerchant =  "$pinakaBaseUrl/wp-json/custom/v1/validate-merchant";  //Build #1.0.42
+  static const String merchantStoreLogin = "pos/auth/merchant-store-login";
+  static const String validateMerchant =  "$pinakaBaseUrl/$merchantStoreLogin";
 
   //API keys
   static const  String _AndroidApiKey = "?apikey=987654321";
@@ -38,29 +40,30 @@ class UrlHelper {
   static String? _baseUrl;
   // Initialize base URL from database
   static Future<void> initializeBaseUrl() async {
-    _baseUrl = await AssetDBHelper.instance.getAppBaseUrl();
-    if (_baseUrl == null) {
-      _baseUrl = await StoreDbHelper.instance.getStoreBaseUrl(); //Build #1.0.126: Fallback to dev URL if database is empty
+    // Always use PCH connector base for API calls
+    _baseUrl = _uat;
+    if (_baseUrl != null && _baseUrl!.endsWith('/')) {
+      _baseUrl = _baseUrl!.substring(0, _baseUrl!.length - 1);
     }
   }
   static String get wooBaseUrl {
-    if (_baseUrl == null || _baseUrl!.isEmpty) {
-      _baseUrl = _uat; // fallback to dev environment
-    }
-    final url = '$_baseUrl/wp-json/wc/v3/';
-    return url;
+    // Connector API has no /wp-json/wc/v3/
+    return baseUrl;
   }
 
 
   //Build #1.0.54: Getter for base URL with /wp-json/ appended
   static String get baseUrl {
-    final url = '$_baseUrl/$wpJson';
+    if (_baseUrl == null || _baseUrl!.isEmpty) {
+      _baseUrl = _uat;
+    }
+    final url = '$_baseUrl/';
     return url;
   }
 /////START: make changes here to switch environment
 //   static const  String host = _dev ;
 //   static const  String baseUrl = host;
-  static const String componentVersionUrl = pinakaPosV1; // Default to pinaka-pos/v1 for existing APIs
+  static const String componentVersionUrl = ""; // PCH connector: no pinaka-pos/v1 prefix
   // static const  String apiKey = _devApiKey ;
   static final String apiKey = Platform.isIOS ? _iOSApiKey : _AndroidApiKey; // Build #1.0.8, Naveen updated this line
 
@@ -79,7 +82,7 @@ class UrlHelper {
   static String confirmSuccessUrl = baseUrl;
   static String markerUrl =  baseUrl;
 
-  static const  String login = "${pinakaPosV1}token"; // Build #1.0.8
+  static const  String login = "pos/auth/login"; // Employee login (PCH)
   static const  String refresh = "auth/refresh_token";
   static const  String signup = "auth/signup";
   static const  String forgotPassword = "auth/reestpassword";
@@ -94,7 +97,7 @@ class UrlHelper {
 
 class UrlMethodConstants {
   // Build #1.0.13
-  static const String token = "token";
+  static const String token = "pos/auth/login"; // Employee login (PCH)
   static const String products = "products";
   static const String fastKeys = "fastkeys"; // Build #1.0.15
   static const String categories = "categories";
@@ -102,7 +105,7 @@ class UrlMethodConstants {
   static const String payments = "payments";
   static const String orders = "orders";
   static const String issuingCoupons = "issuing-coupons";
-  static const String variations = "products"; // Used for variations endpoint
+  static const String variations = "products";
   static const String assets = "assets"; //Build #1.0.40
   static const String shifts = "shifts"; // Build #1.0.70
   static const String safes = "safes";
@@ -110,12 +113,13 @@ class UrlMethodConstants {
   static const String totalOrders = "total-orders"; // Build #1.0.118
   static const String loyaltyCreateCustomer = "loyalty/create-customer";
   static const String loyaltyRedeem = "loyalty/add-loyalty-points";
-  static const fastkeyimages = "pinaka-pos/v1/fastkeys/get-all-fastkeys-images";
-  static const taxes = "pinaka-pos/v1/assets/all-taxes";
+  static const fastkeyimages = "store/get-all-fastkeys-images";
+  static const taxes = "assets/all-taxes";
   static const String loyaltyRemove = "loyalty/remove-loyalty-points";
   static const String deleteofflineorders = "orders/sync-offline-orders";
-  static const String cashbackservices = "assets/cash-back-service";
-  static const String discountRules = "pinaka-pos/v1/assets/discount-rules";
+  static const String cashbackservices = "store/store-pos-configuration";
+  static const String posConfigurationBootstrap = "bootstrap"; // GET .../store-pos-configuration/{storeId}/bootstrap
+  static const String discountRules = "stores/{storeId}/discount-rules"; // PCH — storeId injected in fetchDiscountRules
 }
 
 class UrlParameterConstants { // Build #1.0.13

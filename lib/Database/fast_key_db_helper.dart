@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
@@ -7,7 +6,6 @@ import 'package:http/http.dart' as http;
 import '../Widgets/widget_topbar.dart';
 import 'db_helper.dart';
 import '../Helper/url_helper.dart';
-import 'isar_service.dart';
 
 class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key related methods
   static final FastKeyDBHelper _instance = FastKeyDBHelper._internal();
@@ -20,7 +18,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-  Future<int> addFastKeyTab(int userId, String title, String image, int count, int? index, int? fastKeyServerId) async {
+  Future<int> addFastKeyTab(int userId, String title, String image, int count, int? index, dynamic fastKeyServerId) async {
     final db = await DBHelper.instance.database;
     final tabId = await db.insert(AppDBConst.fastKeyTable, {
       AppDBConst.userIdForeignKey: userId,
@@ -66,7 +64,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   }
 
   // Build #1.0.87
-  Future<List<Map<String, dynamic>>> getFastKeyByServerTabId(int serverTabId) async {///tab id is fastServerId from server
+  Future<List<Map<String, dynamic>>> getFastKeyByServerTabId(dynamic serverTabId) async {///tab id is fastServerId from server
     final db = await DBHelper.instance.database;
     final tabs = await db.query(
       AppDBConst.fastKeyTable,
@@ -80,7 +78,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     return tabs;
   }
 
-  Future<void> updateFastKeyTab(int fastKeyServerId, Map<String, dynamic> updatedData) async { // Build #1.0.89: name changed for understanding
+  Future<void> updateFastKeyTab(dynamic fastKeyServerId, Map<String, dynamic> updatedData) async { // Build #1.0.89: name changed for understanding
     final db = await DBHelper.instance.database;
     await db.update(
       AppDBConst.fastKeyTable,
@@ -111,7 +109,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-  Future<void> updateFastKeyTabCount(int tabId, int newCount) async {
+  Future<void> updateFastKeyTabCount(dynamic tabId, int newCount) async {
     final db = await DBHelper.instance.database;
     await db.update(
       AppDBConst.fastKeyTable,
@@ -125,7 +123,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-  Future<void> deleteFastKeyTab(int tabId) async {
+  Future<void> deleteFastKeyTab(dynamic tabId) async {
     final db = await DBHelper.instance.database;
     //Build #1.0.279: Fixed Issue - Delete all products of the deleted fastKey first then delete fastKey tab!
     await deleteAllFastKeyProductItems(tabId);
@@ -154,7 +152,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-  Future<int> addFastKeyItem(int tabId, String name, String image,  String price, int productId,
+  Future<int> addFastKeyItem(dynamic tabId, String name, String image,  String price, int productId,
       {String? sku, String? variantId, int? slNumber, int? minAge, bool? hasVariant, String? tagsJson, String? metaDataJson, int? loyaltyPoints}) async {
     final db = await DBHelper.instance.database;
     final itemId = await db.insert(AppDBConst.fastKeyItemsTable, {
@@ -182,7 +180,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     return itemId;
   }
 
-  Future<List<Map<String, dynamic>>> getFastKeyItems(int tabId) async {
+  Future<List<Map<String, dynamic>>> getFastKeyItems(dynamic tabId) async {
     final db = await DBHelper.instance.database;
     final items = await db.query(
       AppDBConst.fastKeyItemsTable,
@@ -237,7 +235,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
 
   /// Get FastKey items with tags parsed from JSON
   /// Get FastKey items with tags parsed from JSON
-  Future<List<Map<String, dynamic>>> getFastKeyItemsWithTags(int tabId) async {
+  Future<List<Map<String, dynamic>>> getFastKeyItemsWithTags(dynamic tabId) async {
     final db = await DBHelper.instance.database;
     final items = await db.query(
       AppDBConst.fastKeyItemsTable,
@@ -332,7 +330,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     }
   }
 
-  Future<void> deleteAllFastKeyProductItems(int tabId) async {
+  Future<void> deleteAllFastKeyProductItems(dynamic tabId) async {
     final db = await DBHelper.instance.database;
 
     await db.delete(
@@ -347,7 +345,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   }
 
   // Build #1.0.89: Added
-  Future<void> deleteFastKeyItemByProductId(int fastKeyId, int productId) async {
+  Future<void> deleteFastKeyItemByProductId(dynamic fastKeyId, int productId) async {
     final db = await DBHelper.instance.database;
     await db.delete(
       AppDBConst.fastKeyItemsTable,
@@ -394,17 +392,15 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
     try {
       if (kDebugMode) print("🔄 Syncing FastKey items from API...");
 
-      // 1. Get all FastKey tabs for the user
       final tabsUrl = Uri.parse(
-        '${UrlHelper.baseUrl}${UrlHelper.pinakaPosV1}'
-            'fast-keys?user_id=$userId',
+        '${UrlHelper.baseUrl}fastkeys/get-by-user',
       );
 
       final tabsResponse = await http.get(
         tabsUrl,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
+          if (token.isNotEmpty) 'Authorization': 'Bearer $token',
         },
       );
 
@@ -414,25 +410,119 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
       }
 
       final tabsData = jsonDecode(tabsResponse.body);
-      final List<dynamic> fastKeys = tabsData['fast_keys'] ?? [];
+
+      List<dynamic> fastKeys = [];
+      if (tabsData is Map<String, dynamic>) {
+        if (tabsData['fastkeys'] is List) {
+          fastKeys = tabsData['fastkeys'] as List<dynamic>;
+        } else if (tabsData['data'] is List) {
+          fastKeys = tabsData['data'] as List<dynamic>;
+        } else if (tabsData['data'] is Map && tabsData['data']['fastkeys'] is List) {
+          fastKeys = tabsData['data']['fastkeys'] as List<dynamic>;
+        }
+      }
 
       if (fastKeys.isEmpty) {
         if (kDebugMode) print('ℹ️ No FastKey tabs found');
         return;
       }
 
-      // 2. For each FastKey tab, fetch and update items
+      final db = await DBHelper.instance.database;
+
       for (final fastKey in fastKeys) {
-        final int fastKeyServerId = fastKey['id'];
-        await _syncFastKeyItems(token, fastKeyServerId);
+        if (fastKey is! Map<String, dynamic>) continue;
+        final rawServerId = fastKey['fastkey_id'] ?? fastKey['fastkeyId'] ?? fastKey['id'];
+        final int fastKeyServerId = rawServerId is int
+            ? rawServerId
+            : (int.tryParse(rawServerId?.toString() ?? '') ??
+            (rawServerId != null && rawServerId.toString().isNotEmpty
+                ? rawServerId.toString().hashCode.abs()
+                : 0));
+
+        if (fastKeyServerId == 0) continue;
+
+        final title = fastKey['fastkey_title']?.toString() ??
+            fastKey['title']?.toString() ??
+            'FastKey';
+        final index = fastKey['fastkey_index']?.toString() ?? '0';
+        final image = fastKey['fastkey_image']?.toString() ?? '';
+
+        final List<dynamic> products = fastKey['products'] is List
+            ? fastKey['products'] as List<dynamic>
+            : [];
+
+        final tabResult = await db.query(
+          AppDBConst.fastKeyTable,
+          where: '${AppDBConst.fastKeyServerId} = ?',
+          whereArgs: [fastKeyServerId],
+        );
+
+        int localTabId;
+        if (tabResult.isEmpty) {
+          localTabId = await db.insert(AppDBConst.fastKeyTable, {
+            AppDBConst.fastKeyServerId: fastKeyServerId,
+            AppDBConst.fastKeyTabTitle: title,
+            AppDBConst.fastKeyTabIndex: index,
+            AppDBConst.fastKeyTabImage: image,
+            AppDBConst.fastKeyTabItemCount: products.length,
+            AppDBConst.userIdForeignKey: userId,
+          });
+        } else {
+          localTabId = tabResult.first[AppDBConst.fastKeyId] as int;
+          await db.update(
+            AppDBConst.fastKeyTable,
+            {
+              AppDBConst.fastKeyTabTitle: title,
+              AppDBConst.fastKeyTabIndex: index,
+              AppDBConst.fastKeyTabImage: image,
+              AppDBConst.fastKeyTabItemCount: products.length,
+            },
+            where: '${AppDBConst.fastKeyId} = ?',
+            whereArgs: [localTabId],
+          );
+        }
+
+        await _syncFastKeyItemsFromProducts(fastKeyServerId, products);
       }
 
       if (kDebugMode) print("✅ FastKey sync completed");
-
     } catch (e) {
       if (kDebugMode) print('❌ FastKey sync error: $e');
     }
   }
+
+  Future<void> _syncFastKeyItemsFromProducts(
+      int fastKeyServerId, List<dynamic> products) async {
+    try {
+      final db = await DBHelper.instance.database;
+
+      final tabResult = await db.query(
+        AppDBConst.fastKeyTable,
+        where: '${AppDBConst.fastKeyServerId} = ?',
+        whereArgs: [fastKeyServerId],
+      );
+
+      if (tabResult.isEmpty) {
+        if (kDebugMode) print('⚠️ FastKey tab not found: $fastKeyServerId');
+        return;
+      }
+
+      final int localTabId = tabResult.first[AppDBConst.fastKeyId] as int;
+
+      // _updateFastKeyItemsInDb already reads item['product_id'],
+      // item['tags'], item['meta_data'], item['name'], item['price'],
+      // item['sku'], item['is_variant'], item['has_variants'], item['sl_number']
+      // — all match the "products" objects in this response exactly.
+      await _updateFastKeyItemsInDb(localTabId, fastKeyServerId, products);
+
+      if (kDebugMode) {
+        print('✅ Updated ${products.length} items for FastKey $fastKeyServerId');
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Error syncing FastKey items: $e');
+    }
+  }
+
 
   /// Sync items for a specific FastKey tab
   Future<void> _syncFastKeyItems(String token, int fastKeyServerId) async {
@@ -764,7 +854,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   }
 
   /// Get the last updated timestamp for a FastKey tab
-  Future<DateTime?> getFastKeyTabLastUpdated(int fastKeyServerId) async {
+  Future<DateTime?> getFastKeyTabLastUpdated(dynamic fastKeyServerId) async {
     final db = await DBHelper.instance.database;
     final result = await db.query(
       AppDBConst.fastKeyItemsTable,
@@ -785,7 +875,7 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   }
 
   /// Check if FastKey items need refresh (older than threshold)
-  Future<bool> needsFastKeyRefresh(int fastKeyServerId, {Duration threshold = const Duration(minutes: 5)}) async {
+  Future<bool> needsFastKeyRefresh(dynamic fastKeyServerId, {Duration threshold = const Duration(minutes: 5)}) async {
     final lastUpdated = await getFastKeyTabLastUpdated(fastKeyServerId);
     if (lastUpdated == null) return true;
     return DateTime.now().difference(lastUpdated) > threshold;
@@ -796,22 +886,26 @@ class FastKeyDBHelper { // Build #1.0.11 : FastKeyHelper for all fast key relate
   // ============================================================
 
   ///@Naveen: why do we have these function here in db helper instead of pref file, and they have hard coded values as well
-  Future<void> saveActiveFastKeyTab(int? tabId) async {
+  Future<void> saveActiveFastKeyTab(dynamic tabId) async {
     final prefs = await SharedPreferences.getInstance();
     if (tabId != null) {
-      await prefs.setInt('activeFastKeyTabId', tabId);
+      if (tabId is int) {
+        await prefs.setInt('activeFastKeyTabId', tabId);
+      } else {
+        await prefs.setString('activeFastKeyTabId', tabId.toString());
+      }
     } else {
       await prefs.remove('activeFastKeyTabId');
     }
   }
 
-  Future<int?> getActiveFastKeyTab() async {
+  Future<dynamic> getActiveFastKeyTab() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt('activeFastKeyTabId');
+    return prefs.get('activeFastKeyTabId');
   }
 
-  Future<void> refreshFastKeyItemMetadata(int fastKeyTabId) async {
-    if (fastKeyTabId <= 0) {
+  Future<void> refreshFastKeyItemMetadata(dynamic fastKeyTabId) async {
+    if (fastKeyTabId == null || fastKeyTabId.toString().isEmpty) {
       if (kDebugMode) print("⚠️ Invalid fastKeyTabId: $fastKeyTabId");
       return;
     }

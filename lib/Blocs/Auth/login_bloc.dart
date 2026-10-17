@@ -11,6 +11,7 @@ import '../../Helper/cashbackhelper.dart';
 import '../../Helper/file_helper.dart';
 import '../../Models/Auth/login_model.dart';
 import '../../Repositories/Auth/login_repository.dart';
+import '../../Repositories/Auth/AuthIdsStore.dart';
 import 'package:pinaka_pos/Helper/Extentions/exceptions.dart'; // Import custom exceptions
 
 class LoginBloc { // Build #1.0.8
@@ -36,10 +37,11 @@ class LoginBloc { // Build #1.0.8
       String token = await _loginRepository.fetchLoginToken(request);
       LoginResponse loginResponse = LoginResponse.fromJson(json.decode(token));
 
-      if (loginResponse.token != null && loginResponse.success == true) {
+      if (loginResponse.token != null && loginResponse.token!.isNotEmpty && (loginResponse.success == true || loginResponse.success == null)) {
         // Build #1.0.148: Always save/update the new login data
         // ✅ 1) Existing logic: Save to SQLite (keep this if you still use it)
         await _userDbHelper.saveUserData(loginResponse);
+        await AuthIdsStore.saveEmployeeId(loginResponse.id?.toString() ?? '');
 
         // ✅ 2) Save fresh token (used by Cashback + APIs)
         final userBox = StorageProvider.user;

@@ -88,6 +88,7 @@ dependencies:
   mqtt_server: ^2.0.0
   nsd: ^2.3.0
   mobile_scanner: ^6.0.11
+  dio: ^5.11.1
 
 dev_dependencies:
   flutter_test:
