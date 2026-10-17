@@ -21,6 +21,7 @@ import '../Helper/Extentions/nav_layout_manager.dart';
 import '../Helper/url_helper.dart';
 import '../Helper/offline_helper.dart';
 import '../Models/Orders/refund_orderlist_model.dart';
+import '../Repositories/Auth/AuthIdsStore.dart';
 import '../Repositories/Orders/refund_validation_repository.dart';
 import '../Widgets/refund_checkin_popup.dart';
 import '../Blocs/Orders/refund_validation_bloc.dart';
@@ -457,8 +458,12 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
       if (lastOrderId != null) 'since_id': lastOrderId.toString(),
     };
 
+    final merchantId = (await AuthIdsStore.getMerchantId()).trim();
+    final storeId = (await AuthIdsStore.getStoreId()).trim();
+
+    // PCH API: GET {safeApiBaseUrl}/orders/completed-orders
     final uri = Uri.parse(
-      '${UrlHelper.baseUrl}pinaka-pos/v1/orders/completed-orders',
+      '${UrlHelper.safeApiBaseUrl}/orders/completed-orders',
     ).replace(queryParameters: queryParams);
 
     if (kDebugMode) {
@@ -472,6 +477,8 @@ class _CompletedOrdersScreenState extends State<CompletedOrdersScreen>
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
+          if (merchantId.isNotEmpty) 'x-merchant-id': merchantId,
+          if (storeId.isNotEmpty) 'x-store-id': storeId,
         },
       ).timeout(const Duration(seconds: 3));
 

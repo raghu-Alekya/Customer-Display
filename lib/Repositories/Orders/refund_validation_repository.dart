@@ -7,6 +7,7 @@ import '../../Database/db_helper.dart';
 import '../../Database/user_db_helper.dart';
 import '../../Helper/offline_helper.dart';
 import '../../Helper/url_helper.dart';
+import '../Auth/AuthIdsStore.dart';
 
 class RefundValidationRepository {
   final String baseUrl;
@@ -79,32 +80,31 @@ class RefundValidationRepository {
     }
 
     final token = await _getTokenFromDb();
+    final merchantId = (await AuthIdsStore.getMerchantId()).trim();
+    final storeId = (await AuthIdsStore.getStoreId()).trim();
+
+    // PCH API: POST {safeApiBaseUrl}/orders/refund-valid-user
     final uri = Uri.parse(
-      '${UrlHelper.baseUrl}pinaka-pos/v1/orders/refund-valid-user',
+      '${UrlHelper.safeApiBaseUrl}/orders/refund-valid-user',
     );
+
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': 'Bearer $token',
+      if (merchantId.isNotEmpty) 'x-merchant-id': merchantId,
+      if (storeId.isNotEmpty) 'x-store-id': storeId,
+    };
+    final body = jsonEncode({'employee_pin': employeePin});
 
     if (kDebugMode) {
       print("API URL: $uri");
-      print("Authorization Header: Bearer ${token.substring(0, 20)}...");
+      print("x-merchant-id: $merchantId, x-store-id: $storeId");
     }
 
-    final request = http.MultipartRequest('POST', uri)
-      ..headers['Authorization'] = 'Bearer $token'
-      ..fields['employee_pin'] = employeePin;
-
-    if (kDebugMode) {
-      print("Request Headers: ${request.headers}");
-      print("Request Fields: ${request.fields}");
-    }
-
-    final streamedResponse = await request.send();
-
-    if (kDebugMode) {
-      print("Streamed Response Status: ${streamedResponse.statusCode}");
-      print("Streamed Response Headers: ${streamedResponse.headers}");
-    }
-
-    final response = await http.Response.fromStream(streamedResponse);
+    final response = await http
+        .post(uri, headers: headers, body: body)
+        .timeout(const Duration(seconds: 30));
 
     if (kDebugMode) {
       print("========== REFUND VALIDATION RESPONSE ==========");
@@ -128,11 +128,15 @@ class RefundValidationRepository {
     }
 
     // ❌ HTTP failure
-    if (response.statusCode != 200) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       if (kDebugMode) {
         print("❌ HTTP ERROR: ${response.statusCode}");
       }
-      throw Exception("Unauthorized or session expired");
+      throw Exception(
+        decoded is Map && decoded['message'] != null
+            ? decoded['message']
+            : "Unauthorized or session expired",
+      );
     }
 
     // ✅ Success object

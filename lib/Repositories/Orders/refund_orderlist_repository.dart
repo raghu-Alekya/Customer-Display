@@ -5,6 +5,7 @@ import '../../Database/db_helper.dart';
 import '../../Helper/offline_helper.dart';  // Build #offline
 import '../../Helper/url_helper.dart';
 import '../../Models/Orders/refund_orderlist_model.dart';
+import '../Auth/AuthIdsStore.dart';
 
 class CompletedOrdersRepository {
   final String baseUrl;
@@ -49,8 +50,12 @@ class CompletedOrdersRepository {
         if (to != null && to.isNotEmpty) 'before': to,
       };
 
+      final merchantId = (await AuthIdsStore.getMerchantId()).trim();
+      final storeId = (await AuthIdsStore.getStoreId()).trim();
+
+      // PCH API: GET {safeApiBaseUrl}/orders/completed-orders
       final uri = Uri.parse(
-        '${UrlHelper.baseUrl}pinaka-pos/v1/orders/completed-orders',
+        '${UrlHelper.safeApiBaseUrl}/orders/completed-orders',
       ).replace(queryParameters: queryParams);
 
       if (kDebugMode) {
@@ -63,6 +68,8 @@ class CompletedOrdersRepository {
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
+          if (merchantId.isNotEmpty) 'x-merchant-id': merchantId,
+          if (storeId.isNotEmpty) 'x-store-id': storeId,
         },
       );
 
@@ -161,19 +168,19 @@ class CompletedOrdersRepository {
 
     try {
       final token = await _getTokenFromDb();
+      final merchantId = (await AuthIdsStore.getMerchantId()).trim();
+      final storeId = (await AuthIdsStore.getStoreId()).trim();
 
+      // PCH API: POST {safeApiBaseUrl}/orders/get-amt-by-paymethod
       final uri = Uri.parse(
-        '${UrlHelper.baseUrl}pinaka-pos/v1/orders/get-amt-by-paymethod',
+        '${UrlHelper.safeApiBaseUrl}/orders/get-amt-by-paymethod',
       );
 
       final Map<String, dynamic> body = {
-        "order_id": orderId,
+        "order_id": orderId.toString(),
         "refund_type": refundType,
+        "items": refundType == "Partial" ? (items ?? []) : [],
       };
-
-      if (refundType == "Partial" && items != null) {
-        body["items"] = items;
-      }
 
       if (kDebugMode) {
         print("URL: $uri");
@@ -186,6 +193,9 @@ class CompletedOrdersRepository {
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          if (merchantId.isNotEmpty) 'x-merchant-id': merchantId,
+          if (storeId.isNotEmpty) 'x-store-id': storeId,
         },
         body: jsonEncode(body),
       );
@@ -207,7 +217,7 @@ class CompletedOrdersRepository {
       }
 
       /// ✅ SUCCESS
-      if (response.statusCode == 200) {
+      if (response.statusCode >= 200 && response.statusCode < 300) {
         return {
           "success": true,
           "data": responseData
